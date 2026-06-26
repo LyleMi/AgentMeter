@@ -1,5 +1,9 @@
 # AgentMeter
 
+<p>
+  <img src="frontend/src/assets/agentmeter-logo.png" alt="AgentMeter logo" width="96">
+</p>
+
 ![Status: MVP](https://img.shields.io/badge/status-MVP-f2c94c)
 ![Local first](https://img.shields.io/badge/local--first-yes-2f855a)
 ![Platform: Windows first](https://img.shields.io/badge/platform-Windows%20first-0078d4)

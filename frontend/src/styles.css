@@ -76,11 +76,17 @@ body {
   place-items: center;
   width: 32px;
   height: 32px;
-  color: #ffffff;
-  background: #172033;
-  border: 1px solid #0f172a;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid var(--am-border);
   border-radius: var(--am-radius-sm);
   box-shadow: 0 8px 18px rgb(15 23 42 / 14%);
+}
+
+.brand-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .brand-copy {

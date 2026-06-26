@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import {
   BarChartOutlined,
-  DatabaseOutlined,
   HistoryOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
@@ -81,7 +80,7 @@ onMounted(loadSettings)
       <a-layout-sider class="app-sider" width="216">
         <div class="brand">
           <div class="brand-mark">
-            <DatabaseOutlined />
+            <img class="brand-logo" src="/favicon.png" alt="AgentMeter" />
           </div>
           <div class="brand-copy">
             <div class="brand-title">AgentMeter</div>
