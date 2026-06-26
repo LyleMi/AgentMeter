@@ -16,6 +16,8 @@ import (
 )
 
 type rawRecord struct {
+	ID             any            `json:"id"`
+	ParentID       any            `json:"parentId"`
 	Timestamp      any            `json:"timestamp"`
 	CreatedAt      any            `json:"created_at"`
 	CreatedAtCamel any            `json:"createdAt"`
@@ -24,6 +26,17 @@ type rawRecord struct {
 	SessionIDSnake any            `json:"session_id"`
 	UUID           any            `json:"uuid"`
 	CWD            any            `json:"cwd"`
+	Role           any            `json:"role"`
+	Status         any            `json:"status"`
+	Name           any            `json:"name"`
+	CallID         any            `json:"callId"`
+	CallIDSnake    any            `json:"call_id"`
+	Arguments      any            `json:"arguments"`
+	Output         any            `json:"output"`
+	Content        any            `json:"content"`
+	RawContent     any            `json:"rawContent"`
+	Summary        any            `json:"summary"`
+	AITitle        any            `json:"aiTitle"`
 	Payload        map[string]any `json:"payload"`
 	Data           map[string]any `json:"data"`
 	Result         map[string]any `json:"result"`
@@ -33,6 +46,7 @@ type rawRecord struct {
 	Model          any            `json:"model"`
 	ModelName      any            `json:"model_name"`
 	Metadata       map[string]any `json:"metadata"`
+	ProviderData   map[string]any `json:"providerData"`
 }
 
 type pendingTool struct {
@@ -136,9 +150,9 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 			SourceFileID: sourceFileID,
 			SourceLine:   lineNo,
 			Timestamp:    ts,
-			Kind:         classify(raw.Type, raw.Payload),
+			Kind:         classifyRecord(raw),
 			RawType:      rawType,
-			Summary:      summarize(raw.Type, raw.Payload),
+			Summary:      summarizeRecord(raw),
 			RawJSON:      rawJSON,
 		})
 
@@ -166,6 +180,12 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 		}
 		if cwd := firstNonEmpty(stringFromAny(raw.CWD), stringValue(raw.Metadata, "cwd"), stringValue(raw.Message, "cwd")); cwd != "" && parsed.Session.ProjectPath == "" {
 			parsed.Session.ProjectPath = cwd
+		}
+		if agentName := stringValue(raw.ProviderData, "agent"); agentName != "" && parsed.Session.AgentNickname == "" {
+			parsed.Session.AgentNickname = agentName
+		}
+		if boolValue(raw.ProviderData, "isSubAgent") && parsed.Session.AgentRole == "" {
+			parsed.Session.AgentRole = "subagent"
 		}
 		if originator := firstNonEmpty(stringValue(raw.Metadata, "originator"), stringValue(raw.Metadata, "source")); originator != "" && parsed.Session.Originator == "" {
 			parsed.Session.Originator = originator
@@ -267,6 +287,48 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 			})
 			delete(pending, callID)
 			modelBoundary = ts
+		}
+
+		switch raw.Type {
+		case "function_call":
+			call := startToolRecord(raw, ts, lineNo)
+			if call.callID != "" {
+				pending[call.callID] = call
+			}
+		case "function_call_result":
+			callID := recordCallID(raw)
+			if callID != "" {
+				call := pending[callID]
+				if call.callID == "" {
+					call = pendingTool{
+						callID:       callID,
+						name:         recordToolName(raw),
+						startedAt:    ts,
+						rawLine:      lineNo,
+						inputSummary: "",
+						status:       "completed",
+					}
+				}
+				duration := durationMS(call.startedAt, ts)
+				toolDurationMS += duration
+				status, errText := outputStatusRecord(raw)
+				if status == "" {
+					status = firstNonEmpty(call.status, "completed")
+				}
+				parsed.ToolCall = append(parsed.ToolCall, model.ToolCall{
+					StartedAt:     call.startedAt,
+					EndedAt:       ts,
+					DurationMS:    duration,
+					ToolName:      firstNonEmpty(call.name, recordToolName(raw)),
+					Status:        status,
+					InputSummary:  call.inputSummary,
+					OutputSummary: preview(outputSummaryRecord(raw), 500),
+					Error:         errText,
+					RawEventLine:  call.rawLine,
+				})
+				delete(pending, callID)
+				modelBoundary = ts
+			}
 		}
 
 		if raw.Message != nil {
@@ -393,6 +455,56 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 	return parsed, nil
 }
 
+func classifyRecord(raw rawRecord) string {
+	if stringValue(raw.Payload, "type") != "" {
+		return classify(raw.Type, raw.Payload)
+	}
+	switch raw.Type {
+	case "message":
+		switch stringFromAny(raw.Role) {
+		case "user":
+			return "user"
+		case "assistant":
+			return "model"
+		default:
+			return "message"
+		}
+	case "reasoning":
+		return "model"
+	case "function_call", "function_call_result":
+		return "tool"
+	case "file-history-snapshot", "ai-title", "summary":
+		return "session"
+	default:
+		return classify(raw.Type, raw.Payload)
+	}
+}
+
+func summarizeRecord(raw rawRecord) string {
+	if stringValue(raw.Payload, "type") != "" {
+		return summarize(raw.Type, raw.Payload)
+	}
+	switch raw.Type {
+	case "message":
+		role := firstNonEmpty(stringFromAny(raw.Role), "message")
+		return role + ": " + preview(contentText(raw.Content), 180)
+	case "reasoning":
+		return "Reasoning: " + preview(firstNonEmpty(contentText(raw.Content), stringFromAny(raw.RawContent)), 180)
+	case "function_call":
+		return "Tool call: " + recordToolName(raw)
+	case "function_call_result":
+		return "Tool output: " + recordToolName(raw)
+	case "file-history-snapshot":
+		return "File history snapshot"
+	case "ai-title":
+		return "AI title: " + preview(stringFromAny(raw.AITitle), 180)
+	case "summary":
+		return "Summary: " + preview(stringFromAny(raw.Summary), 180)
+	default:
+		return summarize(raw.Type, raw.Payload)
+	}
+}
+
 func classify(topType string, payload map[string]any) string {
 	pt := stringValue(payload, "type")
 	switch topType {
@@ -494,6 +606,68 @@ func startTool(payload map[string]any, payloadType string, ts time.Time, lineNo 
 	}
 }
 
+func startToolRecord(raw rawRecord, ts time.Time, lineNo int) pendingTool {
+	return pendingTool{
+		callID:       recordCallID(raw),
+		name:         recordToolName(raw),
+		startedAt:    ts,
+		inputSummary: preview(inputSummaryRecord(raw), 500),
+		rawLine:      lineNo,
+		status:       firstNonEmpty(stringFromAny(raw.Status), "started"),
+	}
+}
+
+func recordCallID(raw rawRecord) string {
+	return firstNonEmpty(
+		stringFromAny(raw.CallID),
+		stringFromAny(raw.CallIDSnake),
+		stringValue(raw.ProviderData, "callId"),
+		stringValue(raw.ProviderData, "call_id"),
+	)
+}
+
+func recordToolName(raw rawRecord) string {
+	return firstNonEmpty(stringFromAny(raw.Name), stringValue(raw.ProviderData, "name"), raw.Type, "tool")
+}
+
+func inputSummaryRecord(raw rawRecord) string {
+	for _, value := range []any{
+		raw.Arguments,
+		raw.ProviderData["argumentsDisplayText"],
+		raw.ProviderData["arguments"],
+	} {
+		if summary := valueToString(value); summary != "" {
+			return summary
+		}
+	}
+	return ""
+}
+
+func outputSummaryRecord(raw rawRecord) string {
+	for _, value := range []any{
+		raw.Output,
+		raw.ProviderData["toolResult"],
+		raw.ProviderData["message"],
+	} {
+		if summary := outputValueToString(value); summary != "" {
+			return summary
+		}
+	}
+	return ""
+}
+
+func outputStatusRecord(raw rawRecord) (string, string) {
+	status := firstNonEmpty(stringFromAny(raw.Status), stringValue(raw.ProviderData, "status"))
+	errorText := firstNonEmpty(stringValue(raw.ProviderData, "error"), stringValue(raw.ProviderData, "stderr"))
+	if status == "" && errorText != "" {
+		status = "failed"
+	}
+	if status == "" {
+		status = "completed"
+	}
+	return status, preview(errorText, 500)
+}
+
 func toolName(payloadType string, payload map[string]any) string {
 	if name := stringValue(payload, "name"); name != "" {
 		return name
@@ -583,6 +757,32 @@ func contentItems(value any) []map[string]any {
 	}
 }
 
+func contentText(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case []any:
+		parts := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if asMap, ok := item.(map[string]any); ok {
+				text := firstNonEmpty(
+					stringValue(asMap, "text"),
+					stringValue(asMap, "content"),
+					stringValue(asMap, "summary"),
+				)
+				if text != "" {
+					parts = append(parts, text)
+				}
+			}
+		}
+		return strings.Join(parts, " ")
+	case map[string]any:
+		return firstNonEmpty(stringValue(typed, "text"), stringValue(typed, "content"), stringValue(typed, "summary"))
+	default:
+		return valueToString(value)
+	}
+}
+
 func inputSummary(payload map[string]any) string {
 	for _, key := range []string{"arguments", "input", "query", "action"} {
 		if value, ok := payload[key]; ok {
@@ -599,6 +799,15 @@ func outputSummary(payload map[string]any) string {
 		}
 	}
 	return ""
+}
+
+func outputValueToString(value any) string {
+	if asMap, ok := value.(map[string]any); ok {
+		if text := firstNonEmpty(stringValue(asMap, "text"), stringValue(asMap, "content"), stringValue(asMap, "title")); text != "" {
+			return text
+		}
+	}
+	return valueToString(value)
 }
 
 func outputStatus(payload map[string]any) (string, string) {
@@ -642,6 +851,14 @@ func headlessUsage(raw rawRecord) model.Usage {
 	if usage := usageFromValue(raw.Usage); hasUsage(usage) {
 		return usage
 	}
+	if raw.ProviderData != nil {
+		if usage := usageFromValue(raw.ProviderData["usage"]); hasUsage(usage) {
+			return usage
+		}
+		if usage := usageFromValue(raw.ProviderData["rawUsage"]); hasUsage(usage) {
+			return usage
+		}
+	}
 	for _, container := range []map[string]any{raw.Data, raw.Result, raw.Response, raw.Message} {
 		if container == nil {
 			continue
@@ -658,13 +875,26 @@ func usageFromValue(value any) model.Usage {
 	if raw == nil {
 		return model.Usage{}
 	}
-	input := firstInt64(raw, "input_tokens", "prompt_tokens", "input")
-	input += firstInt64(raw, "cache_creation_input_tokens", "cache_write_input_tokens")
-	cached := firstInt64(raw, "cached_input_tokens", "cache_read_input_tokens", "cached_tokens")
-	cacheRead := firstInt64(raw, "cache_read_input_tokens")
-	output := firstInt64(raw, "output_tokens", "completion_tokens", "output")
-	reasoning := firstInt64(raw, "reasoning_output_tokens", "reasoning_tokens")
-	total := int64Value(raw, "total_tokens")
+	inputIncludesCached := false
+	input := firstInt64(raw, "input_tokens", "input", "inputTokens")
+	if input > 0 {
+		input += firstInt64(raw, "cache_creation_input_tokens", "cache_write_input_tokens", "cacheCreationInputTokens", "cacheWriteInputTokens")
+	} else {
+		input = firstInt64(raw, "prompt_tokens", "promptTokens")
+		inputIncludesCached = input > 0
+	}
+	cached := firstInt64(raw, "cached_input_tokens", "cache_read_input_tokens", "cached_tokens", "cachedInputTokens", "cacheReadInputTokens", "cachedTokens")
+	cached += nestedInt64(raw["inputTokensDetails"], "cached_tokens", "cachedTokens")
+	cached += nestedInt64(raw["prompt_tokens_details"], "cached_tokens", "cachedTokens")
+	cacheRead := firstInt64(raw, "cache_read_input_tokens", "cacheReadInputTokens")
+	if cacheRead == 0 && !inputIncludesCached {
+		cacheRead = cached
+	}
+	output := firstInt64(raw, "output_tokens", "completion_tokens", "output", "outputTokens", "completionTokens")
+	reasoning := firstInt64(raw, "reasoning_output_tokens", "reasoning_tokens", "reasoningOutputTokens", "reasoningTokens", "completion_thinking_tokens")
+	reasoning += nestedInt64(raw["outputTokensDetails"], "reasoning_tokens", "reasoningTokens")
+	reasoning += nestedInt64(raw["completion_tokens_details"], "reasoning_tokens", "reasoningTokens")
+	total := firstInt64(raw, "total_tokens", "totalTokens")
 	if total <= 0 && input+cached+output+reasoning > 0 {
 		total = input + cacheRead + output + reasoning
 	}
@@ -774,6 +1004,7 @@ func durationMS(start, end time.Time) int64 {
 func modelFromRecord(raw rawRecord) string {
 	return firstNonEmpty(
 		modelFromParts(raw.Model, raw.ModelName, raw.Metadata),
+		modelFromMap(raw.ProviderData),
 		modelFromMap(raw.Data),
 		modelFromMap(raw.Result),
 		modelFromMap(raw.Response),
@@ -791,7 +1022,12 @@ func modelFromMap(payload map[string]any) string {
 		return ""
 	}
 	metadata, _ := payload["metadata"].(map[string]any)
-	return modelFromParts(payload["model"], payload["model_name"], metadata)
+	return firstNonEmpty(
+		modelFromParts(payload["model"], payload["model_name"], metadata),
+		stringFromAny(payload["requestModelId"]),
+		stringFromAny(payload["request_model_id"]),
+		stringFromAny(payload["requestModelName"]),
+	)
 }
 
 func modelFromParts(modelValue, modelNameValue any, metadata map[string]any) string {
@@ -852,6 +1088,25 @@ func firstInt64(payload map[string]any, keys ...string) int64 {
 		}
 	}
 	return 0
+}
+
+func nestedInt64(value any, keys ...string) int64 {
+	switch typed := value.(type) {
+	case map[string]any:
+		var total int64
+		for _, key := range keys {
+			total += int64Value(typed, key)
+		}
+		return total
+	case []any:
+		var total int64
+		for _, item := range typed {
+			total += nestedInt64(item, keys...)
+		}
+		return total
+	default:
+		return 0
+	}
 }
 
 func hasUsage(usage model.Usage) bool {

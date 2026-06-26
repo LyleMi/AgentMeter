@@ -29,8 +29,15 @@ func DefaultClaudeRoot() string {
 	return ".claude"
 }
 
+func DefaultCodeBuddyRoot() string {
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".codebuddy")
+	}
+	return ".codebuddy"
+}
+
 func DefaultAgentSourcePaths() []string {
-	candidates := []string{DefaultCodexRoot(), DefaultClaudeRoot()}
+	candidates := []string{DefaultCodexRoot(), DefaultClaudeRoot(), DefaultCodeBuddyRoot()}
 	var existing []string
 	for _, candidate := range candidates {
 		if stat, err := os.Stat(candidate); err == nil && stat.IsDir() {

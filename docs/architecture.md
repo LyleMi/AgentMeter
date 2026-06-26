@@ -81,7 +81,7 @@ internal/
 
 Responsibilities:
 
-- `agent`: detect source roots such as Codex, Claude Code, or generic JSONL directories.
+- `agent`: detect source roots such as Codex, Claude Code, CodeBuddy, or generic JSONL directories.
 - `sessionjsonl`: understand supported JSONL event shapes and convert them to normalized records.
 - `ingest`: scan, hash, deduplicate, and index files.
 - `db`: SQLite connection, migrations, repositories.

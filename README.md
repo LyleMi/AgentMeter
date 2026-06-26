@@ -33,7 +33,7 @@ can actually use:
 ## Features
 
 - Overview dashboard with sessions, tokens, estimated cost, daily usage, and model usage.
-- Multiple local source roots, with Codex, Claude Code, and generic JSONL detection.
+- Multiple local source roots, with Codex, Claude Code, CodeBuddy, and generic JSONL detection.
 - Agent-level usage grouping for developers who run several coding agents side by side.
 - Searchable session history with parse status and raw source traceability.
 - Session detail timeline with model calls, tool calls, metadata, and source paths.
@@ -65,6 +65,7 @@ Default source roots are detected from local agent homes when they exist:
 ```text
 ~/.codex
 ~/.claude
+~/.codebuddy
 ```
 
 ## Quick Start
@@ -124,9 +125,9 @@ Agent JSONL -> scanner/parser -> SQLite -> Go query service -> Vue dashboard
 
 When the source path is a Codex home directory, AgentMeter scans `sessions\`
 first and then `archived_sessions\`, keeping the active copy when both contain
-the same relative JSONL path. When the source path is a Claude Code home,
-AgentMeter scans `projects/`. A direct directory of saved JSONL output is also
-supported through the generic JSONL adapter.
+the same relative JSONL path. When the source path is a Claude Code or CodeBuddy
+home, AgentMeter scans `projects/`. A direct directory of saved JSONL output is
+also supported through the generic JSONL adapter.
 
 ## Current Status
 
@@ -134,7 +135,7 @@ AgentMeter is currently an MVP for local coding-agent JSONL usage. The repositor
 already includes:
 
 - Go backend with SQLite migrations and local app configuration.
-- Codex, Claude Code, and generic JSONL discovery, parsing, normalization, and incremental indexing.
+- Codex, Claude Code, CodeBuddy, and generic JSONL discovery, parsing, normalization, and incremental indexing.
 - Normalized sessions, events, token usage, model calls, and tool calls.
 - Vue 3 + TypeScript frontend using Ant Design Vue and ECharts.
 - MVP screens for Overview, Sessions, Session Detail, Tools, and Settings.

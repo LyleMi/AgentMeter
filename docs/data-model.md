@@ -12,7 +12,7 @@ Tracks configured local data sources.
 Fields:
 
 - `id`
-- `kind` such as `codex`, `claude`, or `jsonl`
+- `kind` such as `codex`, `claude`, `codebuddy`, or `jsonl`
 - `name`
 - `root_path`
 - `sessions_path`

@@ -48,7 +48,7 @@ Tasks:
 
 - Implement source discovery.
 - Implement JSONL scanner.
-- Implement Codex, Claude Code, and generic JSONL parsing.
+- Implement Codex, Claude Code, CodeBuddy, and generic JSONL parsing.
 - Normalize sessions, events, token usage, and tool calls.
 - Add incremental indexing based on path, size, modified time, and hash.
 - Add parse warnings.
@@ -106,7 +106,7 @@ Deliverables:
 
 Possible additions:
 
-- More complete Claude Code adapter coverage.
+- More complete Claude Code and CodeBuddy adapter coverage.
 - Gemini CLI adapter.
 - OpenCode adapter.
 - CSV export.

@@ -23,6 +23,12 @@ func ResolveSource(path string) SourceSpec {
 	parent := filepath.Dir(cleaned)
 	base := strings.ToLower(filepath.Base(cleaned))
 
+	if isCodeBuddyRoot(cleaned) {
+		return SourceSpec{Kind: "codebuddy", Name: "CodeBuddy", RootPath: cleaned, SessionsPath: cleaned}
+	}
+	if (base == "projects" || base == "sessions") && isCodeBuddyRoot(parent) {
+		return SourceSpec{Kind: "codebuddy", Name: "CodeBuddy", RootPath: parent, SessionsPath: cleaned}
+	}
 	if isCodexRoot(cleaned) {
 		return SourceSpec{Kind: "codex", Name: "Codex", RootPath: cleaned, SessionsPath: cleaned}
 	}
@@ -63,6 +69,13 @@ func UsageSources(spec SourceSpec) []UsageSource {
 				return []UsageSource{{Dir: projects, DedupeScope: spec.RootPath}}
 			}
 		}
+	case "codebuddy":
+		if filepath.Clean(spec.RootPath) == filepath.Clean(spec.SessionsPath) {
+			projects := filepath.Join(spec.RootPath, "projects")
+			if isDir(projects) {
+				return []UsageSource{{Dir: projects, DedupeScope: spec.RootPath}}
+			}
+		}
 	}
 	return []UsageSource{{Dir: spec.SessionsPath, DedupeScope: spec.SessionsPath}}
 }
@@ -75,6 +88,11 @@ func isCodexRoot(path string) bool {
 func isClaudeRoot(path string) bool {
 	base := strings.ToLower(filepath.Base(path))
 	return base == ".claude" || isDir(filepath.Join(path, "projects"))
+}
+
+func isCodeBuddyRoot(path string) bool {
+	base := strings.ToLower(filepath.Base(path))
+	return base == ".codebuddy"
 }
 
 func isDir(path string) bool {

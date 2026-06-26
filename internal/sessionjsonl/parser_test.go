@@ -95,6 +95,54 @@ func TestParseFileSupportsClaudeStyleMessages(t *testing.T) {
 	}
 }
 
+func TestParseFileSupportsCodeBuddyMessagesAndTools(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "codebuddy-session.jsonl")
+	content := `{"id":"msg_1","timestamp":1782468000000,"type":"message","role":"user","content":[{"type":"input_text","text":"run tests"}],"providerData":{"agent":"cli"},"sessionId":"cb_sess","cwd":"D:\\workspace\\project"}
+{"id":"call_1","parentId":"msg_1","timestamp":1782468002000,"type":"function_call","providerData":{"model":"claude-sonnet-4.6-1m","usage":{"inputTokens":100,"outputTokens":20,"totalTokens":120,"inputTokensDetails":[{"cached_tokens":10}],"outputTokensDetails":[{"reasoning_tokens":3}]},"agent":"cli","argumentsDisplayText":"go test ./..."},"callId":"toolu_1","name":"Bash","arguments":{"command":"go test ./..."},"sessionId":"cb_sess","cwd":"D:\\workspace\\project"}
+{"id":"result_1","parentId":"call_1","timestamp":1782468005000,"type":"function_call_result","name":"Bash","callId":"toolu_1","status":"completed","output":{"type":"text","text":"ok"},"providerData":{"toolResult":{"content":"ok"}},"sessionId":"cb_sess","cwd":"D:\\workspace\\project"}
+{"id":"msg_2","parentId":"result_1","timestamp":1782468006000,"type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"done"}],"providerData":{"model":"claude-sonnet-4.6-1m","usage":{"inputTokens":50,"outputTokens":5,"totalTokens":55},"agent":"cli"},"sessionId":"cb_sess","cwd":"D:\\workspace\\project"}
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	parsed, err := ParseFile(path, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Session.SessionKey != "cb_sess" {
+		t.Fatalf("session key = %q", parsed.Session.SessionKey)
+	}
+	if parsed.Session.ProjectPath != "D:\\workspace\\project" {
+		t.Fatalf("project path = %q", parsed.Session.ProjectPath)
+	}
+	if parsed.Session.Model != "claude-sonnet-4.6-1m" {
+		t.Fatalf("model = %q", parsed.Session.Model)
+	}
+	if parsed.Session.AgentNickname != "cli" {
+		t.Fatalf("agent nickname = %q", parsed.Session.AgentNickname)
+	}
+	if parsed.Usage.InputTokens != 150 || parsed.Usage.CachedInputTokens != 10 || parsed.Usage.OutputTokens != 25 || parsed.Usage.ReasoningOutputTokens != 3 || parsed.Usage.TotalTokens != 175 {
+		t.Fatalf("usage = %+v", parsed.Usage)
+	}
+	if len(parsed.ModelCall) != 2 {
+		t.Fatalf("model calls = %d", len(parsed.ModelCall))
+	}
+	if len(parsed.ToolCall) != 1 {
+		t.Fatalf("tool calls = %d", len(parsed.ToolCall))
+	}
+	if parsed.ToolCall[0].ToolName != "Bash" || parsed.ToolCall[0].Status != "completed" || parsed.ToolCall[0].DurationMS != 3000 {
+		t.Fatalf("tool call = %+v", parsed.ToolCall[0])
+	}
+	if parsed.ToolCall[0].InputSummary == "" || parsed.ToolCall[0].OutputSummary != "ok" {
+		t.Fatalf("tool summaries = input %q output %q", parsed.ToolCall[0].InputSummary, parsed.ToolCall[0].OutputSummary)
+	}
+	if parsed.Session.ParseStatus != "ok" {
+		t.Fatalf("parse status = %q, warnings: %v", parsed.Session.ParseStatus, parsed.Warnings)
+	}
+}
+
 func TestParseFileKeepsMalformedLineAsWarning(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "broken.jsonl")
