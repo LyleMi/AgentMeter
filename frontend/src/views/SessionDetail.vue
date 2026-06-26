@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeftOutlined } from '@ant-design/icons-vue'
+import {
+  ArrowLeftOutlined,
+  ClockCircleOutlined,
+  DollarCircleOutlined,
+  FunctionOutlined,
+  ReloadOutlined,
+  ToolOutlined
+} from '@ant-design/icons-vue'
 import {
   api,
   formatCost,
@@ -20,19 +27,24 @@ const detail = ref<SessionDetail | null>(null)
 
 const modelColumns = [
   { title: 'Ended', dataIndex: 'endedAt', key: 'endedAt', width: 150 },
-  { title: 'Model', dataIndex: 'model', key: 'model' },
-  { title: 'Status', dataIndex: 'status', key: 'status', width: 100 },
+  { title: 'Model', dataIndex: 'model', key: 'model', width: 220 },
+  { title: 'Status', dataIndex: 'status', key: 'status', width: 130 },
   { title: 'Duration', dataIndex: 'durationMs', key: 'duration', width: 110, align: 'right' },
-  { title: 'Input', dataIndex: 'inputTokens', key: 'input', width: 110, align: 'right' },
-  { title: 'Output', dataIndex: 'outputTokens', key: 'output', width: 110, align: 'right' },
+  { title: 'Input', dataIndex: 'inputTokens', key: 'input', width: 100, align: 'right' },
+  { title: 'Cached', dataIndex: 'cachedInputTokens', key: 'cached', width: 100, align: 'right' },
+  { title: 'Output', dataIndex: 'outputTokens', key: 'output', width: 100, align: 'right' },
+  { title: 'Reasoning', dataIndex: 'reasoningOutputTokens', key: 'reasoning', width: 110, align: 'right' },
+  { title: 'Total', dataIndex: 'totalTokens', key: 'total', width: 110, align: 'right' },
   { title: 'Cost', dataIndex: 'costUsd', key: 'cost', width: 120, align: 'right' }
 ]
 
 const toolColumns = [
   { title: 'Started', dataIndex: 'startedAt', key: 'startedAt', width: 150 },
+  { title: 'Ended', dataIndex: 'endedAt', key: 'endedAt', width: 150 },
   { title: 'Tool', dataIndex: 'toolName', key: 'toolName', width: 160 },
   { title: 'Status', dataIndex: 'status', key: 'status', width: 110 },
   { title: 'Duration', dataIndex: 'durationMs', key: 'duration', width: 110, align: 'right' },
+  { title: 'Raw Event', dataIndex: 'rawEventId', key: 'rawEvent', width: 100, align: 'right' },
   { title: 'Input', dataIndex: 'inputSummary', key: 'input' },
   { title: 'Output', dataIndex: 'outputSummary', key: 'output' }
 ]
@@ -46,6 +58,9 @@ const rawColumns = [
 ]
 
 const events = computed<EventItem[]>(() => detail.value?.events || [])
+const rawEventsExpandable = {
+  rowExpandable: (record: EventItem) => Boolean(record.rawJson)
+}
 
 async function load() {
   loading.value = true
@@ -56,10 +71,23 @@ async function load() {
   }
 }
 
-function statusColor(status: string) {
-  if (status === 'completed' || status === 'ok') return 'green'
-  if (status === 'pending' || status === 'warning') return 'orange'
-  return 'red'
+function normalizedStatus(status?: string) {
+  return (status || 'unknown').toLowerCase()
+}
+
+function statusClass(status?: string) {
+  const normalized = normalizedStatus(status)
+  if (['completed', 'ok', 'indexed', 'success'].includes(normalized)) return 'status-ok'
+  if (['pending', 'warning', 'scanning', 'unknown', 'started'].includes(normalized)) return 'status-warning'
+  return 'status-error'
+}
+
+function statusColor(status?: string) {
+  const normalized = normalizedStatus(status)
+  if (['completed', 'ok', 'indexed', 'success'].includes(normalized)) return 'success'
+  if (normalized === 'scanning') return 'processing'
+  if (['pending', 'warning', 'unknown', 'started'].includes(normalized)) return 'warning'
+  return 'error'
 }
 
 function eventColor(kind: string) {
@@ -69,6 +97,14 @@ function eventColor(kind: string) {
   return 'default'
 }
 
+function indexStatusHint(session: SessionDetail['session']) {
+  return session.lastIndexedScanMessage || session.rawSourcePath || 'No index message recorded'
+}
+
+function goBack() {
+  router.push('/sessions')
+}
+
 onMounted(load)
 </script>
 
@@ -76,224 +112,393 @@ onMounted(load)
   <div class="page">
     <div class="page-header">
       <div>
-        <a-button type="text" @click="router.push('/sessions')">
+        <a-button type="text" @click="goBack">
           <template #icon>
             <ArrowLeftOutlined />
           </template>
           Sessions
         </a-button>
-        <h1 class="page-title">
-          {{ detail?.session.codexSessionId || 'Session Detail' }}
-        </h1>
+        <h1 class="page-title">Session Trace</h1>
         <div class="page-subtitle">
-          {{ shortPath(detail?.session.projectPath || '') }}
+          {{ detail ? shortPath(detail.session.projectPath) : 'Timeline, calls, metadata, and raw local events' }}
         </div>
       </div>
-      <a-button @click="load">Refresh</a-button>
+      <a-button @click="load">
+        <template #icon>
+          <ReloadOutlined />
+        </template>
+        Refresh
+      </a-button>
     </div>
 
     <a-spin :spinning="loading">
       <template v-if="detail">
-        <section class="panel session-summary-panel">
-          <div class="panel-body session-summary">
-            <div class="session-summary-main">
-              <div class="metric-label">Session</div>
-              <div class="session-summary-id mono">{{ detail.session.codexSessionId }}</div>
-              <a-tooltip :title="detail.session.projectPath" placement="topLeft">
-                <div class="session-summary-project">{{ shortPath(detail.session.projectPath) }}</div>
+        <section class="summary-panel session-summary-panel">
+          <div class="session-summary-main">
+            <div class="metric-label">Trace</div>
+            <div class="summary-title mono">{{ detail.session.codexSessionId }}</div>
+            <a-tooltip :title="detail.session.projectPath" placement="topLeft">
+              <div class="session-summary-project">{{ shortPath(detail.session.projectPath) }}</div>
+            </a-tooltip>
+            <div class="summary-meta">
+              <a-tag class="status-tag parse-status-tag" :class="statusClass(detail.session.parseStatus)" :color="statusColor(detail.session.parseStatus)">
+                parse {{ detail.session.parseStatus || 'unknown' }}
+              </a-tag>
+              <a-tooltip :title="indexStatusHint(detail.session)" placement="topLeft">
+                <a-tag
+                  class="status-tag parse-status-tag"
+                  :class="statusClass(detail.session.lastIndexedScanStatus)"
+                  :color="statusColor(detail.session.lastIndexedScanStatus)"
+                >
+                  {{ detail.session.lastIndexedScanStatus || 'unknown' }}
+                </a-tag>
               </a-tooltip>
+              <a-tag v-if="detail.session.unpriced" class="status-tag model-status-tag" color="warning">unpriced</a-tag>
             </div>
-            <div class="session-summary-meta">
-              <div class="session-summary-item">
-                <span class="metric-label">Model</span>
-                <strong>{{ detail.session.model }}</strong>
-              </div>
-              <div class="session-summary-item">
-                <span class="metric-label">Started</span>
-                <strong>{{ formatDateTime(detail.session.startedAt) }}</strong>
-              </div>
-              <div class="session-summary-item">
-                <span class="metric-label">Ended</span>
-                <strong>{{ formatDateTime(detail.session.endedAt) }}</strong>
-              </div>
+          </div>
+          <div class="session-summary-meta">
+            <div class="session-summary-item">
+              <span class="metric-label">Model</span>
+              <strong>{{ detail.session.model }}</strong>
+            </div>
+            <div class="session-summary-item">
+              <span class="metric-label">Started</span>
+              <strong>{{ formatDateTime(detail.session.startedAt) }}</strong>
+            </div>
+            <div class="session-summary-item">
+              <span class="metric-label">Ended</span>
+              <strong>{{ formatDateTime(detail.session.endedAt) }}</strong>
             </div>
           </div>
         </section>
 
         <div class="metric-grid session-metric-grid">
           <a-card class="metric-card session-metric-card" :bordered="false">
-            <div class="metric-label">Tokens</div>
+            <div class="metric-card-topline">
+              <div class="metric-label">Tokens</div>
+              <FunctionOutlined class="metric-icon" />
+            </div>
             <div class="metric-value">{{ formatNumber(detail.session.tokenUsage.totalTokens) }}</div>
-            <div class="metric-note">{{ detail.session.tokenUsage.source }}</div>
+            <div class="metric-note">
+              {{ formatNumber(detail.session.tokenUsage.inputTokens) }} in ·
+              {{ formatNumber(detail.session.tokenUsage.outputTokens) }} out ·
+              {{ formatNumber(detail.session.tokenUsage.cachedInputTokens) }} cached ·
+              {{ detail.session.tokenUsage.source }}
+            </div>
           </a-card>
           <a-card class="metric-card session-metric-card" :bordered="false">
-            <div class="metric-label">Estimated Cost</div>
+            <div class="metric-card-topline">
+              <div class="metric-label">Estimated Cost</div>
+              <DollarCircleOutlined class="metric-icon" />
+            </div>
             <div class="metric-value">{{ formatCost(detail.session.estimatedCostUsd) }}</div>
-            <div class="metric-note">{{ detail.session.model }}</div>
+            <div class="metric-note" :class="{ 'metric-note-warning': detail.session.unpriced }">
+              {{ detail.session.unpriced ? 'Missing local pricing for this model' : detail.session.model }}
+            </div>
           </a-card>
           <a-card class="metric-card session-metric-card" :bordered="false">
-            <div class="metric-label">Timing</div>
+            <div class="metric-card-topline">
+              <div class="metric-label">Timing</div>
+              <ClockCircleOutlined class="metric-icon" />
+            </div>
             <div class="metric-value">{{ formatDuration(detail.session.wallDurationMs) }}</div>
-            <div class="metric-note">{{ formatDuration(detail.session.activeDurationMs) }} active</div>
+            <div class="metric-note">
+              {{ formatDuration(detail.session.activeDurationMs) }} active ·
+              {{ formatDuration(detail.session.idleDurationMs) }} idle
+            </div>
           </a-card>
           <a-card class="metric-card session-metric-card" :bordered="false">
-            <div class="metric-label">Tools</div>
+            <div class="metric-card-topline">
+              <div class="metric-label">Calls / Events</div>
+              <ToolOutlined class="metric-icon" />
+            </div>
             <div class="metric-value">{{ formatNumber(detail.session.toolCallCount) }}</div>
-            <div class="metric-note">{{ formatNumber(detail.session.eventCount) }} events</div>
+            <div class="metric-note">
+              {{ formatNumber(detail.modelCalls.length) }} model ·
+              {{ formatNumber(detail.session.eventCount) }} events
+            </div>
           </a-card>
         </div>
 
-        <section class="panel session-timeline-panel">
-          <div class="panel-header">
-            <h2 class="panel-title">Timeline</h2>
-            <span class="muted">{{ formatNumber(events.length) }} events</span>
-          </div>
-          <div class="panel-body timeline-list session-timeline-list">
-            <a-timeline>
-              <a-timeline-item v-for="event in events" :key="event.id">
-                <div class="timeline-event">
-                  <div class="timeline-event-header">
-                    <a-tag class="status-tag event-kind-tag" :color="eventColor(event.kind)">{{ event.kind }}</a-tag>
-                    <span class="timeline-event-time">{{ formatDateTime(event.timestamp) }}</span>
+        <div class="section-stack">
+          <section class="panel session-timeline-panel">
+            <div class="panel-header">
+              <div>
+                <h2 class="panel-title">Timeline</h2>
+                <div class="panel-kicker">Primary inspection surface ordered by local event time</div>
+              </div>
+              <span class="muted">{{ formatNumber(events.length) }} events</span>
+            </div>
+            <div class="panel-body timeline-list session-timeline-list">
+              <a-timeline>
+                <a-timeline-item v-for="event in events" :key="event.id">
+                  <div class="timeline-event">
+                    <div class="timeline-event-header">
+                      <a-tag class="status-tag event-kind-tag" :color="eventColor(event.kind)">{{ event.kind }}</a-tag>
+                      <span class="timeline-event-time">{{ formatDateTime(event.timestamp) }}</span>
+                    </div>
+                    <div class="timeline-event-summary">{{ event.summary }}</div>
+                    <div class="muted mono timeline-event-raw">line {{ event.sourceLine }} · {{ event.rawType }}</div>
                   </div>
-                  <div class="timeline-event-summary">{{ event.summary }}</div>
-                  <div class="muted mono timeline-event-raw">line {{ event.sourceLine }} · {{ event.rawType }}</div>
-                </div>
-              </a-timeline-item>
-            </a-timeline>
-          </div>
-        </section>
+                </a-timeline-item>
+              </a-timeline>
+            </div>
+          </section>
 
-        <section class="panel session-calls-panel" style="margin-top: 18px">
-          <div class="panel-header">
-            <h2 class="panel-title">Calls</h2>
-          </div>
-          <a-tabs class="panel-body calls-tabs" :tab-bar-style="{ marginBottom: '14px' }">
-            <a-tab-pane key="model" tab="Model">
-              <a-table
-                class="calls-table model-calls-table"
-                size="small"
-                :columns="modelColumns"
-                :data-source="detail.modelCalls"
-                :pagination="{ pageSize: 8 }"
-                row-key="id"
-              >
-                <template #bodyCell="{ column, record }">
-                  <template v-if="column.key === 'endedAt'">{{ formatDateTime(record.endedAt) }}</template>
-                  <template v-else-if="column.key === 'status'">
-                    <a-tag class="status-tag call-status-tag" :color="statusColor(record.status)">{{ record.status }}</a-tag>
+          <section class="panel session-calls-panel">
+            <div class="panel-header">
+              <div>
+                <h2 class="panel-title">Calls</h2>
+                <div class="panel-kicker">Model and tool invocations with aligned usage and duration</div>
+              </div>
+            </div>
+            <a-tabs class="panel-body calls-tabs">
+              <a-tab-pane key="model" :tab="'Model (' + formatNumber(detail.modelCalls.length) + ')'">
+                <a-table
+                  class="calls-table model-calls-table"
+                  size="small"
+                  :columns="modelColumns"
+                  :data-source="detail.modelCalls"
+                  :locale="{ emptyText: 'No model calls captured for this session' }"
+                  :pagination="{ pageSize: 8 }"
+                  :scroll="{ x: 1200 }"
+                  row-key="id"
+                >
+                  <template #bodyCell="{ column, record }">
+                    <template v-if="column.key === 'endedAt'">{{ formatDateTime(record.endedAt) }}</template>
+                    <template v-else-if="column.key === 'model'">
+                      <a-typography-text class="model-name" :ellipsis="{ tooltip: record.model }">
+                        {{ record.model || 'unknown' }}
+                      </a-typography-text>
+                      <div class="timeline-event-raw">{{ record.provider || '-' }}</div>
+                    </template>
+                    <template v-else-if="column.key === 'status'">
+                      <div class="timeline-event-head">
+                        <a-tag class="status-tag call-status-tag" :class="statusClass(record.status)" :color="statusColor(record.status)">
+                          {{ record.status || 'unknown' }}
+                        </a-tag>
+                        <a-tag v-if="record.unpriced" class="status-tag model-status-tag" color="warning">unpriced</a-tag>
+                      </div>
+                    </template>
+                    <template v-else-if="column.key === 'duration'">
+                      <span class="number-cell">{{ formatDuration(record.durationMs) }}</span>
+                    </template>
+                    <template v-else-if="column.key === 'input'">
+                      <span class="number-cell">{{ formatNumber(record.inputTokens) }}</span>
+                    </template>
+                    <template v-else-if="column.key === 'cached'">
+                      <span class="number-cell">{{ formatNumber(record.cachedInputTokens) }}</span>
+                    </template>
+                    <template v-else-if="column.key === 'output'">
+                      <span class="number-cell">{{ formatNumber(record.outputTokens) }}</span>
+                    </template>
+                    <template v-else-if="column.key === 'reasoning'">
+                      <span class="number-cell">{{ formatNumber(record.reasoningOutputTokens) }}</span>
+                    </template>
+                    <template v-else-if="column.key === 'total'">
+                      <span class="number-cell">{{ formatNumber(record.totalTokens) }}</span>
+                    </template>
+                    <template v-else-if="column.key === 'cost'">
+                      <span class="number-cell">{{ formatCost(record.costUsd) }}</span>
+                    </template>
                   </template>
-                  <template v-else-if="column.key === 'duration'">
-                    <span class="number-cell">{{ formatDuration(record.durationMs) }}</span>
+                </a-table>
+              </a-tab-pane>
+              <a-tab-pane key="tools" :tab="'Tools (' + formatNumber(detail.toolCalls.length) + ')'">
+                <a-table
+                  class="calls-table tool-calls-table"
+                  size="small"
+                  :columns="toolColumns"
+                  :data-source="detail.toolCalls"
+                  :locale="{ emptyText: 'No tool calls captured for this session' }"
+                  :pagination="{ pageSize: 8 }"
+                  :scroll="{ x: 1180 }"
+                  row-key="id"
+                >
+                  <template #bodyCell="{ column, record }">
+                    <template v-if="column.key === 'startedAt'">{{ formatDateTime(record.startedAt) }}</template>
+                    <template v-else-if="column.key === 'endedAt'">{{ formatDateTime(record.endedAt) }}</template>
+                    <template v-else-if="column.key === 'status'">
+                      <a-tooltip :title="record.error || record.status || 'unknown'">
+                        <a-tag class="status-tag call-status-tag" :class="statusClass(record.status)" :color="statusColor(record.status)">
+                          {{ record.status || 'unknown' }}
+                        </a-tag>
+                      </a-tooltip>
+                    </template>
+                    <template v-else-if="column.key === 'duration'">
+                      <span class="number-cell">{{ formatDuration(record.durationMs) }}</span>
+                    </template>
+                    <template v-else-if="column.key === 'rawEvent'">
+                      <span class="number-cell">{{ formatNumber(record.rawEventId) }}</span>
+                    </template>
+                    <template v-else-if="column.key === 'input'">
+                      <a-typography-text :ellipsis="{ tooltip: record.inputSummary }">
+                        {{ record.inputSummary || '-' }}
+                      </a-typography-text>
+                    </template>
+                    <template v-else-if="column.key === 'output'">
+                      <a-typography-text :ellipsis="{ tooltip: record.outputSummary || record.error }">
+                        {{ record.outputSummary || record.error || '-' }}
+                      </a-typography-text>
+                    </template>
                   </template>
-                  <template v-else-if="column.key === 'input'">
-                    <span class="number-cell">{{ formatNumber(record.inputTokens) }}</span>
-                  </template>
-                  <template v-else-if="column.key === 'output'">
-                    <span class="number-cell">{{ formatNumber(record.outputTokens) }}</span>
-                  </template>
-                  <template v-else-if="column.key === 'cost'">
-                    <span class="number-cell">{{ formatCost(record.costUsd) }}</span>
-                  </template>
-                </template>
-              </a-table>
-            </a-tab-pane>
-            <a-tab-pane key="tools" tab="Tools">
-              <a-table
-                class="calls-table tool-calls-table"
-                size="small"
-                :columns="toolColumns"
-                :data-source="detail.toolCalls"
-                :pagination="{ pageSize: 8 }"
-                row-key="id"
-              >
-                <template #bodyCell="{ column, record }">
-                  <template v-if="column.key === 'startedAt'">{{ formatDateTime(record.startedAt) }}</template>
-                  <template v-else-if="column.key === 'status'">
-                    <a-tag class="status-tag call-status-tag" :color="statusColor(record.status)">{{ record.status }}</a-tag>
-                  </template>
-                  <template v-else-if="column.key === 'duration'">
-                    <span class="number-cell">{{ formatDuration(record.durationMs) }}</span>
-                  </template>
-                  <template v-else-if="column.key === 'input'">
-                    <a-typography-text :ellipsis="{ tooltip: record.inputSummary }">
-                      {{ record.inputSummary || '-' }}
-                    </a-typography-text>
-                  </template>
-                  <template v-else-if="column.key === 'output'">
-                    <a-typography-text :ellipsis="{ tooltip: record.outputSummary || record.error }">
-                      {{ record.outputSummary || record.error || '-' }}
-                    </a-typography-text>
-                  </template>
-                </template>
-              </a-table>
-            </a-tab-pane>
-          </a-tabs>
-        </section>
+                </a-table>
+              </a-tab-pane>
+            </a-tabs>
+          </section>
 
-        <section class="panel session-metadata-panel" style="margin-top: 18px">
-          <div class="panel-header">
-            <h2 class="panel-title">Metadata</h2>
-            <span class="muted">Session source and indexing context</span>
-          </div>
-          <div class="panel-body metadata-grid">
-            <div class="metadata-item">
-              <div class="metadata-label">Started</div>
-              <div class="metadata-value">{{ formatDateTime(detail.session.startedAt) }}</div>
+          <section class="panel session-metadata-panel">
+            <div class="panel-header">
+              <div>
+                <h2 class="panel-title">Metadata</h2>
+                <div class="panel-kicker">Session source, timing breakdown, parser, and index context</div>
+              </div>
             </div>
-            <div class="metadata-item">
-              <div class="metadata-label">Ended</div>
-              <div class="metadata-value">{{ formatDateTime(detail.session.endedAt) }}</div>
-            </div>
-            <div class="metadata-item">
-              <div class="metadata-label">Model</div>
-              <div class="metadata-value">{{ detail.session.model }}</div>
-            </div>
-            <div class="metadata-item">
-              <div class="metadata-label">Provider</div>
-              <div class="metadata-value">{{ detail.session.modelProvider || '-' }}</div>
-            </div>
-            <div class="metadata-item is-wide">
-              <div class="metadata-label">Project</div>
-              <a-typography-text class="metadata-value detail-path" :ellipsis="{ tooltip: detail.session.projectPath }">
-                {{ detail.session.projectPath }}
-              </a-typography-text>
-            </div>
-            <div class="metadata-item is-wide">
-              <div class="metadata-label">Raw source</div>
-              <a-typography-text class="metadata-value detail-path mono" :ellipsis="{ tooltip: detail.session.rawSourcePath }">
-                {{ detail.session.rawSourcePath }}
-              </a-typography-text>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel raw-events-panel" style="margin-top: 18px">
-          <div class="panel-header">
-            <h2 class="panel-title">Raw Events</h2>
-          </div>
-          <a-table
-            class="raw-events-table"
-            size="small"
-            :columns="rawColumns"
-            :data-source="events"
-            :pagination="{ pageSize: 10 }"
-            row-key="id"
-          >
-            <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'line'">
-                <span class="number-cell">{{ formatNumber(record.sourceLine) }}</span>
-              </template>
-              <template v-else-if="column.key === 'time'">{{ formatDateTime(record.timestamp) }}</template>
-              <template v-else-if="column.key === 'summary'">
-                <a-typography-text :ellipsis="{ tooltip: record.summary }">
-                  {{ record.summary }}
+            <div class="panel-body metadata-grid">
+              <div class="metadata-item">
+                <div class="metadata-label">Session row</div>
+                <div class="metadata-value number-cell">{{ formatNumber(detail.session.id) }}</div>
+              </div>
+              <div class="metadata-item">
+                <div class="metadata-label">Codex session</div>
+                <div class="metadata-value mono">{{ detail.session.codexSessionId }}</div>
+              </div>
+              <div class="metadata-item">
+                <div class="metadata-label">Started</div>
+                <div class="metadata-value">{{ formatDateTime(detail.session.startedAt) }}</div>
+              </div>
+              <div class="metadata-item">
+                <div class="metadata-label">Ended</div>
+                <div class="metadata-value">{{ formatDateTime(detail.session.endedAt) }}</div>
+              </div>
+              <div class="metadata-item">
+                <div class="metadata-label">Model</div>
+                <div class="metadata-value">{{ detail.session.model }}</div>
+              </div>
+              <div class="metadata-item">
+                <div class="metadata-label">Provider</div>
+                <div class="metadata-value">{{ detail.session.modelProvider || '-' }}</div>
+              </div>
+              <div class="metadata-item">
+                <div class="metadata-label">Originator</div>
+                <div class="metadata-value">{{ detail.session.originator || '-' }}</div>
+              </div>
+              <div class="metadata-item">
+                <div class="metadata-label">Thread source</div>
+                <div class="metadata-value">{{ detail.session.threadSource || '-' }}</div>
+              </div>
+              <div class="metadata-item">
+                <div class="metadata-label">Parse status</div>
+                <a-tag class="status-tag parse-status-tag" :class="statusClass(detail.session.parseStatus)" :color="statusColor(detail.session.parseStatus)">
+                  {{ detail.session.parseStatus || 'unknown' }}
+                </a-tag>
+              </div>
+              <div class="metadata-item">
+                <div class="metadata-label">Index status</div>
+                <a-tag
+                  class="status-tag parse-status-tag"
+                  :class="statusClass(detail.session.lastIndexedScanStatus)"
+                  :color="statusColor(detail.session.lastIndexedScanStatus)"
+                >
+                  {{ detail.session.lastIndexedScanStatus || 'unknown' }}
+                </a-tag>
+              </div>
+              <div class="metadata-item">
+                <div class="metadata-label">Usage source</div>
+                <div class="metadata-value">{{ detail.session.tokenUsage.source }}</div>
+              </div>
+              <div class="metadata-item">
+                <div class="metadata-label">Pricing</div>
+                <div class="metadata-value">{{ detail.session.unpriced ? 'unpriced' : 'priced' }}</div>
+              </div>
+              <div class="metadata-item">
+                <div class="metadata-label">Wall</div>
+                <div class="metadata-value number-cell">{{ formatDuration(detail.session.wallDurationMs) }}</div>
+              </div>
+              <div class="metadata-item">
+                <div class="metadata-label">Active</div>
+                <div class="metadata-value number-cell">{{ formatDuration(detail.session.activeDurationMs) }}</div>
+              </div>
+              <div class="metadata-item">
+                <div class="metadata-label">Model time</div>
+                <div class="metadata-value number-cell">{{ formatDuration(detail.session.modelDurationMs) }}</div>
+              </div>
+              <div class="metadata-item">
+                <div class="metadata-label">Tool time</div>
+                <div class="metadata-value number-cell">{{ formatDuration(detail.session.toolDurationMs) }}</div>
+              </div>
+              <div class="metadata-item">
+                <div class="metadata-label">Idle</div>
+                <div class="metadata-value number-cell">{{ formatDuration(detail.session.idleDurationMs) }}</div>
+              </div>
+              <div class="metadata-item">
+                <div class="metadata-label">Events</div>
+                <div class="metadata-value number-cell">{{ formatNumber(detail.session.eventCount) }}</div>
+              </div>
+              <div class="metadata-item is-wide">
+                <div class="metadata-label">Project</div>
+                <a-typography-text class="metadata-value detail-path" :ellipsis="{ tooltip: detail.session.projectPath }">
+                  {{ detail.session.projectPath }}
                 </a-typography-text>
+              </div>
+              <div class="metadata-item is-wide">
+                <div class="metadata-label">Raw source</div>
+                <a-typography-text class="metadata-value detail-path mono" :ellipsis="{ tooltip: detail.session.rawSourcePath }">
+                  {{ detail.session.rawSourcePath }}
+                </a-typography-text>
+              </div>
+              <div v-if="detail.session.lastIndexedScanMessage" class="metadata-item is-wide">
+                <div class="metadata-label">Index message</div>
+                <div class="metadata-value">{{ detail.session.lastIndexedScanMessage }}</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel raw-events-panel">
+            <div class="panel-header">
+              <div>
+                <h2 class="panel-title">Raw Events</h2>
+                <div class="panel-kicker">Source lines, raw types, and event summaries</div>
+              </div>
+            </div>
+            <a-table
+              class="raw-events-table"
+              size="small"
+              :columns="rawColumns"
+              :data-source="events"
+              :expandable="rawEventsExpandable"
+              :pagination="{ pageSize: 10 }"
+              row-key="id"
+            >
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.key === 'line'">
+                  <span class="number-cell">{{ formatNumber(record.sourceLine) }}</span>
+                </template>
+                <template v-else-if="column.key === 'time'">{{ formatDateTime(record.timestamp) }}</template>
+                <template v-else-if="column.key === 'kind'">
+                  <a-tag class="status-tag event-kind-tag" :color="eventColor(record.kind)">{{ record.kind }}</a-tag>
+                </template>
+                <template v-else-if="column.key === 'rawType'">
+                  <a-typography-text :ellipsis="{ tooltip: record.rawType }">
+                    {{ record.rawType || '-' }}
+                  </a-typography-text>
+                </template>
+                <template v-else-if="column.key === 'summary'">
+                  <a-typography-text :ellipsis="{ tooltip: record.summary }">
+                    {{ record.summary }}
+                  </a-typography-text>
+                </template>
               </template>
-            </template>
-          </a-table>
-        </section>
+              <template #expandedRowRender="{ record }">
+                <a-typography-paragraph class="metadata-value mono" copyable>
+                  {{ record.rawJson || 'No raw JSON recorded' }}
+                </a-typography-paragraph>
+              </template>
+            </a-table>
+          </section>
+        </div>
       </template>
+      <a-empty v-else-if="!loading" description="Session not found" />
     </a-spin>
   </div>
 </template>

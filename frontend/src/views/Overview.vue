@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import {
@@ -10,7 +10,17 @@ import {
   TableOutlined,
   ToolOutlined
 } from '@ant-design/icons-vue'
-import { api, formatCost, formatDateTime, formatDuration, formatNumber, shortPath, type Overview, type Session } from '../api'
+import {
+  api,
+  formatCost,
+  formatDateTime,
+  formatDuration,
+  formatNumber,
+  shortPath,
+  type ModelUsage,
+  type Overview,
+  type Session
+} from '../api'
 import { chartPalette, usageChartColors } from '../chartPalette'
 
 const router = useRouter()
@@ -18,6 +28,15 @@ const loading = ref(true)
 const overview = ref<Overview | null>(null)
 const chartEl = ref<HTMLDivElement | null>(null)
 let chart: echarts.ECharts | null = null
+
+const hasIndexedData = computed(() => (overview.value?.totalSessions || 0) > 0)
+const hasDailyUsage = computed(() => (overview.value?.dailyUsage?.length || 0) > 0)
+const rankedModelUsage = computed(() =>
+  [...(overview.value?.modelUsage || [])].sort((left, right) => right.totalTokens - left.totalTokens)
+)
+const hasModelUsage = computed(() => rankedModelUsage.value.length > 0)
+const hasRecentSessions = computed(() => (overview.value?.recentSessions?.length || 0) > 0)
+const unpricedModelCount = computed(() => rankedModelUsage.value.filter((item) => item.unpriced).length)
 
 const modelColumns = [
   { title: 'Model', dataIndex: 'model', key: 'model' },
@@ -27,27 +46,34 @@ const modelColumns = [
 ]
 
 const recentColumns = [
-  { title: 'Started', dataIndex: 'startedAt', key: 'startedAt', width: 150 },
   { title: 'Project', dataIndex: 'projectPath', key: 'projectPath' },
-  { title: 'Model', dataIndex: 'model', key: 'model', width: 110 },
+  { title: 'Model', dataIndex: 'model', key: 'model', width: 132 },
   { title: 'Tokens', dataIndex: ['tokenUsage', 'totalTokens'], key: 'tokens', width: 120, align: 'right' },
-  { title: 'Tools', dataIndex: 'toolCallCount', key: 'tools', width: 80, align: 'right' }
+  { title: 'Tools', dataIndex: 'toolCallCount', key: 'tools', width: 80, align: 'right' },
+  { title: 'Started', dataIndex: 'startedAt', key: 'startedAt', width: 150 }
 ]
 
 async function load() {
   loading.value = true
   try {
     overview.value = await api.getOverview()
-    setTimeout(renderChart)
   } finally {
     loading.value = false
   }
+  await nextTick()
+  renderChart()
 }
 
 function renderChart() {
-  if (!chartEl.value || !overview.value) return
+  const dailyUsage = overview.value?.dailyUsage || []
+  if (!dailyUsage.length) {
+    chart?.dispose()
+    chart = null
+    return
+  }
+  if (!chartEl.value) return
   if (!chart) chart = echarts.init(chartEl.value)
-  const days = overview.value.dailyUsage.map((item) => item.date.slice(5))
+  const days = dailyUsage.map((item) => item.date.slice(5))
   chart.setOption({
     color: usageChartColors,
     tooltip: {
@@ -58,10 +84,11 @@ function renderChart() {
       axisPointer: { type: 'shadow', shadowStyle: { color: chartPalette.pointer } },
       valueFormatter: (value: string | number) => formatNumber(Number(value))
     },
-    grid: { left: 56, right: 44, top: 42, bottom: 36 },
+    grid: { left: 56, right: 44, top: 50, bottom: 36 },
     legend: {
-      top: 2,
-      right: 0,
+      top: 4,
+      right: 8,
+      itemGap: 16,
       itemWidth: 10,
       itemHeight: 10,
       textStyle: { color: chartPalette.axis, fontSize: 12 }
@@ -76,15 +103,11 @@ function renderChart() {
     yAxis: [
       {
         type: 'value',
-        name: 'Tokens',
-        nameTextStyle: { color: chartPalette.axis, fontSize: 11, padding: [0, 0, 8, 0] },
         axisLabel: { color: chartPalette.axis, fontSize: 11 },
         splitLine: { lineStyle: { color: chartPalette.grid } }
       },
       {
         type: 'value',
-        name: 'Tools',
-        nameTextStyle: { color: chartPalette.axis, fontSize: 11, padding: [0, 0, 8, 0] },
         axisLabel: { color: chartPalette.axis, fontSize: 11 },
         splitLine: { show: false }
       }
@@ -94,16 +117,18 @@ function renderChart() {
         name: 'Input',
         type: 'bar',
         stack: 'tokens',
-        data: overview.value.dailyUsage.map((item) => item.inputTokens),
+        data: dailyUsage.map((item) => item.inputTokens),
         barWidth: 16,
+        itemStyle: { borderRadius: [0, 0, 4, 4] },
         emphasis: { focus: 'series' }
       },
       {
         name: 'Output',
         type: 'bar',
         stack: 'tokens',
-        data: overview.value.dailyUsage.map((item) => item.outputTokens),
+        data: dailyUsage.map((item) => item.outputTokens),
         barWidth: 16,
+        itemStyle: { borderRadius: [4, 4, 0, 0] },
         emphasis: { focus: 'series' }
       },
       {
@@ -113,10 +138,10 @@ function renderChart() {
         smooth: true,
         symbolSize: 6,
         lineStyle: { width: 2 },
-        data: overview.value.dailyUsage.map((item) => item.toolCalls)
+        data: dailyUsage.map((item) => item.toolCalls)
       }
     ]
-  })
+  }, true)
 }
 
 function openSession(id: number) {
@@ -125,6 +150,10 @@ function openSession(id: number) {
 
 function recentRow(record: Session) {
   return { class: 'overview-session-row is-clickable-row', onClick: () => openSession(record.id) }
+}
+
+function modelRow(record: ModelUsage) {
+  return { class: record.unpriced ? 'overview-model-row is-unpriced-row' : 'overview-model-row' }
 }
 
 function resize() {
@@ -152,44 +181,62 @@ onBeforeUnmount(() => {
     </div>
 
     <a-spin :spinning="loading">
-      <div class="metric-grid">
-        <a-card class="metric-card overview-metric-card overview-metric-sessions" :bordered="false">
-          <div class="metric-card-topline">
-            <div class="metric-label">Sessions</div>
-            <ClockCircleOutlined class="metric-icon" />
+      <section class="metric-strip overview-summary-strip">
+        <div class="metric-strip-item metric-primary">
+          <div class="metric-strip-head">
+            <span class="metric-label">Sessions</span>
+            <ClockCircleOutlined class="metric-strip-icon" />
           </div>
-          <div class="metric-value">{{ formatNumber(overview?.totalSessions) }}</div>
-          <div class="metric-note">Indexed sessions · {{ formatDuration(overview?.totalWallDurationMs) }} wall time</div>
-        </a-card>
-        <a-card class="metric-card overview-metric-card overview-metric-tokens" :bordered="false">
-          <div class="metric-card-topline">
-            <div class="metric-label">Tokens</div>
-            <FunctionOutlined class="metric-icon" />
+          <div class="metric-strip-value">{{ formatNumber(overview?.totalSessions) }}</div>
+          <div class="metric-strip-note">{{ formatDuration(overview?.totalWallDurationMs) }} wall time</div>
+        </div>
+        <div class="metric-strip-item metric-success">
+          <div class="metric-strip-head">
+            <span class="metric-label">Tokens</span>
+            <FunctionOutlined class="metric-strip-icon" />
           </div>
-          <div class="metric-value">{{ formatNumber(overview?.totalTokens) }}</div>
-          <div class="metric-note">
-            {{ formatNumber(overview?.totalInputTokens) }} input · {{ formatNumber(overview?.totalOutputTokens) }} output ·
+          <div class="metric-strip-value">{{ formatNumber(overview?.totalTokens) }}</div>
+          <div class="metric-strip-note">
+            {{ formatNumber(overview?.totalInputTokens) }} in · {{ formatNumber(overview?.totalOutputTokens) }} out ·
             {{ formatNumber(overview?.totalCachedInputTokens) }} cached
           </div>
-        </a-card>
-        <a-card class="metric-card overview-metric-card overview-metric-cost" :bordered="false">
-          <div class="metric-card-topline">
-            <div class="metric-label">Estimated Cost</div>
-            <DollarCircleOutlined class="metric-icon" />
+        </div>
+        <div class="metric-strip-item metric-warning">
+          <div class="metric-strip-head">
+            <span class="metric-label">Estimated Cost</span>
+            <DollarCircleOutlined class="metric-strip-icon" />
           </div>
-          <div class="metric-value">{{ formatCost(overview?.estimatedCostUsd) }}</div>
-          <div class="metric-note metric-note-warning">
+          <div class="metric-strip-value">{{ formatCost(overview?.estimatedCostUsd) }}</div>
+          <div class="metric-strip-note" :class="{ 'metric-note-warning': (overview?.unpricedSessions || 0) > 0 }">
             {{ formatNumber(overview?.unpricedSessions) }} sessions missing pricing
           </div>
-        </a-card>
-        <a-card class="metric-card overview-metric-card overview-metric-tools" :bordered="false">
-          <div class="metric-card-topline">
-            <div class="metric-label">Tool Calls</div>
-            <ToolOutlined class="metric-icon" />
+        </div>
+        <div class="metric-strip-item metric-info">
+          <div class="metric-strip-head">
+            <span class="metric-label">Tool Calls</span>
+            <ToolOutlined class="metric-strip-icon" />
           </div>
-          <div class="metric-value">{{ formatNumber(overview?.totalToolCalls) }}</div>
-          <div class="metric-note">Across active work · {{ formatDuration(overview?.totalActiveDurationMs) }} active time</div>
-        </a-card>
+          <div class="metric-strip-value">{{ formatNumber(overview?.totalToolCalls) }}</div>
+          <div class="metric-strip-note">Across indexed sessions</div>
+        </div>
+        <div class="metric-strip-item metric-neutral">
+          <div class="metric-strip-head">
+            <span class="metric-label">Active Time</span>
+            <ClockCircleOutlined class="metric-strip-icon" />
+          </div>
+          <div class="metric-strip-value">{{ formatDuration(overview?.totalActiveDurationMs) }}</div>
+          <div class="metric-strip-note">Measured model and tool time</div>
+        </div>
+      </section>
+
+      <div v-if="!loading && !hasIndexedData" class="empty-callout overview-empty-callout">
+        <div>
+          <div class="empty-callout-title">No indexed sessions yet</div>
+          <div class="empty-callout-text">
+            Configure a local source path, then run Index Now to populate usage, cost, and tool-call telemetry.
+          </div>
+        </div>
+        <a-button type="primary" @click="$router.push('/settings')">Open Settings</a-button>
       </div>
 
       <div class="content-grid overview-primary-grid">
@@ -202,7 +249,12 @@ onBeforeUnmount(() => {
             <BarChartOutlined class="panel-header-icon" />
           </div>
           <div class="panel-body">
-            <div ref="chartEl" class="chart"></div>
+            <div v-if="hasDailyUsage" ref="chartEl" class="chart"></div>
+            <div v-else class="empty-state">
+              <BarChartOutlined class="empty-state-icon" />
+              <div class="empty-state-title">No daily usage to chart</div>
+              <div class="empty-state-text">Indexed sessions will appear here as input, output, and tool activity by day.</div>
+            </div>
           </div>
         </section>
 
@@ -215,12 +267,14 @@ onBeforeUnmount(() => {
             <TableOutlined class="panel-header-icon" />
           </div>
           <a-table
+            v-if="hasModelUsage"
             class="overview-model-table"
             size="small"
             :columns="modelColumns"
-            :data-source="overview?.modelUsage || []"
+            :data-source="rankedModelUsage"
             :pagination="false"
             row-key="model"
+            :custom-row="modelRow"
           >
             <template #bodyCell="{ column, record, index }">
               <template v-if="column.key === 'model'">
@@ -241,10 +295,18 @@ onBeforeUnmount(() => {
               </template>
             </template>
           </a-table>
+          <div v-else class="empty-state empty-state-compact">
+            <TableOutlined class="empty-state-icon" />
+            <div class="empty-state-title">No model usage yet</div>
+            <div class="empty-state-text">Model rankings will appear after at least one session is indexed.</div>
+          </div>
+          <div v-if="unpricedModelCount > 0" class="panel-footer-note status-warning">
+            {{ formatNumber(unpricedModelCount) }} model entries need pricing coverage.
+          </div>
         </section>
       </div>
 
-      <section class="panel overview-recent-panel" style="margin-top: 18px">
+      <section class="panel overview-recent-panel panel-spaced">
         <div class="panel-header">
           <div>
             <h2 class="panel-title">Recent Sessions</h2>
@@ -253,6 +315,7 @@ onBeforeUnmount(() => {
           <a-button type="link" @click="$router.push('/sessions')">View all</a-button>
         </div>
         <a-table
+          v-if="hasRecentSessions"
           class="overview-session-table"
           size="middle"
           :columns="recentColumns"
@@ -266,9 +329,15 @@ onBeforeUnmount(() => {
               {{ formatDateTime(record.startedAt) }}
             </template>
             <template v-else-if="column.key === 'projectPath'">
-              <a-typography-text :ellipsis="{ tooltip: record.projectPath }">
-                {{ shortPath(record.projectPath) }}
-              </a-typography-text>
+              <div class="overview-session-identity">
+                <a-typography-text class="overview-session-project" :ellipsis="{ tooltip: record.projectPath }">
+                  {{ shortPath(record.projectPath) }}
+                </a-typography-text>
+                <span class="overview-session-meta mono">{{ record.codexSessionId }}</span>
+              </div>
+            </template>
+            <template v-else-if="column.key === 'model'">
+              <a-tag class="model-lite-tag">{{ record.model || 'unknown' }}</a-tag>
             </template>
             <template v-else-if="column.key === 'tokens'">
               <span class="number-cell">{{ formatNumber(record.tokenUsage.totalTokens) }}</span>
@@ -278,6 +347,11 @@ onBeforeUnmount(() => {
             </template>
           </template>
         </a-table>
+        <div v-else class="empty-state empty-state-compact">
+          <ClockCircleOutlined class="empty-state-icon" />
+          <div class="empty-state-title">No recent sessions</div>
+          <div class="empty-state-text">Recently indexed sessions will be listed here for quick inspection.</div>
+        </div>
       </section>
     </a-spin>
   </div>

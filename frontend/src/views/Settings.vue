@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import { DatabaseOutlined, FolderOpenOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { api, formatDateTime, formatDuration, formatNumber, type Settings } from '../api'
@@ -11,23 +11,40 @@ const settings = ref<Settings | null>(null)
 const sourcePath = ref('')
 
 const pricingColumns = [
-  { title: 'Model', dataIndex: 'model', key: 'model' },
-  { title: 'Input / 1M', dataIndex: 'inputPer1m', key: 'input', width: 120, align: 'right' },
-  { title: 'Cached / 1M', dataIndex: 'cachedInputPer1m', key: 'cached', width: 130, align: 'right' },
-  { title: 'Output / 1M', dataIndex: 'outputPer1m', key: 'output', width: 130, align: 'right' },
+  { title: 'Model', dataIndex: 'model', key: 'model', width: 300 },
+  { title: 'Input / 1M', dataIndex: 'inputPer1m', key: 'input', width: 112, align: 'right' },
+  { title: 'Cached / 1M', dataIndex: 'cachedInputPer1m', key: 'cached', width: 122, align: 'right' },
+  { title: 'Output / 1M', dataIndex: 'outputPer1m', key: 'output', width: 122, align: 'right' },
   { title: 'Source', dataIndex: 'source', key: 'source', width: 180 }
 ]
 
+const sourceState = computed(() => {
+  const saved = settings.value?.sourcePath || ''
+  if (sourcePath.value !== saved) return { color: 'warning', label: 'Unsaved change' }
+  if (saved) return { color: 'success', label: 'Configured' }
+  return { color: 'warning', label: 'Missing source' }
+})
+
+const databaseState = computed(() => {
+  if (settings.value?.databasePath) return { color: 'success', label: 'Local store' }
+  return { color: 'warning', label: 'No database path' }
+})
+
+const indexStatus = computed(() => {
+  const result = settings.value?.lastIndexResult
+  if (!result) return { color: 'default', label: 'No index run', detail: 'Run indexing to populate the local database' }
+  const duration = formatDuration(result.durationMs)
+  if (result.failed > 0) {
+    return { color: 'error', label: 'Failed', detail: `${formatNumber(result.failed)} failed · ${duration}` }
+  }
+  if ((result.warnings?.length || 0) > 0) {
+    return { color: 'warning', label: 'Warnings', detail: `${formatNumber(result.warnings.length)} warnings · ${duration}` }
+  }
+  return { color: 'success', label: 'Completed', detail: `${formatNumber(result.indexed)} indexed · ${duration}` }
+})
+
 function formatPrice(value: number) {
   return `$${value.toFixed(4)}`
-}
-
-function indexResultStatus() {
-  const result = settings.value?.lastIndexResult
-  if (!result) return { type: 'default', label: 'No index run' }
-  if (result.failed > 0) return { type: 'error', label: `${formatNumber(result.failed)} failed` }
-  if ((result.warnings?.length || 0) > 0) return { type: 'warning', label: `${formatNumber(result.warnings.length)} warnings` }
-  return { type: 'success', label: 'Completed' }
 }
 
 async function load() {
@@ -75,151 +92,231 @@ onMounted(load)
         <h1 class="page-title">Settings</h1>
         <div class="page-subtitle">Local source, database and built-in pricing registry</div>
       </div>
-      <a-button @click="load">Refresh</a-button>
+      <a-button @click="load">
+        <template #icon>
+          <ReloadOutlined />
+        </template>
+        Refresh
+      </a-button>
     </div>
 
     <a-spin :spinning="loading">
-      <div class="split-row">
-        <section class="panel settings-tool-panel">
-          <div class="panel-header">
-            <h2 class="panel-title">Source</h2>
-            <span class="muted">JSONL session folder</span>
-          </div>
-          <div class="panel-body">
-            <a-space direction="vertical" style="width: 100%" size="middle">
-              <a-input v-model:value="sourcePath">
-                <template #prefix>
-                  <FolderOpenOutlined />
-                </template>
-              </a-input>
-              <div class="toolbar">
-                <div class="toolbar-left">
-                  <a-button type="primary" :loading="saving" @click="save">Save</a-button>
-                  <a-button @click="sourcePath = settings?.defaultSourcePath || sourcePath">Use Default</a-button>
-                </div>
-                <a-typography-text class="muted" :ellipsis="{ tooltip: settings?.defaultSourcePath }">
-                  {{ settings?.defaultSourcePath }}
-                </a-typography-text>
+      <div class="section-stack">
+        <div class="split-row">
+          <section class="panel settings-tool-panel">
+            <div class="panel-header">
+              <div>
+                <h2 class="panel-title">Source</h2>
+                <div class="panel-kicker">JSONL session folder</div>
               </div>
-              <div class="settings-meta-line">
-                <span class="muted">Current source</span>
-                <a-typography-text :ellipsis="{ tooltip: sourcePath }">{{ sourcePath || '-' }}</a-typography-text>
-              </div>
-            </a-space>
-          </div>
-        </section>
+              <a-tag :color="sourceState.color" class="status-tag">{{ sourceState.label }}</a-tag>
+            </div>
+            <div class="panel-body">
+              <div class="section-stack">
+                <a-input v-model:value="sourcePath">
+                  <template #prefix>
+                    <FolderOpenOutlined />
+                  </template>
+                </a-input>
 
-        <section class="panel settings-tool-panel">
-          <div class="panel-header">
-            <h2 class="panel-title">Database</h2>
-            <span class="muted">Local AgentMeter store</span>
-          </div>
-          <div class="panel-body">
-            <a-space direction="vertical" style="width: 100%" size="middle">
-              <a-input :value="settings?.databasePath" readonly>
-                <template #prefix>
-                  <DatabaseOutlined />
-                </template>
-              </a-input>
-              <div class="toolbar">
-                <div class="toolbar-left">
-                  <a-button type="primary" :loading="indexing" @click="index(false)">Index Now</a-button>
-                  <a-button :loading="indexing" @click="index(true)">
-                    <template #icon>
-                      <ReloadOutlined />
-                    </template>
-                    Rebuild Index
-                  </a-button>
+                <div class="toolbar">
+                  <div class="toolbar-left">
+                    <a-button type="primary" :loading="saving" @click="save">Save</a-button>
+                    <a-button @click="sourcePath = settings?.defaultSourcePath || sourcePath">Use Default</a-button>
+                  </div>
                 </div>
-              </div>
-              <div v-if="settings?.lastIndexResult" class="index-result-block">
-                <div class="index-result-header">
-                  <div>
-                    <div class="index-result-title">Last index result</div>
-                    <div class="muted">
-                      {{ settings.lastIndexStartedAt ? formatDateTime(settings.lastIndexStartedAt) : 'Most recent run' }}
+
+                <div class="metadata-grid">
+                  <div class="metadata-item">
+                    <div class="metadata-label">Current source</div>
+                    <div class="metadata-value">
+                      <a-typography-text :ellipsis="{ tooltip: settings?.sourcePath || sourcePath }">
+                        {{ settings?.sourcePath || sourcePath || '-' }}
+                      </a-typography-text>
                     </div>
                   </div>
-                  <a-tag :color="indexResultStatus().type" class="status-tag">{{ indexResultStatus().label }}</a-tag>
-                </div>
-                <div class="index-result-grid">
-                  <div class="index-result-metric">
-                    <span class="muted">Files seen</span>
-                    <strong class="number-cell">{{ formatNumber(settings.lastIndexResult.filesSeen) }}</strong>
-                  </div>
-                  <div class="index-result-metric">
-                    <span class="muted">Indexed</span>
-                    <strong class="number-cell">{{ formatNumber(settings.lastIndexResult.indexed) }}</strong>
-                  </div>
-                  <div class="index-result-metric">
-                    <span class="muted">Skipped</span>
-                    <strong class="number-cell">{{ formatNumber(settings.lastIndexResult.skipped) }}</strong>
-                  </div>
-                  <div class="index-result-metric">
-                    <span class="muted">Failed</span>
-                    <strong class="number-cell status-error">{{ formatNumber(settings.lastIndexResult.failed) }}</strong>
-                  </div>
-                  <div class="index-result-metric">
-                    <span class="muted">Warnings</span>
-                    <strong class="number-cell status-warning">
-                      {{ formatNumber(settings.lastIndexResult.warnings?.length || 0) }}
-                    </strong>
-                  </div>
-                  <div class="index-result-metric">
-                    <span class="muted">Duration</span>
-                    <strong class="number-cell duration-cell">
-                      {{ formatDuration(settings.lastIndexResult.durationMs) }}
-                    </strong>
+                  <div class="metadata-item">
+                    <div class="metadata-label">Default source</div>
+                    <div class="metadata-value">
+                      <a-typography-text :ellipsis="{ tooltip: settings?.defaultSourcePath }">
+                        {{ settings?.defaultSourcePath || '-' }}
+                      </a-typography-text>
+                    </div>
                   </div>
                 </div>
-                <div v-if="settings.lastIndexResult.warnings?.length" class="index-result-warnings">
-                  <div class="metadata-label">Warnings</div>
-                  <ul>
-                    <li v-for="warning in settings.lastIndexResult.warnings.slice(0, 3)" :key="warning">
-                      {{ warning }}
-                    </li>
-                  </ul>
+
+                <div class="settings-meta-line">
+                  <span class="muted">Editing</span>
+                  <a-typography-text :ellipsis="{ tooltip: sourcePath }">{{ sourcePath || '-' }}</a-typography-text>
                 </div>
               </div>
-            </a-space>
+            </div>
+          </section>
+
+          <section class="panel settings-tool-panel">
+            <div class="panel-header">
+              <div>
+                <h2 class="panel-title">Database</h2>
+                <div class="panel-kicker">Local AgentMeter store</div>
+              </div>
+              <div class="summary-actions">
+                <a-tag :color="databaseState.color" class="status-tag">{{ databaseState.label }}</a-tag>
+                <a-tag :color="indexStatus.color" class="status-tag">{{ indexStatus.label }}</a-tag>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="section-stack">
+                <a-input :value="settings?.databasePath" readonly>
+                  <template #prefix>
+                    <DatabaseOutlined />
+                  </template>
+                </a-input>
+
+                <div class="metadata-grid">
+                  <div class="metadata-item is-wide">
+                    <div class="metadata-label">Database path</div>
+                    <div class="metadata-value">
+                      <a-typography-text :ellipsis="{ tooltip: settings?.databasePath }">
+                        {{ settings?.databasePath || '-' }}
+                      </a-typography-text>
+                    </div>
+                  </div>
+                  <div class="metadata-item">
+                    <div class="metadata-label">Last run</div>
+                    <div class="metadata-value">
+                      {{ settings?.lastIndexStartedAt ? formatDateTime(settings.lastIndexStartedAt) : '-' }}
+                    </div>
+                  </div>
+                  <div class="metadata-item">
+                    <div class="metadata-label">Index state</div>
+                    <div class="metadata-value">{{ indexStatus.detail }}</div>
+                  </div>
+                </div>
+
+                <div class="toolbar">
+                  <div class="toolbar-left">
+                    <a-button type="primary" :loading="indexing" @click="index(false)">Index Now</a-button>
+                    <a-button :loading="indexing" @click="index(true)">
+                      <template #icon>
+                        <ReloadOutlined />
+                      </template>
+                      Rebuild Index
+                    </a-button>
+                  </div>
+                </div>
+
+                <div class="index-result-block">
+                  <div class="index-result-header">
+                    <div>
+                      <div class="index-result-title">Last index result</div>
+                      <div class="muted">
+                        {{ settings?.lastIndexStartedAt ? formatDateTime(settings.lastIndexStartedAt) : 'No completed run yet' }}
+                      </div>
+                    </div>
+                    <a-tag :color="indexStatus.color" class="status-tag">{{ indexStatus.detail }}</a-tag>
+                  </div>
+                  <div v-if="settings?.lastIndexResult" class="index-result-grid">
+                    <div class="index-result-metric">
+                      <span class="muted">Files seen</span>
+                      <strong class="number-cell">{{ formatNumber(settings.lastIndexResult.filesSeen) }}</strong>
+                    </div>
+                    <div class="index-result-metric">
+                      <span class="muted">Sessions</span>
+                      <strong class="number-cell">{{ formatNumber(settings.lastIndexResult.sessions) }}</strong>
+                    </div>
+                    <div class="index-result-metric">
+                      <span class="muted">Indexed</span>
+                      <strong class="number-cell">{{ formatNumber(settings.lastIndexResult.indexed) }}</strong>
+                    </div>
+                    <div class="index-result-metric">
+                      <span class="muted">Skipped</span>
+                      <strong class="number-cell">{{ formatNumber(settings.lastIndexResult.skipped) }}</strong>
+                    </div>
+                    <div class="index-result-metric">
+                      <span class="muted">Failed</span>
+                      <strong class="number-cell" :class="settings.lastIndexResult.failed ? 'status-error' : 'status-ok'">
+                        {{ formatNumber(settings.lastIndexResult.failed) }}
+                      </strong>
+                    </div>
+                    <div class="index-result-metric">
+                      <span class="muted">Warnings</span>
+                      <strong
+                        class="number-cell"
+                        :class="settings.lastIndexResult.warnings?.length ? 'status-warning' : 'status-ok'"
+                      >
+                        {{ formatNumber(settings.lastIndexResult.warnings?.length || 0) }}
+                      </strong>
+                    </div>
+                    <div class="index-result-metric">
+                      <span class="muted">Duration</span>
+                      <strong class="number-cell duration-cell">
+                        {{ formatDuration(settings.lastIndexResult.durationMs) }}
+                      </strong>
+                    </div>
+                  </div>
+                  <div v-else class="metric-note">No index result has been recorded for this database.</div>
+                  <div v-if="settings?.lastIndexResult?.warnings?.length" class="index-result-warnings">
+                    <div class="metadata-label">Warnings</div>
+                    <ul>
+                      <li v-for="warning in settings.lastIndexResult.warnings.slice(0, 3)" :key="warning">
+                        {{ warning }}
+                      </li>
+                      <li v-if="settings.lastIndexResult.warnings.length > 3" class="muted">
+                        +{{ formatNumber(settings.lastIndexResult.warnings.length - 3) }} more
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Pricing Registry</h2>
+              <div class="panel-kicker">API list-price estimates used for local cost calculations</div>
+            </div>
+            <span class="row-count">{{ formatNumber(settings?.pricingModels?.length || 0) }} models</span>
           </div>
+          <a-table
+            class="dense-table pricing-table"
+            size="small"
+            :columns="pricingColumns"
+            :data-source="settings?.pricingModels || []"
+            row-key="id"
+            :pagination="false"
+            :scroll="{ x: 900 }"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'model'">
+                <a-typography-text :ellipsis="{ tooltip: record.model }">
+                  {{ record.model }}
+                </a-typography-text>
+                <div v-if="record.normalizedModel && record.normalizedModel !== record.model" class="muted pricing-source-date">
+                  {{ record.normalizedModel }}
+                </div>
+              </template>
+              <template v-else-if="column.key === 'input'">
+                <span class="number-cell price-cell">{{ formatPrice(record.inputPer1m) }}</span>
+              </template>
+              <template v-else-if="column.key === 'cached'">
+                <span class="number-cell price-cell">{{ formatPrice(record.cachedInputPer1m) }}</span>
+              </template>
+              <template v-else-if="column.key === 'output'">
+                <span class="number-cell price-cell">{{ formatPrice(record.outputPer1m) }}</span>
+              </template>
+              <template v-else-if="column.key === 'source'">
+                <a-typography-text :ellipsis="{ tooltip: `${record.source} · ${formatDateTime(record.effectiveFrom)}` }">
+                  {{ record.source }}
+                </a-typography-text>
+                <div class="muted pricing-source-date">{{ formatDateTime(record.effectiveFrom) }}</div>
+              </template>
+            </template>
+          </a-table>
         </section>
       </div>
-
-      <section class="panel" style="margin-top: 18px">
-        <div class="panel-header">
-          <div>
-            <h2 class="panel-title">Pricing Registry</h2>
-            <div class="muted">API list-price estimates used for local cost calculations</div>
-          </div>
-        </div>
-        <a-table
-          class="dense-table pricing-table"
-          size="middle"
-          :columns="pricingColumns"
-          :data-source="settings?.pricingModels || []"
-          row-key="id"
-          :pagination="false"
-        >
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'input'">
-              <span class="number-cell price-cell">{{ formatPrice(record.inputPer1m) }}</span>
-            </template>
-            <template v-else-if="column.key === 'cached'">
-              <span class="number-cell price-cell">{{ formatPrice(record.cachedInputPer1m) }}</span>
-            </template>
-            <template v-else-if="column.key === 'output'">
-              <span class="number-cell price-cell">{{ formatPrice(record.outputPer1m) }}</span>
-            </template>
-            <template v-else-if="column.key === 'source'">
-              <a-typography-text :ellipsis="{ tooltip: `${record.source} · ${formatDateTime(record.effectiveFrom)}` }">
-                {{ record.source }}
-              </a-typography-text>
-              <div class="muted pricing-source-date">{{ formatDateTime(record.effectiveFrom) }}</div>
-            </template>
-          </template>
-        </a-table>
-      </section>
     </a-spin>
   </div>
 </template>

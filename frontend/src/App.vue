@@ -19,6 +19,10 @@ const settings = ref<Settings | null>(null)
 const indexing = ref(false)
 const refreshKey = ref(0)
 
+const hasSource = computed(() => Boolean(settings.value?.sourcePath))
+const sourceStatusLabel = computed(() => (hasSource.value ? 'Source ready' : 'Source missing'))
+const sourcePathDisplay = computed(() => settings.value?.sourcePath || 'Configure a local JSONL source in Settings')
+
 const selectedKeys = computed(() => {
   if (route.path.startsWith('/sessions')) return ['sessions']
   if (route.path.startsWith('/tools')) return ['tools']
@@ -62,11 +66,11 @@ onMounted(loadSettings)
   <a-config-provider
     :theme="{
       token: {
-        colorPrimary: '#2563eb',
+        colorPrimary: '#1d4ed8',
         colorInfo: '#0891b2',
-        colorSuccess: '#059669',
-        colorWarning: '#d97706',
-        colorError: '#dc2626',
+        colorSuccess: '#0f766e',
+        colorWarning: '#b45309',
+        colorError: '#b91c1c',
         borderRadius: 8,
         fontFamily:
           'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif'
@@ -74,16 +78,17 @@ onMounted(loadSettings)
     }"
   >
     <a-layout class="app-shell">
-      <a-layout-sider class="app-sider" width="232">
+      <a-layout-sider class="app-sider" width="216">
         <div class="brand">
           <div class="brand-mark">
             <DatabaseOutlined />
           </div>
-          <div>
+          <div class="brand-copy">
             <div class="brand-title">AgentMeter</div>
             <div class="brand-subtitle">Local Codex usage</div>
           </div>
         </div>
+        <div class="nav-section-label">Inspect</div>
         <a-menu class="nav-menu" mode="inline" :selected-keys="selectedKeys">
           <a-menu-item v-for="item in menuItems" :key="item.key" @click="navigate(item.path)">
             <template #icon>
@@ -96,15 +101,18 @@ onMounted(loadSettings)
 
       <a-layout>
         <a-layout-header class="app-header">
-          <div class="source-line" :class="{ 'is-configured': settings?.sourcePath }">
-            <span class="source-dot"></span>
-            <span class="source-label">Source path</span>
-            <a-typography-text class="source-path" :ellipsis="{ tooltip: settings?.sourcePath }">
-              {{ settings?.sourcePath || 'Not configured' }}
+          <div class="source-bar" :class="{ 'is-configured': hasSource, 'is-missing': !hasSource }">
+            <div class="source-status-chip">
+              <span class="source-dot"></span>
+              <span>{{ sourceStatusLabel }}</span>
+            </div>
+            <span class="source-label">Local source</span>
+            <a-typography-text class="source-path" :ellipsis="{ tooltip: sourcePathDisplay }">
+              {{ sourcePathDisplay }}
             </a-typography-text>
           </div>
           <div class="header-actions">
-            <a-button :loading="indexing" @click="indexNow(false)">
+            <a-button type="primary" :loading="indexing" @click="indexNow(false)">
               <template #icon>
                 <PlayCircleOutlined />
               </template>
