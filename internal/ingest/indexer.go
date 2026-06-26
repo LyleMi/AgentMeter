@@ -8,14 +8,17 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"strings"
 	"time"
 
-	"AgentMeter/internal/codex"
+	"AgentMeter/internal/agent"
 	"AgentMeter/internal/db"
 	"AgentMeter/internal/model"
 	"AgentMeter/internal/platform"
 	"AgentMeter/internal/pricing"
+	"AgentMeter/internal/sessionjsonl"
 )
 
 type Indexer struct {
@@ -31,35 +34,77 @@ type existingFile struct {
 	ScanStatus  string
 }
 
-type usageSource struct {
-	Dir         string
-	DedupeScope string
-}
-
 func New(conn *sql.DB, dbPath string) *Indexer {
 	return &Indexer{conn: conn, dbPath: dbPath}
 }
 
-func (i *Indexer) Index(ctx context.Context, sessionsPath string, rebuild bool) (model.IndexResult, error) {
+func (i *Indexer) IndexPaths(ctx context.Context, sourcePaths []string, rebuild bool) (model.IndexResult, error) {
 	start := time.Now()
+	paths := normalizeSourcePaths(sourcePaths)
 	result := model.IndexResult{
-		SourcePath: sessionsPath,
-		Database:   i.dbPath,
-		Rebuild:    rebuild,
+		SourcePath:  strings.Join(paths, "\n"),
+		SourcePaths: paths,
+		Database:    i.dbPath,
+		Rebuild:     rebuild,
 	}
-	if sessionsPath == "" {
+	if len(paths) == 0 {
 		return result, errors.New("source path is empty")
 	}
-	stat, err := os.Stat(sessionsPath)
+	var indexedAny bool
+	for _, sourcePath := range paths {
+		stat, err := os.Stat(sourcePath)
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("%s: %v", sourcePath, err))
+			result.Failed++
+			continue
+		}
+		if !stat.IsDir() {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("%s is not a directory", sourcePath))
+			result.Failed++
+			continue
+		}
+		next, err := i.Index(ctx, sourcePath, rebuild)
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("%s: %v", sourcePath, err))
+			result.Failed++
+			continue
+		}
+		indexedAny = true
+		result.FilesSeen += next.FilesSeen
+		result.Indexed += next.Indexed
+		result.Skipped += next.Skipped
+		result.Failed += next.Failed
+		result.Sessions += next.Sessions
+		result.Warnings = append(result.Warnings, next.Warnings...)
+	}
+	result.DurationMS = time.Since(start).Milliseconds()
+	if !indexedAny && result.Failed > 0 {
+		return result, errors.New("no configured source path could be indexed")
+	}
+	return result, nil
+}
+
+func (i *Indexer) Index(ctx context.Context, sessionsPath string, rebuild bool) (model.IndexResult, error) {
+	start := time.Now()
+	spec := agent.ResolveSource(sessionsPath)
+	result := model.IndexResult{
+		SourcePath:  spec.SessionsPath,
+		SourcePaths: []string{spec.SessionsPath},
+		Database:    i.dbPath,
+		Rebuild:     rebuild,
+	}
+	if spec.SessionsPath == "" {
+		return result, errors.New("source path is empty")
+	}
+	stat, err := os.Stat(spec.SessionsPath)
 	if err != nil {
 		return result, err
 	}
 	if !stat.IsDir() {
-		return result, fmt.Errorf("%s is not a directory", sessionsPath)
+		return result, fmt.Errorf("%s is not a directory", spec.SessionsPath)
 	}
 
-	rootPath := filepath.Dir(sessionsPath)
-	source, err := db.EnsureSource(ctx, i.conn, rootPath, sessionsPath, platform.PlatformName())
+	source, err := db.EnsureSource(ctx, i.conn, spec.Kind, spec.Name, spec.RootPath, spec.SessionsPath, platform.PlatformName())
 	if err != nil {
 		return result, err
 	}
@@ -69,7 +114,7 @@ func (i *Indexer) Index(ctx context.Context, sessionsPath string, rebuild bool) 
 		}
 	}
 
-	files, err := findJSONLFiles(sessionsPath)
+	files, err := findJSONLFilesForSource(spec)
 	if err != nil {
 		return result, err
 	}
@@ -100,7 +145,7 @@ func (i *Indexer) indexFile(ctx context.Context, source model.Source, path strin
 	if !force && err == nil && existing.SizeBytes == stat.Size() && existing.ModifiedAt.Equal(modified) && existing.ScanStatus == "indexed" {
 		return 0, 1, 0, 0, nil
 	}
-	hash, err = codex.HashFile(path)
+	hash, err = sessionjsonl.HashFile(path)
 	if err != nil {
 		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
 	}
@@ -112,7 +157,7 @@ func (i *Indexer) indexFile(ctx context.Context, source model.Source, path strin
 	if err != nil {
 		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
 	}
-	parsed, err := codex.ParseFile(path, source.ID, sourceFileID)
+	parsed, err := sessionjsonl.ParseFile(path, source.ID, sourceFileID)
 	if err != nil {
 		_ = i.markSourceFile(ctx, sourceFileID, "error", err.Error())
 		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
@@ -200,11 +245,12 @@ func (i *Indexer) replaceParsedSession(ctx context.Context, sourceFileID int64, 
 	}
 
 	res, err := tx.ExecContext(ctx, `INSERT INTO sessions
-		(source_id, source_file_id, codex_session_id, project_path, model, model_provider, originator, thread_source, agent_nickname, agent_role,
+		(source_id, source_file_id, session_key, codex_session_id, project_path, model, model_provider, originator, thread_source, agent_nickname, agent_role,
 		 started_at, ended_at, wall_duration_ms, active_duration_ms, model_duration_ms, tool_duration_ms, idle_duration_ms, event_count, parse_status)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		parsed.Session.SourceID,
 		sourceFileID,
+		parsed.Session.SessionKey,
 		parsed.Session.CodexSessionID,
 		parsed.Session.ProjectPath,
 		parsed.Session.Model,
@@ -285,30 +331,14 @@ func (i *Indexer) replaceParsedSession(ctx context.Context, sourceFileID int64, 
 }
 
 func findJSONLFiles(root string) ([]string, error) {
-	sources := resolveUsageSources(root)
-	return findJSONLFilesFromSources(sources)
+	return findJSONLFilesForSource(agent.ResolveSource(root))
 }
 
-func resolveUsageSources(root string) []usageSource {
-	sessions := filepath.Join(root, "sessions")
-	archived := filepath.Join(root, "archived_sessions")
-	sources := make([]usageSource, 0, 2)
-	foundCodexHome := false
-	if isDir(sessions) {
-		sources = append(sources, usageSource{Dir: sessions, DedupeScope: root})
-		foundCodexHome = true
-	}
-	if isDir(archived) {
-		sources = append(sources, usageSource{Dir: archived, DedupeScope: root})
-		foundCodexHome = true
-	}
-	if !foundCodexHome {
-		sources = append(sources, usageSource{Dir: root, DedupeScope: root})
-	}
-	return sources
+func findJSONLFilesForSource(spec agent.SourceSpec) ([]string, error) {
+	return findJSONLFilesFromSources(agent.UsageSources(spec))
 }
 
-func findJSONLFilesFromSources(sources []usageSource) ([]string, error) {
+func findJSONLFilesFromSources(sources []agent.UsageSource) ([]string, error) {
 	var files []string
 	seen := map[string]struct{}{}
 	for _, source := range sources {
@@ -338,7 +368,7 @@ func findJSONLFilesFromSources(sources []usageSource) ([]string, error) {
 	return files, nil
 }
 
-func usageFileKey(source usageSource, path string) string {
+func usageFileKey(source agent.UsageSource, path string) string {
 	relative, err := filepath.Rel(source.Dir, path)
 	if err != nil {
 		relative = path
@@ -373,4 +403,30 @@ func nullableFloat(value *float64) any {
 		return nil
 	}
 	return *value
+}
+
+func normalizeSourcePaths(paths []string) []string {
+	seen := map[string]struct{}{}
+	var result []string
+	for _, path := range paths {
+		cleaned := strings.TrimSpace(path)
+		if cleaned == "" {
+			continue
+		}
+		cleaned = filepath.Clean(cleaned)
+		key := sourcePathKey(cleaned)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, cleaned)
+	}
+	return result
+}
+
+func sourcePathKey(path string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(path)
+	}
+	return path
 }

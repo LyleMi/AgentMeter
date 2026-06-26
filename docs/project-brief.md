@@ -2,8 +2,8 @@
 
 ## One-line Description
 
-AgentMeter is an open-source, cross-platform-ready local dashboard for measuring
-coding agent session usage, starting with Codex on Windows.
+AgentMeter is an open-source, cross-platform local dashboard for measuring
+coding agent session usage from local JSONL session files.
 
 ## Problem
 
@@ -21,9 +21,12 @@ AgentMeter focuses on that gap:
 
 ## Initial Scope
 
-The first version supports:
+The current version supports:
 
-- Codex local sessions on Windows;
+- Codex local sessions;
+- Claude Code local sessions;
+- generic JSONL session directories;
+- multiple configured source roots for users running several coding agents;
 - token usage from local session data;
 - session duration from local JSONL timestamps;
 - tool-call statistics from local session events;
@@ -32,7 +35,6 @@ The first version supports:
 
 ## Non-goals For MVP
 
-- Multi-agent support beyond Codex.
 - Proxy or gateway mode.
 - Cloud sync.
 - Team dashboards.
@@ -43,7 +45,7 @@ The first version supports:
 
 ## User
 
-The first user is a developer who uses Codex locally and wants to understand:
+The first user is a developer who uses local coding agents and wants to understand:
 
 - token burn;
 - estimated cost;
@@ -55,7 +57,7 @@ The first user is a developer who uses Codex locally and wants to understand:
 
 ## Product Principles
 
-- Read-only against Codex data.
+- Read-only against source session data.
 - Prefer actual usage data over estimation.
 - Clearly label unknown, missing, and estimated values.
 - Keep data local unless the user explicitly exports it.
@@ -64,8 +66,8 @@ The first user is a developer who uses Codex locally and wants to understand:
 
 ## First Usable Version
 
-The first useful build should let a user open AgentMeter, point it at a Codex
-data directory if needed, index sessions, and inspect:
+The first useful build should let a user open AgentMeter, point it at one or
+more local agent data directories if needed, index sessions, and inspect:
 
 - overview totals;
 - daily usage;

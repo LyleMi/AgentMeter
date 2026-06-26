@@ -62,6 +62,7 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
 			source_file_id INTEGER NOT NULL REFERENCES source_files(id) ON DELETE CASCADE,
+			session_key TEXT NOT NULL,
 			codex_session_id TEXT NOT NULL,
 			project_path TEXT NOT NULL,
 			model TEXT NOT NULL,
@@ -83,6 +84,7 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions(started_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_model ON sessions(model)`,
+		`CREATE INDEX IF NOT EXISTS idx_sessions_source_started ON sessions(source_id, started_at DESC)`,
 		`CREATE TABLE IF NOT EXISTS events (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -161,33 +163,40 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			return err
 		}
 	}
+	if err := ensureColumn(ctx, conn, "sessions", "session_key", "session_key TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if _, err := conn.ExecContext(ctx, `UPDATE sessions SET session_key = codex_session_id WHERE session_key = ''`); err != nil {
+		return err
+	}
 	return nil
 }
 
-func EnsureSource(ctx context.Context, conn *sql.DB, rootPath, sessionsPath, platform string) (model.Source, error) {
+func EnsureSource(ctx context.Context, conn *sql.DB, kind, name, rootPath, sessionsPath, platform string) (model.Source, error) {
 	now := time.Now().UTC()
 	var src model.Source
-	row := conn.QueryRowContext(ctx, `SELECT id, kind, name, root_path, sessions_path, platform, created_at, updated_at FROM sources WHERE kind = 'codex' AND sessions_path = ?`, sessionsPath)
+	row := conn.QueryRowContext(ctx, `SELECT id, kind, name, root_path, sessions_path, platform, created_at, updated_at FROM sources WHERE kind = ? AND sessions_path = ?`, kind, sessionsPath)
 	if err := scanSource(row, &src); err == nil {
 		src.RootPath = rootPath
 		src.Platform = platform
+		src.Name = name
 		src.UpdatedAt = now
-		_, err := conn.ExecContext(ctx, `UPDATE sources SET root_path = ?, platform = ?, updated_at = ? WHERE id = ?`, rootPath, platform, formatTime(now), src.ID)
+		_, err := conn.ExecContext(ctx, `UPDATE sources SET name = ?, root_path = ?, platform = ?, updated_at = ? WHERE id = ?`, name, rootPath, platform, formatTime(now), src.ID)
 		return src, err
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return src, err
 	}
 
 	res, err := conn.ExecContext(ctx, `INSERT INTO sources (kind, name, root_path, sessions_path, platform, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		"codex", "Codex Local Sessions", rootPath, sessionsPath, platform, formatTime(now), formatTime(now))
+		kind, name, rootPath, sessionsPath, platform, formatTime(now), formatTime(now))
 	if err != nil {
 		return src, err
 	}
 	id, _ := res.LastInsertId()
 	src = model.Source{
 		ID:           id,
-		Kind:         "codex",
-		Name:         "Codex Local Sessions",
+		Kind:         kind,
+		Name:         name,
 		RootPath:     rootPath,
 		SessionsPath: sessionsPath,
 		Platform:     platform,
@@ -195,6 +204,32 @@ func EnsureSource(ctx context.Context, conn *sql.DB, rootPath, sessionsPath, pla
 		UpdatedAt:    now,
 	}
 	return src, nil
+}
+
+func ensureColumn(ctx context.Context, conn *sql.DB, table, column, definition string) error {
+	rows, err := conn.QueryContext(ctx, `PRAGMA table_info(`+table+`)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull int
+		var defaultValue any
+		var pk int
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		if name == column {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = conn.ExecContext(ctx, `ALTER TABLE `+table+` ADD COLUMN `+definition)
+	return err
 }
 
 func GetConfig(ctx context.Context, conn *sql.DB, key string) (string, bool, error) {

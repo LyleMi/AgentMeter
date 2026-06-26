@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowRightOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
-import { api, formatCost, formatDateTime, formatDuration, formatNumber, shortPath, type Session } from '../api'
+import { api, formatCost, formatDateTime, formatDuration, formatNumber, sessionLabel, shortPath, type Session } from '../api'
 
 const router = useRouter()
 const loading = ref(false)
@@ -10,9 +10,11 @@ const sessions = ref<Session[]>([])
 const catalogSessions = ref<Session[]>([])
 const search = ref('')
 const model = ref<string | undefined>()
+const agent = ref<string | undefined>()
 
 const columns = [
-  { title: 'Session', dataIndex: 'codexSessionId', key: 'identity', width: 250 },
+  { title: 'Session', dataIndex: 'sessionKey', key: 'identity', width: 250 },
+  { title: 'Agent', dataIndex: 'agentName', key: 'agent', width: 132 },
   { title: 'Project', dataIndex: 'projectPath', key: 'projectPath' },
   { title: 'Model', dataIndex: 'model', key: 'model', width: 90 },
   { title: 'Tokens', dataIndex: ['tokenUsage', 'totalTokens'], key: 'tokens', width: 100, align: 'right' },
@@ -23,12 +25,21 @@ const columns = [
   { title: '', key: 'open', width: 44, align: 'right' }
 ]
 
-const hasActiveFilters = computed(() => Boolean(search.value.trim() || model.value))
+const hasActiveFilters = computed(() => Boolean(search.value.trim() || model.value || agent.value))
 
 const modelOptions = computed(() => {
   const source = catalogSessions.value.length ? catalogSessions.value : sessions.value
   const values = new Set(source.map((item) => item.model).filter(Boolean))
   return [...values].sort().map((value) => ({ value, label: value }))
+})
+
+const agentOptions = computed(() => {
+  const source = catalogSessions.value.length ? catalogSessions.value : sessions.value
+  const values = new Map<string, string>()
+  for (const item of source) {
+    if (item.agentKind) values.set(item.agentKind, item.agentName || item.agentKind)
+  }
+  return [...values.entries()].sort((left, right) => left[1].localeCompare(right[1])).map(([value, label]) => ({ value, label }))
 })
 
 const rowCountText = computed(() => {
@@ -47,7 +58,7 @@ const emptyText = computed(() => {
 async function load() {
   loading.value = true
   try {
-    const filters = { search: search.value.trim() || undefined, model: model.value, limit: 300 }
+    const filters = { search: search.value.trim() || undefined, model: model.value, agent: agent.value, limit: 300 }
     const filtered = api.listSessions(filters)
     const catalog = hasActiveFilters.value ? api.listSessions({ limit: 300 }) : filtered
     const [nextSessions, nextCatalog] = await Promise.all([filtered, catalog])
@@ -61,6 +72,7 @@ async function load() {
 function resetFilters() {
   search.value = ''
   model.value = undefined
+  agent.value = undefined
   load()
 }
 
@@ -129,6 +141,14 @@ onMounted(load)
               </template>
             </a-input>
             <a-select
+              v-model:value="agent"
+              class="sessions-model-filter control-medium"
+              allow-clear
+              placeholder="Agent"
+              :options="agentOptions"
+              @change="load"
+            />
+            <a-select
               v-model:value="model"
               class="sessions-model-filter control-medium"
               allow-clear
@@ -157,10 +177,14 @@ onMounted(load)
         >
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'identity'">
-              <a-typography-text class="mono path-cell" :ellipsis="{ tooltip: record.codexSessionId }">
-                {{ record.codexSessionId || `#${record.id}` }}
+              <a-typography-text class="mono path-cell" :ellipsis="{ tooltip: sessionLabel(record) }">
+                {{ sessionLabel(record) }}
               </a-typography-text>
               <div class="timeline-event-raw">{{ formatDateTime(record.startedAt) }}</div>
+            </template>
+            <template v-else-if="column.key === 'agent'">
+              <a-tag class="model-lite-tag">{{ record.agentName || record.agentKind || 'unknown' }}</a-tag>
+              <div class="timeline-event-raw">{{ record.agentKind || '-' }}</div>
             </template>
             <template v-else-if="column.key === 'projectPath'">
               <a-tooltip :title="record.projectPath" placement="topLeft">

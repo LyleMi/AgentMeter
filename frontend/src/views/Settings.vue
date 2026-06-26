@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { message } from 'ant-design-vue'
-import { DatabaseOutlined, FolderOpenOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import { DatabaseOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { api, formatDateTime, formatDuration, formatNumber, type Settings } from '../api'
 import { notifyAppDataChanged } from '../events'
 
@@ -110,39 +110,35 @@ onMounted(load)
             <div class="panel-header">
               <div>
                 <h2 class="panel-title">Source</h2>
-                <div class="panel-kicker">JSONL session folder</div>
+                <div class="panel-kicker">One local agent root per line</div>
               </div>
               <a-tag :color="sourceState.color" class="status-tag">{{ sourceState.label }}</a-tag>
             </div>
             <div class="panel-body">
               <div class="section-stack">
-                <a-input v-model:value="sourcePath">
-                  <template #prefix>
-                    <FolderOpenOutlined />
-                  </template>
-                </a-input>
+                <a-textarea v-model:value="sourcePath" :auto-size="{ minRows: 3, maxRows: 8 }" />
 
                 <div class="toolbar">
                   <div class="toolbar-left">
                     <a-button type="primary" :loading="saving" @click="save">Save</a-button>
-                    <a-button @click="sourcePath = settings?.defaultSourcePath || sourcePath">Use Default</a-button>
+                    <a-button @click="sourcePath = settings?.defaultSourcePath || sourcePath">Use Defaults</a-button>
                   </div>
                 </div>
 
                 <div class="metadata-grid">
                   <div class="metadata-item">
-                    <div class="metadata-label">Current source</div>
+                    <div class="metadata-label">Current sources</div>
                     <div class="metadata-value">
                       <a-typography-text :ellipsis="{ tooltip: settings?.sourcePath || sourcePath }">
-                        {{ settings?.sourcePath || sourcePath || '-' }}
+                        {{ settings?.sourcePaths?.length ? `${formatNumber(settings.sourcePaths.length)} configured` : '-' }}
                       </a-typography-text>
                     </div>
                   </div>
                   <div class="metadata-item">
-                    <div class="metadata-label">Default source</div>
+                    <div class="metadata-label">Default sources</div>
                     <div class="metadata-value">
                       <a-typography-text :ellipsis="{ tooltip: settings?.defaultSourcePath }">
-                        {{ settings?.defaultSourcePath || '-' }}
+                        {{ settings?.defaultSourcePaths?.length ? `${formatNumber(settings.defaultSourcePaths.length)} detected` : '-' }}
                       </a-typography-text>
                     </div>
                   </div>
@@ -222,6 +218,10 @@ onMounted(load)
                     <div class="index-result-metric">
                       <span class="muted">Files seen</span>
                       <strong class="number-cell">{{ formatNumber(settings.lastIndexResult.filesSeen) }}</strong>
+                    </div>
+                    <div class="index-result-metric">
+                      <span class="muted">Sources</span>
+                      <strong class="number-cell">{{ formatNumber(settings.lastIndexResult.sourcePaths?.length || 0) }}</strong>
                     </div>
                     <div class="index-result-metric">
                       <span class="muted">Sessions</span>

@@ -6,21 +6,21 @@
 
 ![Status: MVP](https://img.shields.io/badge/status-MVP-f2c94c)
 ![Local first](https://img.shields.io/badge/local--first-yes-2f855a)
-![Platform: Windows first](https://img.shields.io/badge/platform-Windows%20first-0078d4)
+![Platform: Cross-platform](https://img.shields.io/badge/platform-cross--platform-0078d4)
 ![Backend: Go](https://img.shields.io/badge/backend-Go-00ADD8)
 ![Frontend: Vue 3](https://img.shields.io/badge/frontend-Vue%203-42b883)
 ![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)
 
-AgentMeter is a local-first dashboard for understanding Codex session usage:
+AgentMeter is a local-first dashboard for understanding coding-agent session usage:
 tokens, estimated cost, timing, session history, and tool-call behavior.
 
-It reads local Codex session files, indexes them into SQLite, and shows the data
+It reads local agent JSONL session files, indexes them into SQLite, and shows the data
 in a private desktop UI. No proxy, no cloud service, no telemetry.
 
 ## Why AgentMeter
 
 Coding agents can generate a lot of useful local session data, but that data is
-hard to inspect directly. AgentMeter turns Codex JSONL sessions into answers you
+hard to inspect directly. AgentMeter turns local JSONL sessions into answers you
 can actually use:
 
 - How many sessions did I run?
@@ -33,6 +33,8 @@ can actually use:
 ## Features
 
 - Overview dashboard with sessions, tokens, estimated cost, daily usage, and model usage.
+- Multiple local source roots, with Codex, Claude Code, and generic JSONL detection.
+- Agent-level usage grouping for developers who run several coding agents side by side.
 - Searchable session history with parse status and raw source traceability.
 - Session detail timeline with model calls, tool calls, metadata, and source paths.
 - Tool-call analytics with call counts, success/failure counts, and durations.
@@ -50,16 +52,19 @@ AgentMeter is designed to stay local:
 - Does not require a cloud account.
 - Stores normalized data in a local SQLite database.
 
-The default database path is:
+The default database path follows the host OS:
 
 ```text
-%LOCALAPPDATA%\AgentMeter\agentmeter.sqlite
+Windows: %LOCALAPPDATA%\AgentMeter\agentmeter.sqlite
+macOS:   ~/Library/Application Support/AgentMeter/agentmeter.sqlite
+Linux:   $XDG_DATA_HOME/AgentMeter/agentmeter.sqlite or ~/.local/share/AgentMeter/agentmeter.sqlite
 ```
 
-The default Codex source path is:
+Default source roots are detected from local agent homes when they exist:
 
 ```text
-%USERPROFILE%\.codex
+~/.codex
+~/.claude
 ```
 
 ## Quick Start
@@ -83,9 +88,9 @@ source files change, starts AgentMeter, and opens:
 http://127.0.0.1:34115
 ```
 
-On first launch, click **Index Now** in the app. AgentMeter defaults to
-`%USERPROFILE%\.codex`, so no source path setup is required unless your Codex
-sessions live somewhere else.
+On first launch, click **Index Now** in the app. AgentMeter defaults to detected
+local agent homes such as `~/.codex` and `~/.claude`. In **Settings**, enter one
+source root per line when you use multiple agents or keep session logs elsewhere.
 
 Build the frontend and start local HTTP mode manually:
 
@@ -114,21 +119,22 @@ wails dev
 ## How It Works
 
 ```text
-Codex JSONL -> scanner/parser -> SQLite -> Go query service -> Vue dashboard
+Agent JSONL -> scanner/parser -> SQLite -> Go query service -> Vue dashboard
 ```
 
 When the source path is a Codex home directory, AgentMeter scans `sessions\`
 first and then `archived_sessions\`, keeping the active copy when both contain
-the same relative JSONL path. A direct directory of saved JSONL output is also
-supported.
+the same relative JSONL path. When the source path is a Claude Code home,
+AgentMeter scans `projects/`. A direct directory of saved JSONL output is also
+supported through the generic JSONL adapter.
 
 ## Current Status
 
-AgentMeter is currently an MVP focused on Codex on Windows. The repository
+AgentMeter is currently an MVP for local coding-agent JSONL usage. The repository
 already includes:
 
 - Go backend with SQLite migrations and local app configuration.
-- Codex JSONL discovery, parsing, normalization, and incremental indexing.
+- Codex, Claude Code, and generic JSONL discovery, parsing, normalization, and incremental indexing.
 - Normalized sessions, events, token usage, model calls, and tool calls.
 - Vue 3 + TypeScript frontend using Ant Design Vue and ECharts.
 - MVP screens for Overview, Sessions, Session Detail, Tools, and Settings.
@@ -146,8 +152,7 @@ go test ./...
 
 ## Roadmap
 
-Planned directions include packaged Windows builds, macOS/Linux support, more
-coding-agent adapters, export formats, project grouping, custom pricing, and
+Planned directions include packaged builds, more coding-agent adapters, export formats, project grouping, custom pricing, and
 richer timeline views.
 
 See [Roadmap](docs/roadmap.md) for details.
@@ -163,4 +168,4 @@ See [Roadmap](docs/roadmap.md) for details.
 ## Contributing
 
 Issues and pull requests are welcome, especially for parser edge cases, pricing
-updates, Windows packaging, and adapters for other coding agents.
+updates, packaging, and adapters for other coding agents.

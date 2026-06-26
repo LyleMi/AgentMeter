@@ -19,9 +19,14 @@ const settings = ref<Settings | null>(null)
 const indexing = ref(false)
 const refreshKey = ref(0)
 
-const hasSource = computed(() => Boolean(settings.value?.sourcePath))
-const sourceStatusLabel = computed(() => (hasSource.value ? 'Source ready' : 'Source missing'))
-const sourcePathDisplay = computed(() => settings.value?.sourcePath || 'Configure a local JSONL source in Settings')
+const hasSource = computed(() => Boolean(settings.value?.sourcePaths?.length || settings.value?.sourcePath))
+const sourceStatusLabel = computed(() => (hasSource.value ? 'Sources ready' : 'Sources missing'))
+const sourcePathDisplay = computed(() => settings.value?.sourcePath || 'Configure local JSONL sources in Settings')
+const sourceSummary = computed(() => {
+  const count = settings.value?.sourcePaths?.length || 0
+  if (count > 1) return `${count} local sources`
+  return sourcePathDisplay.value
+})
 
 const selectedKeys = computed(() => {
   if (route.path.startsWith('/sessions')) return ['sessions']
@@ -99,7 +104,7 @@ onBeforeUnmount(() => {
           </div>
           <div class="brand-copy">
             <div class="brand-title">AgentMeter</div>
-            <div class="brand-subtitle">Local Codex usage</div>
+            <div class="brand-subtitle">Local agent usage</div>
           </div>
         </div>
         <div class="nav-section-label">Inspect</div>
@@ -120,9 +125,9 @@ onBeforeUnmount(() => {
               <span class="source-dot"></span>
               <span>{{ sourceStatusLabel }}</span>
             </div>
-            <span class="source-label">Local source</span>
+            <span class="source-label">Local sources</span>
             <a-typography-text class="source-path" :ellipsis="{ tooltip: sourcePathDisplay }">
-              {{ sourcePathDisplay }}
+              {{ sourceSummary }}
             </a-typography-text>
           </div>
           <div class="header-actions">

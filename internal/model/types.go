@@ -29,7 +29,10 @@ type Session struct {
 	ID                     int64     `json:"id"`
 	SourceID               int64     `json:"sourceId"`
 	SourceFileID           int64     `json:"sourceFileId"`
-	CodexSessionID         string    `json:"codexSessionId"`
+	AgentKind              string    `json:"agentKind"`
+	AgentName              string    `json:"agentName"`
+	SessionKey             string    `json:"sessionKey"`
+	CodexSessionID         string    `json:"codexSessionId,omitempty"`
 	ProjectPath            string    `json:"projectPath"`
 	Model                  string    `json:"model"`
 	ModelProvider          string    `json:"modelProvider"`
@@ -143,6 +146,18 @@ type ModelUsage struct {
 	Unpriced         bool     `json:"unpriced"`
 }
 
+type AgentUsage struct {
+	AgentKind        string   `json:"agentKind"`
+	AgentName        string   `json:"agentName"`
+	SessionCount     int      `json:"sessionCount"`
+	TotalTokens      int64    `json:"totalTokens"`
+	InputTokens      int64    `json:"inputTokens"`
+	OutputTokens     int64    `json:"outputTokens"`
+	ToolCalls        int      `json:"toolCalls"`
+	EstimatedCostUSD *float64 `json:"estimatedCostUsd,omitempty"`
+	Unpriced         bool     `json:"unpriced"`
+}
+
 type Overview struct {
 	TotalSessions          int          `json:"totalSessions"`
 	TotalInputTokens       int64        `json:"totalInputTokens"`
@@ -157,6 +172,7 @@ type Overview struct {
 	TotalToolCalls         int          `json:"totalToolCalls"`
 	DailyUsage             []DailyUsage `json:"dailyUsage"`
 	ModelUsage             []ModelUsage `json:"modelUsage"`
+	AgentUsage             []AgentUsage `json:"agentUsage"`
 	RecentSessions         []Session    `json:"recentSessions"`
 }
 
@@ -178,7 +194,9 @@ type SessionDetail struct {
 
 type Settings struct {
 	SourcePath         string         `json:"sourcePath"`
+	SourcePaths        []string       `json:"sourcePaths"`
 	DefaultSourcePath  string         `json:"defaultSourcePath"`
+	DefaultSourcePaths []string       `json:"defaultSourcePaths"`
 	DatabasePath       string         `json:"databasePath"`
 	PricingModels      []PricingModel `json:"pricingModels"`
 	LastIndexStartedAt *time.Time     `json:"lastIndexStartedAt,omitempty"`
@@ -186,16 +204,17 @@ type Settings struct {
 }
 
 type IndexResult struct {
-	SourcePath string   `json:"sourcePath"`
-	Database   string   `json:"database"`
-	FilesSeen  int      `json:"filesSeen"`
-	Indexed    int      `json:"indexed"`
-	Skipped    int      `json:"skipped"`
-	Failed     int      `json:"failed"`
-	Sessions   int      `json:"sessions"`
-	Warnings   []string `json:"warnings"`
-	DurationMS int64    `json:"durationMs"`
-	Rebuild    bool     `json:"rebuild"`
+	SourcePath  string   `json:"sourcePath"`
+	SourcePaths []string `json:"sourcePaths"`
+	Database    string   `json:"database"`
+	FilesSeen   int      `json:"filesSeen"`
+	Indexed     int      `json:"indexed"`
+	Skipped     int      `json:"skipped"`
+	Failed      int      `json:"failed"`
+	Sessions    int      `json:"sessions"`
+	Warnings    []string `json:"warnings"`
+	DurationMS  int64    `json:"durationMs"`
+	Rebuild     bool     `json:"rebuild"`
 }
 
 type ParsedSession struct {
@@ -210,6 +229,7 @@ type ParsedSession struct {
 type SessionFilters struct {
 	Search string `json:"search"`
 	Model  string `json:"model"`
+	Agent  string `json:"agent"`
 	Limit  int    `json:"limit"`
 	Offset int    `json:"offset"`
 }

@@ -1,6 +1,6 @@
 ﻿# Data Model
 
-The database stores normalized records derived from Codex session JSONL. Raw
+The database stores normalized records derived from local coding-agent JSONL. Raw
 source files remain the source of truth.
 
 ## Core Entities
@@ -12,7 +12,7 @@ Tracks configured local data sources.
 Fields:
 
 - `id`
-- `kind` such as `codex`
+- `kind` such as `codex`, `claude`, or `jsonl`
 - `name`
 - `root_path`
 - `sessions_path`
@@ -38,13 +38,14 @@ Fields:
 
 ### sessions
 
-One Codex session.
+One normalized agent session.
 
 Fields:
 
 - `id`
 - `source_id`
 - `source_file_id`
+- `session_key`
 - `codex_session_id`
 - `project_path`
 - `model`
@@ -62,6 +63,9 @@ Fields:
 - `idle_duration_ms`
 - `event_count`
 - `parse_status`
+
+`session_key` is the generic identity shown in the UI. `codex_session_id` is
+kept for backward compatibility with older databases and API clients.
 
 ### events
 

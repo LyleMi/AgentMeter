@@ -55,6 +55,10 @@ func (s *Service) Overview(ctx context.Context) (model.Overview, error) {
 	if err != nil {
 		return overview, err
 	}
+	overview.AgentUsage, err = s.agentUsage(ctx)
+	if err != nil {
+		return overview, err
+	}
 	overview.RecentSessions, err = s.Sessions(ctx, model.SessionFilters{Limit: 6})
 	return overview, err
 }
@@ -64,12 +68,16 @@ func (s *Service) Sessions(ctx context.Context, filters model.SessionFilters) ([
 	args := []any{}
 	if strings.TrimSpace(filters.Search) != "" {
 		search := "%" + strings.TrimSpace(filters.Search) + "%"
-		where = append(where, `(s.codex_session_id LIKE ? OR s.project_path LIKE ? OR s.model LIKE ? OR sf.path LIKE ?)`)
-		args = append(args, search, search, search, search)
+		where = append(where, `(s.session_key LIKE ? OR s.codex_session_id LIKE ? OR s.project_path LIKE ? OR s.model LIKE ? OR sf.path LIKE ? OR src.kind LIKE ? OR src.name LIKE ?)`)
+		args = append(args, search, search, search, search, search, search, search)
 	}
 	if strings.TrimSpace(filters.Model) != "" {
 		where = append(where, `s.model = ?`)
 		args = append(args, strings.TrimSpace(filters.Model))
+	}
+	if strings.TrimSpace(filters.Agent) != "" {
+		where = append(where, `src.kind = ?`)
+		args = append(args, strings.TrimSpace(filters.Agent))
 	}
 	limit := filters.Limit
 	if limit <= 0 || limit > 500 {
@@ -81,7 +89,7 @@ func (s *Service) Sessions(ctx context.Context, filters model.SessionFilters) ([
 	}
 	args = append(args, limit, offset)
 	query := fmt.Sprintf(`SELECT
-		s.id, s.source_id, s.source_file_id, s.codex_session_id, s.project_path, s.model, s.model_provider, s.originator, s.thread_source,
+		s.id, s.source_id, s.source_file_id, src.kind, src.name, COALESCE(NULLIF(s.session_key, ''), s.codex_session_id), s.codex_session_id, s.project_path, s.model, s.model_provider, s.originator, s.thread_source,
 		s.agent_nickname, s.agent_role, s.started_at, s.ended_at, s.wall_duration_ms, s.active_duration_ms, s.model_duration_ms,
 		s.tool_duration_ms, s.idle_duration_ms, s.event_count, s.parse_status,
 		COALESCE(tu.model, s.model), COALESCE(tu.input_tokens, 0), COALESCE(tu.cached_input_tokens, 0), COALESCE(tu.output_tokens, 0),
@@ -89,6 +97,7 @@ func (s *Service) Sessions(ctx context.Context, filters model.SessionFilters) ([
 		(SELECT COUNT(*) FROM tool_calls tc WHERE tc.session_id = s.id) AS tool_call_count,
 		sf.path, sf.scan_status, sf.error
 		FROM sessions s
+		JOIN sources src ON src.id = s.source_id
 		JOIN source_files sf ON sf.id = s.source_file_id
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
 		WHERE %s
@@ -150,7 +159,7 @@ func (s *Service) Tools(ctx context.Context) ([]model.ToolStat, error) {
 
 func (s *Service) sessionByID(ctx context.Context, id int64) (model.Session, error) {
 	query := `SELECT
-		s.id, s.source_id, s.source_file_id, s.codex_session_id, s.project_path, s.model, s.model_provider, s.originator, s.thread_source,
+		s.id, s.source_id, s.source_file_id, src.kind, src.name, COALESCE(NULLIF(s.session_key, ''), s.codex_session_id), s.codex_session_id, s.project_path, s.model, s.model_provider, s.originator, s.thread_source,
 		s.agent_nickname, s.agent_role, s.started_at, s.ended_at, s.wall_duration_ms, s.active_duration_ms, s.model_duration_ms,
 		s.tool_duration_ms, s.idle_duration_ms, s.event_count, s.parse_status,
 		COALESCE(tu.model, s.model), COALESCE(tu.input_tokens, 0), COALESCE(tu.cached_input_tokens, 0), COALESCE(tu.output_tokens, 0),
@@ -158,6 +167,7 @@ func (s *Service) sessionByID(ctx context.Context, id int64) (model.Session, err
 		(SELECT COUNT(*) FROM tool_calls tc WHERE tc.session_id = s.id) AS tool_call_count,
 		sf.path, sf.scan_status, sf.error
 		FROM sessions s
+		JOIN sources src ON src.id = s.source_id
 		JOIN source_files sf ON sf.id = s.source_file_id
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
 		WHERE s.id = ?`
@@ -255,6 +265,9 @@ func (s *Service) scanSessions(ctx context.Context, query string, args ...any) (
 			&item.ID,
 			&item.SourceID,
 			&item.SourceFileID,
+			&item.AgentKind,
+			&item.AgentName,
+			&item.SessionKey,
 			&item.CodexSessionID,
 			&item.ProjectPath,
 			&item.Model,
@@ -288,6 +301,12 @@ func (s *Service) scanSessions(ctx context.Context, query string, args ...any) (
 		}
 		item.StartedAt = db.ParseTime(started)
 		item.EndedAt = db.ParseTime(ended)
+		if item.SessionKey == "" {
+			item.SessionKey = item.CodexSessionID
+		}
+		if item.AgentName == "" {
+			item.AgentName = item.AgentKind
+		}
 		cost, unpriced := pricing.Compute(s.conn, item.TokenUsage)
 		item.TokenUsage.CostUSD = cost
 		item.TokenUsage.Unpriced = unpriced
@@ -429,4 +448,76 @@ func (s *Service) modelUsage(ctx context.Context) ([]model.ModelUsage, error) {
 		result = append(result, item)
 	}
 	return result, rows.Err()
+}
+
+func (s *Service) agentUsage(ctx context.Context) ([]model.AgentUsage, error) {
+	rows, err := s.conn.QueryContext(ctx, `SELECT src.kind, src.name, COUNT(*),
+		COALESCE(SUM(tu.total_tokens), 0), COALESCE(SUM(tu.input_tokens), 0), COALESCE(SUM(tu.output_tokens), 0),
+		COALESCE(SUM((SELECT COUNT(*) FROM tool_calls tc WHERE tc.session_id = s.id)), 0)
+		FROM sessions s
+		JOIN sources src ON src.id = s.source_id
+		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
+		GROUP BY src.kind, src.name
+		ORDER BY COUNT(*) DESC, src.name ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []model.AgentUsage
+	for rows.Next() {
+		var item model.AgentUsage
+		if err := rows.Scan(&item.AgentKind, &item.AgentName, &item.SessionCount, &item.TotalTokens, &item.InputTokens, &item.OutputTokens, &item.ToolCalls); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	costs, unpriced, err := s.agentCosts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for index := range result {
+		key := sourceKey(result[index].AgentKind, result[index].AgentName)
+		if cost, ok := costs[key]; ok {
+			result[index].EstimatedCostUSD = &cost
+		}
+		result[index].Unpriced = unpriced[key]
+	}
+	return result, nil
+}
+
+func (s *Service) agentCosts(ctx context.Context) (map[string]float64, map[string]bool, error) {
+	rows, err := s.conn.QueryContext(ctx, `SELECT src.kind, src.name, tu.model,
+		COALESCE(SUM(tu.input_tokens), 0), COALESCE(SUM(tu.cached_input_tokens), 0), COALESCE(SUM(tu.output_tokens), 0),
+		COALESCE(SUM(tu.reasoning_output_tokens), 0), COALESCE(SUM(tu.total_tokens), 0), COALESCE(MAX(tu.source), 'unknown')
+		FROM sessions s
+		JOIN sources src ON src.id = s.source_id
+		JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
+		GROUP BY src.kind, src.name, tu.model`)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	costs := map[string]float64{}
+	unpriced := map[string]bool{}
+	for rows.Next() {
+		var kind, name string
+		var usage model.Usage
+		if err := rows.Scan(&kind, &name, &usage.Model, &usage.InputTokens, &usage.CachedInputTokens, &usage.OutputTokens, &usage.ReasoningOutputTokens, &usage.TotalTokens, &usage.Source); err != nil {
+			return nil, nil, err
+		}
+		key := sourceKey(kind, name)
+		if cost, isUnpriced := pricing.Compute(s.conn, usage); isUnpriced {
+			unpriced[key] = true
+		} else {
+			costs[key] += *cost
+		}
+	}
+	return costs, unpriced, rows.Err()
+}
+
+func sourceKey(kind, name string) string {
+	return kind + "\x00" + name
 }

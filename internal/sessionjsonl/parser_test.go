@@ -1,4 +1,4 @@
-package codex
+package sessionjsonl
 
 import (
 	"os"
@@ -28,6 +28,9 @@ func TestParseFileExtractsSessionUsageAndTools(t *testing.T) {
 	if parsed.Session.CodexSessionID != "sess_redacted" {
 		t.Fatalf("session id = %q", parsed.Session.CodexSessionID)
 	}
+	if parsed.Session.SessionKey != "sess_redacted" {
+		t.Fatalf("session key = %q", parsed.Session.SessionKey)
+	}
 	if parsed.Session.Model != "gpt-5.5" {
 		t.Fatalf("model = %q", parsed.Session.Model)
 	}
@@ -51,6 +54,44 @@ func TestParseFileExtractsSessionUsageAndTools(t *testing.T) {
 	}
 	if parsed.Session.ParseStatus != "ok" {
 		t.Fatalf("parse status = %q, warnings: %v", parsed.Session.ParseStatus, parsed.Warnings)
+	}
+}
+
+func TestParseFileSupportsClaudeStyleMessages(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "claude-session.jsonl")
+	content := `{"type":"user","sessionId":"claude_sess","cwd":"/workspace/project","timestamp":"2026-06-26T10:00:00Z","message":{"role":"user","content":"run tests"}}
+{"type":"assistant","sessionId":"claude_sess","cwd":"/workspace/project","timestamp":"2026-06-26T10:00:02Z","message":{"role":"assistant","model":"claude-opus-4","usage":{"input_tokens":100,"cache_creation_input_tokens":10,"cache_read_input_tokens":25,"output_tokens":40},"content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"go test ./..."}}]}}
+{"type":"user","sessionId":"claude_sess","cwd":"/workspace/project","timestamp":"2026-06-26T10:00:05Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]}}
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	parsed, err := ParseFile(path, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Session.SessionKey != "claude_sess" {
+		t.Fatalf("session key = %q", parsed.Session.SessionKey)
+	}
+	if parsed.Session.ProjectPath != "/workspace/project" {
+		t.Fatalf("project path = %q", parsed.Session.ProjectPath)
+	}
+	if parsed.Session.Model != "claude-opus-4" {
+		t.Fatalf("model = %q", parsed.Session.Model)
+	}
+	if parsed.Usage.InputTokens != 110 || parsed.Usage.CachedInputTokens != 25 || parsed.Usage.OutputTokens != 40 || parsed.Usage.TotalTokens != 175 {
+		t.Fatalf("usage = %+v", parsed.Usage)
+	}
+	if len(parsed.ModelCall) != 1 {
+		t.Fatalf("model calls = %d", len(parsed.ModelCall))
+	}
+	if len(parsed.ToolCall) != 1 {
+		t.Fatalf("tool calls = %d", len(parsed.ToolCall))
+	}
+	if parsed.ToolCall[0].ToolName != "Bash" || parsed.ToolCall[0].Status != "completed" || parsed.ToolCall[0].DurationMS != 3000 {
+		t.Fatalf("tool call = %+v", parsed.ToolCall[0])
 	}
 }
 

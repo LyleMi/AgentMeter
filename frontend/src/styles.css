@@ -953,6 +953,7 @@ body {
 }
 
 .overview-chart-panel {
+  grid-row: span 2;
   box-shadow: var(--am-shadow);
 }
 

@@ -28,11 +28,15 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, assets embed.FS) {
 	})
 	mux.HandleFunc("POST /api/settings", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			SourcePath string `json:"sourcePath"`
+			SourcePath  string   `json:"sourcePath"`
+			SourcePaths []string `json:"sourcePaths"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, nil, err)
 			return
+		}
+		if len(body.SourcePaths) > 0 {
+			body.SourcePath = strings.Join(body.SourcePaths, "\n")
 		}
 		value, err := service.SaveSettings(body.SourcePath)
 		writeJSON(w, value, err)
@@ -56,6 +60,7 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, assets embed.FS) {
 		value, err := service.ListSessions(model.SessionFilters{
 			Search: query.Get("search"),
 			Model:  query.Get("model"),
+			Agent:  query.Get("agent"),
 			Limit:  limit,
 			Offset: offset,
 		})

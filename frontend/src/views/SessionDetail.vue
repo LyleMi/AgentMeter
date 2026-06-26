@@ -15,6 +15,7 @@ import {
   formatDateTime,
   formatDuration,
   formatNumber,
+  sessionLabel,
   shortPath,
   type EventItem,
   type SessionDetail
@@ -136,7 +137,7 @@ onMounted(load)
         <section class="summary-panel session-summary-panel">
           <div class="session-summary-main">
             <div class="metric-label">Trace</div>
-            <div class="summary-title mono">{{ detail.session.codexSessionId }}</div>
+            <div class="summary-title mono">{{ sessionLabel(detail.session) }}</div>
             <a-tooltip :title="detail.session.projectPath" placement="topLeft">
               <div class="session-summary-project">{{ shortPath(detail.session.projectPath) }}</div>
             </a-tooltip>
@@ -157,6 +158,10 @@ onMounted(load)
             </div>
           </div>
           <div class="session-summary-meta">
+            <div class="session-summary-item">
+              <span class="metric-label">Agent</span>
+              <strong>{{ detail.session.agentName || detail.session.agentKind || 'unknown' }}</strong>
+            </div>
             <div class="session-summary-item">
               <span class="metric-label">Model</span>
               <strong>{{ detail.session.model }}</strong>
@@ -360,8 +365,16 @@ onMounted(load)
                 <div class="metadata-value number-cell">{{ formatNumber(detail.session.id) }}</div>
               </div>
               <div class="metadata-item">
-                <div class="metadata-label">Codex session</div>
-                <div class="metadata-value mono">{{ detail.session.codexSessionId }}</div>
+                <div class="metadata-label">Session key</div>
+                <div class="metadata-value mono">{{ sessionLabel(detail.session) }}</div>
+              </div>
+              <div class="metadata-item">
+                <div class="metadata-label">Agent</div>
+                <div class="metadata-value">{{ detail.session.agentName || detail.session.agentKind || '-' }}</div>
+              </div>
+              <div class="metadata-item">
+                <div class="metadata-label">Agent kind</div>
+                <div class="metadata-value">{{ detail.session.agentKind || '-' }}</div>
               </div>
               <div class="metadata-item">
                 <div class="metadata-label">Started</div>

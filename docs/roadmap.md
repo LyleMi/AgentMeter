@@ -2,11 +2,11 @@
 
 ## Phase 0: Discovery
 
-Goal: understand Codex session data well enough to design the parser safely.
+Goal: understand local coding-agent session data well enough to design the parser safely.
 
 Tasks:
 
-- Locate Codex session directories on Windows.
+- Locate Codex and Claude Code session directories across supported OSes.
 - Collect representative local JSONL samples.
 - Document event types found in real sessions.
 - Identify where token usage appears.
@@ -32,7 +32,7 @@ Tasks:
 - Add SQLite dependency.
 - Add migration runner.
 - Add app configuration storage.
-- Add Windows Codex path discovery.
+- Add cross-platform database and default source path discovery.
 
 Deliverables:
 
@@ -40,15 +40,15 @@ Deliverables:
 - empty shell UI;
 - local SQLite database creation.
 
-## Phase 2: Codex Indexer
+## Phase 2: Agent Indexer
 
-Goal: index Codex sessions into SQLite.
+Goal: index local coding-agent sessions into SQLite.
 
 Tasks:
 
 - Implement source discovery.
 - Implement JSONL scanner.
-- Implement Codex parser.
+- Implement Codex, Claude Code, and generic JSONL parsing.
 - Normalize sessions, events, token usage, and tool calls.
 - Add incremental indexing based on path, size, modified time, and hash.
 - Add parse warnings.
@@ -82,15 +82,17 @@ Tasks:
 
 Deliverables:
 
-- usable local dashboard for Codex sessions.
+- usable local dashboard for local coding-agent sessions.
 
 ## Phase 4: Packaging
 
-Goal: make Windows usage easy.
+Goal: make cross-platform usage easy.
 
 Tasks:
 
 - Windows app build.
+- macOS app build.
+- Linux app build.
 - Installer or portable zip.
 - Local database path decision.
 - Log file location.
@@ -104,8 +106,7 @@ Deliverables:
 
 Possible additions:
 
-- macOS and Linux support.
-- Claude Code adapter.
+- More complete Claude Code adapter coverage.
 - Gemini CLI adapter.
 - OpenCode adapter.
 - CSV export.

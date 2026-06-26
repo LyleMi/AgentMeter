@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -52,10 +54,19 @@ func (a *App) Startup(ctx context.Context) error {
 	a.conn = conn
 	a.indexer = ingest.New(conn, a.dbPath)
 	a.query = query.New(conn)
-	if _, ok, err := db.GetConfig(ctx, conn, "source_path"); err != nil {
+	if _, ok, err := db.GetConfig(ctx, conn, "source_paths"); err != nil {
 		return err
 	} else if !ok {
-		return db.SetConfig(ctx, conn, "source_path", platform.DefaultCodexSourcePath())
+		paths, err := a.configuredSourcePaths(ctx, conn)
+		if err != nil {
+			return err
+		}
+		if len(paths) == 0 {
+			paths = platform.DefaultAgentSourcePaths()
+		}
+		if err := setSourcePaths(ctx, conn, paths); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -68,20 +79,24 @@ func (a *App) GetSettings() (model.Settings, error) {
 	if err := a.ensureReady(); err != nil {
 		return model.Settings{}, err
 	}
-	sourcePath, ok, err := db.GetConfig(a.ctx, a.conn, "source_path")
+	sourcePaths, err := a.configuredSourcePaths(a.ctx, a.conn)
 	if err != nil {
 		return model.Settings{}, err
 	}
-	if !ok || sourcePath == "" {
-		sourcePath = platform.DefaultCodexSourcePath()
+	if len(sourcePaths) == 0 {
+		sourcePaths = platform.DefaultAgentSourcePaths()
 	}
+	sourcePath := strings.Join(sourcePaths, "\n")
+	defaultSourcePaths := platform.DefaultAgentSourcePaths()
 	models, err := pricing.List(a.ctx, a.conn)
 	if err != nil {
 		return model.Settings{}, err
 	}
 	return model.Settings{
 		SourcePath:         sourcePath,
-		DefaultSourcePath:  platform.DefaultCodexSourcePath(),
+		SourcePaths:        sourcePaths,
+		DefaultSourcePath:  strings.Join(defaultSourcePaths, "\n"),
+		DefaultSourcePaths: defaultSourcePaths,
 		DatabasePath:       a.dbPath,
 		PricingModels:      models,
 		LastIndexStartedAt: a.lastStart,
@@ -93,8 +108,8 @@ func (a *App) SaveSettings(sourcePath string) (model.Settings, error) {
 	if err := a.ensureReady(); err != nil {
 		return model.Settings{}, err
 	}
-	cleaned := filepath.Clean(sourcePath)
-	if err := db.SetConfig(a.ctx, a.conn, "source_path", cleaned); err != nil {
+	paths := parseSourcePathList(sourcePath)
+	if err := setSourcePaths(a.ctx, a.conn, paths); err != nil {
 		return model.Settings{}, err
 	}
 	return a.GetSettings()
@@ -113,7 +128,7 @@ func (a *App) IndexNow(rebuild bool) (model.IndexResult, error) {
 	}
 	start := time.Now().UTC()
 	a.lastStart = &start
-	result, err := a.indexer.Index(a.ctx, settings.SourcePath, rebuild)
+	result, err := a.indexer.IndexPaths(a.ctx, settings.SourcePaths, rebuild)
 	if err != nil {
 		return result, err
 	}
@@ -121,6 +136,76 @@ func (a *App) IndexNow(rebuild bool) (model.IndexResult, error) {
 	encoded, _ := json.Marshal(result)
 	_ = db.SetConfig(a.ctx, a.conn, "last_index_result", string(encoded))
 	return result, nil
+}
+
+func (a *App) configuredSourcePaths(ctx context.Context, conn *sql.DB) ([]string, error) {
+	if encoded, ok, err := db.GetConfig(ctx, conn, "source_paths"); err != nil {
+		return nil, err
+	} else if ok && strings.TrimSpace(encoded) != "" {
+		var paths []string
+		if err := json.Unmarshal([]byte(encoded), &paths); err == nil {
+			return normalizeSourcePaths(paths), nil
+		}
+		return parseSourcePathList(encoded), nil
+	}
+	if legacy, ok, err := db.GetConfig(ctx, conn, "source_path"); err != nil {
+		return nil, err
+	} else if ok {
+		return parseSourcePathList(legacy), nil
+	}
+	return nil, nil
+}
+
+func setSourcePaths(ctx context.Context, conn *sql.DB, paths []string) error {
+	normalized := normalizeSourcePaths(paths)
+	encoded, err := json.Marshal(normalized)
+	if err != nil {
+		return err
+	}
+	if err := db.SetConfig(ctx, conn, "source_paths", string(encoded)); err != nil {
+		return err
+	}
+	legacy := ""
+	if len(normalized) > 0 {
+		legacy = normalized[0]
+	}
+	return db.SetConfig(ctx, conn, "source_path", legacy)
+}
+
+func parseSourcePathList(value string) []string {
+	var raw []string
+	for _, line := range strings.FieldsFunc(value, func(r rune) bool {
+		return r == '\n' || r == '\r' || r == ';'
+	}) {
+		raw = append(raw, line)
+	}
+	return normalizeSourcePaths(raw)
+}
+
+func normalizeSourcePaths(paths []string) []string {
+	seen := map[string]struct{}{}
+	var result []string
+	for _, path := range paths {
+		cleaned := strings.TrimSpace(path)
+		if cleaned == "" {
+			continue
+		}
+		cleaned = filepath.Clean(cleaned)
+		key := sourcePathKey(cleaned)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, cleaned)
+	}
+	return result
+}
+
+func sourcePathKey(path string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(path)
+	}
+	return path
 }
 
 func (a *App) GetOverview() (model.Overview, error) {

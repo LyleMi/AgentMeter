@@ -12,7 +12,10 @@ export interface Usage {
 
 export interface Session {
   id: number
-  codexSessionId: string
+  agentKind: string
+  agentName: string
+  sessionKey: string
+  codexSessionId?: string
   projectPath: string
   model: string
   modelProvider: string
@@ -56,6 +59,18 @@ export interface ModelUsage {
   unpriced: boolean
 }
 
+export interface AgentUsage {
+  agentKind: string
+  agentName: string
+  sessionCount: number
+  totalTokens: number
+  inputTokens: number
+  outputTokens: number
+  toolCalls: number
+  estimatedCostUsd?: number
+  unpriced: boolean
+}
+
 export interface Overview {
   totalSessions: number
   totalInputTokens: number
@@ -70,6 +85,7 @@ export interface Overview {
   totalToolCalls: number
   dailyUsage: DailyUsage[]
   modelUsage: ModelUsage[]
+  agentUsage: AgentUsage[]
   recentSessions: Session[]
 }
 
@@ -133,6 +149,7 @@ export interface PricingModel {
 
 export interface IndexResult {
   sourcePath: string
+  sourcePaths: string[]
   database: string
   filesSeen: number
   indexed: number
@@ -146,7 +163,9 @@ export interface IndexResult {
 
 export interface Settings {
   sourcePath: string
+  sourcePaths: string[]
   defaultSourcePath: string
+  defaultSourcePaths: string[]
   databasePath: string
   pricingModels: PricingModel[]
   lastIndexStartedAt?: string
@@ -156,6 +175,7 @@ export interface Settings {
 export interface SessionFilters {
   search?: string
   model?: string
+  agent?: string
   limit?: number
   offset?: number
 }
@@ -196,6 +216,7 @@ export const api = {
     const params = new URLSearchParams()
     if (filters.search) params.set('search', filters.search)
     if (filters.model) params.set('model', filters.model)
+    if (filters.agent) params.set('agent', filters.agent)
     if (filters.limit) params.set('limit', String(filters.limit))
     if (filters.offset) params.set('offset', String(filters.offset))
     return call<Session[]>('ListSessions', [filters], () => request(`/api/sessions?${params}`))
@@ -248,4 +269,8 @@ export function shortPath(value: string): string {
   const parts = value.split(/[\\/]/).filter(Boolean)
   if (parts.length <= 3) return value
   return `.../${parts.slice(-3).join('/')}`
+}
+
+export function sessionLabel(session: Pick<Session, 'id' | 'sessionKey' | 'codexSessionId'>): string {
+  return session.sessionKey || session.codexSessionId || `#${session.id}`
 }

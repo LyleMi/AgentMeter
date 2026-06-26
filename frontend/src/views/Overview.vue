@@ -20,7 +20,9 @@ import {
   formatDateTime,
   formatDuration,
   formatNumber,
+  sessionLabel,
   shortPath,
+  type AgentUsage,
   type ModelUsage,
   type Overview,
   type Settings,
@@ -43,7 +45,11 @@ const hasDailyUsage = computed(() => (overview.value?.dailyUsage?.length || 0) >
 const rankedModelUsage = computed(() =>
   [...(overview.value?.modelUsage || [])].sort((left, right) => right.totalTokens - left.totalTokens)
 )
+const rankedAgentUsage = computed(() =>
+  [...(overview.value?.agentUsage || [])].sort((left, right) => right.sessionCount - left.sessionCount)
+)
 const hasModelUsage = computed(() => rankedModelUsage.value.length > 0)
+const hasAgentUsage = computed(() => rankedAgentUsage.value.length > 0)
 const hasRecentSessions = computed(() => (overview.value?.recentSessions?.length || 0) > 0)
 const unpricedModelCount = computed(() => rankedModelUsage.value.filter((item) => item.unpriced).length)
 
@@ -55,11 +61,20 @@ const modelColumns = [
 ]
 
 const recentColumns = [
+  { title: 'Agent', dataIndex: 'agentName', key: 'agent', width: 132 },
   { title: 'Project', dataIndex: 'projectPath', key: 'projectPath' },
   { title: 'Model', dataIndex: 'model', key: 'model', width: 132 },
   { title: 'Tokens', dataIndex: ['tokenUsage', 'totalTokens'], key: 'tokens', width: 120, align: 'right' },
   { title: 'Tools', dataIndex: 'toolCallCount', key: 'tools', width: 80, align: 'right' },
   { title: 'Started', dataIndex: 'startedAt', key: 'startedAt', width: 150 }
+]
+
+const agentColumns = [
+  { title: 'Agent', dataIndex: 'agentName', key: 'agent' },
+  { title: 'Sessions', dataIndex: 'sessionCount', key: 'sessionCount', width: 96, align: 'right' },
+  { title: 'Tokens', dataIndex: 'totalTokens', key: 'totalTokens', width: 132, align: 'right' },
+  { title: 'Tools', dataIndex: 'toolCalls', key: 'tools', width: 90, align: 'right' },
+  { title: 'Cost', dataIndex: 'estimatedCostUsd', key: 'cost', width: 118, align: 'right' }
 ]
 
 async function load() {
@@ -181,6 +196,10 @@ function modelRow(record: ModelUsage) {
   return { class: record.unpriced ? 'overview-model-row is-unpriced-row' : 'overview-model-row' }
 }
 
+function agentRow(record: AgentUsage) {
+  return { class: record.unpriced ? 'overview-model-row is-unpriced-row' : 'overview-model-row' }
+}
+
 function resize() {
   chart?.resize()
 }
@@ -200,7 +219,7 @@ onBeforeUnmount(() => {
     <div class="page-header">
       <div>
         <h1 class="page-title">Overview</h1>
-        <div class="page-subtitle">Indexed Codex usage across local JSONL sessions</div>
+        <div class="page-subtitle">Indexed coding-agent usage across local JSONL sessions</div>
       </div>
       <a-button @click="load">Refresh</a-button>
     </div>
@@ -258,11 +277,11 @@ onBeforeUnmount(() => {
         <div class="empty-callout-main">
           <div class="empty-callout-title">No indexed sessions yet</div>
           <div class="empty-callout-text">
-            AgentMeter can scan the configured Codex source now and refresh this dashboard when indexing completes.
+            AgentMeter can scan configured local agent sources now and refresh this dashboard when indexing completes.
           </div>
           <div class="empty-source-line">
             <FolderOpenOutlined />
-            <span class="source-label">Source</span>
+            <span class="source-label">Sources</span>
             <a-typography-text class="empty-source-path" :ellipsis="{ tooltip: sourcePathDisplay }">
               {{ sourcePathDisplay || 'Open Settings to choose a source path' }}
             </a-typography-text>
@@ -349,6 +368,53 @@ onBeforeUnmount(() => {
             {{ formatNumber(unpricedModelCount) }} model entries need pricing coverage.
           </div>
         </section>
+
+        <section class="panel overview-model-panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Agent Usage</h2>
+              <div class="panel-kicker">Sessions grouped by local agent source</div>
+            </div>
+            <TableOutlined class="panel-header-icon" />
+          </div>
+          <a-table
+            v-if="hasAgentUsage"
+            class="overview-model-table"
+            size="small"
+            :columns="agentColumns"
+            :data-source="rankedAgentUsage"
+            :pagination="false"
+            row-key="agentKind"
+            :custom-row="agentRow"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'agent'">
+                <div class="model-rank-cell">
+                  <span class="model-name">{{ record.agentName || record.agentKind || 'unknown' }}</span>
+                  <a-tag v-if="record.unpriced" class="model-status-tag" color="warning">unpriced</a-tag>
+                </div>
+                <div class="timeline-event-raw">{{ record.agentKind || '-' }}</div>
+              </template>
+              <template v-else-if="column.key === 'sessionCount'">
+                <span class="number-cell">{{ formatNumber(record.sessionCount) }}</span>
+              </template>
+              <template v-else-if="column.key === 'totalTokens'">
+                <span class="number-cell">{{ formatNumber(record.totalTokens) }}</span>
+              </template>
+              <template v-else-if="column.key === 'tools'">
+                <span class="number-cell">{{ formatNumber(record.toolCalls) }}</span>
+              </template>
+              <template v-else-if="column.key === 'cost'">
+                <span class="number-cell">{{ formatCost(record.estimatedCostUsd) }}</span>
+              </template>
+            </template>
+          </a-table>
+          <div v-else class="empty-state empty-state-compact">
+            <TableOutlined class="empty-state-icon" />
+            <div class="empty-state-title">No agent usage yet</div>
+            <div class="empty-state-text">Agent rankings will appear after at least one session is indexed.</div>
+          </div>
+        </section>
       </div>
 
       <section class="panel overview-recent-panel panel-spaced">
@@ -373,12 +439,15 @@ onBeforeUnmount(() => {
             <template v-if="column.key === 'startedAt'">
               {{ formatDateTime(record.startedAt) }}
             </template>
+            <template v-else-if="column.key === 'agent'">
+              <a-tag class="model-lite-tag">{{ record.agentName || record.agentKind || 'unknown' }}</a-tag>
+            </template>
             <template v-else-if="column.key === 'projectPath'">
               <div class="overview-session-identity">
                 <a-typography-text class="overview-session-project" :ellipsis="{ tooltip: record.projectPath }">
                   {{ shortPath(record.projectPath) }}
                 </a-typography-text>
-                <span class="overview-session-meta mono">{{ record.codexSessionId }}</span>
+                <span class="overview-session-meta mono">{{ sessionLabel(record) }}</span>
               </div>
             </template>
             <template v-else-if="column.key === 'model'">

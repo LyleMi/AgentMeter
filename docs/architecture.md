@@ -36,7 +36,8 @@ AgentMeter
 
   backend
     source discovery
-    Codex parser
+    agent source adapters
+    JSONL parser
     ingestion pipeline
     SQLite repository
     pricing service
@@ -52,7 +53,7 @@ AgentMeter
 ## Data Flow
 
 ```text
-discover Codex path
+discover configured agent source roots
   -> scan session JSONL files
   -> parse raw events
   -> normalize to internal event model
@@ -67,7 +68,8 @@ Proposed Go layout:
 ```text
 internal/
   app/
-  codex/
+  agent/
+  sessionjsonl/
   db/
   ingest/
   model/
@@ -79,14 +81,15 @@ internal/
 
 Responsibilities:
 
-- `codex`: understand Codex JSONL shape and convert it to normalized records.
+- `agent`: detect source roots such as Codex, Claude Code, or generic JSONL directories.
+- `sessionjsonl`: understand supported JSONL event shapes and convert them to normalized records.
 - `ingest`: scan, hash, deduplicate, and index files.
 - `db`: SQLite connection, migrations, repositories.
 - `model`: normalized domain structs.
 - `pricing`: model aliases, pricing table, cost calculation.
 - `query`: read models for UI screens.
 - `export`: JSON and CSV export.
-- `platform`: Windows path discovery and future platform-specific logic.
+- `platform`: OS-specific database and default source path discovery.
 
 ## UI Shape
 
@@ -120,7 +123,7 @@ Session Detail should show:
 
 ## Runtime Rules
 
-- AgentMeter must not modify Codex session files.
+- AgentMeter must not modify source session files.
 - AgentMeter must not upload data.
 - UI should bind to local desktop runtime, not a public interface.
 - Indexing should be incremental.
