@@ -143,6 +143,53 @@ func TestParseFileSupportsCodeBuddyMessagesAndTools(t *testing.T) {
 	}
 }
 
+func TestParseFileSupportsWorkBuddyMessagesAndTools(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "workbuddy-session.jsonl")
+	content := `{"id":"msg_1","timestamp":1782468000000,"type":"message","role":"user","content":[{"type":"input_text","text":"run tests"}],"providerData":{"agent":"cli"},"sessionId":"wb_sess","cwd":"C:\\workspace\\project"}
+{"id":"call_1","parentId":"msg_1","timestamp":1782468002000,"type":"function_call","providerData":{"model":"deepseek-v4-flash","requestModelId":"deepseek-v4-flash","requestModelName":"Deepseek-V4-Flash","agent":"cli","argumentsDisplayText":"go test ./...","usage":{"requests":1,"inputTokens":120,"outputTokens":30,"totalTokens":150,"inputTokensDetails":[{"cached_tokens":40}],"outputTokensDetails":[{"reasoning_tokens":8}]}},"callId":"tool_1","name":"Bash","arguments":"{\"command\":\"go test ./...\"}","sessionId":"wb_sess","message":{"usage":{"input_tokens":120,"output_tokens":30,"total_tokens":150,"cache_read_input_tokens":40}},"cwd":"C:\\workspace\\project"}
+{"id":"result_1","parentId":"call_1","timestamp":1782468005000,"type":"function_call_result","name":"Bash","callId":"tool_1","status":"completed","output":{"type":"text","text":"ok"},"providerData":{"toolResult":{"content":"ok"},"agent":"cli"},"sessionId":"wb_sess","cwd":"C:\\workspace\\project"}
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	parsed, err := ParseFile(path, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Session.SessionKey != "wb_sess" {
+		t.Fatalf("session key = %q", parsed.Session.SessionKey)
+	}
+	if parsed.Session.ProjectPath != "C:\\workspace\\project" {
+		t.Fatalf("project path = %q", parsed.Session.ProjectPath)
+	}
+	if parsed.Session.Model != "deepseek-v4-flash" {
+		t.Fatalf("model = %q", parsed.Session.Model)
+	}
+	if parsed.Session.AgentNickname != "cli" {
+		t.Fatalf("agent nickname = %q", parsed.Session.AgentNickname)
+	}
+	if parsed.Usage.InputTokens != 120 || parsed.Usage.CachedInputTokens != 40 || parsed.Usage.OutputTokens != 30 || parsed.Usage.ReasoningOutputTokens != 8 || parsed.Usage.TotalTokens != 150 {
+		t.Fatalf("usage = %+v", parsed.Usage)
+	}
+	if len(parsed.ModelCall) != 1 {
+		t.Fatalf("model calls = %d", len(parsed.ModelCall))
+	}
+	if len(parsed.ToolCall) != 1 {
+		t.Fatalf("tool calls = %d", len(parsed.ToolCall))
+	}
+	if parsed.ToolCall[0].ToolName != "Bash" || parsed.ToolCall[0].Status != "completed" || parsed.ToolCall[0].DurationMS != 3000 {
+		t.Fatalf("tool call = %+v", parsed.ToolCall[0])
+	}
+	if parsed.ToolCall[0].InputSummary == "" || parsed.ToolCall[0].OutputSummary != "ok" {
+		t.Fatalf("tool summaries = input %q output %q", parsed.ToolCall[0].InputSummary, parsed.ToolCall[0].OutputSummary)
+	}
+	if parsed.Session.ParseStatus != "ok" {
+		t.Fatalf("parse status = %q, warnings: %v", parsed.Session.ParseStatus, parsed.Warnings)
+	}
+}
+
 func TestParseFileKeepsMalformedLineAsWarning(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "broken.jsonl")

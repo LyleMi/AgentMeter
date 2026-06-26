@@ -36,8 +36,15 @@ func DefaultCodeBuddyRoot() string {
 	return ".codebuddy"
 }
 
+func DefaultWorkBuddyRoot() string {
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".workbuddy")
+	}
+	return ".workbuddy"
+}
+
 func DefaultAgentSourceCandidates() []string {
-	return []string{DefaultCodexRoot(), DefaultClaudeRoot(), DefaultCodeBuddyRoot()}
+	return []string{DefaultCodexRoot(), DefaultClaudeRoot(), DefaultCodeBuddyRoot(), DefaultWorkBuddyRoot()}
 }
 
 func DefaultAgentSourcePaths() []string {

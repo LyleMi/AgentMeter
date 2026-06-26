@@ -10,7 +10,7 @@ import (
 	"AgentMeter/internal/db"
 )
 
-func TestStartupAddsDetectedCodeBuddyDefaultToExistingSourcePaths(t *testing.T) {
+func TestStartupAddsDetectedAgentDefaultsToExistingSourcePaths(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	home := filepath.Join(dir, "home")
@@ -20,7 +20,8 @@ func TestStartupAddsDetectedCodeBuddyDefaultToExistingSourcePaths(t *testing.T) 
 	codex := filepath.Join(home, ".codex")
 	claude := filepath.Join(home, ".claude")
 	codebuddy := filepath.Join(home, ".codebuddy")
-	for _, path := range []string{codex, claude, codebuddy} {
+	workbuddy := filepath.Join(home, ".workbuddy")
+	for _, path := range []string{codex, claude, codebuddy, workbuddy} {
 		if err := os.MkdirAll(path, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -49,9 +50,12 @@ func TestStartupAddsDetectedCodeBuddyDefaultToExistingSourcePaths(t *testing.T) 
 	if !containsSourcePath(settings.SourcePaths, codebuddy) {
 		t.Fatalf("source paths should include codebuddy: %v", settings.SourcePaths)
 	}
+	if !containsSourcePath(settings.SourcePaths, workbuddy) {
+		t.Fatalf("source paths should include workbuddy: %v", settings.SourcePaths)
+	}
 
-	withoutCodeBuddy := strings.Join([]string{codex, claude}, "\n")
-	if _, err := first.SaveSettings(withoutCodeBuddy); err != nil {
+	withoutDetectedAgents := strings.Join([]string{codex, claude}, "\n")
+	if _, err := first.SaveSettings(withoutDetectedAgents); err != nil {
 		t.Fatal(err)
 	}
 	first.Shutdown(ctx)
@@ -67,6 +71,9 @@ func TestStartupAddsDetectedCodeBuddyDefaultToExistingSourcePaths(t *testing.T) 
 	}
 	if containsSourcePath(settings.SourcePaths, codebuddy) {
 		t.Fatalf("codebuddy should stay removed after user save: %v", settings.SourcePaths)
+	}
+	if containsSourcePath(settings.SourcePaths, workbuddy) {
+		t.Fatalf("workbuddy should stay removed after user save: %v", settings.SourcePaths)
 	}
 }
 

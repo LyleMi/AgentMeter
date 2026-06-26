@@ -26,6 +26,7 @@ The current version supports:
 - Codex local sessions;
 - Claude Code local sessions;
 - CodeBuddy local sessions;
+- WorkBuddy local sessions;
 - generic JSONL session directories;
 - multiple configured source roots for users running several coding agents;
 - token usage from local session data;

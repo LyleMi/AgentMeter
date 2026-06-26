@@ -109,3 +109,49 @@ func TestFindJSONLFilesUsesCodeBuddyProjectsDirectory(t *testing.T) {
 		t.Fatalf("files = %v", files)
 	}
 }
+
+func TestFindJSONLFilesUsesWorkBuddyProjectsDirectory(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, ".workbuddy")
+	run := filepath.Join(root, "projects", "d-tools-project", "run.jsonl")
+	ignored := filepath.Join(root, "sessions", "run.jsonl")
+	for _, path := range []string{run, ignored} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("{}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	files, err := findJSONLFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || files[0] != run {
+		t.Fatalf("files = %v", files)
+	}
+}
+
+func TestFindJSONLFilesUsesWorkBuddyProjectsWhenSessionsDirectorySelected(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, ".workbuddy")
+	run := filepath.Join(root, "projects", "d-tools-project", "run.jsonl")
+	ignored := filepath.Join(root, "sessions", "run.jsonl")
+	for _, path := range []string{run, ignored} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("{}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	files, err := findJSONLFiles(filepath.Join(root, "sessions"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || files[0] != run {
+		t.Fatalf("files = %v", files)
+	}
+}
