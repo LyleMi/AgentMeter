@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, type DefineComponent } from 'vue'
 import { useRouter } from 'vue-router'
-import * as echarts from 'echarts'
-import { message } from 'ant-design-vue'
+import AButton from 'ant-design-vue/es/button'
+import message from 'ant-design-vue/es/message'
+import ASpin from 'ant-design-vue/es/spin'
+import AntTable from 'ant-design-vue/es/table'
+import ATag from 'ant-design-vue/es/tag'
+import Typography from 'ant-design-vue/es/typography'
 import {
   BarChartOutlined,
   ClockCircleOutlined,
@@ -29,7 +33,11 @@ import {
   type Session
 } from '../api'
 import { chartPalette, usageChartColors } from '../chartPalette'
+import { init, type ECharts } from '../chartRuntime'
 import { notifyAppDataChanged } from '../events'
+
+const ATable = AntTable as unknown as DefineComponent
+const ATypographyText = Typography.Text
 
 const router = useRouter()
 const loading = ref(true)
@@ -37,7 +45,7 @@ const startupIndexing = ref(false)
 const overview = ref<Overview | null>(null)
 const settings = ref<Settings | null>(null)
 const chartEl = ref<HTMLDivElement | null>(null)
-let chart: echarts.ECharts | null = null
+let chart: ECharts | null = null
 
 const hasIndexedData = computed(() => (overview.value?.totalSessions || 0) > 0)
 const sourcePathDisplay = computed(() => settings.value?.sourcePath || settings.value?.defaultSourcePath || '')
@@ -112,7 +120,7 @@ function renderChart() {
     return
   }
   if (!chartEl.value) return
-  if (!chart) chart = echarts.init(chartEl.value)
+  if (!chart) chart = init(chartEl.value)
   const days = dailyUsage.map((item) => item.date.slice(5))
   chart.setOption({
     color: usageChartColors,

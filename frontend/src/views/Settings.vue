@@ -1,9 +1,19 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { message } from 'ant-design-vue'
+import { computed, onMounted, ref, type DefineComponent } from 'vue'
+import AButton from 'ant-design-vue/es/button'
+import AInput from 'ant-design-vue/es/input'
+import message from 'ant-design-vue/es/message'
+import ASpin from 'ant-design-vue/es/spin'
+import AntTable from 'ant-design-vue/es/table'
+import ATag from 'ant-design-vue/es/tag'
+import Typography from 'ant-design-vue/es/typography'
 import { DatabaseOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { api, formatDateTime, formatDuration, formatNumber, type Settings } from '../api'
 import { notifyAppDataChanged } from '../events'
+
+const ATextarea = AInput.TextArea
+const ATable = AntTable as unknown as DefineComponent
+const ATypographyText = Typography.Text
 
 const loading = ref(true)
 const saving = ref(false)

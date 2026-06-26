@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { message } from 'ant-design-vue'
+import AButton from 'ant-design-vue/es/button'
+import AConfigProvider from 'ant-design-vue/es/config-provider'
+import Layout from 'ant-design-vue/es/layout'
+import Menu from 'ant-design-vue/es/menu'
+import message from 'ant-design-vue/es/message'
+import Typography from 'ant-design-vue/es/typography'
 import {
   BarChartOutlined,
   HistoryOutlined,
@@ -12,6 +17,14 @@ import {
 } from '@ant-design/icons-vue'
 import { api, type Settings } from './api'
 import { APP_DATA_CHANGED_EVENT, type AppDataChangeDetail } from './events'
+
+const ALayout = Layout
+const ALayoutContent = Layout.Content
+const ALayoutHeader = Layout.Header
+const ALayoutSider = Layout.Sider
+const AMenu = Menu
+const AMenuItem = Menu.Item
+const ATypographyText = Typography.Text
 
 const route = useRoute()
 const router = useRouter()

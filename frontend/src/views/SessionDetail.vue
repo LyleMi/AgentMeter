@@ -1,6 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, type DefineComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import AButton from 'ant-design-vue/es/button'
+import ACard from 'ant-design-vue/es/card'
+import AEmpty from 'ant-design-vue/es/empty'
+import ASpin from 'ant-design-vue/es/spin'
+import AntTable from 'ant-design-vue/es/table'
+import ATabs from 'ant-design-vue/es/tabs'
+import ATag from 'ant-design-vue/es/tag'
+import ATimeline from 'ant-design-vue/es/timeline'
+import ATooltip from 'ant-design-vue/es/tooltip'
+import Typography from 'ant-design-vue/es/typography'
 import {
   ArrowLeftOutlined,
   ClockCircleOutlined,
@@ -20,6 +30,12 @@ import {
   type EventItem,
   type SessionDetail
 } from '../api'
+
+const ATabPane = ATabs.TabPane
+const ATable = AntTable as unknown as DefineComponent
+const ATimelineItem = ATimeline.Item
+const ATypographyParagraph = Typography.Paragraph
+const ATypographyText = Typography.Text
 
 const route = useRoute()
 const router = useRouter()

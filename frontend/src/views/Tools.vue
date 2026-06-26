@@ -1,14 +1,22 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import * as echarts from 'echarts'
+import { computed, onBeforeUnmount, onMounted, ref, type DefineComponent } from 'vue'
+import AButton from 'ant-design-vue/es/button'
+import ASpin from 'ant-design-vue/es/spin'
+import AntTable from 'ant-design-vue/es/table'
+import ATag from 'ant-design-vue/es/tag'
+import Typography from 'ant-design-vue/es/typography'
 import { BarChartOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { api, formatDuration, formatNumber, type ToolStat } from '../api'
 import { chartPalette, toolChartColors } from '../chartPalette'
+import { init, type ECharts } from '../chartRuntime'
+
+const ATable = AntTable as unknown as DefineComponent
+const ATypographyText = Typography.Text
 
 const loading = ref(true)
 const tools = ref<ToolStat[]>([])
 const chartEl = ref<HTMLDivElement | null>(null)
-let chart: echarts.ECharts | null = null
+let chart: ECharts | null = null
 
 const columns = [
   { title: 'Tool', dataIndex: 'toolName', key: 'toolName' },
@@ -41,7 +49,7 @@ function renderChart() {
     chart = null
     return
   }
-  if (!chart) chart = echarts.init(chartEl.value)
+  if (!chart) chart = init(chartEl.value)
   const top = [...tools.value].sort((a, b) => b.calls - a.calls).slice(0, 12).reverse()
   chart.setOption({
     color: toolChartColors,
