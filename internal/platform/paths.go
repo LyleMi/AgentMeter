@@ -17,6 +17,10 @@ func DefaultCodexSessionsPath() string {
 	return filepath.Join(DefaultCodexRoot(), "sessions")
 }
 
+func DefaultCodexSourcePath() string {
+	return DefaultCodexRoot()
+}
+
 func DefaultDatabasePath() (string, error) {
 	base := os.Getenv("LOCALAPPDATA")
 	if base == "" {

@@ -79,3 +79,73 @@ not-json
 		t.Fatalf("total tokens = %d", parsed.Usage.TotalTokens)
 	}
 }
+
+func TestParseFileBuildsUsageDeltasFromCumulativeTotals(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cumulative.jsonl")
+	content := `{"timestamp":"2026-01-02T00:00:00Z","type":"turn_context","payload":{"model":"gpt-5.2"}}
+{"timestamp":1767312001000,"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":50,"reasoning_output_tokens":0,"total_tokens":150}}}}
+{"timestamp":"2026-01-02T00:00:02Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":200,"cached_input_tokens":20,"output_tokens":75,"reasoning_output_tokens":5,"total_tokens":280}}}}
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	parsed, err := ParseFile(path, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Usage.InputTokens != 200 {
+		t.Fatalf("input tokens = %d", parsed.Usage.InputTokens)
+	}
+	if parsed.Usage.CachedInputTokens != 20 {
+		t.Fatalf("cached input tokens = %d", parsed.Usage.CachedInputTokens)
+	}
+	if parsed.Usage.OutputTokens != 75 {
+		t.Fatalf("output tokens = %d", parsed.Usage.OutputTokens)
+	}
+	if parsed.Usage.ReasoningOutputTokens != 5 {
+		t.Fatalf("reasoning tokens = %d", parsed.Usage.ReasoningOutputTokens)
+	}
+	if parsed.Usage.TotalTokens != 280 {
+		t.Fatalf("total tokens = %d", parsed.Usage.TotalTokens)
+	}
+	if len(parsed.ModelCall) != 2 {
+		t.Fatalf("model calls = %d", len(parsed.ModelCall))
+	}
+	if parsed.ModelCall[1].InputTokens != 100 || parsed.ModelCall[1].OutputTokens != 25 || parsed.ModelCall[1].ReasoningOutputTokens != 5 || parsed.ModelCall[1].TotalTokens != 130 {
+		t.Fatalf("second model call usage = %+v", parsed.ModelCall[1])
+	}
+}
+
+func TestParseFileSupportsHeadlessUsageRecords(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "run.jsonl")
+	content := `{"type":"turn.completed","timestamp":"2026-01-02T03:04:05.000Z","model":"gpt-5.2-codex","usage":{"input_tokens":120,"cached_input_tokens":20,"output_tokens":30,"total_tokens":150}}
+{"type":"result","data":{"timestamp":"2026-01-02T03:05:05.000Z","model_name":"gpt-5.2-codex","usage":{"prompt_tokens":50,"cached_tokens":5,"completion_tokens":12}}}
+{"type":"turn.completed","timestamp":"2026-01-02T03:06:05.000Z","model":"gpt-5.2-codex","usage":{"input_tokens":9,"output_tokens":4,"reasoning_output_tokens":1,"total_tokens":0}}
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	parsed, err := ParseFile(path, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Session.CodexSessionID != "run" {
+		t.Fatalf("session id = %q", parsed.Session.CodexSessionID)
+	}
+	if parsed.Session.ParseStatus != "ok" {
+		t.Fatalf("parse status = %q, warnings: %v", parsed.Session.ParseStatus, parsed.Warnings)
+	}
+	if parsed.Session.Model != "gpt-5.2-codex" {
+		t.Fatalf("model = %q", parsed.Session.Model)
+	}
+	if parsed.Usage.InputTokens != 179 || parsed.Usage.CachedInputTokens != 25 || parsed.Usage.OutputTokens != 46 || parsed.Usage.ReasoningOutputTokens != 1 || parsed.Usage.TotalTokens != 226 {
+		t.Fatalf("usage = %+v", parsed.Usage)
+	}
+	if len(parsed.ModelCall) != 3 {
+		t.Fatalf("model calls = %d", len(parsed.ModelCall))
+	}
+}

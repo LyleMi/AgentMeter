@@ -55,7 +55,7 @@ func (a *App) Startup(ctx context.Context) error {
 	if _, ok, err := db.GetConfig(ctx, conn, "source_path"); err != nil {
 		return err
 	} else if !ok {
-		return db.SetConfig(ctx, conn, "source_path", platform.DefaultCodexSessionsPath())
+		return db.SetConfig(ctx, conn, "source_path", platform.DefaultCodexSourcePath())
 	}
 	return nil
 }
@@ -73,7 +73,7 @@ func (a *App) GetSettings() (model.Settings, error) {
 		return model.Settings{}, err
 	}
 	if !ok || sourcePath == "" {
-		sourcePath = platform.DefaultCodexSessionsPath()
+		sourcePath = platform.DefaultCodexSourcePath()
 	}
 	models, err := pricing.List(a.ctx, a.conn)
 	if err != nil {
@@ -81,7 +81,7 @@ func (a *App) GetSettings() (model.Settings, error) {
 	}
 	return model.Settings{
 		SourcePath:         sourcePath,
-		DefaultSourcePath:  platform.DefaultCodexSessionsPath(),
+		DefaultSourcePath:  platform.DefaultCodexSourcePath(),
 		DatabasePath:       a.dbPath,
 		PricingModels:      models,
 		LastIndexStartedAt: a.lastStart,

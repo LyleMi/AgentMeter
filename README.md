@@ -88,8 +88,12 @@ The SQLite database is created under:
 The default Codex source path is:
 
 ```text
-%USERPROFILE%\.codex\sessions
+%USERPROFILE%\.codex
 ```
+
+When the source path is a Codex home, AgentMeter scans `sessions\` first and
+then `archived_sessions\`, keeping the active copy when both contain the same
+relative JSONL path. A direct directory of saved JSONL output is also supported.
 
 ## Implemented MVP Screens
 

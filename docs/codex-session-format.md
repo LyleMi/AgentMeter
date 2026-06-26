@@ -1,10 +1,14 @@
 # Codex Session JSONL Format
 
-AgentMeter currently targets local Codex session files under:
+AgentMeter currently targets local Codex session files under a Codex home:
 
 ```text
 %USERPROFILE%\.codex\sessions\YYYY\MM\DD\*.jsonl
+%USERPROFILE%\.codex\archived_sessions\YYYY\MM\DD\*.jsonl
 ```
+
+If the configured source path is a direct JSONL directory rather than a Codex
+home, AgentMeter scans that directory recursively.
 
 Each line is a JSON object with these common top-level fields:
 
@@ -66,8 +70,10 @@ Both objects can contain:
 - `reasoning_output_tokens`
 - `total_tokens`
 
-AgentMeter stores the latest `total_token_usage` as actual session usage. It
-also creates approximate model-call rows from `last_token_usage` events.
+AgentMeter stores actual session usage by summing each token event delta.
+`last_token_usage` is used directly when present; otherwise AgentMeter subtracts
+the previous `total_token_usage` from the current cumulative total. It also
+creates approximate model-call rows from those per-event usage deltas.
 
 ## Tool Calls
 

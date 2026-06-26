@@ -31,6 +31,11 @@ type existingFile struct {
 	ScanStatus  string
 }
 
+type usageSource struct {
+	Dir         string
+	DedupeScope string
+}
+
 func New(conn *sql.DB, dbPath string) *Indexer {
 	return &Indexer{conn: conn, dbPath: dbPath}
 }
@@ -280,21 +285,70 @@ func (i *Indexer) replaceParsedSession(ctx context.Context, sourceFileID int64, 
 }
 
 func findJSONLFiles(root string) ([]string, error) {
+	sources := resolveUsageSources(root)
+	return findJSONLFilesFromSources(sources)
+}
+
+func resolveUsageSources(root string) []usageSource {
+	sessions := filepath.Join(root, "sessions")
+	archived := filepath.Join(root, "archived_sessions")
+	sources := make([]usageSource, 0, 2)
+	foundCodexHome := false
+	if isDir(sessions) {
+		sources = append(sources, usageSource{Dir: sessions, DedupeScope: root})
+		foundCodexHome = true
+	}
+	if isDir(archived) {
+		sources = append(sources, usageSource{Dir: archived, DedupeScope: root})
+		foundCodexHome = true
+	}
+	if !foundCodexHome {
+		sources = append(sources, usageSource{Dir: root, DedupeScope: root})
+	}
+	return sources
+}
+
+func findJSONLFilesFromSources(sources []usageSource) ([]string, error) {
 	var files []string
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		if filepath.Ext(entry.Name()) == ".jsonl" {
+	seen := map[string]struct{}{}
+	for _, source := range sources {
+		err := filepath.WalkDir(source.Dir, func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() {
+				return nil
+			}
+			if filepath.Ext(entry.Name()) != ".jsonl" {
+				return nil
+			}
+			key := usageFileKey(source, path)
+			if _, ok := seen[key]; ok {
+				return nil
+			}
+			seen[key] = struct{}{}
 			files = append(files, path)
+			return nil
+		})
+		if err != nil {
+			return nil, err
 		}
-		return nil
-	})
+	}
 	sort.Strings(files)
-	return files, err
+	return files, nil
+}
+
+func usageFileKey(source usageSource, path string) string {
+	relative, err := filepath.Rel(source.Dir, path)
+	if err != nil {
+		relative = path
+	}
+	return filepath.Clean(source.DedupeScope) + "\x00" + filepath.Clean(relative)
+}
+
+func isDir(path string) bool {
+	stat, err := os.Stat(path)
+	return err == nil && stat.IsDir()
 }
 
 func joinWarnings(warnings []string) string {

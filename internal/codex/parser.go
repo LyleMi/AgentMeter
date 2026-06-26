@@ -16,9 +16,18 @@ import (
 )
 
 type rawRecord struct {
-	Timestamp string         `json:"timestamp"`
-	Type      string         `json:"type"`
-	Payload   map[string]any `json:"payload"`
+	Timestamp      any            `json:"timestamp"`
+	CreatedAt      any            `json:"created_at"`
+	CreatedAtCamel any            `json:"createdAt"`
+	Type           string         `json:"type"`
+	Payload        map[string]any `json:"payload"`
+	Data           map[string]any `json:"data"`
+	Result         map[string]any `json:"result"`
+	Response       map[string]any `json:"response"`
+	Usage          any            `json:"usage"`
+	Model          any            `json:"model"`
+	ModelName      any            `json:"model_name"`
+	Metadata       map[string]any `json:"metadata"`
 }
 
 type pendingTool struct {
@@ -55,7 +64,6 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 			SourceID:     sourceID,
 			SourceFileID: sourceFileID,
 			ParseStatus:  "ok",
-			Model:        "unknown",
 		},
 		Usage: model.Usage{Source: "unknown"},
 	}
@@ -70,7 +78,9 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 	var provider string
 	var modelDurationMS int64
 	var toolDurationMS int64
-	var lastTotalUsage model.Usage
+	var previousTotalUsage *model.Usage
+	var hasSessionMeta bool
+	var hasHeadlessUsage bool
 
 	for scanner.Scan() {
 		lineNo++
@@ -84,7 +94,7 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 			parsed.Session.ParseStatus = "warning"
 			continue
 		}
-		ts := parseTimestamp(raw.Timestamp)
+		ts := recordTimestamp(raw)
 		if ts.IsZero() {
 			ts = timestampFromPayload(raw.Payload, "started_at")
 		}
@@ -104,8 +114,9 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 		}
 
 		payloadType := stringValue(raw.Payload, "type")
-		if payloadType == "" {
-			payloadType = raw.Type
+		rawType := payloadType
+		if rawType == "" {
+			rawType = raw.Type
 		}
 		rawJSON := line
 		parsed.Events = append(parsed.Events, model.Event{
@@ -113,25 +124,32 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 			SourceLine:   lineNo,
 			Timestamp:    ts,
 			Kind:         classify(raw.Type, raw.Payload),
-			RawType:      payloadType,
+			RawType:      rawType,
 			Summary:      summarize(raw.Type, raw.Payload),
 			RawJSON:      rawJSON,
 		})
 
 		switch raw.Type {
 		case "session_meta":
+			hasSessionMeta = true
 			parsed.Session.CodexSessionID = stringValue(raw.Payload, "session_id")
+			parsed.Session.CodexSessionID = firstNonEmpty(parsed.Session.CodexSessionID, stringValue(raw.Payload, "id"))
 			parsed.Session.ProjectPath = firstNonEmpty(parsed.Session.ProjectPath, stringValue(raw.Payload, "cwd"))
 			parsed.Session.Originator = stringValue(raw.Payload, "originator")
 			parsed.Session.ThreadSource = stringValue(raw.Payload, "thread_source")
 			provider = firstNonEmpty(provider, stringValue(raw.Payload, "model_provider"))
 			parsed.Session.ModelProvider = provider
 		case "turn_context":
-			currentModel = firstNonEmpty(stringValue(raw.Payload, "model"), currentModel)
+			currentModel = firstNonEmpty(modelFromMap(raw.Payload), currentModel)
 			parsed.Session.Model = firstNonEmpty(currentModel, parsed.Session.Model)
 			parsed.Session.ProjectPath = firstNonEmpty(stringValue(raw.Payload, "cwd"), parsed.Session.ProjectPath)
 			provider = firstNonEmpty(provider, stringValue(raw.Payload, "model_provider"))
 			parsed.Session.ModelProvider = provider
+		}
+
+		if rawModel := modelFromRecord(raw); rawModel != "" {
+			currentModel = rawModel
+			parsed.Session.Model = firstNonEmpty(parsed.Session.Model, rawModel)
 		}
 
 		switch payloadType {
@@ -143,15 +161,23 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 		case "token_count":
 			total := readUsage(raw.Payload, "total_token_usage")
 			last := readUsage(raw.Payload, "last_token_usage")
-			if total.TotalTokens > 0 {
-				total.Model = firstNonEmpty(currentModel, parsed.Session.Model)
-				total.Source = "actual"
-				lastTotalUsage = total
-				parsed.Usage = total
+			eventModel := firstNonEmpty(modelFromPayloadInfo(raw.Payload), currentModel, parsed.Session.Model)
+			if eventModel != "" {
+				currentModel = eventModel
+				parsed.Session.Model = firstNonEmpty(parsed.Session.Model, eventModel)
 			}
-			if last.TotalTokens > 0 {
-				last.Model = firstNonEmpty(currentModel, parsed.Session.Model)
-				last.Source = "actual"
+			callUsage := last
+			if !hasUsage(callUsage) && hasUsage(total) {
+				callUsage = subtractUsage(total, previousTotalUsage)
+			}
+			if hasUsage(total) {
+				totalCopy := total
+				previousTotalUsage = &totalCopy
+			}
+			if hasUsage(callUsage) {
+				callUsage.Model = firstNonEmpty(eventModel, currentModel, parsed.Session.Model)
+				callUsage.Source = "actual"
+				addUsage(&parsed.Usage, callUsage)
 				start := modelBoundary
 				if start.IsZero() || start.After(ts) {
 					start = ts
@@ -162,14 +188,14 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 					StartedAt:             start,
 					EndedAt:               ts,
 					DurationMS:            duration,
-					Model:                 firstNonEmpty(currentModel, parsed.Session.Model),
+					Model:                 firstNonEmpty(callUsage.Model, currentModel, parsed.Session.Model),
 					Provider:              provider,
 					Status:                "completed",
-					InputTokens:           last.InputTokens,
-					CachedInputTokens:     last.CachedInputTokens,
-					OutputTokens:          last.OutputTokens,
-					ReasoningOutputTokens: last.ReasoningOutputTokens,
-					TotalTokens:           last.TotalTokens,
+					InputTokens:           callUsage.InputTokens,
+					CachedInputTokens:     callUsage.CachedInputTokens,
+					OutputTokens:          callUsage.OutputTokens,
+					ReasoningOutputTokens: callUsage.ReasoningOutputTokens,
+					TotalTokens:           callUsage.TotalTokens,
 				})
 				modelBoundary = ts
 			}
@@ -214,6 +240,32 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 			delete(pending, callID)
 			modelBoundary = ts
 		}
+
+		if payloadType == "" {
+			usage := headlessUsage(raw)
+			if hasUsage(usage) {
+				hasHeadlessUsage = true
+				eventModel := firstNonEmpty(modelFromRecord(raw), currentModel, parsed.Session.Model, "gpt-5")
+				currentModel = eventModel
+				parsed.Session.Model = firstNonEmpty(parsed.Session.Model, eventModel)
+				usage.Model = eventModel
+				usage.Source = "actual"
+				addUsage(&parsed.Usage, usage)
+				parsed.ModelCall = append(parsed.ModelCall, model.ModelCall{
+					StartedAt:             ts,
+					EndedAt:               ts,
+					DurationMS:            0,
+					Model:                 eventModel,
+					Provider:              provider,
+					Status:                "completed",
+					InputTokens:           usage.InputTokens,
+					CachedInputTokens:     usage.CachedInputTokens,
+					OutputTokens:          usage.OutputTokens,
+					ReasoningOutputTokens: usage.ReasoningOutputTokens,
+					TotalTokens:           usage.TotalTokens,
+				})
+			}
+		}
 	}
 	if err := scanner.Err(); err != nil {
 		return parsed, err
@@ -232,7 +284,9 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 
 	if parsed.Session.CodexSessionID == "" {
 		parsed.Session.CodexSessionID = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-		parsed.Session.ParseStatus = "warning"
+		if !hasHeadlessUsage && !hasSessionMeta {
+			parsed.Session.ParseStatus = "warning"
+		}
 	}
 	if parsed.Session.ProjectPath == "" {
 		parsed.Session.ProjectPath = "unknown"
@@ -254,11 +308,6 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 		parsed.Session.IdleDurationMS = 0
 	}
 	parsed.Session.EventCount = len(parsed.Events)
-	if lastTotalUsage.TotalTokens > 0 {
-		lastTotalUsage.Model = firstNonEmpty(parsed.Session.Model, lastTotalUsage.Model)
-		lastTotalUsage.Source = "actual"
-		parsed.Usage = lastTotalUsage
-	}
 	if parsed.Usage.Model == "" {
 		parsed.Usage.Model = parsed.Session.Model
 	}
@@ -424,17 +473,62 @@ func readUsage(payload map[string]any, key string) model.Usage {
 	if info == nil {
 		return model.Usage{}
 	}
-	raw, _ := info[key].(map[string]any)
+	return usageFromValue(info[key])
+}
+
+func headlessUsage(raw rawRecord) model.Usage {
+	if usage := usageFromValue(raw.Usage); hasUsage(usage) {
+		return usage
+	}
+	for _, container := range []map[string]any{raw.Data, raw.Result, raw.Response} {
+		if container == nil {
+			continue
+		}
+		if usage := usageFromValue(container["usage"]); hasUsage(usage) {
+			return usage
+		}
+	}
+	return model.Usage{}
+}
+
+func usageFromValue(value any) model.Usage {
+	raw, _ := value.(map[string]any)
 	if raw == nil {
 		return model.Usage{}
 	}
-	return model.Usage{
-		InputTokens:           int64Value(raw, "input_tokens"),
-		CachedInputTokens:     int64Value(raw, "cached_input_tokens"),
-		OutputTokens:          int64Value(raw, "output_tokens"),
-		ReasoningOutputTokens: int64Value(raw, "reasoning_output_tokens"),
-		TotalTokens:           int64Value(raw, "total_tokens"),
+	input := firstInt64(raw, "input_tokens", "prompt_tokens", "input")
+	output := firstInt64(raw, "output_tokens", "completion_tokens", "output")
+	reasoning := firstInt64(raw, "reasoning_output_tokens", "reasoning_tokens")
+	total := int64Value(raw, "total_tokens")
+	if total <= 0 && input+output+reasoning > 0 {
+		total = input + output + reasoning
 	}
+	return model.Usage{
+		InputTokens:           input,
+		CachedInputTokens:     firstInt64(raw, "cached_input_tokens", "cache_read_input_tokens", "cached_tokens"),
+		OutputTokens:          output,
+		ReasoningOutputTokens: reasoning,
+		TotalTokens:           total,
+	}
+}
+
+func recordTimestamp(raw rawRecord) time.Time {
+	for _, value := range []any{raw.Timestamp, raw.CreatedAt, raw.CreatedAtCamel} {
+		if ts := parseTimestampValue(value); !ts.IsZero() {
+			return ts
+		}
+	}
+	for _, container := range []map[string]any{raw.Data, raw.Result, raw.Response} {
+		if container == nil {
+			continue
+		}
+		for _, key := range []string{"timestamp", "created_at", "createdAt"} {
+			if ts := parseTimestampValue(container[key]); !ts.IsZero() {
+				return ts
+			}
+		}
+	}
+	return time.Time{}
 }
 
 func parseTimestamp(value string) time.Time {
@@ -450,6 +544,29 @@ func parseTimestamp(value string) time.Time {
 	return time.Time{}
 }
 
+func parseTimestampValue(value any) time.Time {
+	switch typed := value.(type) {
+	case string:
+		return parseTimestamp(typed)
+	case float64:
+		return timestampFromNumber(typed)
+	case int64:
+		return timestampFromNumber(float64(typed))
+	case int:
+		return timestampFromNumber(float64(typed))
+	case json.Number:
+		if n, err := typed.Int64(); err == nil {
+			return timestampFromNumber(float64(n))
+		}
+		if f, err := typed.Float64(); err == nil {
+			return timestampFromNumber(f)
+		}
+		return time.Time{}
+	default:
+		return time.Time{}
+	}
+}
+
 func timestampFromPayload(payload map[string]any, key string) time.Time {
 	raw, ok := payload[key]
 	if !ok {
@@ -457,9 +574,7 @@ func timestampFromPayload(payload map[string]any, key string) time.Time {
 	}
 	switch value := raw.(type) {
 	case float64:
-		sec := int64(value)
-		nsec := int64((value - float64(sec)) * 1_000_000_000)
-		return time.Unix(sec, nsec).UTC()
+		return timestampFromNumber(value)
 	case string:
 		if ts := parseTimestamp(value); !ts.IsZero() {
 			return ts
@@ -470,6 +585,20 @@ func timestampFromPayload(payload map[string]any, key string) time.Time {
 	}
 }
 
+func timestampFromNumber(value float64) time.Time {
+	if value <= 0 {
+		return time.Time{}
+	}
+	if value > 10_000_000_000 {
+		sec := int64(value / 1000)
+		nsec := int64((value - float64(sec)*1000) * 1_000_000)
+		return time.Unix(sec, nsec).UTC()
+	}
+	sec := int64(value)
+	nsec := int64((value - float64(sec)) * 1_000_000_000)
+	return time.Unix(sec, nsec).UTC()
+}
+
 func durationMS(start, end time.Time) int64 {
 	if start.IsZero() || end.IsZero() || end.Before(start) {
 		return 0
@@ -477,14 +606,47 @@ func durationMS(start, end time.Time) int64 {
 	return end.Sub(start).Milliseconds()
 }
 
+func modelFromRecord(raw rawRecord) string {
+	return firstNonEmpty(
+		modelFromParts(raw.Model, raw.ModelName, raw.Metadata),
+		modelFromMap(raw.Data),
+		modelFromMap(raw.Result),
+		modelFromMap(raw.Response),
+	)
+}
+
+func modelFromPayloadInfo(payload map[string]any) string {
+	info, _ := payload["info"].(map[string]any)
+	return firstNonEmpty(modelFromMap(payload), modelFromMap(info))
+}
+
+func modelFromMap(payload map[string]any) string {
+	if payload == nil {
+		return ""
+	}
+	metadata, _ := payload["metadata"].(map[string]any)
+	return modelFromParts(payload["model"], payload["model_name"], metadata)
+}
+
+func modelFromParts(modelValue, modelNameValue any, metadata map[string]any) string {
+	return firstNonEmpty(stringFromAny(modelValue), stringFromAny(modelNameValue), stringFromAny(metadata["model"]))
+}
+
 func stringValue(payload map[string]any, key string) string {
 	value, ok := payload[key]
 	if !ok || value == nil {
 		return ""
 	}
+	return stringFromAny(value)
+}
+
+func stringFromAny(value any) string {
+	if value == nil {
+		return ""
+	}
 	switch typed := value.(type) {
 	case string:
-		return typed
+		return strings.TrimSpace(typed)
 	case fmt.Stringer:
 		return typed.String()
 	default:
@@ -515,6 +677,57 @@ func int64Value(payload map[string]any, key string) int64 {
 	default:
 		return 0
 	}
+}
+
+func firstInt64(payload map[string]any, keys ...string) int64 {
+	for _, key := range keys {
+		if value := int64Value(payload, key); value > 0 {
+			return value
+		}
+	}
+	return 0
+}
+
+func hasUsage(usage model.Usage) bool {
+	return usage.InputTokens > 0 ||
+		usage.CachedInputTokens > 0 ||
+		usage.OutputTokens > 0 ||
+		usage.ReasoningOutputTokens > 0 ||
+		usage.TotalTokens > 0
+}
+
+func subtractUsage(current model.Usage, previous *model.Usage) model.Usage {
+	if previous == nil {
+		return current
+	}
+	return model.Usage{
+		InputTokens:           saturatingSubtract(current.InputTokens, previous.InputTokens),
+		CachedInputTokens:     saturatingSubtract(current.CachedInputTokens, previous.CachedInputTokens),
+		OutputTokens:          saturatingSubtract(current.OutputTokens, previous.OutputTokens),
+		ReasoningOutputTokens: saturatingSubtract(current.ReasoningOutputTokens, previous.ReasoningOutputTokens),
+		TotalTokens:           saturatingSubtract(current.TotalTokens, previous.TotalTokens),
+	}
+}
+
+func addUsage(total *model.Usage, delta model.Usage) {
+	if total.Source == "" || total.Source == "unknown" {
+		total.Source = firstNonEmpty(delta.Source, "actual")
+	}
+	if total.Model == "" || total.Model == "unknown" {
+		total.Model = delta.Model
+	}
+	total.InputTokens += delta.InputTokens
+	total.CachedInputTokens += delta.CachedInputTokens
+	total.OutputTokens += delta.OutputTokens
+	total.ReasoningOutputTokens += delta.ReasoningOutputTokens
+	total.TotalTokens += delta.TotalTokens
+}
+
+func saturatingSubtract(current, previous int64) int64 {
+	if current <= previous {
+		return 0
+	}
+	return current - previous
 }
 
 func valueToString(value any) string {
