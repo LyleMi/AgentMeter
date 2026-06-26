@@ -1,0 +1,17 @@
+.DS_Store
+Thumbs.db
+
+bin/
+build/bin/
+dist/
+
+*.exe
+*.test
+
+frontend/node_modules/
+frontend/dist/*
+!frontend/dist/index.html
+
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
