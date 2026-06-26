@@ -36,8 +36,12 @@ func DefaultCodeBuddyRoot() string {
 	return ".codebuddy"
 }
 
+func DefaultAgentSourceCandidates() []string {
+	return []string{DefaultCodexRoot(), DefaultClaudeRoot(), DefaultCodeBuddyRoot()}
+}
+
 func DefaultAgentSourcePaths() []string {
-	candidates := []string{DefaultCodexRoot(), DefaultClaudeRoot(), DefaultCodeBuddyRoot()}
+	candidates := DefaultAgentSourceCandidates()
 	var existing []string
 	for _, candidate := range candidates {
 		if stat, err := os.Stat(candidate); err == nil && stat.IsDir() {
