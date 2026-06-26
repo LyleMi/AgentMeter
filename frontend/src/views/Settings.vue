@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import { DatabaseOutlined, FolderOpenOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { api, formatDateTime, formatDuration, formatNumber, type Settings } from '../api'
+import { notifyAppDataChanged } from '../events'
 
 const loading = ref(true)
 const saving = ref(false)
@@ -61,6 +62,7 @@ async function save() {
   saving.value = true
   try {
     settings.value = await api.saveSettings(sourcePath.value)
+    notifyAppDataChanged('settings')
     message.success('Settings saved')
   } catch (error) {
     message.error(error instanceof Error ? error.message : 'Save failed')
@@ -75,6 +77,7 @@ async function index(rebuild = false) {
     const result = await api.indexNow(rebuild)
     message.success(`${result.indexed} indexed, ${result.skipped} skipped, ${result.failed} failed`)
     await load()
+    notifyAppDataChanged('index')
   } catch (error) {
     message.error(error instanceof Error ? error.message : 'Index failed')
   } finally {

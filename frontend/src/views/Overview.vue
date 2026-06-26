@@ -2,11 +2,15 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
+import { message } from 'ant-design-vue'
 import {
   BarChartOutlined,
   ClockCircleOutlined,
   DollarCircleOutlined,
+  FolderOpenOutlined,
   FunctionOutlined,
+  PlayCircleOutlined,
+  SettingOutlined,
   TableOutlined,
   ToolOutlined
 } from '@ant-design/icons-vue'
@@ -19,17 +23,22 @@ import {
   shortPath,
   type ModelUsage,
   type Overview,
+  type Settings,
   type Session
 } from '../api'
 import { chartPalette, usageChartColors } from '../chartPalette'
+import { notifyAppDataChanged } from '../events'
 
 const router = useRouter()
 const loading = ref(true)
+const startupIndexing = ref(false)
 const overview = ref<Overview | null>(null)
+const settings = ref<Settings | null>(null)
 const chartEl = ref<HTMLDivElement | null>(null)
 let chart: echarts.ECharts | null = null
 
 const hasIndexedData = computed(() => (overview.value?.totalSessions || 0) > 0)
+const sourcePathDisplay = computed(() => settings.value?.sourcePath || settings.value?.defaultSourcePath || '')
 const hasDailyUsage = computed(() => (overview.value?.dailyUsage?.length || 0) > 0)
 const rankedModelUsage = computed(() =>
   [...(overview.value?.modelUsage || [])].sort((left, right) => right.totalTokens - left.totalTokens)
@@ -56,12 +65,28 @@ const recentColumns = [
 async function load() {
   loading.value = true
   try {
-    overview.value = await api.getOverview()
+    const [settingsValue, overviewValue] = await Promise.all([api.getSettings(), api.getOverview()])
+    settings.value = settingsValue
+    overview.value = overviewValue
   } finally {
     loading.value = false
   }
   await nextTick()
   renderChart()
+}
+
+async function indexFromOverview() {
+  startupIndexing.value = true
+  try {
+    const result = await api.indexNow(false)
+    message.success(`${result.indexed} indexed, ${result.skipped} skipped, ${result.failed} failed`)
+    await load()
+    notifyAppDataChanged('index')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : 'Index failed')
+  } finally {
+    startupIndexing.value = false
+  }
 }
 
 function renderChart() {
@@ -230,13 +255,33 @@ onBeforeUnmount(() => {
       </section>
 
       <div v-if="!loading && !hasIndexedData" class="empty-callout overview-empty-callout">
-        <div>
+        <div class="empty-callout-main">
           <div class="empty-callout-title">No indexed sessions yet</div>
           <div class="empty-callout-text">
-            Configure a local source path, then run Index Now to populate usage, cost, and tool-call telemetry.
+            AgentMeter can scan the configured Codex source now and refresh this dashboard when indexing completes.
+          </div>
+          <div class="empty-source-line">
+            <FolderOpenOutlined />
+            <span class="source-label">Source</span>
+            <a-typography-text class="empty-source-path" :ellipsis="{ tooltip: sourcePathDisplay }">
+              {{ sourcePathDisplay || 'Open Settings to choose a source path' }}
+            </a-typography-text>
           </div>
         </div>
-        <a-button type="primary" @click="$router.push('/settings')">Open Settings</a-button>
+        <div class="empty-callout-actions">
+          <a-button type="primary" :loading="startupIndexing" :disabled="!sourcePathDisplay" @click="indexFromOverview">
+            <template #icon>
+              <PlayCircleOutlined />
+            </template>
+            Index Now
+          </a-button>
+          <a-button @click="$router.push('/settings')">
+            <template #icon>
+              <SettingOutlined />
+            </template>
+            Edit Source
+          </a-button>
+        </div>
       </div>
 
       <div class="content-grid overview-primary-grid">

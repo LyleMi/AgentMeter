@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import {
@@ -11,6 +11,7 @@ import {
   ToolOutlined
 } from '@ant-design/icons-vue'
 import { api, type Settings } from './api'
+import { APP_DATA_CHANGED_EVENT, type AppDataChangeDetail } from './events'
 
 const route = useRoute()
 const router = useRouter()
@@ -40,6 +41,14 @@ async function loadSettings() {
   settings.value = await api.getSettings()
 }
 
+async function handleAppDataChanged(event: Event) {
+  const detail = (event as CustomEvent<AppDataChangeDetail>).detail
+  await loadSettings()
+  if (detail?.reason === 'index') {
+    refreshKey.value += 1
+  }
+}
+
 async function indexNow(rebuild = false) {
   indexing.value = true
   try {
@@ -58,7 +67,13 @@ function navigate(path: string) {
   router.push(path)
 }
 
-onMounted(loadSettings)
+onMounted(() => {
+  loadSettings()
+  window.addEventListener(APP_DATA_CHANGED_EVENT, handleAppDataChanged)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener(APP_DATA_CHANGED_EVENT, handleAppDataChanged)
+})
 </script>
 
 <template>

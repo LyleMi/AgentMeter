@@ -70,7 +70,24 @@ Requirements:
 - Node.js and npm
 - Wails CLI is optional
 
-Build the frontend and start local HTTP mode:
+Recommended local start:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
+```
+
+The script installs frontend dependencies when needed, rebuilds the UI when
+source files change, starts AgentMeter, and opens:
+
+```text
+http://127.0.0.1:34115
+```
+
+On first launch, click **Index Now** in the app. AgentMeter defaults to
+`%USERPROFILE%\.codex`, so no source path setup is required unless your Codex
+sessions live somewhere else.
+
+Build the frontend and start local HTTP mode manually:
 
 ```powershell
 cd frontend
