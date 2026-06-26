@@ -1,7 +1,7 @@
 # AgentMeter
 
-<p>
-  <img src="frontend/src/assets/agentmeter-logo.png" alt="AgentMeter logo" width="96">
+<p align="center">
+  <img src="frontend/src/assets/agentmeter-logo.png" alt="AgentMeter logo" width="180">
 </p>
 
 ![Status: MVP](https://img.shields.io/badge/status-MVP-f2c94c)
@@ -119,10 +119,12 @@ already includes:
 ## Development Checks
 
 ```powershell
-go test ./...
-
 cd frontend
+npm ci
 npm run build
+cd ..
+
+go test ./...
 ```
 
 ## Roadmap

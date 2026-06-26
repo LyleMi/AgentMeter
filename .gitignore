@@ -3,14 +3,13 @@ Thumbs.db
 
 bin/
 build/bin/
-dist/
+/dist/
 
 *.exe
 *.test
 
 frontend/node_modules/
-frontend/dist/*
-!frontend/dist/index.html
+frontend/dist/
 
 *.sqlite
 *.sqlite-shm
