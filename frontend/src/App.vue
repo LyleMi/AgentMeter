@@ -62,8 +62,11 @@ onMounted(loadSettings)
   <a-config-provider
     :theme="{
       token: {
-        colorPrimary: '#1677ff',
-        colorInfo: '#13a8a8',
+        colorPrimary: '#2563eb',
+        colorInfo: '#0891b2',
+        colorSuccess: '#059669',
+        colorWarning: '#d97706',
+        colorError: '#dc2626',
         borderRadius: 8,
         fontFamily:
           'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif'
@@ -93,8 +96,9 @@ onMounted(loadSettings)
 
       <a-layout>
         <a-layout-header class="app-header">
-          <div class="source-line">
-            <span class="source-label">Source</span>
+          <div class="source-line" :class="{ 'is-configured': settings?.sourcePath }">
+            <span class="source-dot"></span>
+            <span class="source-label">Source path</span>
             <a-typography-text class="source-path" :ellipsis="{ tooltip: settings?.sourcePath }">
               {{ settings?.sourcePath || 'Not configured' }}
             </a-typography-text>

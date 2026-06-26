@@ -14,10 +14,10 @@ const columns = [
   { title: 'Started', dataIndex: 'startedAt', key: 'startedAt', width: 155 },
   { title: 'Project', dataIndex: 'projectPath', key: 'projectPath' },
   { title: 'Model', dataIndex: 'model', key: 'model', width: 120 },
-  { title: 'Tokens', dataIndex: ['tokenUsage', 'totalTokens'], key: 'tokens', width: 120 },
-  { title: 'Cost', dataIndex: 'estimatedCostUsd', key: 'cost', width: 120 },
-  { title: 'Tools', dataIndex: 'toolCallCount', key: 'tools', width: 90 },
-  { title: 'Wall', dataIndex: 'wallDurationMs', key: 'wall', width: 100 },
+  { title: 'Tokens', dataIndex: ['tokenUsage', 'totalTokens'], key: 'tokens', width: 120, align: 'right' },
+  { title: 'Cost', dataIndex: 'estimatedCostUsd', key: 'cost', width: 120, align: 'right' },
+  { title: 'Tools', dataIndex: 'toolCallCount', key: 'tools', width: 90, align: 'right' },
+  { title: 'Wall', dataIndex: 'wallDurationMs', key: 'wall', width: 100, align: 'right' },
   { title: 'Parse', dataIndex: 'parseStatus', key: 'parse', width: 100 }
 ]
 
@@ -47,8 +47,14 @@ function statusClass(status: string) {
   return 'status-error'
 }
 
+function statusColor(status: string) {
+  if (status === 'ok') return 'green'
+  if (status === 'warning') return 'orange'
+  return 'red'
+}
+
 function sessionRow(record: Session) {
-  return { onClick: () => router.push(`/sessions/${record.id}`) }
+  return { class: 'sessions-table-row', onClick: () => router.push(`/sessions/${record.id}`) }
 }
 
 onMounted(load)
@@ -66,10 +72,11 @@ onMounted(load)
 
     <section class="panel">
       <div class="panel-body">
-        <div class="toolbar">
-          <div class="toolbar-left">
+        <div class="toolbar sessions-toolbar">
+          <div class="toolbar-left sessions-toolbar-controls">
             <a-input
               v-model:value="search"
+              class="sessions-search"
               style="width: 320px"
               allow-clear
               placeholder="Search project, model or file"
@@ -81,6 +88,7 @@ onMounted(load)
             </a-input>
             <a-select
               v-model:value="model"
+              class="sessions-model-filter"
               style="width: 180px"
               allow-clear
               placeholder="Model"
@@ -90,13 +98,15 @@ onMounted(load)
             <a-button type="primary" @click="load">Apply</a-button>
             <a-button @click="resetFilters">Reset</a-button>
           </div>
-          <div class="toolbar-right muted">{{ formatNumber(sessions.length) }} rows</div>
+          <div class="toolbar-right muted sessions-row-count">{{ formatNumber(sessions.length) }} rows</div>
         </div>
 
         <a-table
+          class="sessions-table"
           :columns="columns"
           :data-source="sessions"
           :loading="loading"
+          :locale="{ emptyText: loading ? 'Loading sessions...' : 'No sessions match the current filters' }"
           :pagination="{ pageSize: 20, showSizeChanger: true }"
           row-key="id"
           size="middle"
@@ -107,21 +117,26 @@ onMounted(load)
               {{ formatDateTime(record.startedAt) }}
             </template>
             <template v-else-if="column.key === 'projectPath'">
-              <a-typography-text :ellipsis="{ tooltip: record.projectPath }">
-                {{ shortPath(record.projectPath) }}
-              </a-typography-text>
+              <a-tooltip :title="record.projectPath" placement="topLeft">
+                <span class="sessions-project-path">{{ shortPath(record.projectPath) }}</span>
+              </a-tooltip>
             </template>
             <template v-else-if="column.key === 'tokens'">
-              {{ formatNumber(record.tokenUsage.totalTokens) }}
+              <span class="number-cell">{{ formatNumber(record.tokenUsage.totalTokens) }}</span>
             </template>
             <template v-else-if="column.key === 'cost'">
-              {{ formatCost(record.estimatedCostUsd) }}
+              <span class="number-cell">{{ formatCost(record.estimatedCostUsd) }}</span>
+            </template>
+            <template v-else-if="column.key === 'tools'">
+              <span class="number-cell">{{ formatNumber(record.toolCallCount) }}</span>
             </template>
             <template v-else-if="column.key === 'wall'">
-              {{ formatDuration(record.wallDurationMs) }}
+              <span class="number-cell">{{ formatDuration(record.wallDurationMs) }}</span>
             </template>
             <template v-else-if="column.key === 'parse'">
-              <span :class="statusClass(record.parseStatus)">{{ record.parseStatus }}</span>
+              <a-tag class="status-tag parse-status-tag" :class="statusClass(record.parseStatus)" :color="statusColor(record.parseStatus)">
+                {{ record.parseStatus }}
+              </a-tag>
             </template>
           </template>
         </a-table>

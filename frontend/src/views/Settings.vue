@@ -12,11 +12,23 @@ const sourcePath = ref('')
 
 const pricingColumns = [
   { title: 'Model', dataIndex: 'model', key: 'model' },
-  { title: 'Input / 1M', dataIndex: 'inputPer1m', key: 'input', width: 120 },
-  { title: 'Cached / 1M', dataIndex: 'cachedInputPer1m', key: 'cached', width: 130 },
-  { title: 'Output / 1M', dataIndex: 'outputPer1m', key: 'output', width: 130 },
-  { title: 'Source', dataIndex: 'source', key: 'source' }
+  { title: 'Input / 1M', dataIndex: 'inputPer1m', key: 'input', width: 120, align: 'right' },
+  { title: 'Cached / 1M', dataIndex: 'cachedInputPer1m', key: 'cached', width: 130, align: 'right' },
+  { title: 'Output / 1M', dataIndex: 'outputPer1m', key: 'output', width: 130, align: 'right' },
+  { title: 'Source', dataIndex: 'source', key: 'source', width: 180 }
 ]
+
+function formatPrice(value: number) {
+  return `$${value.toFixed(4)}`
+}
+
+function indexResultStatus() {
+  const result = settings.value?.lastIndexResult
+  if (!result) return { type: 'default', label: 'No index run' }
+  if (result.failed > 0) return { type: 'error', label: `${formatNumber(result.failed)} failed` }
+  if ((result.warnings?.length || 0) > 0) return { type: 'warning', label: `${formatNumber(result.warnings.length)} warnings` }
+  return { type: 'success', label: 'Completed' }
+}
 
 async function load() {
   loading.value = true
@@ -68,9 +80,10 @@ onMounted(load)
 
     <a-spin :spinning="loading">
       <div class="split-row">
-        <section class="panel">
+        <section class="panel settings-tool-panel">
           <div class="panel-header">
             <h2 class="panel-title">Source</h2>
+            <span class="muted">JSONL session folder</span>
           </div>
           <div class="panel-body">
             <a-space direction="vertical" style="width: 100%" size="middle">
@@ -88,13 +101,18 @@ onMounted(load)
                   {{ settings?.defaultSourcePath }}
                 </a-typography-text>
               </div>
+              <div class="settings-meta-line">
+                <span class="muted">Current source</span>
+                <a-typography-text :ellipsis="{ tooltip: sourcePath }">{{ sourcePath || '-' }}</a-typography-text>
+              </div>
             </a-space>
           </div>
         </section>
 
-        <section class="panel">
+        <section class="panel settings-tool-panel">
           <div class="panel-header">
             <h2 class="panel-title">Database</h2>
+            <span class="muted">Local AgentMeter store</span>
           </div>
           <div class="panel-body">
             <a-space direction="vertical" style="width: 100%" size="middle">
@@ -114,13 +132,55 @@ onMounted(load)
                   </a-button>
                 </div>
               </div>
-              <a-alert
-                v-if="settings?.lastIndexResult"
-                type="info"
-                show-icon
-                :message="`${formatNumber(settings.lastIndexResult.indexed)} indexed, ${formatNumber(settings.lastIndexResult.skipped)} skipped, ${formatNumber(settings.lastIndexResult.failed)} failed`"
-                :description="`${formatNumber(settings.lastIndexResult.filesSeen)} files seen in ${formatDuration(settings.lastIndexResult.durationMs)}`"
-              />
+              <div v-if="settings?.lastIndexResult" class="index-result-block">
+                <div class="index-result-header">
+                  <div>
+                    <div class="index-result-title">Last index result</div>
+                    <div class="muted">
+                      {{ settings.lastIndexStartedAt ? formatDateTime(settings.lastIndexStartedAt) : 'Most recent run' }}
+                    </div>
+                  </div>
+                  <a-tag :color="indexResultStatus().type" class="status-tag">{{ indexResultStatus().label }}</a-tag>
+                </div>
+                <div class="index-result-grid">
+                  <div class="index-result-metric">
+                    <span class="muted">Files seen</span>
+                    <strong class="number-cell">{{ formatNumber(settings.lastIndexResult.filesSeen) }}</strong>
+                  </div>
+                  <div class="index-result-metric">
+                    <span class="muted">Indexed</span>
+                    <strong class="number-cell">{{ formatNumber(settings.lastIndexResult.indexed) }}</strong>
+                  </div>
+                  <div class="index-result-metric">
+                    <span class="muted">Skipped</span>
+                    <strong class="number-cell">{{ formatNumber(settings.lastIndexResult.skipped) }}</strong>
+                  </div>
+                  <div class="index-result-metric">
+                    <span class="muted">Failed</span>
+                    <strong class="number-cell status-error">{{ formatNumber(settings.lastIndexResult.failed) }}</strong>
+                  </div>
+                  <div class="index-result-metric">
+                    <span class="muted">Warnings</span>
+                    <strong class="number-cell status-warning">
+                      {{ formatNumber(settings.lastIndexResult.warnings?.length || 0) }}
+                    </strong>
+                  </div>
+                  <div class="index-result-metric">
+                    <span class="muted">Duration</span>
+                    <strong class="number-cell duration-cell">
+                      {{ formatDuration(settings.lastIndexResult.durationMs) }}
+                    </strong>
+                  </div>
+                </div>
+                <div v-if="settings.lastIndexResult.warnings?.length" class="index-result-warnings">
+                  <div class="metadata-label">Warnings</div>
+                  <ul>
+                    <li v-for="warning in settings.lastIndexResult.warnings.slice(0, 3)" :key="warning">
+                      {{ warning }}
+                    </li>
+                  </ul>
+                </div>
+              </div>
             </a-space>
           </div>
         </section>
@@ -128,10 +188,13 @@ onMounted(load)
 
       <section class="panel" style="margin-top: 18px">
         <div class="panel-header">
-          <h2 class="panel-title">Pricing Registry</h2>
-          <span class="muted">API list-price estimates</span>
+          <div>
+            <h2 class="panel-title">Pricing Registry</h2>
+            <div class="muted">API list-price estimates used for local cost calculations</div>
+          </div>
         </div>
         <a-table
+          class="dense-table pricing-table"
           size="middle"
           :columns="pricingColumns"
           :data-source="settings?.pricingModels || []"
@@ -139,13 +202,20 @@ onMounted(load)
           :pagination="false"
         >
           <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'input'">${{ record.inputPer1m.toFixed(4) }}</template>
-            <template v-else-if="column.key === 'cached'">${{ record.cachedInputPer1m.toFixed(4) }}</template>
-            <template v-else-if="column.key === 'output'">${{ record.outputPer1m.toFixed(4) }}</template>
+            <template v-if="column.key === 'input'">
+              <span class="number-cell price-cell">{{ formatPrice(record.inputPer1m) }}</span>
+            </template>
+            <template v-else-if="column.key === 'cached'">
+              <span class="number-cell price-cell">{{ formatPrice(record.cachedInputPer1m) }}</span>
+            </template>
+            <template v-else-if="column.key === 'output'">
+              <span class="number-cell price-cell">{{ formatPrice(record.outputPer1m) }}</span>
+            </template>
             <template v-else-if="column.key === 'source'">
               <a-typography-text :ellipsis="{ tooltip: `${record.source} · ${formatDateTime(record.effectiveFrom)}` }">
                 {{ record.source }}
               </a-typography-text>
+              <div class="muted pricing-source-date">{{ formatDateTime(record.effectiveFrom) }}</div>
             </template>
           </template>
         </a-table>
