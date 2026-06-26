@@ -1,85 +1,52 @@
-﻿# AgentMeter
+# AgentMeter
 
-AgentMeter is a local-first observability dashboard for coding agent sessions.
+![Status: MVP](https://img.shields.io/badge/status-MVP-f2c94c)
+![Local first](https://img.shields.io/badge/local--first-yes-2f855a)
+![Platform: Windows first](https://img.shields.io/badge/platform-Windows%20first-0078d4)
+![Backend: Go](https://img.shields.io/badge/backend-Go-00ADD8)
+![Frontend: Vue 3](https://img.shields.io/badge/frontend-Vue%203-42b883)
+![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)
 
-The first target is Codex on Windows. AgentMeter reads local Codex session data,
-normalizes it into SQLite, and presents usage, timing, and tool-call statistics
-through a local desktop UI.
+AgentMeter is a local-first dashboard for understanding Codex session usage:
+tokens, estimated cost, timing, session history, and tool-call behavior.
 
-## Product Direction
+It reads local Codex session files, indexes them into SQLite, and shows the data
+in a private desktop UI. No proxy, no cloud service, no telemetry.
 
-- Local-first: read local session files only.
-- No proxy: do not sit between the user and model providers.
-- Private by default: no telemetry, no upload, no cloud dependency.
-- Codex first: support Codex session JSONL before adding other agents.
-- Windows first: make Windows paths, packaging, and local usage reliable first.
-- SQLite backed: scan once, query fast, support incremental indexing.
+## Why AgentMeter
 
-## Core Metrics
+Coding agents can generate a lot of useful local session data, but that data is
+hard to inspect directly. AgentMeter turns Codex JSONL sessions into answers you
+can actually use:
 
-AgentMeter should answer:
-
-- How many sessions were run?
-- How many tokens were consumed?
-- What did those tokens cost?
-- How long did sessions take?
-- How many tool calls happened?
+- How many sessions did I run?
+- How many tokens did they consume?
+- What did those tokens roughly cost?
+- Which models, days, projects, or sessions used the most?
 - Which tools were called most often?
-- Which sessions, projects, days, or models consumed the most?
+- How long did sessions and tool calls take?
 
-## Chosen Stack
+## Features
 
-- Desktop shell: Wails
-- Backend: Go
-- Database: SQLite
-- Frontend: Vue 3 + Vite + TypeScript
-- First platform: Windows
-
-Wails is preferred over Tauri because the project is Go-backend-first. The
-frontend can call Go services directly, and the session scanner, parser,
-pricing logic, and SQLite access can stay in one Go process.
-
-## Current Repository State
-
-This repository now contains the Wails-oriented AgentMeter MVP:
-
-- Go backend with SQLite migrations and local app configuration.
-- Codex JSONL discovery, incremental hashing, parsing, and indexing.
-- Normalized sessions, events, token usage, model calls, and tool calls.
-- Vue 3 + TypeScript frontend using Ant Design Vue and ECharts.
+- Overview dashboard with sessions, tokens, estimated cost, daily usage, and model usage.
+- Searchable session history with parse status and raw source traceability.
+- Session detail timeline with model calls, tool calls, metadata, and source paths.
+- Tool-call analytics with call counts, success/failure counts, and durations.
+- Incremental indexing based on path, size, modified time, and content hash.
+- Built-in pricing registry with unknown models clearly marked as `unpriced`.
 - Local HTTP mode for development or use without the Wails CLI.
 
-## Run Locally
+## Privacy Model
 
-Install frontend dependencies and build the embedded UI:
+AgentMeter is designed to stay local:
 
-```powershell
-cd frontend
-npm install
-npm run build
-cd ..
-```
+- Reads local session files only.
+- Does not proxy model traffic.
+- Does not upload session data.
+- Does not require a cloud account.
+- Stores normalized data in a local SQLite database.
 
-Start local HTTP mode:
-
-```powershell
-go run . -http :34115
-```
-
-Open:
-
-```text
-http://127.0.0.1:34115
-```
-
-If Wails CLI is installed, the same backend and frontend can be launched through
-Wails:
-
-```powershell
-wails dev
-```
-
-The SQLite database is created under:
+The default database path is:
 
 ```text
 %LOCALAPPDATA%\AgentMeter\agentmeter.sqlite
@@ -91,26 +58,86 @@ The default Codex source path is:
 %USERPROFILE%\.codex
 ```
 
-When the source path is a Codex home, AgentMeter scans `sessions\` first and
-then `archived_sessions\`, keeping the active copy when both contain the same
-relative JSONL path. A direct directory of saved JSONL output is also supported.
+## Quick Start
 
-## Implemented MVP Screens
+Requirements:
 
-- Overview: totals, token and cost estimates, daily trend, model usage, recent sessions.
-- Sessions: searchable local session table with model, token, cost, timing, and parse status.
-- Session Detail: metadata, timeline, model calls, tool calls, raw source traceability.
-- Tools: calls by tool, success/failure counts, total and average duration.
-- Settings: Codex source path, database path, index/rebuild actions, pricing registry.
+- Go matching the version in `go.mod`
+- Node.js and npm
+- Wails CLI is optional
 
-## Notes
+Build the frontend and start local HTTP mode:
 
-Cost is displayed as a local estimate from the built-in pricing registry. Unknown
-models remain indexed and are shown as `unpriced`.
+```powershell
+cd frontend
+npm ci
+npm run build
+cd ..
 
-## Documents
+go run . -http :34115
+```
+
+Open:
+
+```text
+http://127.0.0.1:34115
+```
+
+If the Wails CLI is installed, you can also run the desktop app in development
+mode:
+
+```powershell
+wails dev
+```
+
+## How It Works
+
+```text
+Codex JSONL -> scanner/parser -> SQLite -> Go query service -> Vue dashboard
+```
+
+When the source path is a Codex home directory, AgentMeter scans `sessions\`
+first and then `archived_sessions\`, keeping the active copy when both contain
+the same relative JSONL path. A direct directory of saved JSONL output is also
+supported.
+
+## Current Status
+
+AgentMeter is currently an MVP focused on Codex on Windows. The repository
+already includes:
+
+- Go backend with SQLite migrations and local app configuration.
+- Codex JSONL discovery, parsing, normalization, and incremental indexing.
+- Normalized sessions, events, token usage, model calls, and tool calls.
+- Vue 3 + TypeScript frontend using Ant Design Vue and ECharts.
+- MVP screens for Overview, Sessions, Session Detail, Tools, and Settings.
+
+## Development Checks
+
+```powershell
+go test ./...
+
+cd frontend
+npm run build
+```
+
+## Roadmap
+
+Planned directions include packaged Windows builds, macOS/Linux support, more
+coding-agent adapters, export formats, project grouping, custom pricing, and
+richer timeline views.
+
+See [Roadmap](docs/roadmap.md) for details.
+
+## Documentation
 
 - [Project Brief](docs/project-brief.md)
 - [Architecture](docs/architecture.md)
 - [Data Model](docs/data-model.md)
+- [Codex Session Format](docs/codex-session-format.md)
 - [Roadmap](docs/roadmap.md)
+
+## Contributing
+
+Issues and pull requests are welcome, especially for parser edge cases, pricing
+updates, Windows packaging, and adapters for other coding agents.
