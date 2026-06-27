@@ -92,6 +92,24 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		})
 		writeJSON(w, value, err)
 	})
+	mux.HandleFunc("GET /api/audit/summary", func(w http.ResponseWriter, r *http.Request) {
+		value, err := service.GetAuditSummary()
+		writeJSON(w, value, err)
+	})
+	mux.HandleFunc("GET /api/audit/findings", func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		limit, _ := strconv.Atoi(query.Get("limit"))
+		offset, _ := strconv.Atoi(query.Get("offset"))
+		value, err := service.ListAuditFindings(model.AuditFindingFilters{
+			Category:    query.Get("category"),
+			Severity:    query.Get("severity"),
+			ShellFamily: query.Get("shell"),
+			Search:      query.Get("search"),
+			Limit:       limit,
+			Offset:      offset,
+		})
+		writeJSON(w, value, err)
+	})
 	mux.HandleFunc("GET /api/pricing", func(w http.ResponseWriter, r *http.Request) {
 		value, err := service.GetPricingModels()
 		writeJSON(w, value, err)

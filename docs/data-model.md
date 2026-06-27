@@ -158,6 +158,54 @@ MVP statistics:
 - total duration;
 - average duration.
 
+### audit_runs
+
+Tracks that a source file has gone through offline audit, even when no findings
+were produced. This lets incremental indexing backfill audit data for existing
+databases without repeatedly reparsing clean files.
+
+Fields:
+
+- `id`
+- `source_file_id`
+- `session_id`
+- `source`
+- `status`
+- `finding_count`
+- `audited_at`
+
+### audit_findings
+
+Offline command, egress, file, and privacy findings derived from indexed local
+session events. Findings are local-only and may keep raw evidence for inspection.
+
+Fields:
+
+- `id`
+- `session_id`
+- `tool_call_id`
+- `source_file_id`
+- `raw_event_id`
+- `source_line`
+- `timestamp`
+- `source`
+- `event_type`
+- `category`
+- `severity`
+- `rule_id`
+- `title`
+- `description`
+- `evidence`
+- `command`
+- `shell_family`
+- `platform`
+- `decision`
+- `created_at`
+
+`decision` is currently `observed` for offline indexing. It is reserved for
+future live audit sources that may record `allowed`, `blocked`, or
+`needs_approval`.
+
 ### pricing_models
 
 Local pricing registry.

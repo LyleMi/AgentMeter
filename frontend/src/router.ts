@@ -17,6 +17,7 @@ const router = createRouter({
     },
     { path: '/sessions', component: () => import('./views/Sessions.vue') },
     { path: '/sessions/:id', component: () => import('./views/SessionDetail.vue'), props: true },
+    { path: '/audit', component: () => import('./views/Audit.vue') },
     {
       path: '/tools',
       component: () => import('./views/Tools.vue'),

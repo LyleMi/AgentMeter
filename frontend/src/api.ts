@@ -150,6 +150,49 @@ export interface ToolCall {
   rawSourcePath?: string
 }
 
+export interface AuditFinding {
+  id: number
+  sessionId: number
+  toolCallId: number
+  sourceFileId: number
+  rawEventId: number
+  sourceLine: number
+  timestamp: string
+  source: string
+  eventType: string
+  category: string
+  severity: string
+  ruleId: string
+  title: string
+  description: string
+  evidence: string
+  command: string
+  shellFamily: string
+  platform: string
+  decision: string
+  createdAt: string
+  sessionKey?: string
+  codexSessionId?: string
+  projectPath?: string
+  agentKind?: string
+  agentName?: string
+  rawSourcePath?: string
+}
+
+export interface AuditSummary {
+  totalFindings: number
+  criticalFindings: number
+  highFindings: number
+  mediumFindings: number
+  lowFindings: number
+  commandFindings: number
+  privacyFindings: number
+  egressFindings: number
+  fileFindings: number
+  sessionsWithFindings: number
+  recentFindings: AuditFinding[]
+}
+
 export interface SessionDetail {
   session: Session
   events: EventItem[]
@@ -221,6 +264,15 @@ export interface ToolFilters {
   agent?: string
 }
 
+export interface AuditFindingFilters {
+  category?: string
+  severity?: string
+  shell?: string
+  search?: string
+  limit?: number
+  offset?: number
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
@@ -266,6 +318,17 @@ export const api = {
     if (filters.limit) params.set('limit', String(filters.limit))
     if (filters.offset) params.set('offset', String(filters.offset))
     return request<ToolCall[]>(`/api/tool-calls?${params}`)
+  },
+  getAuditSummary: () => request<AuditSummary>('/api/audit/summary'),
+  listAuditFindings: (filters: AuditFindingFilters = {}) => {
+    const params = new URLSearchParams()
+    if (filters.category) params.set('category', filters.category)
+    if (filters.severity) params.set('severity', filters.severity)
+    if (filters.shell) params.set('shell', filters.shell)
+    if (filters.search) params.set('search', filters.search)
+    if (filters.limit) params.set('limit', String(filters.limit))
+    if (filters.offset) params.set('offset', String(filters.offset))
+    return request<AuditFinding[]>(`/api/audit/findings?${params}`)
   },
   getPricingModels: () => request<PricingModel[]>('/api/pricing')
 }

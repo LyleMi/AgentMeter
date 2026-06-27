@@ -194,6 +194,70 @@ func (s *Service) ToolCalls(ctx context.Context, filters model.ToolCallFilters) 
 	return s.scanToolCalls(ctx, query, args...)
 }
 
+func (s *Service) AuditSummary(ctx context.Context) (model.AuditSummary, error) {
+	var summary model.AuditSummary
+	err := s.conn.QueryRowContext(ctx, `SELECT
+		COUNT(*),
+		COALESCE(SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN severity = 'high' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN severity = 'medium' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN severity = 'low' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN category = 'command' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN category = 'privacy' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN category = 'egress' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN category = 'file' THEN 1 ELSE 0 END), 0),
+		COUNT(DISTINCT session_id)
+		FROM audit_findings`).Scan(
+		&summary.TotalFindings,
+		&summary.CriticalFindings,
+		&summary.HighFindings,
+		&summary.MediumFindings,
+		&summary.LowFindings,
+		&summary.CommandFindings,
+		&summary.PrivacyFindings,
+		&summary.EgressFindings,
+		&summary.FileFindings,
+		&summary.SessionsWithFindings,
+	)
+	if err != nil {
+		return summary, err
+	}
+	summary.RecentFindings, err = s.AuditFindings(ctx, model.AuditFindingFilters{Limit: 8})
+	if summary.RecentFindings == nil {
+		summary.RecentFindings = []model.AuditFinding{}
+	}
+	return summary, err
+}
+
+func (s *Service) AuditFindings(ctx context.Context, filters model.AuditFindingFilters) ([]model.AuditFinding, error) {
+	where := []string{"1 = 1"}
+	args := []any{}
+	if strings.TrimSpace(filters.Category) != "" {
+		where = append(where, "af.category = ?")
+		args = append(args, strings.TrimSpace(filters.Category))
+	}
+	if strings.TrimSpace(filters.Severity) != "" {
+		where = append(where, "af.severity = ?")
+		args = append(args, strings.TrimSpace(filters.Severity))
+	}
+	if strings.TrimSpace(filters.ShellFamily) != "" {
+		where = append(where, "af.shell_family = ?")
+		args = append(args, strings.TrimSpace(filters.ShellFamily))
+	}
+	if strings.TrimSpace(filters.Search) != "" {
+		search := "%" + strings.TrimSpace(filters.Search) + "%"
+		where = append(where, `(af.title LIKE ? OR af.description LIKE ? OR af.evidence LIKE ? OR af.command LIKE ? OR af.rule_id LIKE ? OR sess.session_key LIKE ? OR sess.project_path LIKE ? OR sf.path LIKE ?)`)
+		args = append(args, search, search, search, search, search, search, search, search)
+	}
+	limit, offset := clampLimitOffset(filters.Limit, filters.Offset, 500, 1000)
+	args = append(args, limit, offset)
+	query := fmt.Sprintf(`%s
+		WHERE %s
+		ORDER BY af.timestamp DESC, af.id DESC
+		LIMIT ? OFFSET ?`, auditFindingSelect, strings.Join(where, " AND "))
+	return s.scanAuditFindings(ctx, query, args...)
+}
+
 func (s *Service) sessionByID(ctx context.Context, id int64) (model.Session, error) {
 	query := sessionSelect + ` WHERE s.id = ?`
 	sessions, err := s.scanSessions(ctx, query, id)
@@ -288,6 +352,17 @@ const toolCallSelect = `SELECT
 	LEFT JOIN events start_event ON start_event.id = CASE WHEN tc.raw_start_event_id != 0 THEN tc.raw_start_event_id ELSE tc.raw_event_id END
 	LEFT JOIN events end_event ON end_event.id = tc.raw_end_event_id`
 
+const auditFindingSelect = `SELECT
+		af.id, af.session_id, af.tool_call_id, af.source_file_id, af.raw_event_id, af.source_line, af.timestamp,
+		af.source, af.event_type, af.category, af.severity, af.rule_id, af.title, af.description, af.evidence,
+		af.command, af.shell_family, af.platform, af.decision, af.created_at,
+		COALESCE(NULLIF(sess.session_key, ''), sess.codex_session_id), sess.codex_session_id, sess.project_path,
+		src.kind, src.name, sf.path
+	FROM audit_findings af
+	JOIN sessions sess ON sess.id = af.session_id
+	JOIN sources src ON src.id = sess.source_id
+	JOIN source_files sf ON sf.id = af.source_file_id`
+
 func (s *Service) scanToolCalls(ctx context.Context, query string, args ...any) ([]model.ToolCall, error) {
 	rows, err := s.conn.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -333,6 +408,56 @@ func (s *Service) scanToolCalls(ctx context.Context, query string, args ...any) 
 		item.StartedAt = db.ParseTime(started)
 		item.EndedAt = db.ParseTime(ended)
 		item.RawEventLine = item.RawStartEventLine
+		result = append(result, item)
+	}
+	return result, rows.Err()
+}
+
+func (s *Service) scanAuditFindings(ctx context.Context, query string, args ...any) ([]model.AuditFinding, error) {
+	rows, err := s.conn.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := []model.AuditFinding{}
+	for rows.Next() {
+		var item model.AuditFinding
+		var ts, created string
+		if err := rows.Scan(
+			&item.ID,
+			&item.SessionID,
+			&item.ToolCallID,
+			&item.SourceFileID,
+			&item.RawEventID,
+			&item.SourceLine,
+			&ts,
+			&item.Source,
+			&item.EventType,
+			&item.Category,
+			&item.Severity,
+			&item.RuleID,
+			&item.Title,
+			&item.Description,
+			&item.Evidence,
+			&item.Command,
+			&item.ShellFamily,
+			&item.Platform,
+			&item.Decision,
+			&created,
+			&item.SessionKey,
+			&item.CodexSessionID,
+			&item.ProjectPath,
+			&item.AgentKind,
+			&item.AgentName,
+			&item.RawSourcePath,
+		); err != nil {
+			return nil, err
+		}
+		item.Timestamp = db.ParseTime(ts)
+		item.CreatedAt = db.ParseTime(created)
+		if item.AgentName == "" {
+			item.AgentName = item.AgentKind
+		}
 		result = append(result, item)
 	}
 	return result, rows.Err()

@@ -16,7 +16,8 @@ import {
   PlayCircleOutlined,
   ReloadOutlined,
   SettingOutlined,
-  ToolOutlined
+  ToolOutlined,
+  WarningOutlined
 } from '@ant-design/icons-vue'
 import { api, type Settings } from './api'
 import { APP_DATA_CHANGED_EVENT, type AppDataChangeDetail } from './events'
@@ -40,6 +41,7 @@ const { t } = useMessages({
     'nav.overview': 'Overview',
     'nav.sessions': 'Sessions',
     'nav.tools': 'Tools',
+    'nav.audit': 'Audit',
     'nav.settings': 'Settings',
     'sidebar.expand': 'Expand sidebar',
     'sidebar.collapse': 'Collapse sidebar',
@@ -66,6 +68,7 @@ const { t } = useMessages({
     'nav.overview': '概览',
     'nav.sessions': '会话',
     'nav.tools': '工具',
+    'nav.audit': '审计',
     'nav.settings': '设置',
     'sidebar.expand': '展开侧边栏',
     'sidebar.collapse': '收起侧边栏',
@@ -107,6 +110,7 @@ const rebuildIndexHint = computed(() => t('index.rebuildHint'))
 const selectedKeys = computed(() => {
   if (route.path.startsWith('/sessions')) return ['sessions']
   if (route.path.startsWith('/tools')) return ['tools']
+  if (route.path.startsWith('/audit')) return ['audit']
   if (route.path.startsWith('/settings')) return ['settings']
   return ['overview']
 })
@@ -115,6 +119,7 @@ const menuItems = computed(() => [
   { key: 'overview', icon: BarChartOutlined, label: t('nav.overview'), path: '/overview' },
   { key: 'sessions', icon: HistoryOutlined, label: t('nav.sessions'), path: '/sessions' },
   { key: 'tools', icon: ToolOutlined, label: t('nav.tools'), path: '/tools' },
+  { key: 'audit', icon: WarningOutlined, label: t('nav.audit'), path: '/audit' },
   { key: 'settings', icon: SettingOutlined, label: t('nav.settings'), path: '/settings' }
 ])
 const languageOptions = computed(() =>

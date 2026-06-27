@@ -36,6 +36,8 @@ inspect directly. AgentMeter turns that data into answers you can use:
 
 - Local Web dashboard for sessions, tokens, estimated cost, daily usage, model
   usage, and tool-call analytics.
+- Offline audit view for command-risk and privacy/secret findings derived from
+  indexed local session data.
 - Terminal UI mode over the same database, indexing pipeline, pricing rules, and
   query behavior.
 - Codex, Claude Code, CodeBuddy, WorkBuddy, and generic JSONL source detection.
@@ -80,6 +82,8 @@ AgentMeter is designed to stay local:
 - Does not upload session data.
 - Does not require a cloud account.
 - Stores normalized data in a local SQLite database.
+- Audit findings may store raw local evidence so command and privacy issues can
+  be inspected without leaving the machine.
 
 ## Current Status
 

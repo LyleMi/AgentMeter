@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"AgentMeter/internal/agent"
+	"AgentMeter/internal/audit"
 	"AgentMeter/internal/db"
 	"AgentMeter/internal/model"
 	"AgentMeter/internal/platform"
@@ -143,14 +144,26 @@ func (i *Indexer) indexFile(ctx context.Context, source model.Source, path strin
 	}
 	hash := ""
 	if !force && err == nil && existing.SizeBytes == stat.Size() && existing.ModifiedAt.Equal(modified) && existing.ScanStatus == "indexed" {
-		return 0, 1, 0, 0, nil
+		hasAuditRun, auditErr := i.sourceFileHasAuditRun(ctx, existing.ID)
+		if auditErr != nil {
+			return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, auditErr)}
+		}
+		if hasAuditRun {
+			return 0, 1, 0, 0, nil
+		}
 	}
 	hash, err = sessionjsonl.HashFile(path)
 	if err != nil {
 		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
 	}
 	if !force && err == nil && existing.ContentHash == hash && existing.ScanStatus == "indexed" {
-		return 0, 1, 0, 0, nil
+		hasAuditRun, auditErr := i.sourceFileHasAuditRun(ctx, existing.ID)
+		if auditErr != nil {
+			return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, auditErr)}
+		}
+		if hasAuditRun {
+			return 0, 1, 0, 0, nil
+		}
 	}
 
 	sourceFileID, err := i.upsertSourceFile(ctx, source.ID, path, stat.Size(), modified, hash, "scanning", "")
@@ -162,7 +175,7 @@ func (i *Indexer) indexFile(ctx context.Context, source model.Source, path strin
 		_ = i.markSourceFile(ctx, sourceFileID, "error", err.Error())
 		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
 	}
-	if err := i.replaceParsedSession(ctx, sourceFileID, parsed); err != nil {
+	if err := i.replaceParsedSession(ctx, source, sourceFileID, parsed); err != nil {
 		_ = i.markSourceFile(ctx, sourceFileID, "error", err.Error())
 		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
 	}
@@ -188,6 +201,18 @@ func (i *Indexer) getExistingFile(ctx context.Context, path string) (existingFil
 	}
 	item.ModifiedAt = db.ParseTime(modified)
 	return item, nil
+}
+
+func (i *Indexer) sourceFileHasAuditRun(ctx context.Context, sourceFileID int64) (bool, error) {
+	var id int64
+	err := i.conn.QueryRowContext(ctx, `SELECT id FROM audit_runs WHERE source_file_id = ?`, sourceFileID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (i *Indexer) upsertSourceFile(ctx context.Context, sourceID int64, path string, size int64, modified time.Time, hash, status, message string) (int64, error) {
@@ -218,7 +243,7 @@ func (i *Indexer) markSourceFile(ctx context.Context, sourceFileID int64, status
 	return err
 }
 
-func (i *Indexer) replaceParsedSession(ctx context.Context, sourceFileID int64, parsed model.ParsedSession) error {
+func (i *Indexer) replaceParsedSession(ctx context.Context, source model.Source, sourceFileID int64, parsed model.ParsedSession) error {
 	modelCallCosts := make([]*float64, len(parsed.ModelCall))
 	for index, call := range parsed.ModelCall {
 		usage := model.Usage{
@@ -275,8 +300,13 @@ func (i *Indexer) replaceParsedSession(ctx context.Context, sourceFileID int64, 
 	if err != nil {
 		return err
 	}
+	session := parsed.Session
+	session.ID = sessionID
+	session.SourceFileID = sourceFileID
 
 	rawEventIDs := map[int]int64{}
+	eventsByLine := map[int]model.Event{}
+	indexedEvents := make([]model.Event, 0, len(parsed.Events))
 	for _, event := range parsed.Events {
 		res, err := tx.ExecContext(ctx, `INSERT INTO events
 			(session_id, source_file_id, source_line, timestamp, kind, raw_type, summary, raw_json)
@@ -287,6 +317,11 @@ func (i *Indexer) replaceParsedSession(ctx context.Context, sourceFileID int64, 
 		}
 		eventID, _ := res.LastInsertId()
 		rawEventIDs[event.SourceLine] = eventID
+		event.ID = eventID
+		event.SessionID = sessionID
+		event.SourceFileID = sourceFileID
+		eventsByLine[event.SourceLine] = event
+		indexedEvents = append(indexedEvents, event)
 	}
 
 	if parsed.Usage.Source == "" {
@@ -315,11 +350,12 @@ func (i *Indexer) replaceParsedSession(ctx context.Context, sourceFileID int64, 
 		}
 	}
 
+	indexedToolCalls := make([]model.ToolCall, 0, len(parsed.ToolCall))
 	for _, call := range parsed.ToolCall {
 		rawStartEventLine := firstNonZero(call.RawStartEventLine, call.RawEventLine)
 		rawStartEventID := rawEventIDs[rawStartEventLine]
 		rawEndEventID := rawEventIDs[call.RawEndEventLine]
-		_, err := tx.ExecContext(ctx, `INSERT INTO tool_calls
+		res, err := tx.ExecContext(ctx, `INSERT INTO tool_calls
 			(session_id, started_at, ended_at, duration_ms, tool_name, status, input_summary, output_summary, error, raw_event_id, call_id, raw_start_event_id, raw_end_event_id)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			sessionID, db.FormatTime(call.StartedAt), db.FormatTime(call.EndedAt), call.DurationMS,
@@ -327,9 +363,136 @@ func (i *Indexer) replaceParsedSession(ctx context.Context, sourceFileID int64, 
 		if err != nil {
 			return err
 		}
+		toolCallID, _ := res.LastInsertId()
+		call.ID = toolCallID
+		call.SessionID = sessionID
+		call.RawEventID = rawStartEventID
+		call.RawStartEventID = rawStartEventID
+		call.RawEndEventID = rawEndEventID
+		call.ProjectPath = session.ProjectPath
+		if startEvent, ok := eventsByLine[rawStartEventLine]; ok {
+			call.RawStartEventLine = startEvent.SourceLine
+			call.RawStartEventType = startEvent.RawType
+			call.RawStartEventSummary = startEvent.Summary
+			call.RawStartEventJSON = startEvent.RawJSON
+		}
+		if endEvent, ok := eventsByLine[call.RawEndEventLine]; ok {
+			call.RawEndEventType = endEvent.RawType
+			call.RawEndEventSummary = endEvent.Summary
+			call.RawEndEventJSON = endEvent.RawJSON
+		}
+		indexedToolCalls = append(indexedToolCalls, call)
+	}
+
+	if err := i.replaceAuditFindings(ctx, tx, source, sourceFileID, session, indexedToolCalls, indexedEvents); err != nil {
+		return err
 	}
 
 	return tx.Commit()
+}
+
+func (i *Indexer) replaceAuditFindings(ctx context.Context, tx *sql.Tx, source model.Source, sourceFileID int64, session model.Session, toolCalls []model.ToolCall, events []model.Event) error {
+	findings := audit.AuditSession(session, toolCalls, events)
+	toolRawEvents := map[int64]int64{}
+	for _, call := range toolCalls {
+		toolRawEvents[call.ID] = call.RawStartEventID
+	}
+	eventIDsByLine := map[int]int64{}
+	for _, event := range events {
+		eventIDsByLine[event.SourceLine] = event.ID
+	}
+	now := db.FormatTime(time.Now().UTC())
+	for _, finding := range findings {
+		timestamp := finding.StartedAt
+		if timestamp.IsZero() {
+			timestamp = session.StartedAt
+		}
+		rawEventID := finding.EventID
+		if rawEventID == 0 && finding.ToolCallID != 0 {
+			rawEventID = toolRawEvents[finding.ToolCallID]
+		}
+		if rawEventID == 0 && finding.SourceLine != 0 {
+			rawEventID = eventIDsByLine[finding.SourceLine]
+		}
+		description := auditDescription(finding)
+		_, err := tx.ExecContext(ctx, `INSERT INTO audit_findings
+			(session_id, tool_call_id, source_file_id, raw_event_id, source_line, timestamp, source, event_type, category, severity, rule_id, title, description, evidence, command, shell_family, platform, decision, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			session.ID,
+			finding.ToolCallID,
+			sourceFileID,
+			rawEventID,
+			finding.SourceLine,
+			db.FormatTime(timestamp),
+			"session_jsonl",
+			firstNonEmptyString(finding.Source, "finding"),
+			firstNonEmptyString(finding.Category, "command"),
+			firstNonEmptyString(finding.Severity, "low"),
+			finding.RuleID,
+			finding.Title,
+			description,
+			finding.Evidence,
+			finding.Command,
+			string(finding.ShellFamily),
+			inferAuditPlatform(source, session, finding),
+			"observed",
+			now)
+		if err != nil {
+			return err
+		}
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO audit_runs
+		(source_file_id, session_id, source, status, finding_count, audited_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(source_file_id) DO UPDATE SET
+			session_id = excluded.session_id,
+			source = excluded.source,
+			status = excluded.status,
+			finding_count = excluded.finding_count,
+			audited_at = excluded.audited_at`,
+		sourceFileID, session.ID, "session_jsonl", "completed", len(findings), now)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func auditDescription(finding audit.Finding) string {
+	var parts []string
+	if finding.ToolName != "" {
+		parts = append(parts, "tool: "+finding.ToolName)
+	}
+	if finding.Field != "" {
+		parts = append(parts, "field: "+finding.Field)
+	}
+	if finding.Source != "" {
+		parts = append(parts, "source: "+finding.Source)
+	}
+	return strings.Join(parts, "; ")
+}
+
+func inferAuditPlatform(source model.Source, session model.Session, finding audit.Finding) string {
+	switch finding.ShellFamily {
+	case audit.ShellPowerShell, audit.ShellCmd:
+		return "windows"
+	case audit.ShellPosix:
+		return "posix"
+	}
+	path := firstNonEmptyString(finding.ProjectPath, session.ProjectPath, source.RootPath, source.SessionsPath)
+	if looksLikeWindowsPath(path) {
+		return "windows"
+	}
+	if strings.HasPrefix(path, "/") {
+		return "posix"
+	}
+	return firstNonEmptyString(source.Platform, platform.PlatformName())
+}
+
+func looksLikeWindowsPath(path string) bool {
+	if len(path) >= 3 && ((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) && path[1] == ':' && (path[2] == '\\' || path[2] == '/') {
+		return true
+	}
+	return strings.HasPrefix(path, `\\`) || strings.Contains(path, `\`)
 }
 
 func findJSONLFiles(root string) ([]string, error) {
@@ -414,6 +577,15 @@ func firstNonZero(values ...int) int {
 		}
 	}
 	return 0
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func normalizeSourcePaths(paths []string) []string {

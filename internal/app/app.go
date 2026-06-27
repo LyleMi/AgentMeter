@@ -433,6 +433,20 @@ func (a *App) ListToolCalls(filters model.ToolCallFilters) ([]model.ToolCall, er
 	return a.query.ToolCalls(a.ctx, filters)
 }
 
+func (a *App) GetAuditSummary() (model.AuditSummary, error) {
+	if err := a.ensureReady(); err != nil {
+		return model.AuditSummary{}, err
+	}
+	return a.query.AuditSummary(a.ctx)
+}
+
+func (a *App) ListAuditFindings(filters model.AuditFindingFilters) ([]model.AuditFinding, error) {
+	if err := a.ensureReady(); err != nil {
+		return nil, err
+	}
+	return a.query.AuditFindings(a.ctx, filters)
+}
+
 func (a *App) GetPricingModels() ([]model.PricingModel, error) {
 	if err := a.ensureReady(); err != nil {
 		return nil, err
