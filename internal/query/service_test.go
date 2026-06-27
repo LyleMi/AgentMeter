@@ -155,6 +155,48 @@ func TestToolsFiltersByAgent(t *testing.T) {
 	}
 }
 
+func TestOverviewPricingIgnoresZeroTokenUnknownUsage(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	sourceID := insertRow(t, conn, `INSERT INTO sources
+		(kind, name, root_path, sessions_path, platform, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		"codex", "Codex", "/workspace", "/workspace/.codex/sessions", "test", db.FormatTime(now), db.FormatTime(now))
+	insertOverviewUsageSession(t, conn, sourceID, now, "actual-gpt", "gpt-5.5", "gpt-5.5", "actual", 1_000_000, 200_000, 500_000, 1_500_000)
+	insertOverviewUsageSession(t, conn, sourceID, now.Add(time.Minute), "empty-gpt", "gpt-5.5", "gpt-5.5", "unknown", 0, 0, 0, 0)
+	insertOverviewUsageSession(t, conn, sourceID, now.Add(2*time.Minute), "empty-unknown", "unknown", "unknown", "unknown", 0, 0, 0, 0)
+
+	overview, err := New(conn).Overview(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if overview.UnpricedSessions != 0 {
+		t.Fatalf("unpriced sessions = %d", overview.UnpricedSessions)
+	}
+
+	var foundGPT bool
+	for _, usage := range overview.ModelUsage {
+		if usage.Model == "unknown" {
+			t.Fatalf("zero-token unknown model should not appear in model usage: %+v", overview.ModelUsage)
+		}
+		if usage.Model == "gpt-5.5" {
+			foundGPT = true
+			if usage.Unpriced || usage.EstimatedCostUSD == nil {
+				t.Fatalf("gpt usage should be priced: %+v", usage)
+			}
+		}
+	}
+	if !foundGPT {
+		t.Fatalf("gpt model usage missing: %+v", overview.ModelUsage)
+	}
+}
+
 func assertToolCallDetail(t *testing.T, call model.ToolCall, sessionID, startEventID, endEventID int64) {
 	t.Helper()
 	if call.SessionID != sessionID || call.SessionKey != "session-key" || call.ProjectPath != "/workspace/project" {
@@ -192,6 +234,25 @@ func insertToolCallFixture(t *testing.T, conn *sql.DB, kind, name string, starte
 		(session_id, started_at, ended_at, duration_ms, tool_name, status, input_summary, output_summary, error, raw_event_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		sessionID, db.FormatTime(started), db.FormatTime(started.Add(duration)), duration.Milliseconds(), toolName, "completed", "input", "output", "", 0)
+}
+
+func insertOverviewUsageSession(t *testing.T, conn *sql.DB, sourceID int64, started time.Time, key, sessionModel, usageModel, usageSource string, inputTokens, cachedInputTokens, outputTokens, totalTokens int64) int64 {
+	t.Helper()
+	sourceFileID := insertRow(t, conn, `INSERT INTO source_files
+		(source_id, path, size_bytes, modified_at, content_hash, last_scanned_at, scan_status, error)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		sourceID, "/workspace/.codex/sessions/"+key+".jsonl", 128, db.FormatTime(started), "hash-"+key, db.FormatTime(started), "indexed", "")
+	sessionID := insertRow(t, conn, `INSERT INTO sessions
+		(source_id, source_file_id, session_key, codex_session_id, project_path, model, model_provider, originator, thread_source, agent_nickname, agent_role,
+		 started_at, ended_at, wall_duration_ms, active_duration_ms, model_duration_ms, tool_duration_ms, idle_duration_ms, event_count, parse_status)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		sourceID, sourceFileID, key, "codex-"+key, "/workspace/project", sessionModel, "openai", "cli", "local", "", "",
+		db.FormatTime(started), db.FormatTime(started.Add(time.Second)), 1000, 1000, 1000, 0, 0, 1, "ok")
+	insertRow(t, conn, `INSERT INTO token_usage
+		(owner_kind, owner_id, model, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, source)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"session", sessionID, usageModel, inputTokens, cachedInputTokens, outputTokens, 0, totalTokens, usageSource)
+	return sessionID
 }
 
 func insertRow(t *testing.T, conn *sql.DB, query string, args ...any) int64 {

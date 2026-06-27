@@ -16,6 +16,8 @@ Verified: 2026-06-27.
 - Google Gemini API: https://ai.google.dev/gemini-api/docs/pricing
 - DeepSeek USD pricing: https://api-docs.deepseek.com/quick_start/pricing-details-usd
 - DeepSeek V4 pricing: https://api-docs.deepseek.com/quick_start/pricing
+- Z.AI pricing: https://docs.z.ai/guides/overview/pricing
+- Kimi API Platform pricing: https://platform.kimi.ai/docs/pricing/chat-k26
 - Mistral pricing: https://mistral.ai/pricing/
 - Mistral chat endpoint cache note: https://docs.mistral.ai/api/endpoint/chat
 - xAI pricing: https://docs.x.ai/developers/pricing

@@ -31,6 +31,8 @@ func Seed(ctx context.Context, conn *sql.DB) error {
 	googlePricing := "Google Gemini Developer API pricing, https://ai.google.dev/gemini-api/docs/pricing, standard text/image/video tier, verified 2026-06-27"
 	deepseekPricing := "DeepSeek API pricing details USD, https://api-docs.deepseek.com/quick_start/pricing-details-usd, verified 2026-06-27"
 	deepseekV4Pricing := "DeepSeek API pricing, https://api-docs.deepseek.com/quick_start/pricing, verified 2026-06-27"
+	zaiPricing := "Z.AI pricing, https://docs.z.ai/guides/overview/pricing, verified 2026-06-27"
+	kimiPricing := "Kimi API Platform pricing, https://platform.kimi.ai/docs/pricing/chat-k26, verified 2026-06-27"
 	mistralPricing := "Mistral API pricing, https://mistral.ai/pricing/; cached tokens billed at 10% input per https://docs.mistral.ai/api/endpoint/chat, verified 2026-06-27"
 	xaiPricing := "xAI pricing, https://docs.x.ai/developers/pricing, verified 2026-06-27"
 	coherePricing := "Cohere pricing, https://cohere.com/pricing, no cached discount listed, verified 2026-06-27"
@@ -89,6 +91,12 @@ func Seed(ctx context.Context, conn *sql.DB) error {
 		{Model: "deepseek-reasoner", NormalizedModel: "deepseek-reasoner", InputPer1M: 0.55, CachedInputPer1M: 0.14, OutputPer1M: 2.19, Source: deepseekPricing, EffectiveFrom: verified},
 		{Model: "deepseek-v4-flash", NormalizedModel: "deepseek-v4-flash", InputPer1M: 0.14, CachedInputPer1M: 0.0028, OutputPer1M: 0.28, Source: deepseekV4Pricing, EffectiveFrom: verified},
 		{Model: "deepseek-v4-pro", NormalizedModel: "deepseek-v4-pro", InputPer1M: 0.435, CachedInputPer1M: 0.003625, OutputPer1M: 0.87, Source: deepseekV4Pricing, EffectiveFrom: verified},
+
+		// Z.AI / GLM.
+		{Model: "glm-5.2", NormalizedModel: "glm-5.2", InputPer1M: 1.40, CachedInputPer1M: 0.26, OutputPer1M: 4.40, Source: zaiPricing, EffectiveFrom: verified},
+
+		// Moonshot AI / Kimi.
+		{Model: "kimi-k2.6", NormalizedModel: "kimi-k2.6", InputPer1M: 0.95, CachedInputPer1M: 0.16, OutputPer1M: 4.00, Source: kimiPricing, EffectiveFrom: verified},
 
 		// Mistral.
 		{Model: "mistral-medium-latest", NormalizedModel: "mistral-medium-latest", InputPer1M: 1.50, CachedInputPer1M: 0.15, OutputPer1M: 7.50, Source: mistralPricing, EffectiveFrom: verified},
@@ -173,11 +181,17 @@ func NormalizeModel(value string) string {
 	} {
 		normalized = strings.TrimPrefix(normalized, prefix)
 	}
+	if strings.HasPrefix(normalized, "gpt") && len(normalized) > 3 && normalized[3] >= '0' && normalized[3] <= '9' {
+		normalized = "gpt-" + normalized[3:]
+	}
 	return normalized
 }
 
 func Compute(conn *sql.DB, usage model.Usage) (*float64, bool) {
-	if usage.Model == "" || usage.Source == "unknown" {
+	if !hasBillableUsage(usage) {
+		return nil, false
+	}
+	if usage.Model == "" || NormalizeModel(usage.Model) == "unknown" {
 		return nil, true
 	}
 	var inputRate, cachedRate, outputRate float64
@@ -195,6 +209,14 @@ func Compute(conn *sql.DB, usage model.Usage) (*float64, bool) {
 	}
 	cost := (float64(uncachedInput)*inputRate + float64(usage.CachedInputTokens)*cachedRate + float64(usage.OutputTokens)*outputRate) / 1_000_000
 	return &cost, false
+}
+
+func hasBillableUsage(usage model.Usage) bool {
+	return usage.InputTokens > 0 ||
+		usage.CachedInputTokens > 0 ||
+		usage.OutputTokens > 0 ||
+		usage.ReasoningOutputTokens > 0 ||
+		usage.TotalTokens > 0
 }
 
 func List(ctx context.Context, conn *sql.DB) ([]model.PricingModel, error) {

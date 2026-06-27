@@ -438,8 +438,10 @@ func (s *Service) totalCost(ctx context.Context) (*float64, int, error) {
 			unpriced++
 			continue
 		}
-		total += *cost
-		hasCost = true
+		if cost != nil {
+			total += *cost
+			hasCost = true
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, 0, err
@@ -509,7 +511,7 @@ func (s *Service) dailyCosts(ctx context.Context) (map[string]float64, error) {
 		if err := rows.Scan(&day, &usage.Model, &usage.InputTokens, &usage.CachedInputTokens, &usage.OutputTokens, &usage.ReasoningOutputTokens, &usage.TotalTokens, &usage.Source); err != nil {
 			return nil, err
 		}
-		if cost, unpriced := pricing.Compute(s.conn, usage); !unpriced {
+		if cost, unpriced := pricing.Compute(s.conn, usage); !unpriced && cost != nil {
 			result[day] += *cost
 		}
 	}
@@ -521,7 +523,9 @@ func (s *Service) modelUsage(ctx context.Context) ([]model.ModelUsage, error) {
 		COALESCE(SUM(tu.total_tokens), 0), COALESCE(SUM(tu.input_tokens), 0), COALESCE(SUM(tu.output_tokens), 0),
 		COALESCE(SUM(tu.cached_input_tokens), 0), COALESCE(SUM(tu.reasoning_output_tokens), 0), COALESCE(MAX(tu.source), 'unknown')
 		FROM token_usage tu
-		WHERE tu.owner_kind = 'session'
+		WHERE tu.owner_kind = 'session' AND (
+			tu.input_tokens > 0 OR tu.cached_input_tokens > 0 OR tu.output_tokens > 0 OR tu.reasoning_output_tokens > 0 OR tu.total_tokens > 0
+		)
 		GROUP BY tu.model
 		ORDER BY SUM(tu.total_tokens) DESC`)
 	if err != nil {
@@ -612,7 +616,7 @@ func (s *Service) agentCosts(ctx context.Context) (map[string]float64, map[strin
 		key := sourceKey(kind, name)
 		if cost, isUnpriced := pricing.Compute(s.conn, usage); isUnpriced {
 			unpriced[key] = true
-		} else {
+		} else if cost != nil {
 			costs[key] += *cost
 		}
 	}
