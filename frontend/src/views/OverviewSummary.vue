@@ -4,13 +4,15 @@ import AButton from 'ant-design-vue/es/button'
 import ASpin from 'ant-design-vue/es/spin'
 import Typography from 'ant-design-vue/es/typography'
 import {
+  CheckCircleOutlined,
   ClockCircleOutlined,
   DollarCircleOutlined,
   FolderOpenOutlined,
   FunctionOutlined,
   PlayCircleOutlined,
   SettingOutlined,
-  ToolOutlined
+  ToolOutlined,
+  WarningOutlined
 } from '@ant-design/icons-vue'
 import { formatCost, formatDuration, formatNumber } from '../api'
 import { useOverviewContext } from './overviewContext'
@@ -19,28 +21,69 @@ const ATypographyText = Typography.Text
 
 const { overview, loading, startupIndexing, hasIndexedData, sourcePathDisplay, indexFromOverview } = useOverviewContext()
 
-const derivedMetrics = computed(() => {
+const pricingStatus = computed(() => {
+  const item = overview.value
+  if (!item || item.totalSessions <= 0) {
+    return { label: 'No indexed pricing', tone: 'is-neutral', icon: WarningOutlined }
+  }
+  if ((item.unpricedSessions || 0) > 0) {
+    return { label: `${formatNumber(item.unpricedSessions)} unpriced`, tone: 'is-warning', icon: WarningOutlined }
+  }
+  return { label: 'Pricing covered', tone: 'is-success', icon: CheckCircleOutlined }
+})
+
+const tokenBreakdown = computed(() => [
+  { label: 'Input', value: formatNumber(overview.value?.totalInputTokens) },
+  { label: 'Cached', value: formatNumber(overview.value?.totalCachedInputTokens) },
+  { label: 'Output', value: formatNumber(overview.value?.totalOutputTokens) },
+  { label: 'Reasoning', value: formatNumber(overview.value?.totalReasoningTokens) }
+])
+
+const snapshotCards = computed(() => [
+  {
+    label: 'Sessions',
+    value: formatNumber(overview.value?.totalSessions),
+    note: `${formatDuration(overview.value?.totalWallDurationMs)} wall time`,
+    icon: ClockCircleOutlined,
+    tone: 'metric-primary'
+  },
+  {
+    label: 'Estimated Cost',
+    value: formatCost(overview.value?.estimatedCostUsd),
+    note:
+      (overview.value?.unpricedSessions || 0) > 0
+        ? `${formatNumber(overview.value?.unpricedSessions)} sessions missing pricing`
+        : 'All indexed sessions priced',
+    icon: DollarCircleOutlined,
+    tone: 'metric-warning',
+    warning: (overview.value?.unpricedSessions || 0) > 0
+  },
+  {
+    label: 'Tool Calls',
+    value: formatNumber(overview.value?.totalToolCalls),
+    note: 'Across indexed sessions',
+    icon: ToolOutlined,
+    tone: 'metric-info'
+  },
+  {
+    label: 'Active Time',
+    value: formatDuration(overview.value?.totalActiveDurationMs),
+    note: 'Measured model and tool time',
+    icon: ClockCircleOutlined,
+    tone: 'metric-neutral'
+  }
+])
+
+const efficiencyMetrics = computed(() => {
   const item = overview.value
   if (!item || item.totalSessions <= 0) return []
   const sessions = item.totalSessions
   const inputTokens = Math.max(item.totalInputTokens || 0, 0)
-  const activeHours = (item.totalActiveDurationMs || 0) / 3_600_000
-  const hasCompletePricing = item.estimatedCostUsd !== undefined && item.estimatedCostUsd !== null && item.unpricedSessions === 0
   return [
     {
       label: 'Avg tokens / session',
       value: formatNumber(Math.round((item.totalTokens || 0) / sessions)),
-      note: 'Total tokens divided by sessions'
-    },
-    {
-      label: 'Avg wall / session',
-      value: formatDuration((item.totalWallDurationMs || 0) / sessions),
-      note: 'First to last timestamp'
-    },
-    {
-      label: 'Active share',
-      value: formatPercent((item.totalActiveDurationMs || 0) / Math.max(item.totalWallDurationMs || 0, 1)),
-      note: 'Measured model and tool time'
+      note: 'Total workload size per indexed session'
     },
     {
       label: 'Tools / session',
@@ -50,12 +93,32 @@ const derivedMetrics = computed(() => {
     {
       label: 'Cache hit rate',
       value: formatPercent((item.totalCachedInputTokens || 0) / Math.max(inputTokens, 1)),
-      note: 'Cached input over input tokens'
+      note: `${formatNumber(item.totalCachedInputTokens)} cached input tokens`
     },
     {
       label: 'Output / input',
       value: `${formatRatio((item.totalOutputTokens || 0) / Math.max(inputTokens, 1))}x`,
-      note: 'Output token density'
+      note: 'Response token density'
+    }
+  ]
+})
+
+const timeCostMetrics = computed(() => {
+  const item = overview.value
+  if (!item || item.totalSessions <= 0) return []
+  const sessions = item.totalSessions
+  const activeHours = (item.totalActiveDurationMs || 0) / 3_600_000
+  const hasCompletePricing = item.estimatedCostUsd !== undefined && item.estimatedCostUsd !== null && item.unpricedSessions === 0
+  return [
+    {
+      label: 'Avg wall / session',
+      value: formatDuration((item.totalWallDurationMs || 0) / sessions),
+      note: 'First to last timestamp'
+    },
+    {
+      label: 'Active share',
+      value: formatPercent((item.totalActiveDurationMs || 0) / Math.max(item.totalWallDurationMs || 0, 1)),
+      note: 'Measured model and tool time'
     },
     {
       label: 'Cost / 1K tokens',
@@ -77,7 +140,10 @@ function formatPercent(value: number) {
 
 function formatRatio(value: number) {
   if (!Number.isFinite(value)) return '0'
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(Math.max(0, value))
+  const normalized = Math.max(0, value)
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: normalized > 0 && normalized < 0.1 ? 2 : 1
+  }).format(normalized)
 }
 
 function formatCostPerThousand(cost: number, tokens: number) {
@@ -93,63 +159,85 @@ function formatCostPerThousand(cost: number, tokens: number) {
 
 <template>
   <a-spin :spinning="loading">
-    <section class="metric-strip overview-summary-strip">
-      <div class="metric-strip-item metric-primary">
-        <div class="metric-strip-head">
-          <span class="metric-label">Sessions</span>
-          <ClockCircleOutlined class="metric-strip-icon" />
+    <section class="overview-summary-layout">
+      <div class="overview-snapshot-primary">
+        <div class="overview-snapshot-head">
+          <div>
+            <div class="metric-label">Total Usage</div>
+            <div class="overview-snapshot-caption">
+              {{ formatNumber(overview?.totalSessions) }} indexed sessions
+            </div>
+          </div>
+          <span class="overview-coverage-chip" :class="pricingStatus.tone">
+            <component :is="pricingStatus.icon" />
+            {{ pricingStatus.label }}
+          </span>
         </div>
-        <div class="metric-strip-value">{{ formatNumber(overview?.totalSessions) }}</div>
-        <div class="metric-strip-note">{{ formatDuration(overview?.totalWallDurationMs) }} wall time</div>
-      </div>
-      <div class="metric-strip-item metric-success">
-        <div class="metric-strip-head">
-          <span class="metric-label">Tokens</span>
-          <FunctionOutlined class="metric-strip-icon" />
-        </div>
-        <div class="metric-strip-value">{{ formatNumber(overview?.totalTokens) }}</div>
-        <div class="metric-strip-note">
-          {{ formatNumber(overview?.totalInputTokens) }} in / {{ formatNumber(overview?.totalOutputTokens) }} out /
-          {{ formatNumber(overview?.totalCachedInputTokens) }} cached
-        </div>
-      </div>
-      <div class="metric-strip-item metric-warning">
-        <div class="metric-strip-head">
-          <span class="metric-label">Estimated Cost</span>
-          <DollarCircleOutlined class="metric-strip-icon" />
-        </div>
-        <div class="metric-strip-value">{{ formatCost(overview?.estimatedCostUsd) }}</div>
-        <div class="metric-strip-note" :class="{ 'metric-note-warning': (overview?.unpricedSessions || 0) > 0 }">
-          {{ formatNumber(overview?.unpricedSessions) }} sessions missing pricing
+        <div class="overview-snapshot-value">{{ formatNumber(overview?.totalTokens) }}</div>
+        <div class="overview-snapshot-unit">tokens</div>
+        <div class="overview-token-breakdown">
+          <div v-for="item in tokenBreakdown" :key="item.label" class="overview-token-item">
+            <span>{{ item.label }}</span>
+            <strong>{{ item.value }}</strong>
+          </div>
         </div>
       </div>
-      <div class="metric-strip-item metric-info">
-        <div class="metric-strip-head">
-          <span class="metric-label">Tool Calls</span>
-          <ToolOutlined class="metric-strip-icon" />
+
+      <div class="overview-kpi-grid">
+        <div
+          v-for="item in snapshotCards"
+          :key="item.label"
+          class="overview-kpi-card"
+          :class="[item.tone, { 'has-warning': item.warning }]"
+        >
+          <div class="overview-kpi-head">
+            <span class="metric-label">{{ item.label }}</span>
+            <component :is="item.icon" class="metric-icon" />
+          </div>
+          <div class="overview-kpi-value">{{ item.value }}</div>
+          <div class="overview-kpi-note" :class="{ 'metric-note-warning': item.warning }">{{ item.note }}</div>
         </div>
-        <div class="metric-strip-value">{{ formatNumber(overview?.totalToolCalls) }}</div>
-        <div class="metric-strip-note">Across indexed sessions</div>
-      </div>
-      <div class="metric-strip-item metric-neutral">
-        <div class="metric-strip-head">
-          <span class="metric-label">Active Time</span>
-          <ClockCircleOutlined class="metric-strip-icon" />
-        </div>
-        <div class="metric-strip-value">{{ formatDuration(overview?.totalActiveDurationMs) }}</div>
-        <div class="metric-strip-note">Measured model and tool time</div>
       </div>
     </section>
 
-    <section v-if="hasIndexedData" class="info-block overview-derived-block">
-      <div class="info-block-title">Derived Signals</div>
-      <div class="info-block-grid overview-derived-grid">
-        <div v-for="item in derivedMetrics" :key="item.label" class="info-stat">
-          <div class="info-stat-label">{{ item.label }}</div>
-          <div class="info-stat-value">{{ item.value }}</div>
-          <div class="metric-note">{{ item.note }}</div>
+    <section v-if="hasIndexedData" class="overview-signal-layout">
+      <section class="panel overview-signal-panel">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Efficiency</h2>
+            <div class="panel-kicker">Session scale, cache reuse, and tool depth</div>
+          </div>
+          <FunctionOutlined class="panel-header-icon" />
         </div>
-      </div>
+        <div class="overview-signal-list">
+          <div v-for="item in efficiencyMetrics" :key="item.label" class="overview-signal-item">
+            <div>
+              <div class="overview-signal-label">{{ item.label }}</div>
+              <div class="overview-signal-note">{{ item.note }}</div>
+            </div>
+            <strong>{{ item.value }}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel overview-signal-panel">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Time & Cost</h2>
+            <div class="panel-kicker">Duration, active share, and spend density</div>
+          </div>
+          <DollarCircleOutlined class="panel-header-icon" />
+        </div>
+        <div class="overview-signal-list">
+          <div v-for="item in timeCostMetrics" :key="item.label" class="overview-signal-item">
+            <div>
+              <div class="overview-signal-label">{{ item.label }}</div>
+              <div class="overview-signal-note">{{ item.note }}</div>
+            </div>
+            <strong>{{ item.value }}</strong>
+          </div>
+        </div>
+      </section>
     </section>
 
     <div v-if="!loading && !hasIndexedData" class="empty-callout overview-empty-callout">
