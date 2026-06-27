@@ -33,7 +33,7 @@ The current version supports:
 - session duration from local JSONL timestamps;
 - tool-call statistics from local session events;
 - SQLite indexing;
-- local desktop UI.
+- local browser UI.
 
 ## Non-goals For MVP
 

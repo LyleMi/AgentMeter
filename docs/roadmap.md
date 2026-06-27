@@ -21,13 +21,14 @@ Deliverables:
 - parser fixtures with redacted JSONL samples
 - initial parser tests
 
-## Phase 1: Wails Scaffold
+## Phase 1: Local Web Scaffold
 
 Goal: replace the exploratory prototype with the intended application shape.
 
 Tasks:
 
-- Create Wails project using Vue + TypeScript.
+- Create Vue + TypeScript frontend with Vite.
+- Create Go HTTP backend.
 - Set Go module name to AgentMeter.
 - Add SQLite dependency.
 - Add migration runner.
@@ -36,7 +37,7 @@ Tasks:
 
 Deliverables:
 
-- runnable Wails app;
+- runnable local web app;
 - empty shell UI;
 - local SQLite database creation.
 
@@ -90,9 +91,9 @@ Goal: make cross-platform usage easy.
 
 Tasks:
 
-- Windows app build.
-- macOS app build.
-- Linux app build.
+- Windows portable build.
+- macOS portable build.
+- Linux portable build.
 - Installer or portable zip.
 - Local database path decision.
 - Log file location.

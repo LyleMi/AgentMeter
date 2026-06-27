@@ -75,7 +75,7 @@ try {
             Start-Process $Target
         } -ArgumentList $url | Out-Null
     }
-    go run . -http ":$Port"
+    go run . -http "127.0.0.1:$Port"
 } finally {
     Pop-Location
 }

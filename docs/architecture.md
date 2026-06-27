@@ -2,27 +2,20 @@
 
 ## Decision
 
-Use Wails with a Go backend, SQLite storage, and Vue 3 + Vite + TypeScript for
-the frontend.
+Use a Go HTTP backend, SQLite storage, and a Vue 3 + Vite + TypeScript frontend.
 
-## Why Wails
+## Why Go HTTP + Vite
 
-AgentMeter is primarily a local Go data application with a desktop UI. Wails
-keeps the architecture simple:
-
-```text
-Vue/Vite UI -> Wails bridge -> Go services -> SQLite
-```
-
-Tauri would be a stronger fit for a Rust-first desktop app. With a Go backend,
-Tauri would likely require a Go sidecar or an extra local server:
+AgentMeter is primarily a local Go data application with a browser-based
+dashboard. A single local HTTP API keeps the runtime model explicit:
 
 ```text
-Vue/Vite UI -> Tauri/Rust shell -> Go sidecar/server -> SQLite
+Vue/Vite UI -> local HTTP API -> Go services -> SQLite
 ```
 
-That adds process management, packaging, lifecycle, and logging complexity that
-does not help the MVP.
+During development, Vite serves the frontend and proxies `/api` to the Go
+backend. For local production use, the Go server can serve the built
+`frontend/dist` assets from disk.
 
 ## High-level Components
 
@@ -125,6 +118,6 @@ Session Detail should show:
 
 - AgentMeter must not modify source session files.
 - AgentMeter must not upload data.
-- UI should bind to local desktop runtime, not a public interface.
+- The HTTP server should bind to `127.0.0.1` by default, not a public interface.
 - Indexing should be incremental.
 - Raw parse errors should be visible but non-fatal.

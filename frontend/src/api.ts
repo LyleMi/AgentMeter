@@ -186,15 +186,6 @@ export interface SessionFilters {
   offset?: number
 }
 
-async function call<T>(method: string, args: unknown[], http: () => Promise<T>): Promise<T> {
-  const bridge = window.go?.app?.App
-  const action = bridge?.[method]
-  if (action) {
-    return (await action(...args)) as T
-  }
-  return http()
-}
-
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
@@ -208,16 +199,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  getSettings: () => call<Settings>('GetSettings', [], () => request('/api/settings')),
+  getSettings: () => request<Settings>('/api/settings'),
   saveSourceSettings: (sourceEntries: SourceEntry[]) =>
-    call<Settings>('SaveSourceSettings', [sourceEntries], () =>
-      request('/api/settings', { method: 'POST', body: JSON.stringify({ sourceEntries }) })
-    ),
+    request<Settings>('/api/settings', { method: 'POST', body: JSON.stringify({ sourceEntries }) }),
   indexNow: (rebuild = false) =>
-    call<IndexResult>('IndexNow', [rebuild], () =>
-      request('/api/index', { method: 'POST', body: JSON.stringify({ rebuild }) })
-    ),
-  getOverview: () => call<Overview>('GetOverview', [], () => request('/api/overview')),
+    request<IndexResult>('/api/index', { method: 'POST', body: JSON.stringify({ rebuild }) }),
+  getOverview: () => request<Overview>('/api/overview'),
   listSessions: (filters: SessionFilters = {}) => {
     const params = new URLSearchParams()
     if (filters.search) params.set('search', filters.search)
@@ -225,11 +212,11 @@ export const api = {
     if (filters.agent) params.set('agent', filters.agent)
     if (filters.limit) params.set('limit', String(filters.limit))
     if (filters.offset) params.set('offset', String(filters.offset))
-    return call<Session[]>('ListSessions', [filters], () => request(`/api/sessions?${params}`))
+    return request<Session[]>(`/api/sessions?${params}`)
   },
-  getSessionDetail: (id: number) => call<SessionDetail>('GetSessionDetail', [id], () => request(`/api/sessions/${id}`)),
-  getTools: () => call<ToolStat[]>('GetTools', [], () => request('/api/tools')),
-  getPricingModels: () => call<PricingModel[]>('GetPricingModels', [], () => request('/api/pricing'))
+  getSessionDetail: (id: number) => request<SessionDetail>(`/api/sessions/${id}`),
+  getTools: () => request<ToolStat[]>('/api/tools'),
+  getPricingModels: () => request<PricingModel[]>('/api/pricing')
 }
 
 export interface ToolStat {

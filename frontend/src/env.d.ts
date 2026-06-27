@@ -3,15 +3,3 @@ declare module '*.vue' {
   const component: DefineComponent<Record<string, never>, Record<string, never>, unknown>
   export default component
 }
-
-declare global {
-  interface Window {
-    go?: {
-      app?: {
-        App?: Record<string, (...args: unknown[]) => Promise<unknown>>
-      }
-    }
-  }
-}
-
-export {}

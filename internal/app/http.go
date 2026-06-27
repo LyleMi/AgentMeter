@@ -1,7 +1,6 @@
 package app
 
 import (
-	"embed"
 	"encoding/json"
 	"io/fs"
 	"net/http"
@@ -11,7 +10,7 @@ import (
 	"AgentMeter/internal/model"
 )
 
-func RegisterHTTPHandlers(mux *http.ServeMux, service *App, assets embed.FS) {
+func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 	writeJSON := func(w http.ResponseWriter, value any, err error) {
 		w.Header().Set("Content-Type", "application/json")
 		if err != nil {
@@ -80,19 +79,23 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, assets embed.FS) {
 		writeJSON(w, value, err)
 	})
 
-	staticFS, err := fs.Sub(assets, "frontend/dist")
-	if err == nil {
-		fileServer := http.FileServer(http.FS(staticFS))
+	if _, err := fs.Stat(staticFS, "index.html"); err != nil {
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			path := strings.TrimPrefix(r.URL.Path, "/")
-			if path == "" {
-				fileServer.ServeHTTP(w, r)
-				return
-			}
-			if _, err := fs.Stat(staticFS, path); err != nil {
-				r.URL.Path = "/"
-			}
-			fileServer.ServeHTTP(w, r)
+			http.Error(w, "frontend build not found; run `cd frontend && npm run build`, or use `npm run dev` during development", http.StatusServiceUnavailable)
 		})
+		return
 	}
+
+	fileServer := http.FileServer(http.FS(staticFS))
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		if path == "" {
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		if _, err := fs.Stat(staticFS, path); err != nil {
+			r.URL.Path = "/"
+		}
+		fileServer.ServeHTTP(w, r)
+	})
 }

@@ -4,6 +4,7 @@ Thumbs.db
 bin/
 build/bin/
 /dist/
+tmp/
 
 *.exe
 *.test

@@ -15,7 +15,7 @@ AgentMeter is a local-first dashboard for understanding coding-agent session usa
 tokens, estimated cost, timing, session history, and tool-call behavior.
 
 It reads local agent JSONL session files, indexes them into SQLite, and shows the data
-in a private desktop UI. No proxy, no cloud service, no telemetry.
+in a private local browser UI. No proxy, no cloud service, no telemetry.
 
 ## Why AgentMeter
 
@@ -40,7 +40,7 @@ can actually use:
 - Tool-call analytics with call counts, success/failure counts, and durations.
 - Incremental indexing based on path, size, modified time, and content hash.
 - Built-in pricing registry with unknown models clearly marked as `unpriced`.
-- Local HTTP mode for development or use without the Wails CLI.
+- Local Go HTTP server with a Vue 3 + Vite frontend.
 
 ## Privacy Model
 
@@ -75,7 +75,6 @@ Requirements:
 
 - Go matching the version in `go.mod`
 - Node.js and npm
-- Wails CLI is optional
 
 Recommended local start:
 
@@ -102,7 +101,7 @@ npm ci
 npm run build
 cd ..
 
-go run . -http :34115
+go run . -http 127.0.0.1:34115
 ```
 
 Open:
@@ -111,11 +110,24 @@ Open:
 http://127.0.0.1:34115
 ```
 
-If the Wails CLI is installed, you can also run the desktop app in development
-mode:
+For frontend development with Vite hot module reload, run the backend and
+frontend dev server in separate terminals:
 
 ```powershell
-wails dev
+go run . -http 127.0.0.1:34115
+```
+
+```powershell
+cd frontend
+npm run dev
+```
+
+Open `http://127.0.0.1:5173`. Vite proxies `/api` requests to the Go backend.
+
+For Go backend auto-restart, install Air and run this instead of `go run`:
+
+```powershell
+air -c .air.toml
 ```
 
 ## How It Works
