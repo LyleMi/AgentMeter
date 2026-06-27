@@ -2,10 +2,14 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"AgentMeter/internal/db"
 	"AgentMeter/internal/model"
@@ -187,6 +191,35 @@ func TestSaveSourceSettingsKeepsDisabledEntriesOutOfActivePaths(t *testing.T) {
 	}
 	if strings.Contains(settings.SourcePath, disabled) {
 		t.Fatalf("disabled source leaked into sourcePath: %q", settings.SourcePath)
+	}
+}
+
+func TestPrivacyCodexHTTPApplyEmptyBodyAppliesAll(t *testing.T) {
+	codexHome := filepath.Join(t.TempDir(), "codex-home")
+	t.Setenv("CODEX_HOME", codexHome)
+
+	mux := http.NewServeMux()
+	RegisterHTTPHandlers(mux, &App{}, fstest.MapFS{})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/privacy/codex/apply", nil)
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var result model.PrivacyConfigApplyResult
+	if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if !result.Status.Exists {
+		t.Fatalf("status should report created config: %#v", result.Status)
+	}
+	if len(result.Changed) == 0 {
+		t.Fatal("empty body should apply all supported settings")
+	}
+	if _, err := os.Stat(filepath.Join(codexHome, "config.toml")); err != nil {
+		t.Fatal(err)
 	}
 }
 

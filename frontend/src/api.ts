@@ -242,6 +242,51 @@ export interface Settings {
   lastIndexResult?: IndexResult
 }
 
+export interface PrivacyConfigSummary {
+  score: number
+  total: number
+  hardened: number
+  attention: number
+  implicit: number
+}
+
+export interface PrivacyConfigSetting {
+  id: string
+  group: string
+  title: string
+  description: string
+  key: string
+  desiredValue: unknown
+  currentValue: unknown
+  status: string
+  impact: string
+  canApply: boolean
+}
+
+export interface PrivacyConfigStatus {
+  target: string
+  name: string
+  configPath: string
+  exists: boolean
+  summary: PrivacyConfigSummary
+  settings: PrivacyConfigSetting[]
+  warnings: string[]
+}
+
+export interface PrivacyConfigChanged {
+  id: string
+  key: string
+  before: unknown
+  after: unknown
+}
+
+export interface PrivacyConfigApplyResult {
+  status: PrivacyConfigStatus
+  changed: PrivacyConfigChanged[]
+  backupPath?: string
+  warnings: string[]
+}
+
 export interface SessionFilters {
   search?: string
   model?: string
@@ -289,6 +334,12 @@ export const api = {
   getSettings: () => request<Settings>('/api/settings'),
   saveSourceSettings: (sourceEntries: SourceEntry[]) =>
     request<Settings>('/api/settings', { method: 'POST', body: JSON.stringify({ sourceEntries }) }),
+  getCodexPrivacy: () => request<PrivacyConfigStatus>('/api/privacy/codex'),
+  applyCodexPrivacy: (settingIds: string[]) =>
+    request<PrivacyConfigApplyResult>('/api/privacy/codex/apply', {
+      method: 'POST',
+      body: JSON.stringify({ settingIds })
+    }),
   indexNow: (rebuild = false) =>
     request<IndexResult>('/api/index', { method: 'POST', body: JSON.stringify({ rebuild }) }),
   getOverview: () => request<Overview>('/api/overview'),

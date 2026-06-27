@@ -2,6 +2,8 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"io/fs"
 	"net/http"
 	"strconv"
@@ -23,6 +25,21 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 
 	mux.HandleFunc("GET /api/settings", func(w http.ResponseWriter, r *http.Request) {
 		value, err := service.GetSettings()
+		writeJSON(w, value, err)
+	})
+	mux.HandleFunc("GET /api/privacy/codex", func(w http.ResponseWriter, r *http.Request) {
+		value, err := service.GetCodexPrivacyConfig()
+		writeJSON(w, value, err)
+	})
+	mux.HandleFunc("POST /api/privacy/codex/apply", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			SettingIDs []string `json:"settingIds"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+			writeJSON(w, nil, err)
+			return
+		}
+		value, err := service.ApplyCodexPrivacyConfig(body.SettingIDs)
 		writeJSON(w, value, err)
 	})
 	mux.HandleFunc("POST /api/settings", func(w http.ResponseWriter, r *http.Request) {

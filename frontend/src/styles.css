@@ -1995,6 +1995,89 @@ body {
   margin-top: 3px;
 }
 
+.privacy-boundary {
+  border-color: #bae6fd;
+  background: #f0f9ff;
+}
+
+.privacy-score strong {
+  font-size: 16px;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+}
+
+.privacy-settings-table .ant-table-tbody > tr.privacy-row-attention > td {
+  background: #fffdf5;
+}
+
+.privacy-settings-table .ant-table-tbody > tr.privacy-row-attention:hover > td {
+  background: #fff8e1 !important;
+}
+
+.privacy-setting-cell {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.privacy-setting-head {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+
+.privacy-setting-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--am-text);
+  font-weight: 680;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.privacy-setting-description,
+.privacy-impact {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--am-muted);
+  font-size: 12px;
+  line-height: 18px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.privacy-value {
+  display: block;
+  max-width: 100%;
+}
+
+.privacy-change-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.privacy-change-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.4fr) minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  padding: 7px 8px;
+  color: var(--am-text-soft);
+  font-size: 12px;
+  background: #ffffff;
+  border: 1px solid var(--am-border-subtle);
+  border-radius: var(--am-radius-sm);
+}
+
+.privacy-change-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .status-number-cell {
   display: inline-flex;
   align-items: center;

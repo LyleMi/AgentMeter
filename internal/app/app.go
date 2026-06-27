@@ -17,6 +17,7 @@ import (
 	"AgentMeter/internal/model"
 	"AgentMeter/internal/platform"
 	"AgentMeter/internal/pricing"
+	"AgentMeter/internal/privacy"
 	"AgentMeter/internal/query"
 )
 
@@ -452,6 +453,14 @@ func (a *App) GetPricingModels() ([]model.PricingModel, error) {
 		return nil, err
 	}
 	return pricing.List(a.ctx, a.conn)
+}
+
+func (a *App) GetCodexPrivacyConfig() (model.PrivacyConfigStatus, error) {
+	return privacy.NewCodexAdapter().Status()
+}
+
+func (a *App) ApplyCodexPrivacyConfig(settingIDs []string) (model.PrivacyConfigApplyResult, error) {
+	return privacy.NewCodexAdapter().Apply(settingIDs)
 }
 
 func (a *App) ensureReady() error {

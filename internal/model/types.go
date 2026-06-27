@@ -322,3 +322,48 @@ type AuditFindingFilters struct {
 	Limit       int    `json:"limit"`
 	Offset      int    `json:"offset"`
 }
+
+type PrivacyConfigStatus struct {
+	Target     string                 `json:"target"`
+	Name       string                 `json:"name"`
+	ConfigPath string                 `json:"configPath"`
+	Exists     bool                   `json:"exists"`
+	Summary    PrivacyConfigSummary   `json:"summary"`
+	Settings   []PrivacyConfigSetting `json:"settings"`
+	Warnings   []string               `json:"warnings"`
+}
+
+type PrivacyConfigSummary struct {
+	Score     int `json:"score"`
+	Total     int `json:"total"`
+	Hardened  int `json:"hardened"`
+	Attention int `json:"attention"`
+	Implicit  int `json:"implicit"`
+}
+
+type PrivacyConfigSetting struct {
+	ID           string `json:"id"`
+	Group        string `json:"group"`
+	Title        string `json:"title"`
+	Description  string `json:"description"`
+	Key          string `json:"key"`
+	DesiredValue any    `json:"desiredValue"`
+	CurrentValue any    `json:"currentValue"`
+	Status       string `json:"status"`
+	Impact       string `json:"impact"`
+	CanApply     bool   `json:"canApply"`
+}
+
+type PrivacyConfigChange struct {
+	ID     string `json:"id"`
+	Key    string `json:"key"`
+	Before any    `json:"before"`
+	After  any    `json:"after"`
+}
+
+type PrivacyConfigApplyResult struct {
+	Status     PrivacyConfigStatus   `json:"status"`
+	Changed    []PrivacyConfigChange `json:"changed"`
+	BackupPath string                `json:"backupPath"`
+	Warnings   []string              `json:"warnings"`
+}

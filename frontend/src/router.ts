@@ -35,7 +35,8 @@ const router = createRouter({
       children: [
         { path: 'source', component: () => import('./views/SettingsSource.vue') },
         { path: 'database', component: () => import('./views/SettingsDatabase.vue') },
-        { path: 'price', component: () => import('./views/SettingsPrice.vue') }
+        { path: 'price', component: () => import('./views/SettingsPrice.vue') },
+        { path: 'privacy', component: () => import('./views/SettingsPrivacy.vue') }
       ]
     }
   ]
