@@ -68,6 +68,62 @@ func TestToolCallsIncludeRawEventsAndSessionContext(t *testing.T) {
 	assertToolCallDetail(t, detail.ToolCalls[0], sessionID, startEventID, endEventID)
 }
 
+func TestToolCallsFiltersByAgentTimeAndSortsByDuration(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	insertToolCallFixture(t, conn, "codex", "Codex", now, time.Second, "shell_command")
+	middleID := insertToolCallFixture(t, conn, "codex", "Codex", now.Add(time.Hour), 2*time.Second, "read_file")
+	insertToolCallFixture(t, conn, "claude", "Claude Code", now.Add(2*time.Hour), 5*time.Second, "Bash")
+
+	service := New(conn)
+	calls, err := service.ToolCalls(ctx, model.ToolCallFilters{Agent: "codex", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("codex calls = %d", len(calls))
+	}
+	for _, call := range calls {
+		if call.AgentKind != "codex" {
+			t.Fatalf("agent filter returned %+v", call)
+		}
+	}
+
+	calls, err = service.ToolCalls(ctx, model.ToolCallFilters{
+		StartedFrom: db.FormatTime(now.Add(30 * time.Minute)),
+		StartedTo:   db.FormatTime(now.Add(90 * time.Minute)),
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 || calls[0].ID != middleID {
+		t.Fatalf("time filtered calls = %+v", calls)
+	}
+
+	calls, err = service.ToolCalls(ctx, model.ToolCallFilters{Sort: "duration_desc", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 3 || calls[0].DurationMS != 5000 || calls[1].DurationMS != 2000 || calls[2].DurationMS != 1000 {
+		t.Fatalf("duration desc calls = %+v", calls)
+	}
+
+	calls, err = service.ToolCalls(ctx, model.ToolCallFilters{Sort: "duration_asc", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 3 || calls[0].DurationMS != 1000 || calls[1].DurationMS != 2000 || calls[2].DurationMS != 5000 {
+		t.Fatalf("duration asc calls = %+v", calls)
+	}
+}
+
 func assertToolCallDetail(t *testing.T, call model.ToolCall, sessionID, startEventID, endEventID int64) {
 	t.Helper()
 	if call.SessionID != sessionID || call.SessionKey != "session-key" || call.ProjectPath != "/workspace/project" {
@@ -82,6 +138,29 @@ func assertToolCallDetail(t *testing.T, call model.ToolCall, sessionID, startEve
 	if call.RawStartEventJSON == "" || call.RawEndEventJSON == "" {
 		t.Fatalf("raw event json missing = %+v", call)
 	}
+}
+
+func insertToolCallFixture(t *testing.T, conn *sql.DB, kind, name string, started time.Time, duration time.Duration, toolName string) int64 {
+	t.Helper()
+	key := kind + "-" + started.Format("20060102150405")
+	sourceID := insertRow(t, conn, `INSERT INTO sources
+		(kind, name, root_path, sessions_path, platform, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		kind, name, "/workspace", "/workspace/"+key+"/sessions", "test", db.FormatTime(started), db.FormatTime(started))
+	sourceFileID := insertRow(t, conn, `INSERT INTO source_files
+		(source_id, path, size_bytes, modified_at, content_hash, last_scanned_at, scan_status, error)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		sourceID, "/workspace/"+key+"/run.jsonl", 128, db.FormatTime(started), "hash-"+key, db.FormatTime(started), "indexed", "")
+	sessionID := insertRow(t, conn, `INSERT INTO sessions
+		(source_id, source_file_id, session_key, codex_session_id, project_path, model, model_provider, originator, thread_source, agent_nickname, agent_role,
+		 started_at, ended_at, wall_duration_ms, active_duration_ms, model_duration_ms, tool_duration_ms, idle_duration_ms, event_count, parse_status)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		sourceID, sourceFileID, "session-"+key, "codex-"+key, "/workspace/project", "gpt-5", "openai", "cli", "local", "", "",
+		db.FormatTime(started), db.FormatTime(started.Add(duration)), duration.Milliseconds(), duration.Milliseconds(), 0, duration.Milliseconds(), 0, 1, "ok")
+	return insertRow(t, conn, `INSERT INTO tool_calls
+		(session_id, started_at, ended_at, duration_ms, tool_name, status, input_summary, output_summary, error, raw_event_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		sessionID, db.FormatTime(started), db.FormatTime(started.Add(duration)), duration.Milliseconds(), toolName, "completed", "input", "output", "", 0)
 }
 
 func insertRow(t *testing.T, conn *sql.DB, query string, args ...any) int64 {

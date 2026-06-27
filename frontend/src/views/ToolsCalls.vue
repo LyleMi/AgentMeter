@@ -10,19 +10,27 @@ import Typography from 'ant-design-vue/es/typography'
 import { EyeOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import ToolCallDetailDrawer from '../components/ToolCallDetailDrawer.vue'
 import ToolInputInline from '../components/ToolInputInline.vue'
-import { api, formatDateTime, formatDuration, formatNumber, sessionLabel, type ToolCall, type ToolStat } from '../api'
+import { api, formatDateTime, formatDuration, formatNumber, sessionLabel, type AgentUsage, type ToolCall, type ToolStat } from '../api'
 
 const ATable = AntTable as unknown as DefineComponent
 const ATypographyText = Typography.Text
+const DEFAULT_SORT = 'recent'
+type ToolCallSort = typeof DEFAULT_SORT | 'duration_desc' | 'duration_asc'
 
 const route = useRoute()
 const router = useRouter()
 const loading = ref(true)
 const callLoading = ref(true)
 const tools = ref<ToolStat[]>([])
+const agents = ref<AgentUsage[]>([])
 const toolCalls = ref<ToolCall[]>([])
-const toolFilter = ref<string | undefined>(routeToolQuery())
+const toolFilter = ref<string | undefined>(routeStringQuery('tool'))
+const agentFilter = ref<string | undefined>(routeStringQuery('agent'))
+const fromFilter = ref(routeDateTimeQuery('from'))
+const toFilter = ref(routeDateTimeQuery('to'))
+const sortFilter = ref<ToolCallSort>(routeSortQuery())
 const selectedToolCall = ref<ToolCall | null>(null)
+let applyingRouteUpdate = false
 
 const callColumns = [
   { title: 'Started', dataIndex: 'startedAt', key: 'startedAt', width: 140 },
@@ -36,9 +44,23 @@ const callColumns = [
 ]
 
 const toolOptions = computed(() => tools.value.map((item) => ({ value: item.toolName, label: item.toolName || 'unknown' })))
+const agentOptions = computed(() => {
+  const values = new Map<string, string>()
+  for (const item of agents.value) {
+    if (item.agentKind) values.set(item.agentKind, item.agentName || item.agentKind)
+  }
+  return [...values.entries()].sort((left, right) => left[1].localeCompare(right[1])).map(([value, label]) => ({ value, label }))
+})
+const sortOptions = [
+  { value: DEFAULT_SORT, label: 'Recent first' },
+  { value: 'duration_desc', label: 'Duration high to low' },
+  { value: 'duration_asc', label: 'Duration low to high' }
+]
+const hasActiveFilters = computed(() => Boolean(toolFilter.value || agentFilter.value || fromFilter.value || toFilter.value))
 const toolCallCountText = computed(() => {
   const visible = formatNumber(toolCalls.value.length)
-  if (toolFilter.value) return `${visible} ${toolFilter.value} calls`
+  if (hasActiveFilters.value) return `${visible} matching calls`
+  if (sortFilter.value !== DEFAULT_SORT) return `${visible} sorted calls`
   return `${visible} recent calls`
 })
 
@@ -46,8 +68,9 @@ async function load() {
   loading.value = true
   callLoading.value = true
   try {
-    const [nextTools, nextCalls] = await Promise.all([api.getTools(), api.listToolCalls({ tool: toolFilter.value, limit: 500 })])
+    const [nextTools, overview, nextCalls] = await Promise.all([api.getTools(), api.getOverview(), api.listToolCalls(currentToolCallFilters())])
     tools.value = nextTools || []
+    agents.value = overview?.agentUsage || []
     toolCalls.value = nextCalls || []
   } finally {
     loading.value = false
@@ -58,32 +81,100 @@ async function load() {
 async function loadToolCalls() {
   callLoading.value = true
   try {
-    toolCalls.value = (await api.listToolCalls({ tool: toolFilter.value, limit: 500 })) || []
+    toolCalls.value = (await api.listToolCalls(currentToolCallFilters())) || []
   } finally {
     callLoading.value = false
   }
 }
 
-function routeToolQuery() {
-  const value = route.query.tool
+function routeStringQuery(key: string) {
+  const value = route.query[key]
   return typeof value === 'string' && value ? value : undefined
 }
 
-function updateToolQuery() {
-  const nextTool = toolFilter.value || undefined
-  if (routeToolQuery() === nextTool) {
-    loadToolCalls()
-    return
-  }
-  const query = { ...route.query }
-  if (nextTool) query.tool = nextTool
-  else delete query.tool
-  router.replace({ path: '/tools/calls', query })
+function routeDateTimeQuery(key: string) {
+  const value = routeStringQuery(key)
+  if (!value) return ''
+  return value.endsWith('Z') ? toLocalDateTimeInputValue(value) : value
 }
 
-function resetToolFilter() {
+function routeSortQuery(): ToolCallSort {
+  const value = routeStringQuery('sort')
+  if (value === 'duration_desc' || value === 'duration_asc') return value
+  return DEFAULT_SORT
+}
+
+function toLocalDateTimeInputValue(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function toQueryDateTime(value: string, boundary: 'start' | 'end' = 'start') {
+  if (!value) return undefined
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return undefined
+  if (boundary === 'end' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) {
+    date.setSeconds(59, 999)
+  }
+  return date.toISOString()
+}
+
+function currentToolCallFilters() {
+  return {
+    tool: toolFilter.value,
+    agent: agentFilter.value,
+    from: toQueryDateTime(fromFilter.value),
+    to: toQueryDateTime(toFilter.value, 'end'),
+    sort: sortFilter.value === DEFAULT_SORT ? undefined : sortFilter.value,
+    limit: 500
+  }
+}
+
+function setQueryValue(query: Record<string, string>, key: string, value?: string) {
+  if (value) query[key] = value
+  else delete query[key]
+}
+
+function currentRouteQuery() {
+  const query: Record<string, string> = {}
+  for (const [key, value] of Object.entries(route.query)) {
+    if (typeof value === 'string') query[key] = value
+  }
+  setQueryValue(query, 'tool', toolFilter.value)
+  setQueryValue(query, 'agent', agentFilter.value)
+  setQueryValue(query, 'from', fromFilter.value || undefined)
+  setQueryValue(query, 'to', toFilter.value || undefined)
+  setQueryValue(query, 'sort', sortFilter.value === DEFAULT_SORT ? undefined : sortFilter.value)
+  return query
+}
+
+async function updateFilters() {
+  applyingRouteUpdate = true
+  try {
+    await router.replace({ path: '/tools/calls', query: currentRouteQuery() })
+  } finally {
+    applyingRouteUpdate = false
+  }
+  loadToolCalls()
+}
+
+function syncFiltersFromRoute() {
+  toolFilter.value = routeStringQuery('tool')
+  agentFilter.value = routeStringQuery('agent')
+  fromFilter.value = routeDateTimeQuery('from')
+  toFilter.value = routeDateTimeQuery('to')
+  sortFilter.value = routeSortQuery()
+}
+
+function resetFilters() {
   toolFilter.value = undefined
-  updateToolQuery()
+  agentFilter.value = undefined
+  fromFilter.value = ''
+  toFilter.value = ''
+  sortFilter.value = DEFAULT_SORT
+  updateFilters()
 }
 
 function normalizedStatus(status?: string) {
@@ -131,11 +222,10 @@ function openSession(id: number) {
 }
 
 watch(
-  () => route.query.tool,
+  () => [route.query.tool, route.query.agent, route.query.from, route.query.to, route.query.sort],
   () => {
-    const nextTool = routeToolQuery()
-    if (toolFilter.value === nextTool) return
-    toolFilter.value = nextTool
+    if (applyingRouteUpdate) return
+    syncFiltersFromRoute()
     loadToolCalls()
   }
 )
@@ -162,9 +252,32 @@ onMounted(load)
             placeholder="Tool"
             :options="toolOptions"
             :loading="loading"
-            @change="updateToolQuery"
+            @change="updateFilters"
           />
-          <a-button @click="resetToolFilter">Reset</a-button>
+          <a-select
+            v-model:value="agentFilter"
+            class="control-medium"
+            allow-clear
+            placeholder="Agent type"
+            :options="agentOptions"
+            :loading="loading"
+            @change="updateFilters"
+          />
+          <label class="inline-field tool-time-filter">
+            <span>From</span>
+            <input v-model="fromFilter" class="native-date-input" type="datetime-local" aria-label="Started from" @change="updateFilters" />
+          </label>
+          <label class="inline-field tool-time-filter">
+            <span>To</span>
+            <input v-model="toFilter" class="native-date-input" type="datetime-local" aria-label="Started to" @change="updateFilters" />
+          </label>
+          <a-select
+            v-model:value="sortFilter"
+            class="control-medium"
+            :options="sortOptions"
+            @change="updateFilters"
+          />
+          <a-button @click="resetFilters">Reset</a-button>
         </div>
         <div class="toolbar-right">
           <a-button @click="load">

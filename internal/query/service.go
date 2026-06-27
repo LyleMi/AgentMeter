@@ -164,6 +164,18 @@ func (s *Service) ToolCalls(ctx context.Context, filters model.ToolCallFilters) 
 		where = append(where, "tc.tool_name = ?")
 		args = append(args, strings.TrimSpace(filters.ToolName))
 	}
+	if strings.TrimSpace(filters.Agent) != "" {
+		where = append(where, "src.kind = ?")
+		args = append(args, strings.TrimSpace(filters.Agent))
+	}
+	if strings.TrimSpace(filters.StartedFrom) != "" {
+		where = append(where, "tc.started_at >= ?")
+		args = append(args, strings.TrimSpace(filters.StartedFrom))
+	}
+	if strings.TrimSpace(filters.StartedTo) != "" {
+		where = append(where, "tc.started_at <= ?")
+		args = append(args, strings.TrimSpace(filters.StartedTo))
+	}
 	limit := filters.Limit
 	if limit <= 0 || limit > 1000 {
 		limit = 500
@@ -172,11 +184,18 @@ func (s *Service) ToolCalls(ctx context.Context, filters model.ToolCallFilters) 
 	if offset < 0 {
 		offset = 0
 	}
+	orderBy := "tc.started_at DESC, tc.id DESC"
+	switch strings.TrimSpace(filters.Sort) {
+	case "duration_desc":
+		orderBy = "tc.duration_ms DESC, tc.started_at DESC, tc.id DESC"
+	case "duration_asc":
+		orderBy = "tc.duration_ms ASC, tc.started_at DESC, tc.id DESC"
+	}
 	args = append(args, limit, offset)
 	query := fmt.Sprintf(`%s
 		WHERE %s
-		ORDER BY tc.started_at DESC, tc.id DESC
-		LIMIT ? OFFSET ?`, toolCallSelect, strings.Join(where, " AND "))
+		ORDER BY %s
+		LIMIT ? OFFSET ?`, toolCallSelect, strings.Join(where, " AND "), orderBy)
 	return s.scanToolCalls(ctx, query, args...)
 }
 

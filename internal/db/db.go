@@ -142,6 +142,8 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_tool_calls_name ON tool_calls(tool_name)`,
+		`CREATE INDEX IF NOT EXISTS idx_tool_calls_started_at ON tool_calls(started_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_tool_calls_duration ON tool_calls(duration_ms DESC)`,
 		`CREATE TABLE IF NOT EXISTS pricing_models (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			model TEXT NOT NULL,

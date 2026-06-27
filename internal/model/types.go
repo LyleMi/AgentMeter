@@ -258,7 +258,11 @@ type SessionFilters struct {
 }
 
 type ToolCallFilters struct {
-	ToolName string `json:"toolName"`
-	Limit    int    `json:"limit"`
-	Offset   int    `json:"offset"`
+	ToolName    string `json:"toolName"`
+	Agent       string `json:"agent"`
+	StartedFrom string `json:"startedFrom"`
+	StartedTo   string `json:"startedTo"`
+	Sort        string `json:"sort"`
+	Limit       int    `json:"limit"`
+	Offset      int    `json:"offset"`
 }

@@ -79,9 +79,13 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		limit, _ := strconv.Atoi(query.Get("limit"))
 		offset, _ := strconv.Atoi(query.Get("offset"))
 		value, err := service.ListToolCalls(model.ToolCallFilters{
-			ToolName: query.Get("tool"),
-			Limit:    limit,
-			Offset:   offset,
+			ToolName:    query.Get("tool"),
+			Agent:       query.Get("agent"),
+			StartedFrom: query.Get("from"),
+			StartedTo:   query.Get("to"),
+			Sort:        query.Get("sort"),
+			Limit:       limit,
+			Offset:      offset,
 		})
 		writeJSON(w, value, err)
 	})

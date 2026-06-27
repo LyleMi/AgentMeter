@@ -207,6 +207,10 @@ export interface SessionFilters {
 
 export interface ToolCallFilters {
   tool?: string
+  agent?: string
+  from?: string
+  to?: string
+  sort?: string
   limit?: number
   offset?: number
 }
@@ -244,6 +248,10 @@ export const api = {
   listToolCalls: (filters: ToolCallFilters = {}) => {
     const params = new URLSearchParams()
     if (filters.tool) params.set('tool', filters.tool)
+    if (filters.agent) params.set('agent', filters.agent)
+    if (filters.from) params.set('from', filters.from)
+    if (filters.to) params.set('to', filters.to)
+    if (filters.sort) params.set('sort', filters.sort)
     if (filters.limit) params.set('limit', String(filters.limit))
     if (filters.offset) params.set('offset', String(filters.offset))
     return request<ToolCall[]>(`/api/tool-calls?${params}`)
