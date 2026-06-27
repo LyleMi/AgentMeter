@@ -355,7 +355,7 @@ func (s *state) index(rebuild bool) command {
 	if rebuild {
 		s.status = "rebuilding index..."
 	} else {
-		s.status = "indexing..."
+		s.status = "updating index..."
 	}
 	return func(ctx context.Context, ch chan<- message) {
 		result, err := s.service.IndexNow(rebuild)

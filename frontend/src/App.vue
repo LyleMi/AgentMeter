@@ -46,6 +46,8 @@ const sourceSummary = computed(() => {
   return sourcePathDisplay.value
 })
 const sidebarToggleLabel = computed(() => (sidebarCollapsed.value ? 'Expand sidebar' : 'Collapse sidebar'))
+const updateIndexHint = 'Scan enabled sources and parse only new or changed JSONL files.'
+const rebuildIndexHint = 'Clear indexed files for enabled sources, then parse every JSONL file again.'
 
 const selectedKeys = computed(() => {
   if (route.path.startsWith('/sessions')) return ['sessions']
@@ -177,18 +179,22 @@ onBeforeUnmount(() => {
             </a-typography-text>
           </div>
           <div class="header-actions">
-            <a-button type="primary" :loading="indexing" @click="indexNow(false)">
-              <template #icon>
-                <PlayCircleOutlined />
-              </template>
-              Index Now
-            </a-button>
-            <a-button :loading="indexing" @click="indexNow(true)">
-              <template #icon>
-                <ReloadOutlined />
-              </template>
-              Rebuild
-            </a-button>
+            <a-tooltip :title="updateIndexHint" placement="bottom">
+              <a-button type="primary" :loading="indexing" @click="indexNow(false)">
+                <template #icon>
+                  <PlayCircleOutlined />
+                </template>
+                Update Index
+              </a-button>
+            </a-tooltip>
+            <a-tooltip :title="rebuildIndexHint" placement="bottom">
+              <a-button :loading="indexing" @click="indexNow(true)">
+                <template #icon>
+                  <ReloadOutlined />
+                </template>
+                Rebuild Index
+              </a-button>
+            </a-tooltip>
           </div>
         </a-layout-header>
 

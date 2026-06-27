@@ -358,7 +358,7 @@ function formatShareWidth(value: number) {
           <template #icon>
             <PlayCircleOutlined />
           </template>
-          Index Now
+          Update Index
         </a-button>
         <a-button @click="$router.push('/settings')">
           <template #icon>

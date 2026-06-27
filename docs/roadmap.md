@@ -56,7 +56,7 @@ Tasks:
 
 Deliverables:
 
-- `Index Now` action;
+- Update index action;
 - session rows in SQLite;
 - parser test coverage.
 

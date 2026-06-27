@@ -118,7 +118,7 @@ home/end   jump within lists
 enter      open selected session detail
 b / esc    return from detail
 r          refresh current screen
-i          index now
+i          update index
 I          rebuild index
 q / ctrl-c quit
 ```

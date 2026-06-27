@@ -23,9 +23,11 @@ http://127.0.0.1:34115
 `go run . -start` serves built frontend assets through the Go server. It is not
 the Vite hot module reload workflow.
 
-On first launch, click **Index Now** in the app. AgentMeter defaults to detected
+On first launch, click **Update Index** in the app. AgentMeter defaults to detected
 local agent homes such as `~/.codex` and `~/.claude`. In **Settings**, enter one
 source root per line when you use multiple agents or keep session logs elsewhere.
+**Update Index** skips unchanged JSONL files; **Rebuild Index** clears indexed
+files for enabled sources and parses every JSONL file again.
 
 ## Data Locations
 

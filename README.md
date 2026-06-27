@@ -60,9 +60,11 @@ Open:
 http://127.0.0.1:34115
 ```
 
-On first launch, click **Index Now** in the app. AgentMeter defaults to detected
+On first launch, click **Update Index** in the app. AgentMeter defaults to detected
 local agent homes such as `~/.codex` and `~/.claude`; you can add more source
-roots in **Settings**.
+roots in **Settings**. **Update Index** scans only new or changed JSONL files;
+**Rebuild Index** clears indexed files for enabled sources and parses them all
+again.
 
 For manual startup, frontend HMR, TUI mode, data locations, and development
 checks, see [Getting Started](docs/getting-started.md).

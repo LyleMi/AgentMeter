@@ -5,16 +5,20 @@ import AInput from 'ant-design-vue/es/input'
 import message from 'ant-design-vue/es/message'
 import ASpin from 'ant-design-vue/es/spin'
 import ATag from 'ant-design-vue/es/tag'
+import Tooltip from 'ant-design-vue/es/tooltip'
 import Typography from 'ant-design-vue/es/typography'
 import { DatabaseOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { api, formatDateTime, formatDuration, formatNumber, type Settings } from '../api'
 import { notifyAppDataChanged } from '../events'
 
+const ATooltip = Tooltip
 const ATypographyText = Typography.Text
 
 const loading = ref(true)
 const indexing = ref(false)
 const settings = ref<Settings | null>(null)
+const updateIndexHint = 'Scan enabled sources and parse only new or changed JSONL files.'
+const rebuildIndexHint = 'Clear indexed files for enabled sources, then parse every JSONL file again.'
 
 const databaseState = computed(() => {
   if (settings.value?.databasePath) return { color: 'success', label: 'Local store' }
@@ -111,18 +115,22 @@ onMounted(load)
 
             <div class="toolbar">
               <div class="toolbar-left">
-                <a-button type="primary" :loading="indexing" @click="index(false)">
-                  <template #icon>
-                    <PlayCircleOutlined />
-                  </template>
-                  Index Now
-                </a-button>
-                <a-button :loading="indexing" @click="index(true)">
-                  <template #icon>
-                    <ReloadOutlined />
-                  </template>
-                  Rebuild Index
-                </a-button>
+                <a-tooltip :title="updateIndexHint">
+                  <a-button type="primary" :loading="indexing" @click="index(false)">
+                    <template #icon>
+                      <PlayCircleOutlined />
+                    </template>
+                    Update Index
+                  </a-button>
+                </a-tooltip>
+                <a-tooltip :title="rebuildIndexHint">
+                  <a-button :loading="indexing" @click="index(true)">
+                    <template #icon>
+                      <ReloadOutlined />
+                    </template>
+                    Rebuild Index
+                  </a-button>
+                </a-tooltip>
               </div>
             </div>
 
@@ -144,6 +152,10 @@ onMounted(load)
                 <div class="index-result-metric">
                   <span class="muted">Sources</span>
                   <strong class="number-cell">{{ formatNumber(settings.lastIndexResult.sourcePaths?.length || 0) }}</strong>
+                </div>
+                <div class="index-result-metric">
+                  <span class="muted">Mode</span>
+                  <strong>{{ settings.lastIndexResult.rebuild ? 'Rebuild' : 'Incremental' }}</strong>
                 </div>
                 <div class="index-result-metric">
                   <span class="muted">Sessions</span>

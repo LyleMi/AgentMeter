@@ -84,9 +84,9 @@ func (s *state) statusLine() string {
 
 func (s *state) footerLine() string {
 	if s.page == pageSessionDetail {
-		return dim("Keys: b/esc back  up/down scroll  r refresh  i index now  I rebuild  q quit")
+		return dim("Keys: b/esc back  up/down scroll  r refresh  i update index  I rebuild index  q quit")
 	}
-	return dim("Keys: 1-4 switch  tab cycle  up/down select  enter detail  r refresh  i index now  I rebuild  q quit")
+	return dim("Keys: 1-4 switch  tab cycle  up/down select  enter detail  r refresh  i update index  I rebuild index  q quit")
 }
 
 func (s *state) contentHeight() int {
@@ -145,7 +145,7 @@ func (s *state) overviewLines() []string {
 	}
 	lines = append(lines, "", bold("Recent Sessions"))
 	if len(o.RecentSessions) == 0 {
-		lines = append(lines, "No sessions indexed yet. Press i to index now.")
+		lines = append(lines, "No sessions indexed yet. Press i to update the index.")
 		return lines
 	}
 	lines = append(lines, sessionHeader(s.width))
@@ -161,7 +161,7 @@ func (s *state) sessionLines() []string {
 		if s.loading {
 			return lines
 		}
-		return append(lines, "No sessions found. Press i to index now.")
+		return append(lines, "No sessions found. Press i to update the index.")
 	}
 	lines = append(lines, sessionHeader(s.width))
 	visible := s.contentHeight() - len(lines)
