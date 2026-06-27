@@ -1,0 +1,46 @@
+# Pricing Sources
+
+Pricing registry rows are USD per 1M tokens. They are API list-price estimates
+for local usage analysis only; subscription usage in Codex, Claude Code, or
+other coding agents may not map one-to-one to API billing.
+
+Verified: 2026-06-27.
+
+## Sources
+
+- OpenAI: https://developers.openai.com/api/docs/pricing
+- OpenAI GPT-5: https://developers.openai.com/api/docs/models/gpt-5
+- OpenAI GPT-5 mini: https://developers.openai.com/api/docs/models/gpt-5-mini
+- OpenAI GPT-5 nano: https://developers.openai.com/api/docs/models/gpt-5-nano
+- Anthropic Claude: https://platform.claude.com/docs/en/about-claude/pricing
+- Google Gemini API: https://ai.google.dev/gemini-api/docs/pricing
+- DeepSeek USD pricing: https://api-docs.deepseek.com/quick_start/pricing-details-usd
+- DeepSeek V4 pricing: https://api-docs.deepseek.com/quick_start/pricing
+- Mistral pricing: https://mistral.ai/pricing/
+- Mistral chat endpoint cache note: https://docs.mistral.ai/api/endpoint/chat
+- xAI pricing: https://docs.x.ai/developers/pricing
+- Cohere pricing: https://cohere.com/pricing
+- Alibaba Cloud Model Studio pricing: https://www.alibabacloud.com/help/en/model-studio/model-pricing
+
+## Assumptions
+
+- The database schema supports input, cached input, and output rates. It does
+  not support separate cache write, cache read, reasoning output, batch,
+  priority, region, or context-window tiers.
+- Anthropic cache input uses cache-hit/read pricing. Cache-creation write
+  premiums are approximated as normal input because the parser stores cache
+  creation tokens with input tokens.
+- Mistral cached input is set to 10% of input, matching the published cached
+  token rule in the chat endpoint docs.
+- Providers without a published cached-input discount, such as Cohere and Qwen
+  rows in this registry, use the normal input price for cached input to avoid
+  undercounting.
+- OpenAI and Gemini long-context rows are explicit aliases. The default model
+  row uses the standard context tier because local session logs do not reliably
+  expose the billable prompt-length tier.
+- Qwen prices are regional and tiered. The registry uses common global or
+  international standard tiers where available, and the higher thinking-output
+  rate where the published table separates thinking and non-thinking output.
+- Open-weight models such as Llama are not included unless the model owner
+  publishes a first-party token API price. Hosted prices for those models vary
+  by inference provider.
