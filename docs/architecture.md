@@ -39,6 +39,7 @@ AgentMeter
     charts
     filters
     settings
+    agent privacy controls
 
   backend
     source discovery
@@ -109,6 +110,7 @@ The Web and TUI interfaces should cover the same product areas:
 - Sessions
 - Session Detail
 - Tools
+- Agent Privacy
 - Settings
 
 Overview should show:
@@ -130,6 +132,10 @@ Session Detail should show:
 - model calls;
 - tool calls;
 - raw source path.
+
+Agent Privacy should show external-agent privacy configuration status and
+apply supported hardening controls. The current implementation targets Codex
+user-level `config.toml` only.
 
 The Web UI can use charts, wide layouts, and browser affordances. The TUI can
 use tables, panes, keyboard navigation, and compact summaries. Differences in

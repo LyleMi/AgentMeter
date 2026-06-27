@@ -1864,6 +1864,7 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.agent-privacy-tool-panel .toolbar,
 .settings-tool-panel .toolbar {
   margin-bottom: 0;
 }

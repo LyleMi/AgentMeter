@@ -70,6 +70,7 @@ Screens:
 - Sessions
 - Session Detail
 - Tools
+- Agent Privacy
 - Settings
 
 Tasks:
@@ -78,6 +79,7 @@ Tasks:
 - Session table with filters.
 - Session detail timeline.
 - Tool-call breakdown.
+- External-agent privacy controls for supported Codex config settings.
 - Pricing registry display.
 - Rebuild index action.
 

@@ -18,6 +18,7 @@ const router = createRouter({
     { path: '/sessions', component: () => import('./views/Sessions.vue') },
     { path: '/sessions/:id', component: () => import('./views/SessionDetail.vue'), props: true },
     { path: '/audit', component: () => import('./views/Audit.vue') },
+    { path: '/agent-privacy', component: () => import('./views/AgentPrivacy.vue') },
     {
       path: '/tools',
       component: () => import('./views/Tools.vue'),
@@ -35,8 +36,7 @@ const router = createRouter({
       children: [
         { path: 'source', component: () => import('./views/SettingsSource.vue') },
         { path: 'database', component: () => import('./views/SettingsDatabase.vue') },
-        { path: 'price', component: () => import('./views/SettingsPrice.vue') },
-        { path: 'privacy', component: () => import('./views/SettingsPrivacy.vue') }
+        { path: 'price', component: () => import('./views/SettingsPrice.vue') }
       ]
     }
   ]

@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import AButton from 'ant-design-vue/es/button'
-import { DatabaseOutlined, DollarOutlined, FolderOpenOutlined, SafetyCertificateOutlined } from '@ant-design/icons-vue'
+import { DatabaseOutlined, DollarOutlined, FolderOpenOutlined } from '@ant-design/icons-vue'
 import { useMessages } from '../i18n'
 
 const route = useRoute()
@@ -10,33 +10,29 @@ const router = useRouter()
 const { t } = useMessages({
   en: {
     'settings.title': 'Settings',
-    'settings.subtitle': 'Source, database, price and privacy configuration',
+    'settings.subtitle': 'Source, database and price configuration',
     'settings.tab.source': 'Source',
     'settings.tab.database': 'Database',
-    'settings.tab.price': 'Price',
-    'settings.tab.privacy': 'Privacy'
+    'settings.tab.price': 'Price'
   },
   'zh-CN': {
     'settings.title': '设置',
-    'settings.subtitle': '来源、数据库、价格和隐私配置',
+    'settings.subtitle': '来源、数据库和价格配置',
     'settings.tab.source': '来源',
     'settings.tab.database': '数据库',
-    'settings.tab.price': '价格',
-    'settings.tab.privacy': '隐私'
+    'settings.tab.price': '价格'
   }
 })
 
 const tabs = computed(() => [
   { key: 'source', label: t('settings.tab.source'), path: '/settings/source', icon: FolderOpenOutlined },
   { key: 'database', label: t('settings.tab.database'), path: '/settings/database', icon: DatabaseOutlined },
-  { key: 'price', label: t('settings.tab.price'), path: '/settings/price', icon: DollarOutlined },
-  { key: 'privacy', label: t('settings.tab.privacy'), path: '/settings/privacy', icon: SafetyCertificateOutlined }
+  { key: 'price', label: t('settings.tab.price'), path: '/settings/price', icon: DollarOutlined }
 ])
 
 const activeKey = computed(() => {
   if (route.path.startsWith('/settings/database')) return 'database'
   if (route.path.startsWith('/settings/price')) return 'price'
-  if (route.path.startsWith('/settings/privacy')) return 'privacy'
   return 'source'
 })
 

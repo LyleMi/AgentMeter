@@ -15,6 +15,7 @@ import {
   MenuUnfoldOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
+  SafetyCertificateOutlined,
   SettingOutlined,
   ToolOutlined,
   WarningOutlined
@@ -42,6 +43,7 @@ const { t } = useMessages({
     'nav.sessions': 'Sessions',
     'nav.tools': 'Tools',
     'nav.audit': 'Audit',
+    'nav.agentPrivacy': 'Agent Privacy',
     'nav.settings': 'Settings',
     'sidebar.expand': 'Expand sidebar',
     'sidebar.collapse': 'Collapse sidebar',
@@ -69,6 +71,7 @@ const { t } = useMessages({
     'nav.sessions': '会话',
     'nav.tools': '工具',
     'nav.audit': '审计',
+    'nav.agentPrivacy': 'Agent 隐私',
     'nav.settings': '设置',
     'sidebar.expand': '展开侧边栏',
     'sidebar.collapse': '收起侧边栏',
@@ -111,6 +114,7 @@ const selectedKeys = computed(() => {
   if (route.path.startsWith('/sessions')) return ['sessions']
   if (route.path.startsWith('/tools')) return ['tools']
   if (route.path.startsWith('/audit')) return ['audit']
+  if (route.path.startsWith('/agent-privacy')) return ['agent-privacy']
   if (route.path.startsWith('/settings')) return ['settings']
   return ['overview']
 })
@@ -120,6 +124,7 @@ const menuItems = computed(() => [
   { key: 'sessions', icon: HistoryOutlined, label: t('nav.sessions'), path: '/sessions' },
   { key: 'tools', icon: ToolOutlined, label: t('nav.tools'), path: '/tools' },
   { key: 'audit', icon: WarningOutlined, label: t('nav.audit'), path: '/audit' },
+  { key: 'agent-privacy', icon: SafetyCertificateOutlined, label: t('nav.agentPrivacy'), path: '/agent-privacy' },
   { key: 'settings', icon: SettingOutlined, label: t('nav.settings'), path: '/settings' }
 ])
 const languageOptions = computed(() =>

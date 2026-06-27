@@ -15,8 +15,8 @@ const ATable = AntTable as unknown as DefineComponent
 const ATypographyText = Typography.Text
 const { t } = useMessages({
   en: {
-    'privacy.title': 'Privacy',
-    'privacy.kicker': 'Codex user-level config.toml',
+    'privacy.title': 'Agent Privacy',
+    'privacy.kicker': 'External agent config: Codex user-level config.toml',
     'privacy.boundary.title': 'Current support: Codex config.toml controls only',
     'privacy.boundary.description':
       'This page reads and applies user-level Codex config.toml privacy settings. It does not scan logs, scan secrets, or infer broad filesystem policy.',
@@ -62,8 +62,8 @@ const { t } = useMessages({
     'privacy.warning.title': 'Warnings'
   },
   'zh-CN': {
-    'privacy.title': '隐私',
-    'privacy.kicker': 'Codex 用户级 config.toml',
+    'privacy.title': 'Agent 隐私',
+    'privacy.kicker': '外部 Agent 配置：Codex 用户级 config.toml',
     'privacy.boundary.title': '当前支持范围：仅 Codex config.toml 控制项',
     'privacy.boundary.description':
       '此页面只读取并应用用户级 Codex config.toml 隐私设置，不扫描日志、不扫描密钥，也不推断广义文件系统策略。',
@@ -219,7 +219,7 @@ onMounted(load)
 <template>
   <a-spin :spinning="loading">
     <div class="section-stack">
-      <section class="panel settings-tool-panel">
+      <section class="panel agent-privacy-tool-panel">
         <div class="panel-header">
           <div>
             <h2 class="panel-title">{{ t('privacy.title') }}</h2>
