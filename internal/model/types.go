@@ -13,6 +13,11 @@ type Source struct {
 	UpdatedAt    time.Time `json:"updatedAt"`
 }
 
+type SourceEntry struct {
+	Path    string `json:"path"`
+	Enabled bool   `json:"enabled"`
+}
+
 type SourceFile struct {
 	ID            int64     `json:"id"`
 	SourceID      int64     `json:"sourceId"`
@@ -195,6 +200,7 @@ type SessionDetail struct {
 type Settings struct {
 	SourcePath         string         `json:"sourcePath"`
 	SourcePaths        []string       `json:"sourcePaths"`
+	SourceEntries      []SourceEntry  `json:"sourceEntries"`
 	DefaultSourcePath  string         `json:"defaultSourcePath"`
 	DefaultSourcePaths []string       `json:"defaultSourcePaths"`
 	DatabasePath       string         `json:"databasePath"`

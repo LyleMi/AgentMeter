@@ -147,6 +147,11 @@ export interface PricingModel {
   effectiveFrom: string
 }
 
+export interface SourceEntry {
+  path: string
+  enabled: boolean
+}
+
 export interface IndexResult {
   sourcePath: string
   sourcePaths: string[]
@@ -164,6 +169,7 @@ export interface IndexResult {
 export interface Settings {
   sourcePath: string
   sourcePaths: string[]
+  sourceEntries: SourceEntry[]
   defaultSourcePath: string
   defaultSourcePaths: string[]
   databasePath: string
@@ -203,9 +209,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   getSettings: () => call<Settings>('GetSettings', [], () => request('/api/settings')),
-  saveSettings: (sourcePath: string) =>
-    call<Settings>('SaveSettings', [sourcePath], () =>
-      request('/api/settings', { method: 'POST', body: JSON.stringify({ sourcePath }) })
+  saveSourceSettings: (sourceEntries: SourceEntry[]) =>
+    call<Settings>('SaveSourceSettings', [sourceEntries], () =>
+      request('/api/settings', { method: 'POST', body: JSON.stringify({ sourceEntries }) })
     ),
   indexNow: (rebuild = false) =>
     call<IndexResult>('IndexNow', [rebuild], () =>

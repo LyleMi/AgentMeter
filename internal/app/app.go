@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"AgentMeter/internal/agent"
 	"AgentMeter/internal/db"
 	"AgentMeter/internal/ingest"
 	"AgentMeter/internal/model"
@@ -32,9 +33,8 @@ type App struct {
 }
 
 const (
-	sourcePathsConfigKey             = "source_paths"
-	legacySourcePathConfigKey        = "source_path"
-	sourcePathsAutoDefaultsConfigKey = "source_paths_auto_defaults"
+	sourceEntriesConfigKey             = "source_entries"
+	sourceEntriesAutoDefaultsConfigKey = "source_entries_auto_defaults"
 )
 
 func New() (*App, error) {
@@ -74,13 +74,14 @@ func (a *App) GetSettings() (model.Settings, error) {
 	if err := a.ensureReady(); err != nil {
 		return model.Settings{}, err
 	}
-	sourcePaths, err := a.configuredSourcePaths(a.ctx, a.conn)
+	sourceEntries, err := a.configuredSourceEntries(a.ctx, a.conn)
 	if err != nil {
 		return model.Settings{}, err
 	}
-	if len(sourcePaths) == 0 {
-		sourcePaths = platform.DefaultAgentSourcePaths()
+	if len(sourceEntries) == 0 {
+		sourceEntries = sourceEntriesFromPaths(platform.DefaultAgentSourcePaths(), true)
 	}
+	sourcePaths := enabledSourceEntryPaths(sourceEntries)
 	sourcePath := strings.Join(sourcePaths, "\n")
 	defaultSourcePaths := platform.DefaultAgentSourcePaths()
 	models, err := pricing.List(a.ctx, a.conn)
@@ -90,6 +91,7 @@ func (a *App) GetSettings() (model.Settings, error) {
 	return model.Settings{
 		SourcePath:         sourcePath,
 		SourcePaths:        sourcePaths,
+		SourceEntries:      sourceEntries,
 		DefaultSourcePath:  strings.Join(defaultSourcePaths, "\n"),
 		DefaultSourcePaths: defaultSourcePaths,
 		DatabasePath:       a.dbPath,
@@ -99,12 +101,11 @@ func (a *App) GetSettings() (model.Settings, error) {
 	}, nil
 }
 
-func (a *App) SaveSettings(sourcePath string) (model.Settings, error) {
+func (a *App) SaveSourceSettings(sourceEntries []model.SourceEntry) (model.Settings, error) {
 	if err := a.ensureReady(); err != nil {
 		return model.Settings{}, err
 	}
-	paths := parseSourcePathList(sourcePath)
-	if err := setSourcePaths(a.ctx, a.conn, paths); err != nil {
+	if err := setSourceEntries(a.ctx, a.conn, sourceEntries); err != nil {
 		return model.Settings{}, err
 	}
 	return a.GetSettings()
@@ -133,36 +134,30 @@ func (a *App) IndexNow(rebuild bool) (model.IndexResult, error) {
 	return result, nil
 }
 
-func (a *App) configuredSourcePaths(ctx context.Context, conn *sql.DB) ([]string, error) {
-	if encoded, ok, err := db.GetConfig(ctx, conn, sourcePathsConfigKey); err != nil {
+func (a *App) configuredSourceEntries(ctx context.Context, conn *sql.DB) ([]model.SourceEntry, error) {
+	if encoded, ok, err := db.GetConfig(ctx, conn, sourceEntriesConfigKey); err != nil {
 		return nil, err
 	} else if ok && strings.TrimSpace(encoded) != "" {
-		var paths []string
-		if err := json.Unmarshal([]byte(encoded), &paths); err == nil {
-			return normalizeSourcePaths(paths), nil
+		var entries []model.SourceEntry
+		if err := json.Unmarshal([]byte(encoded), &entries); err == nil {
+			return normalizeSourceEntries(entries), nil
 		}
-		return parseSourcePathList(encoded), nil
-	}
-	if legacy, ok, err := db.GetConfig(ctx, conn, legacySourcePathConfigKey); err != nil {
-		return nil, err
-	} else if ok {
-		return parseSourcePathList(legacy), nil
 	}
 	return nil, nil
 }
 
 func (a *App) ensureSourcePathsConfig(ctx context.Context, conn *sql.DB) error {
-	_, hasSourcePaths, err := db.GetConfig(ctx, conn, sourcePathsConfigKey)
+	_, hasSourceEntries, err := db.GetConfig(ctx, conn, sourceEntriesConfigKey)
 	if err != nil {
 		return err
 	}
-	sourcePaths, err := a.configuredSourcePaths(ctx, conn)
+	sourceEntries, err := a.configuredSourceEntries(ctx, conn)
 	if err != nil {
 		return err
 	}
 	defaultSourcePaths := platform.DefaultAgentSourcePaths()
-	if len(sourcePaths) == 0 {
-		if err := setSourcePaths(ctx, conn, defaultSourcePaths); err != nil {
+	if len(sourceEntries) == 0 {
+		if err := setSourceEntries(ctx, conn, sourceEntriesFromPaths(defaultSourcePaths, true)); err != nil {
 			return err
 		}
 		return setAutoDefaultSourcePaths(ctx, conn, defaultSourcePaths)
@@ -174,12 +169,12 @@ func (a *App) ensureSourcePathsConfig(ctx context.Context, conn *sql.DB) error {
 	}
 	candidates := platform.DefaultAgentSourceCandidates()
 	if !hasAutoDefaults {
-		autoDefaults = configuredDefaultSourcePaths(sourcePaths, candidates)
+		autoDefaults = configuredDefaultSourcePaths(sourceEntryPaths(sourceEntries), candidates)
 	}
 
-	merged, nextAutoDefaults, changed := mergeAutoDefaultSourcePaths(sourcePaths, defaultSourcePaths, autoDefaults, candidates)
-	if !hasSourcePaths || changed {
-		if err := setSourcePaths(ctx, conn, merged); err != nil {
+	merged, nextAutoDefaults, changed := mergeAutoDefaultSourcePaths(sourceEntryPaths(sourceEntries), defaultSourcePaths, autoDefaults, candidates)
+	if !hasSourceEntries || changed {
+		if err := setSourceEntries(ctx, conn, mergeSourceEntriesForPaths(sourceEntries, merged)); err != nil {
 			return err
 		}
 	}
@@ -189,24 +184,20 @@ func (a *App) ensureSourcePathsConfig(ctx context.Context, conn *sql.DB) error {
 	return nil
 }
 
-func setSourcePaths(ctx context.Context, conn *sql.DB, paths []string) error {
-	normalized := normalizeSourcePaths(paths)
-	encoded, err := json.Marshal(normalized)
+func setSourceEntries(ctx context.Context, conn *sql.DB, sourceEntries []model.SourceEntry) error {
+	normalized := normalizeSourceEntries(sourceEntries)
+	encodedEntries, err := json.Marshal(normalized)
 	if err != nil {
 		return err
 	}
-	if err := db.SetConfig(ctx, conn, sourcePathsConfigKey, string(encoded)); err != nil {
+	if err := db.SetConfig(ctx, conn, sourceEntriesConfigKey, string(encodedEntries)); err != nil {
 		return err
 	}
-	legacy := ""
-	if len(normalized) > 0 {
-		legacy = normalized[0]
-	}
-	return db.SetConfig(ctx, conn, legacySourcePathConfigKey, legacy)
+	return nil
 }
 
 func getAutoDefaultSourcePaths(ctx context.Context, conn *sql.DB) ([]string, bool, error) {
-	encoded, ok, err := db.GetConfig(ctx, conn, sourcePathsAutoDefaultsConfigKey)
+	encoded, ok, err := db.GetConfig(ctx, conn, sourceEntriesAutoDefaultsConfigKey)
 	if err != nil || !ok {
 		return nil, ok, err
 	}
@@ -214,7 +205,7 @@ func getAutoDefaultSourcePaths(ctx context.Context, conn *sql.DB) ([]string, boo
 	if err := json.Unmarshal([]byte(encoded), &paths); err == nil {
 		return normalizeSourcePaths(paths), true, nil
 	}
-	return parseSourcePathList(encoded), true, nil
+	return nil, true, nil
 }
 
 func setAutoDefaultSourcePaths(ctx context.Context, conn *sql.DB, paths []string) error {
@@ -222,7 +213,7 @@ func setAutoDefaultSourcePaths(ctx context.Context, conn *sql.DB, paths []string
 	if err != nil {
 		return err
 	}
-	return db.SetConfig(ctx, conn, sourcePathsAutoDefaultsConfigKey, string(encoded))
+	return db.SetConfig(ctx, conn, sourceEntriesAutoDefaultsConfigKey, string(encoded))
 }
 
 func mergeAutoDefaultSourcePaths(sourcePaths, defaultSourcePaths, autoDefaults, candidates []string) ([]string, []string, bool) {
@@ -272,9 +263,9 @@ func hasSourcePathOverlap(left, right []string) bool {
 }
 
 func containsSourcePath(paths []string, path string) bool {
-	key := sourcePathKey(filepath.Clean(strings.TrimSpace(path)))
+	key := comparableSourcePathKey(path)
 	for _, candidate := range normalizeSourcePaths(paths) {
-		if sourcePathKey(candidate) == key {
+		if comparableSourcePathKey(candidate) == key {
 			return true
 		}
 	}
@@ -283,6 +274,62 @@ func containsSourcePath(paths []string, path string) bool {
 
 func appendSourcePath(paths []string, path string) []string {
 	return normalizeSourcePaths(append(paths, path))
+}
+
+func sourceEntriesFromPaths(paths []string, enabled bool) []model.SourceEntry {
+	normalized := normalizeSourcePaths(paths)
+	entries := make([]model.SourceEntry, 0, len(normalized))
+	for _, path := range normalized {
+		entries = append(entries, model.SourceEntry{Path: path, Enabled: enabled})
+	}
+	return entries
+}
+
+func normalizeSourceEntries(entries []model.SourceEntry) []model.SourceEntry {
+	seen := map[string]struct{}{}
+	result := make([]model.SourceEntry, 0, len(entries))
+	for _, entry := range entries {
+		cleaned := strings.TrimSpace(entry.Path)
+		if cleaned == "" {
+			continue
+		}
+		cleaned = filepath.Clean(cleaned)
+		key := sourcePathKey(cleaned)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, model.SourceEntry{Path: cleaned, Enabled: entry.Enabled})
+	}
+	return result
+}
+
+func sourceEntryPaths(entries []model.SourceEntry) []string {
+	paths := make([]string, 0, len(entries))
+	for _, entry := range normalizeSourceEntries(entries) {
+		paths = append(paths, entry.Path)
+	}
+	return paths
+}
+
+func enabledSourceEntryPaths(entries []model.SourceEntry) []string {
+	var paths []string
+	for _, entry := range normalizeSourceEntries(entries) {
+		if entry.Enabled {
+			paths = append(paths, entry.Path)
+		}
+	}
+	return normalizeSourcePaths(paths)
+}
+
+func mergeSourceEntriesForPaths(entries []model.SourceEntry, paths []string) []model.SourceEntry {
+	merged := normalizeSourceEntries(entries)
+	for _, path := range normalizeSourcePaths(paths) {
+		if !containsSourcePath(sourceEntryPaths(merged), path) {
+			merged = append(merged, model.SourceEntry{Path: path, Enabled: true})
+		}
+	}
+	return normalizeSourceEntries(merged)
 }
 
 func sameSourcePaths(left, right []string) bool {
@@ -333,6 +380,18 @@ func sourcePathKey(path string) string {
 		return strings.ToLower(path)
 	}
 	return path
+}
+
+func comparableSourcePathKey(path string) string {
+	cleaned := filepath.Clean(strings.TrimSpace(path))
+	if cleaned == "." || cleaned == "" {
+		return sourcePathKey(cleaned)
+	}
+	spec := agent.ResolveSource(cleaned)
+	if spec.Kind != "jsonl" && spec.RootPath != "" {
+		return sourcePathKey(filepath.Clean(spec.RootPath))
+	}
+	return sourcePathKey(cleaned)
 }
 
 func (a *App) GetOverview() (model.Overview, error) {

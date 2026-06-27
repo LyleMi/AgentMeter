@@ -8,7 +8,16 @@ const router = createRouter({
     { path: '/sessions', component: () => import('./views/Sessions.vue') },
     { path: '/sessions/:id', component: () => import('./views/SessionDetail.vue'), props: true },
     { path: '/tools', component: () => import('./views/Tools.vue') },
-    { path: '/settings', component: () => import('./views/Settings.vue') }
+    {
+      path: '/settings',
+      component: () => import('./views/Settings.vue'),
+      redirect: '/settings/source',
+      children: [
+        { path: 'source', component: () => import('./views/SettingsSource.vue') },
+        { path: 'database', component: () => import('./views/SettingsDatabase.vue') },
+        { path: 'price', component: () => import('./views/SettingsPrice.vue') }
+      ]
+    }
   ]
 })
 

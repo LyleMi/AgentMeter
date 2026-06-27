@@ -28,17 +28,13 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, assets embed.FS) {
 	})
 	mux.HandleFunc("POST /api/settings", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			SourcePath  string   `json:"sourcePath"`
-			SourcePaths []string `json:"sourcePaths"`
+			SourceEntries []model.SourceEntry `json:"sourceEntries"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, nil, err)
 			return
 		}
-		if len(body.SourcePaths) > 0 {
-			body.SourcePath = strings.Join(body.SourcePaths, "\n")
-		}
-		value, err := service.SaveSettings(body.SourcePath)
+		value, err := service.SaveSourceSettings(body.SourceEntries)
 		writeJSON(w, value, err)
 	})
 	mux.HandleFunc("POST /api/index", func(w http.ResponseWriter, r *http.Request) {
