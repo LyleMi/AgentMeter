@@ -101,6 +101,7 @@ Interface contract:
 Implemented command line:
 
 ```text
+go run . -start
 go run . -ui web -http 127.0.0.1:34115
 go run . -ui web -static frontend/dist
 go run . -ui tui

@@ -50,8 +50,8 @@ Requirements:
 
 Recommended local start:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
+```sh
+go run . -start
 ```
 
 Open:

@@ -23,14 +23,19 @@ product behavior.
 
 Web mode runs the local Go HTTP server and serves the Vue dashboard.
 
-Current command:
+Recommended local command:
 
-```powershell
-go run . -http 127.0.0.1:34115
+```sh
+go run . -start
 ```
 
 Current flags:
 
+- `-start`: install/build frontend assets when needed, start Web mode, and open
+  the browser.
+- `-skip-browser`: with `-start`, do not open the browser.
+- `-force-build`: with `-start`, rebuild the frontend even when built assets
+  look current.
 - `-http`: HTTP listen address. The default is `127.0.0.1:34115`.
 - `-static`: directory containing built frontend assets. The default is
   `frontend/dist`.
@@ -79,7 +84,8 @@ go run . -ui tui
 
 Examples:
 
-```powershell
+```sh
+go run . -start
 go run . -ui web -http 127.0.0.1:34115
 go run . -ui web -static frontend/dist
 go run . -ui tui
@@ -90,6 +96,8 @@ Flag behavior:
 - `-ui web` starts the local HTTP server and browser-oriented UI.
 - `-ui tui` starts the terminal UI without opening a browser or HTTP listener.
 - Default remains `web` for compatibility with the current MVP.
+- `-start` applies to Web mode and prepares built frontend assets before
+  serving them.
 - `-http` applies to Web mode.
 - `-static` applies to Web mode.
 - TUI mode should not start a public HTTP listener by default.
@@ -136,13 +144,13 @@ q / ctrl-c quit
 
 For shared backend or query changes:
 
-```powershell
+```sh
 go test ./...
 ```
 
 For Web UI changes:
 
-```powershell
+```sh
 cd frontend
 npm ci
 npm run build

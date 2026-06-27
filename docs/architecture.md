@@ -153,15 +153,16 @@ Web and TUI modes should stay synchronized by design:
 
 ## Command Line
 
-Default Web command:
+Recommended local Web command:
 
-```powershell
-go run . -http 127.0.0.1:34115
+```sh
+go run . -start
 ```
 
 Interface selector:
 
-```powershell
+```sh
+go run . -start
 go run . -ui web -http 127.0.0.1:34115
 go run . -ui web -static frontend/dist
 go run . -ui tui
@@ -170,6 +171,8 @@ go run . -ui tui
 Behavior:
 
 - `web` is the default mode for MVP compatibility.
+- `-start` prepares built frontend assets, starts Web mode, and opens the
+  browser for normal local use.
 - `-http` and `-static` apply to Web mode.
 - TUI mode runs in the terminal and does not start an HTTP listener.
 

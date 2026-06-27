@@ -7,21 +7,21 @@
 
 ## Recommended Local Start
 
-Use the repository start script for normal local use:
+Use the Go start mode for normal local use:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
+```sh
+go run . -start
 ```
 
-The script installs frontend dependencies when needed, rebuilds the UI when
+Start mode installs frontend dependencies when needed, rebuilds the UI when
 built assets are missing or stale, starts AgentMeter, and opens:
 
 ```text
 http://127.0.0.1:34115
 ```
 
-`scripts/start.ps1` serves built frontend assets through the Go server. It is
-not the Vite hot module reload workflow.
+`go run . -start` serves built frontend assets through the Go server. It is not
+the Vite hot module reload workflow.
 
 On first launch, click **Index Now** in the app. AgentMeter defaults to detected
 local agent homes such as `~/.codex` and `~/.claude`. In **Settings**, enter one
@@ -50,7 +50,7 @@ Default source roots are detected from local agent homes when they exist:
 
 Build the frontend and start local HTTP mode manually:
 
-```powershell
+```sh
 cd frontend
 npm ci
 npm run build
@@ -67,7 +67,7 @@ http://127.0.0.1:34115
 
 You can also pass a built asset directory explicitly:
 
-```powershell
+```sh
 go run . -ui web -static frontend/dist
 ```
 
@@ -78,13 +78,13 @@ frontend dev server in separate terminals.
 
 Backend:
 
-```powershell
+```sh
 go run . -http 127.0.0.1:34115
 ```
 
 Frontend:
 
-```powershell
+```sh
 cd frontend
 npm run dev
 ```
@@ -99,7 +99,7 @@ Vite proxies `/api` requests to the Go backend.
 
 For Go backend auto-restart, install Air and run this instead of `go run`:
 
-```powershell
+```sh
 air -c .air.toml
 ```
 
@@ -107,7 +107,7 @@ air -c .air.toml
 
 Start the terminal UI with:
 
-```powershell
+```sh
 go run . -ui tui
 ```
 
@@ -118,13 +118,13 @@ For mode behavior, command flags, and TUI keyboard bindings, see
 
 Run the shared backend checks:
 
-```powershell
+```sh
 go test ./...
 ```
 
 Run the Web build check:
 
-```powershell
+```sh
 cd frontend
 npm ci
 npm run build
