@@ -1439,6 +1439,38 @@ body {
   background: var(--am-surface-subtle);
 }
 
+.session-detail-tabs {
+  min-width: 0;
+  margin-top: 2px;
+}
+
+.session-detail-tabs > .ant-tabs-nav {
+  margin-bottom: 12px;
+}
+
+.session-detail-tabs > .ant-tabs-nav::before {
+  border-bottom-color: var(--am-border);
+}
+
+.session-detail-tabs > .ant-tabs-nav .ant-tabs-tab {
+  min-width: 132px;
+  justify-content: center;
+  padding: 7px 14px;
+  background: var(--am-surface-subtle);
+  border-color: var(--am-border);
+}
+
+.session-detail-tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: #ffffff;
+  border-bottom-color: #ffffff;
+}
+
+.session-detail-tabs > .ant-tabs-content-holder,
+.session-detail-tabs > .ant-tabs-content-holder > .ant-tabs-content,
+.session-detail-tabs > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane {
+  min-width: 0;
+}
+
 .timeline-event {
   padding-bottom: 2px;
 }
