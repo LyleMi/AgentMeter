@@ -6,6 +6,7 @@ import ATag from 'ant-design-vue/es/tag'
 import Typography from 'ant-design-vue/es/typography'
 import { ArrowRightOutlined } from '@ant-design/icons-vue'
 import { formatDateTime, formatDuration, formatNumber, shortPath, type ToolCall } from '../api'
+import { statusClass, statusColor } from '../presentation/status'
 import { parseToolInput } from '../toolInput'
 
 const ATypographyParagraph = Typography.Paragraph
@@ -31,25 +32,6 @@ const drawerTitle = computed(() => {
 })
 
 const parsedInput = computed(() => parseToolInput(props.call))
-
-function normalizedStatus(status?: string) {
-  return (status || 'unknown').toLowerCase()
-}
-
-function statusClass(status?: string) {
-  const normalized = normalizedStatus(status)
-  if (['completed', 'ok', 'indexed', 'success'].includes(normalized)) return 'status-ok'
-  if (['pending', 'warning', 'scanning', 'unknown', 'started'].includes(normalized)) return 'status-warning'
-  return 'status-error'
-}
-
-function statusColor(status?: string) {
-  const normalized = normalizedStatus(status)
-  if (['completed', 'ok', 'indexed', 'success'].includes(normalized)) return 'success'
-  if (normalized === 'scanning') return 'processing'
-  if (['pending', 'warning', 'unknown', 'started'].includes(normalized)) return 'warning'
-  return 'error'
-}
 
 function sessionName(call: ToolCall) {
   return call.sessionKey || call.codexSessionId || `#${call.sessionId}`

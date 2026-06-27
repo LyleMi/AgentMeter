@@ -1,17 +1,16 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import AButton from 'ant-design-vue/es/button'
 import ASpin from 'ant-design-vue/es/spin'
 import ATag from 'ant-design-vue/es/tag'
 import { BarChartOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { api, formatDuration, formatNumber, type ToolStat } from '../api'
 import { chartPalette, toolChartColors } from '../chartPalette'
-import { init, type ECharts } from '../chartRuntime'
+import { useEChart } from '../composables/useEChart'
 
 const loading = ref(true)
 const tools = ref<ToolStat[]>([])
-const chartEl = ref<HTMLDivElement | null>(null)
-let chart: ECharts | null = null
+const { chartEl, getChart, disposeChart } = useEChart()
 
 const totalCalls = computed(() => tools.value.reduce((sum, item) => sum + item.calls, 0))
 const toolsUsed = computed(() => tools.value.length)
@@ -31,11 +30,11 @@ async function load() {
 
 function renderChart() {
   if (!chartEl.value || tools.value.length === 0) {
-    chart?.dispose()
-    chart = null
+    disposeChart()
     return
   }
-  if (!chart) chart = init(chartEl.value)
+  const chart = getChart()
+  if (!chart) return
   const top = [...tools.value].sort((a, b) => b.calls - a.calls).slice(0, 12).reverse()
   chart.setOption({
     color: toolChartColors,
@@ -97,17 +96,8 @@ function durationSignal() {
   return { color: 'success', label: 'Fast average' }
 }
 
-function resize() {
-  chart?.resize()
-}
-
 onMounted(() => {
   load()
-  window.addEventListener('resize', resize)
-})
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', resize)
-  chart?.dispose()
 })
 </script>
 

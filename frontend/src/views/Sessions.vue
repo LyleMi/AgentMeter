@@ -10,6 +10,7 @@ import ATooltip from 'ant-design-vue/es/tooltip'
 import Typography from 'ant-design-vue/es/typography'
 import { ArrowRightOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import { api, formatCost, formatDateTime, formatDuration, formatNumber, sessionLabel, shortPath, type Session } from '../api'
+import { statusClass, statusColor } from '../presentation/status'
 
 const ATable = AntTable as unknown as DefineComponent
 const ATypographyText = Typography.Text
@@ -84,25 +85,6 @@ function resetFilters() {
   model.value = undefined
   agent.value = undefined
   load()
-}
-
-function normalizedStatus(status?: string) {
-  return (status || 'unknown').toLowerCase()
-}
-
-function statusClass(status?: string) {
-  const normalized = normalizedStatus(status)
-  if (['ok', 'indexed', 'completed', 'success'].includes(normalized)) return 'status-ok'
-  if (['warning', 'pending', 'scanning', 'unknown'].includes(normalized)) return 'status-warning'
-  return 'status-error'
-}
-
-function statusColor(status?: string) {
-  const normalized = normalizedStatus(status)
-  if (['ok', 'indexed', 'completed', 'success'].includes(normalized)) return 'success'
-  if (normalized === 'scanning') return 'processing'
-  if (['warning', 'pending', 'unknown'].includes(normalized)) return 'warning'
-  return 'error'
 }
 
 function indexStatusHint(record: Session) {

@@ -19,6 +19,16 @@ func New(conn *sql.DB) *Service {
 	return &Service{conn: conn}
 }
 
+func clampLimitOffset(limit, offset, defaultLimit, maxLimit int) (int, int) {
+	if limit <= 0 || limit > maxLimit {
+		limit = defaultLimit
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return limit, offset
+}
+
 func (s *Service) Overview(ctx context.Context) (model.Overview, error) {
 	var overview model.Overview
 	err := s.conn.QueryRowContext(ctx, `SELECT
@@ -79,30 +89,12 @@ func (s *Service) Sessions(ctx context.Context, filters model.SessionFilters) ([
 		where = append(where, `src.kind = ?`)
 		args = append(args, strings.TrimSpace(filters.Agent))
 	}
-	limit := filters.Limit
-	if limit <= 0 || limit > 500 {
-		limit = 200
-	}
-	offset := filters.Offset
-	if offset < 0 {
-		offset = 0
-	}
+	limit, offset := clampLimitOffset(filters.Limit, filters.Offset, 200, 500)
 	args = append(args, limit, offset)
-	query := fmt.Sprintf(`SELECT
-		s.id, s.source_id, s.source_file_id, src.kind, src.name, COALESCE(NULLIF(s.session_key, ''), s.codex_session_id), s.codex_session_id, s.project_path, s.model, s.model_provider, s.originator, s.thread_source,
-		s.agent_nickname, s.agent_role, s.started_at, s.ended_at, s.wall_duration_ms, s.active_duration_ms, s.model_duration_ms,
-		s.tool_duration_ms, s.idle_duration_ms, s.event_count, s.parse_status,
-		COALESCE(tu.model, s.model), COALESCE(tu.input_tokens, 0), COALESCE(tu.cached_input_tokens, 0), COALESCE(tu.output_tokens, 0),
-		COALESCE(tu.reasoning_output_tokens, 0), COALESCE(tu.total_tokens, 0), COALESCE(tu.source, 'unknown'),
-		(SELECT COUNT(*) FROM tool_calls tc WHERE tc.session_id = s.id) AS tool_call_count,
-		sf.path, sf.scan_status, sf.error
-		FROM sessions s
-		JOIN sources src ON src.id = s.source_id
-		JOIN source_files sf ON sf.id = s.source_file_id
-		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
+	query := fmt.Sprintf(`%s
 		WHERE %s
 		ORDER BY s.started_at DESC
-		LIMIT ? OFFSET ?`, strings.Join(where, " AND "))
+		LIMIT ? OFFSET ?`, sessionSelect, strings.Join(where, " AND "))
 	return s.scanSessions(ctx, query, args...)
 }
 
@@ -186,14 +178,7 @@ func (s *Service) ToolCalls(ctx context.Context, filters model.ToolCallFilters) 
 		where = append(where, "tc.started_at <= ?")
 		args = append(args, strings.TrimSpace(filters.StartedTo))
 	}
-	limit := filters.Limit
-	if limit <= 0 || limit > 1000 {
-		limit = 500
-	}
-	offset := filters.Offset
-	if offset < 0 {
-		offset = 0
-	}
+	limit, offset := clampLimitOffset(filters.Limit, filters.Offset, 500, 1000)
 	orderBy := "tc.started_at DESC, tc.id DESC"
 	switch strings.TrimSpace(filters.Sort) {
 	case "duration_desc":
@@ -210,7 +195,18 @@ func (s *Service) ToolCalls(ctx context.Context, filters model.ToolCallFilters) 
 }
 
 func (s *Service) sessionByID(ctx context.Context, id int64) (model.Session, error) {
-	query := `SELECT
+	query := sessionSelect + ` WHERE s.id = ?`
+	sessions, err := s.scanSessions(ctx, query, id)
+	if err != nil {
+		return model.Session{}, err
+	}
+	if len(sessions) == 0 {
+		return model.Session{}, sql.ErrNoRows
+	}
+	return sessions[0], nil
+}
+
+const sessionSelect = `SELECT
 		s.id, s.source_id, s.source_file_id, src.kind, src.name, COALESCE(NULLIF(s.session_key, ''), s.codex_session_id), s.codex_session_id, s.project_path, s.model, s.model_provider, s.originator, s.thread_source,
 		s.agent_nickname, s.agent_role, s.started_at, s.ended_at, s.wall_duration_ms, s.active_duration_ms, s.model_duration_ms,
 		s.tool_duration_ms, s.idle_duration_ms, s.event_count, s.parse_status,
@@ -221,17 +217,7 @@ func (s *Service) sessionByID(ctx context.Context, id int64) (model.Session, err
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
 		JOIN source_files sf ON sf.id = s.source_file_id
-		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
-		WHERE s.id = ?`
-	sessions, err := s.scanSessions(ctx, query, id)
-	if err != nil {
-		return model.Session{}, err
-	}
-	if len(sessions) == 0 {
-		return model.Session{}, sql.ErrNoRows
-	}
-	return sessions[0], nil
-}
+		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id`
 
 func (s *Service) events(ctx context.Context, sessionID int64) ([]model.Event, error) {
 	rows, err := s.conn.QueryContext(ctx, `SELECT id, session_id, source_file_id, source_line, timestamp, kind, raw_type, summary, raw_json

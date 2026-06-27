@@ -21,6 +21,7 @@ import {
   ToolOutlined
 } from '@ant-design/icons-vue'
 import ToolCallDetailDrawer from '../components/ToolCallDetailDrawer.vue'
+import { statusClass, statusColor } from '../presentation/status'
 import {
   api,
   formatCost,
@@ -91,25 +92,6 @@ async function load() {
   } finally {
     loading.value = false
   }
-}
-
-function normalizedStatus(status?: string) {
-  return (status || 'unknown').toLowerCase()
-}
-
-function statusClass(status?: string) {
-  const normalized = normalizedStatus(status)
-  if (['completed', 'ok', 'indexed', 'success'].includes(normalized)) return 'status-ok'
-  if (['pending', 'warning', 'scanning', 'unknown', 'started'].includes(normalized)) return 'status-warning'
-  return 'status-error'
-}
-
-function statusColor(status?: string) {
-  const normalized = normalizedStatus(status)
-  if (['completed', 'ok', 'indexed', 'success'].includes(normalized)) return 'success'
-  if (normalized === 'scanning') return 'processing'
-  if (['pending', 'warning', 'unknown', 'started'].includes(normalized)) return 'warning'
-  return 'error'
 }
 
 function eventColor(kind: string) {

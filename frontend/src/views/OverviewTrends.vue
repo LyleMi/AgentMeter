@@ -1,15 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, watch } from 'vue'
 import ASpin from 'ant-design-vue/es/spin'
 import { BarChartOutlined } from '@ant-design/icons-vue'
 import { formatNumber } from '../api'
 import { chartPalette, usageChartColors } from '../chartPalette'
-import { init, type ECharts } from '../chartRuntime'
+import { useEChart } from '../composables/useEChart'
 import { useOverviewContext } from './overviewContext'
 
 const { overview, loading } = useOverviewContext()
-const chartEl = ref<HTMLDivElement | null>(null)
-let chart: ECharts | null = null
+const { chartEl, getChart, disposeChart } = useEChart()
 
 const hasDailyUsage = computed(() => (overview.value?.dailyUsage?.length || 0) > 0)
 
@@ -21,12 +20,11 @@ async function renderAfterUpdate() {
 function renderChart() {
   const dailyUsage = overview.value?.dailyUsage || []
   if (!dailyUsage.length) {
-    chart?.dispose()
-    chart = null
+    disposeChart()
     return
   }
-  if (!chartEl.value) return
-  if (!chart) chart = init(chartEl.value)
+  const chart = getChart()
+  if (!chart) return
   const days = dailyUsage.map((item) => item.date.slice(5))
   chart.setOption({
     color: usageChartColors,
@@ -98,19 +96,10 @@ function renderChart() {
   }, true)
 }
 
-function resize() {
-  chart?.resize()
-}
-
 watch(() => overview.value?.dailyUsage, renderAfterUpdate, { deep: true })
 
 onMounted(() => {
-  window.addEventListener('resize', resize)
   renderAfterUpdate()
-})
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', resize)
-  chart?.dispose()
 })
 </script>
 

@@ -11,6 +11,7 @@ import { EyeOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import ToolCallDetailDrawer from '../components/ToolCallDetailDrawer.vue'
 import ToolInputInline from '../components/ToolInputInline.vue'
 import { api, formatDateTime, formatDuration, formatNumber, sessionLabel, type AgentUsage, type ToolCall, type ToolStat } from '../api'
+import { statusClass, statusColor } from '../presentation/status'
 
 const ATable = AntTable as unknown as DefineComponent
 const ATypographyText = Typography.Text
@@ -208,25 +209,6 @@ function resetFilters() {
   toFilter.value = ''
   sortFilter.value = DEFAULT_SORT
   updateFilters('agent')
-}
-
-function normalizedStatus(status?: string) {
-  return (status || 'unknown').toLowerCase()
-}
-
-function statusClass(status?: string) {
-  const normalized = normalizedStatus(status)
-  if (['completed', 'ok', 'indexed', 'success'].includes(normalized)) return 'status-ok'
-  if (['pending', 'warning', 'scanning', 'unknown', 'started'].includes(normalized)) return 'status-warning'
-  return 'status-error'
-}
-
-function statusColor(status?: string) {
-  const normalized = normalizedStatus(status)
-  if (['completed', 'ok', 'indexed', 'success'].includes(normalized)) return 'success'
-  if (normalized === 'scanning') return 'processing'
-  if (['pending', 'warning', 'unknown', 'started'].includes(normalized)) return 'warning'
-  return 'error'
 }
 
 function callSessionLabel(call: ToolCall) {

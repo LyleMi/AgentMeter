@@ -268,26 +268,16 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 					status:       "completed",
 				}
 			}
-			duration := durationMS(call.startedAt, ts)
-			toolDurationMS += duration
 			status, errText := outputStatus(raw.Payload)
-			if status == "" {
-				status = firstNonEmpty(call.status, "completed")
-			}
-			parsed.ToolCall = append(parsed.ToolCall, model.ToolCall{
-				StartedAt:         call.startedAt,
-				EndedAt:           ts,
-				DurationMS:        duration,
-				ToolName:          call.name,
-				Status:            status,
-				InputSummary:      call.inputSummary,
-				OutputSummary:     preview(outputSummary(raw.Payload), 500),
-				Error:             errText,
-				CallID:            call.callID,
-				RawEventLine:      call.rawLine,
-				RawStartEventLine: call.rawLine,
-				RawEndEventLine:   lineNo,
-			})
+			toolCall, duration := finishToolCall(call, completedTool{
+				callID:        callID,
+				name:          toolName(payloadType, raw.Payload),
+				status:        status,
+				outputSummary: outputSummary(raw.Payload),
+				error:         errText,
+			}, ts, lineNo)
+			toolDurationMS += duration
+			parsed.ToolCall = append(parsed.ToolCall, toolCall)
 			delete(pending, callID)
 			modelBoundary = ts
 		}
@@ -312,26 +302,16 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 						status:       "completed",
 					}
 				}
-				duration := durationMS(call.startedAt, ts)
-				toolDurationMS += duration
 				status, errText := outputStatusRecord(raw)
-				if status == "" {
-					status = firstNonEmpty(call.status, "completed")
-				}
-				parsed.ToolCall = append(parsed.ToolCall, model.ToolCall{
-					StartedAt:         call.startedAt,
-					EndedAt:           ts,
-					DurationMS:        duration,
-					ToolName:          firstNonEmpty(call.name, recordToolName(raw)),
-					Status:            status,
-					InputSummary:      call.inputSummary,
-					OutputSummary:     preview(outputSummaryRecord(raw), 500),
-					Error:             errText,
-					CallID:            call.callID,
-					RawEventLine:      call.rawLine,
-					RawStartEventLine: call.rawLine,
-					RawEndEventLine:   lineNo,
-				})
+				toolCall, duration := finishToolCall(call, completedTool{
+					callID:        callID,
+					name:          recordToolName(raw),
+					status:        status,
+					outputSummary: outputSummaryRecord(raw),
+					error:         errText,
+				}, ts, lineNo)
+				toolDurationMS += duration
+				parsed.ToolCall = append(parsed.ToolCall, toolCall)
 				delete(pending, callID)
 				modelBoundary = ts
 			}
@@ -362,22 +342,9 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 							status:    result.status,
 						}
 					}
-					duration := durationMS(call.startedAt, ts)
+					toolCall, duration := finishToolCall(call, result, ts, lineNo)
 					toolDurationMS += duration
-					parsed.ToolCall = append(parsed.ToolCall, model.ToolCall{
-						StartedAt:         call.startedAt,
-						EndedAt:           ts,
-						DurationMS:        duration,
-						ToolName:          firstNonEmpty(call.name, result.name),
-						Status:            firstNonEmpty(result.status, call.status, "completed"),
-						InputSummary:      call.inputSummary,
-						OutputSummary:     preview(result.outputSummary, 500),
-						Error:             result.error,
-						CallID:            call.callID,
-						RawEventLine:      call.rawLine,
-						RawStartEventLine: call.rawLine,
-						RawEndEventLine:   lineNo,
-					})
+					parsed.ToolCall = append(parsed.ToolCall, toolCall)
 					delete(pending, result.callID)
 					modelBoundary = ts
 				}
@@ -626,6 +593,25 @@ func startToolRecord(raw rawRecord, ts time.Time, lineNo int) pendingTool {
 		rawLine:      lineNo,
 		status:       firstNonEmpty(stringFromAny(raw.Status), "started"),
 	}
+}
+
+func finishToolCall(call pendingTool, completed completedTool, endedAt time.Time, lineNo int) (model.ToolCall, int64) {
+	duration := durationMS(call.startedAt, endedAt)
+	callID := firstNonEmpty(call.callID, completed.callID)
+	return model.ToolCall{
+		StartedAt:         call.startedAt,
+		EndedAt:           endedAt,
+		DurationMS:        duration,
+		ToolName:          firstNonEmpty(call.name, completed.name),
+		Status:            firstNonEmpty(completed.status, call.status, "completed"),
+		InputSummary:      call.inputSummary,
+		OutputSummary:     preview(completed.outputSummary, 500),
+		Error:             completed.error,
+		CallID:            callID,
+		RawEventLine:      call.rawLine,
+		RawStartEventLine: call.rawLine,
+		RawEndEventLine:   lineNo,
+	}, duration
 }
 
 func recordCallID(raw rawRecord) string {
