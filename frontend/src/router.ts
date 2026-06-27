@@ -7,7 +7,16 @@ const router = createRouter({
     { path: '/overview', component: () => import('./views/Overview.vue') },
     { path: '/sessions', component: () => import('./views/Sessions.vue') },
     { path: '/sessions/:id', component: () => import('./views/SessionDetail.vue'), props: true },
-    { path: '/tools', component: () => import('./views/Tools.vue') },
+    {
+      path: '/tools',
+      component: () => import('./views/Tools.vue'),
+      redirect: '/tools/overview',
+      children: [
+        { path: 'overview', component: () => import('./views/ToolsOverview.vue') },
+        { path: 'summary', component: () => import('./views/ToolsSummary.vue') },
+        { path: 'calls', component: () => import('./views/ToolsCalls.vue') }
+      ]
+    },
     {
       path: '/settings',
       component: () => import('./views/Settings.vue'),

@@ -563,6 +563,13 @@ body {
   border-radius: var(--am-radius-sm);
 }
 
+.panel-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
 .panel-body {
   padding: 14px;
 }
