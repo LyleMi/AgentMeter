@@ -135,7 +135,7 @@ Session Detail should show:
 
 Agent Privacy should show external-agent privacy configuration status and
 apply supported hardening controls. The current implementation targets Codex
-user-level `config.toml` only.
+user-level `config.toml` and Gemini CLI user-level `settings.json`.
 
 The Web UI can use charts, wide layouts, and browser affordances. The TUI can
 use tables, panes, keyboard navigation, and compact summaries. Differences in

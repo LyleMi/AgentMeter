@@ -223,6 +223,35 @@ func TestPrivacyCodexHTTPApplyEmptyBodyAppliesAll(t *testing.T) {
 	}
 }
 
+func TestPrivacyGeminiHTTPApplyEmptyBodyAppliesAll(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), ".gemini", "settings.json")
+	t.Setenv("AGENTMETER_GEMINI_SETTINGS_PATH", configPath)
+
+	mux := http.NewServeMux()
+	RegisterHTTPHandlers(mux, &App{}, fstest.MapFS{})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/privacy/gemini/apply", nil)
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var result model.PrivacyConfigApplyResult
+	if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Status.Target != "gemini" || !result.Status.Exists {
+		t.Fatalf("status should report created Gemini config: %#v", result.Status)
+	}
+	if len(result.Changed) == 0 {
+		t.Fatal("empty body should apply all supported settings")
+	}
+	if _, err := os.Stat(configPath); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func containsExactSourcePath(paths []string, path string) bool {
 	key := sourcePathKey(filepath.Clean(path))
 	for _, candidate := range normalizeSourcePaths(paths) {

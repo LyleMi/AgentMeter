@@ -463,6 +463,14 @@ func (a *App) ApplyCodexPrivacyConfig(settingIDs []string) (model.PrivacyConfigA
 	return privacy.NewCodexAdapter().Apply(settingIDs)
 }
 
+func (a *App) GetGeminiPrivacyConfig() (model.PrivacyConfigStatus, error) {
+	return privacy.NewGeminiAdapter().Status()
+}
+
+func (a *App) ApplyGeminiPrivacyConfig(settingIDs []string) (model.PrivacyConfigApplyResult, error) {
+	return privacy.NewGeminiAdapter().Apply(settingIDs)
+}
+
 func (a *App) ensureReady() error {
 	if a.conn == nil {
 		if a.ctx == nil {

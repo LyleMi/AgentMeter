@@ -287,6 +287,8 @@ export interface PrivacyConfigApplyResult {
   warnings: string[]
 }
 
+export type PrivacyTarget = 'codex' | 'gemini'
+
 export interface SessionFilters {
   search?: string
   model?: string
@@ -337,6 +339,12 @@ export const api = {
   getCodexPrivacy: () => request<PrivacyConfigStatus>('/api/privacy/codex'),
   applyCodexPrivacy: (settingIds: string[]) =>
     request<PrivacyConfigApplyResult>('/api/privacy/codex/apply', {
+      method: 'POST',
+      body: JSON.stringify({ settingIds })
+    }),
+  getAgentPrivacy: (target: PrivacyTarget) => request<PrivacyConfigStatus>(`/api/privacy/${target}`),
+  applyAgentPrivacy: (target: PrivacyTarget, settingIds: string[]) =>
+    request<PrivacyConfigApplyResult>(`/api/privacy/${target}/apply`, {
       method: 'POST',
       body: JSON.stringify({ settingIds })
     }),

@@ -1,14 +1,22 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, type DefineComponent } from 'vue'
+import { computed, onMounted, ref, watch, type DefineComponent } from 'vue'
 import AAlert from 'ant-design-vue/es/alert'
 import AButton from 'ant-design-vue/es/button'
 import message from 'ant-design-vue/es/message'
+import ASegmented from 'ant-design-vue/es/segmented'
 import ASpin from 'ant-design-vue/es/spin'
 import AntTable from 'ant-design-vue/es/table'
 import ATag from 'ant-design-vue/es/tag'
 import Typography from 'ant-design-vue/es/typography'
 import { CheckOutlined, ReloadOutlined, SafetyCertificateOutlined } from '@ant-design/icons-vue'
-import { api, formatNumber, type PrivacyConfigApplyResult, type PrivacyConfigSetting, type PrivacyConfigStatus } from '../api'
+import {
+  api,
+  formatNumber,
+  type PrivacyConfigApplyResult,
+  type PrivacyConfigSetting,
+  type PrivacyConfigStatus,
+  type PrivacyTarget
+} from '../api'
 import { useMessages } from '../i18n'
 
 const ATable = AntTable as unknown as DefineComponent
@@ -16,10 +24,12 @@ const ATypographyText = Typography.Text
 const { t } = useMessages({
   en: {
     'privacy.title': 'Agent Privacy',
-    'privacy.kicker': 'External agent config: Codex user-level config.toml',
-    'privacy.boundary.title': 'Current support: Codex config.toml controls only',
+    'privacy.kicker': 'External agent config: {target} user-level {file}',
+    'privacy.boundary.title': 'Current support: user-level agent config controls',
     'privacy.boundary.description':
-      'This page reads and applies user-level Codex config.toml privacy settings. It does not scan logs, scan secrets, or infer broad filesystem policy.',
+      'This page reads and applies supported user-level privacy settings for Codex and Gemini CLI. It does not scan logs, scan secrets, or infer broad filesystem policy.',
+    'privacy.target.codex': 'Codex',
+    'privacy.target.gemini': 'Gemini CLI',
     'privacy.action.refresh': 'Refresh',
     'privacy.action.applyStrict': 'Apply Strict Config',
     'privacy.action.apply': 'Apply',
@@ -63,10 +73,12 @@ const { t } = useMessages({
   },
   'zh-CN': {
     'privacy.title': 'Agent 隐私',
-    'privacy.kicker': '外部 Agent 配置：Codex 用户级 config.toml',
-    'privacy.boundary.title': '当前支持范围：仅 Codex config.toml 控制项',
+    'privacy.kicker': '外部 Agent 配置：{target} 用户级 {file}',
+    'privacy.boundary.title': '当前支持范围：用户级 Agent 配置控制项',
     'privacy.boundary.description':
-      '此页面只读取并应用用户级 Codex config.toml 隐私设置，不扫描日志、不扫描密钥，也不推断广义文件系统策略。',
+      '此页面只读取并应用 Codex 与 Gemini CLI 已支持的用户级隐私设置，不扫描日志、不扫描密钥，也不推断广义文件系统策略。',
+    'privacy.target.codex': 'Codex',
+    'privacy.target.gemini': 'Gemini CLI',
     'privacy.action.refresh': '刷新',
     'privacy.action.applyStrict': '应用严格配置',
     'privacy.action.apply': '应用',
@@ -113,9 +125,19 @@ const { t } = useMessages({
 const loading = ref(true)
 const applyingAll = ref(false)
 const applyingId = ref('')
+const selectedTarget = ref<PrivacyTarget>('codex')
 const privacyStatus = ref<PrivacyConfigStatus | null>(null)
 const lastApply = ref<PrivacyConfigApplyResult | null>(null)
 
+const targetOptions = computed<{ label: string; value: PrivacyTarget }[]>(() => [
+  { label: t('privacy.target.codex'), value: 'codex' },
+  { label: t('privacy.target.gemini'), value: 'gemini' }
+])
+const targetLabel = computed(() => {
+  if (privacyStatus.value?.name) return privacyStatus.value.name
+  return selectedTarget.value === 'gemini' ? t('privacy.target.gemini') : t('privacy.target.codex')
+})
+const targetFile = computed(() => (selectedTarget.value === 'gemini' ? 'settings.json' : 'config.toml'))
 const summary = computed(
   () =>
     privacyStatus.value?.summary || {
@@ -129,6 +151,7 @@ const summary = computed(
 const settings = computed(() => privacyStatus.value?.settings || [])
 const strictSettingIds = computed(() => settings.value.filter((setting) => setting.canApply).map((setting) => setting.id))
 const scoreLabel = computed(() => `${formatNumber(summary.value.score)}%`)
+const kickerText = computed(() => t('privacy.kicker', { target: targetLabel.value, file: targetFile.value }))
 const tableLocale = computed(() => ({ emptyText: t('privacy.empty') }))
 const statusState = computed(() => {
   if (!privacyStatus.value) return { color: 'default', label: t('privacy.status.noStatus') }
@@ -183,7 +206,7 @@ function settingRowClass(record: PrivacyConfigSetting) {
 async function load() {
   loading.value = true
   try {
-    privacyStatus.value = await api.getCodexPrivacy()
+    privacyStatus.value = await api.getAgentPrivacy(selectedTarget.value)
   } catch (error) {
     message.error(error instanceof Error ? error.message : t('privacy.message.loadFailed'))
   } finally {
@@ -201,7 +224,7 @@ async function applySettings(settingIds: string[], strictApply = false) {
   else applyingId.value = settingIds[0]
 
   try {
-    const result = await api.applyCodexPrivacy(settingIds)
+    const result = await api.applyAgentPrivacy(selectedTarget.value, settingIds)
     privacyStatus.value = result.status
     lastApply.value = result
     message.success(t('privacy.message.applied', { count: formatNumber(result.changed?.length || 0) }))
@@ -214,6 +237,10 @@ async function applySettings(settingIds: string[], strictApply = false) {
 }
 
 onMounted(load)
+watch(selectedTarget, () => {
+  lastApply.value = null
+  load()
+})
 </script>
 
 <template>
@@ -223,9 +250,10 @@ onMounted(load)
         <div class="panel-header">
           <div>
             <h2 class="panel-title">{{ t('privacy.title') }}</h2>
-            <div class="panel-kicker">{{ t('privacy.kicker') }}</div>
+            <div class="panel-kicker">{{ kickerText }}</div>
           </div>
           <div class="summary-actions">
+            <a-segmented v-model:value="selectedTarget" :options="targetOptions" />
             <a-tag :color="statusState.color" class="status-tag">{{ statusState.label }}</a-tag>
             <a-button @click="load">
               <template #icon>
