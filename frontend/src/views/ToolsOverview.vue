@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import AButton from 'ant-design-vue/es/button'
 import ASpin from 'ant-design-vue/es/spin'
 import ATag from 'ant-design-vue/es/tag'
@@ -7,10 +7,49 @@ import { BarChartOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { api, formatDuration, formatNumber, type ToolStat } from '../api'
 import { chartPalette, toolChartColors } from '../chartPalette'
 import { useEChart } from '../composables/useEChart'
+import { useMessages } from '../i18n'
 
 const loading = ref(true)
 const tools = ref<ToolStat[]>([])
 const { chartEl, getChart, disposeChart } = useEChart()
+const { t, locale } = useMessages({
+  en: {
+    'series.success': 'Successful',
+    'series.failed': 'Failed / Pending',
+    'signal.none': 'No calls',
+    'signal.long': 'Long average',
+    'signal.moderate': 'Moderate average',
+    'signal.fast': 'Fast average',
+    'summary.title': 'Tool activity summary',
+    'summary.totalCalls': 'Total calls',
+    'summary.toolsUsed': 'Tools used',
+    'summary.failedPending': 'Failed / pending',
+    'summary.averageDuration': 'Average duration',
+    'chart.title': 'Top Tools',
+    'chart.kicker': 'Successful calls stacked against failed or pending outcomes',
+    'action.refresh': 'Refresh',
+    'empty.title': 'No tool activity to chart',
+    'empty.text': 'Indexed tool calls will appear here as successful and failed or pending totals.'
+  },
+  'zh-CN': {
+    'series.success': '成功',
+    'series.failed': '失败 / 未完成',
+    'signal.none': '暂无调用',
+    'signal.long': '平均较长',
+    'signal.moderate': '平均适中',
+    'signal.fast': '平均较快',
+    'summary.title': '工具活动汇总',
+    'summary.totalCalls': '总调用',
+    'summary.toolsUsed': '已使用工具',
+    'summary.failedPending': '失败 / 未完成',
+    'summary.averageDuration': '平均耗时',
+    'chart.title': '热门工具',
+    'chart.kicker': '成功调用与失败或未完成结果堆叠展示',
+    'action.refresh': '刷新',
+    'empty.title': '暂无工具活动可绘制',
+    'empty.text': '索引工具调用后，这里会显示成功、失败或未完成的总数。'
+  }
+})
 
 const totalCalls = computed(() => tools.value.reduce((sum, item) => sum + item.calls, 0))
 const toolsUsed = computed(() => tools.value.length)
@@ -22,10 +61,15 @@ async function load() {
   loading.value = true
   try {
     tools.value = (await api.getTools()) || []
-    setTimeout(renderChart)
+    renderAfterUpdate()
   } finally {
     loading.value = false
   }
+}
+
+async function renderAfterUpdate() {
+  await nextTick()
+  renderChart()
 }
 
 function renderChart() {
@@ -68,7 +112,7 @@ function renderChart() {
     },
     series: [
       {
-        name: 'Successful',
+        name: t('series.success'),
         type: 'bar',
         stack: 'calls',
         data: top.map((item) => item.successCalls),
@@ -77,7 +121,7 @@ function renderChart() {
         emphasis: { focus: 'series' }
       },
       {
-        name: 'Failed / Pending',
+        name: t('series.failed'),
         type: 'bar',
         stack: 'calls',
         data: top.map((item) => item.failedCalls),
@@ -86,15 +130,17 @@ function renderChart() {
         emphasis: { focus: 'series' }
       }
     ]
-  })
+  }, true)
 }
 
 function durationSignal() {
-  if (!totalCalls.value) return { color: 'default', label: 'No calls' }
-  if (averageDurationMs.value >= 60000) return { color: 'warning', label: 'Long average' }
-  if (averageDurationMs.value >= 10000) return { color: 'processing', label: 'Moderate average' }
-  return { color: 'success', label: 'Fast average' }
+  if (!totalCalls.value) return { color: 'default', label: t('signal.none') }
+  if (averageDurationMs.value >= 60000) return { color: 'warning', label: t('signal.long') }
+  if (averageDurationMs.value >= 10000) return { color: 'processing', label: t('signal.moderate') }
+  return { color: 'success', label: t('signal.fast') }
 }
+
+watch(locale, renderAfterUpdate)
 
 onMounted(() => {
   load()
@@ -105,24 +151,24 @@ onMounted(() => {
   <a-spin :spinning="loading">
     <div class="section-stack">
       <section class="info-block">
-        <div class="info-block-title">Tool activity summary</div>
+        <div class="info-block-title">{{ t('summary.title') }}</div>
         <div class="info-block-grid">
           <div class="info-stat">
-            <div class="info-stat-label">Total calls</div>
+            <div class="info-stat-label">{{ t('summary.totalCalls') }}</div>
             <div class="info-stat-value">{{ formatNumber(totalCalls) }}</div>
           </div>
           <div class="info-stat">
-            <div class="info-stat-label">Tools used</div>
+            <div class="info-stat-label">{{ t('summary.toolsUsed') }}</div>
             <div class="info-stat-value">{{ formatNumber(toolsUsed) }}</div>
           </div>
           <div class="info-stat">
-            <div class="info-stat-label">Failed / pending</div>
+            <div class="info-stat-label">{{ t('summary.failedPending') }}</div>
             <div class="info-stat-value" :class="failedPendingCalls ? 'status-error' : 'status-ok'">
               {{ formatNumber(failedPendingCalls) }}
             </div>
           </div>
           <div class="info-stat">
-            <div class="info-stat-label">Average duration</div>
+            <div class="info-stat-label">{{ t('summary.averageDuration') }}</div>
             <div class="info-stat-value">{{ formatDuration(averageDurationMs) }}</div>
             <div class="metric-note">
               <a-tag :color="durationSignal().color" class="status-tag">{{ durationSignal().label }}</a-tag>
@@ -134,8 +180,8 @@ onMounted(() => {
       <section class="panel">
         <div class="panel-header">
           <div>
-            <h2 class="panel-title">Top Tools</h2>
-            <div class="panel-kicker">Successful calls stacked against failed or pending outcomes</div>
+            <h2 class="panel-title">{{ t('chart.title') }}</h2>
+            <div class="panel-kicker">{{ t('chart.kicker') }}</div>
           </div>
           <div class="panel-actions">
             <BarChartOutlined class="panel-header-icon" />
@@ -143,7 +189,7 @@ onMounted(() => {
               <template #icon>
                 <ReloadOutlined />
               </template>
-              Refresh
+              {{ t('action.refresh') }}
             </a-button>
           </div>
         </div>
@@ -151,8 +197,8 @@ onMounted(() => {
           <div v-if="tools.length" ref="chartEl" class="chart tools-chart"></div>
           <div v-else class="empty-state empty-state-compact">
             <BarChartOutlined class="empty-state-icon" />
-            <div class="empty-state-title">No tool activity to chart</div>
-            <div class="empty-state-text">Indexed tool calls will appear here as successful and failed or pending totals.</div>
+            <div class="empty-state-title">{{ t('empty.title') }}</div>
+            <div class="empty-state-text">{{ t('empty.text') }}</div>
           </div>
         </div>
       </section>

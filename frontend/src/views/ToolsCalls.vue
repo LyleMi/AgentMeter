@@ -11,6 +11,7 @@ import { EyeOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import ToolCallDetailDrawer from '../components/ToolCallDetailDrawer.vue'
 import ToolInputInline from '../components/ToolInputInline.vue'
 import { api, formatDateTime, formatDuration, formatNumber, sessionLabel, type AgentUsage, type ToolCall, type ToolStat } from '../api'
+import { useMessages } from '../i18n'
 import { statusClass, statusColor } from '../presentation/status'
 
 const ATable = AntTable as unknown as DefineComponent
@@ -20,6 +21,66 @@ type ToolCallSort = typeof DEFAULT_SORT | 'duration_desc' | 'duration_asc'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useMessages({
+  en: {
+    'title': 'Recent Tool Calls',
+    'kicker': 'Individual calls with parsed input, output, raw events and session context',
+    'count.matching': '{count} matching calls',
+    'count.sorted': '{count} sorted calls',
+    'count.recent': '{count} recent calls',
+    'column.started': 'Started',
+    'column.tool': 'Tool',
+    'column.status': 'Status',
+    'column.duration': 'Duration',
+    'column.session': 'Session',
+    'column.input': 'Input',
+    'column.output': 'Output',
+    'filter.agent': 'Agent type',
+    'filter.tool': 'Tool',
+    'filter.from': 'From',
+    'filter.to': 'To',
+    'filter.fromAria': 'Started from',
+    'filter.toAria': 'Started to',
+    'sort.recent': 'Recent first',
+    'sort.durationDesc': 'Duration high to low',
+    'sort.durationAsc': 'Duration low to high',
+    'action.reset': 'Reset',
+    'action.refresh': 'Refresh',
+    'empty.loading': 'Loading tool calls...',
+    'empty.none': 'No tool calls indexed',
+    'tooltip.viewDetails': 'View details',
+    'fallback.unknown': 'unknown'
+  },
+  'zh-CN': {
+    'title': '最近工具调用',
+    'kicker': '包含解析输入、输出、原始事件和会话上下文的单次调用',
+    'count.matching': '{count} 个匹配调用',
+    'count.sorted': '{count} 个已排序调用',
+    'count.recent': '{count} 个最近调用',
+    'column.started': '开始',
+    'column.tool': '工具',
+    'column.status': '状态',
+    'column.duration': '耗时',
+    'column.session': '会话',
+    'column.input': '输入',
+    'column.output': '输出',
+    'filter.agent': 'Agent 类型',
+    'filter.tool': '工具',
+    'filter.from': '从',
+    'filter.to': '到',
+    'filter.fromAria': '开始时间从',
+    'filter.toAria': '开始时间到',
+    'sort.recent': '最近优先',
+    'sort.durationDesc': '耗时从高到低',
+    'sort.durationAsc': '耗时从低到高',
+    'action.reset': '重置',
+    'action.refresh': '刷新',
+    'empty.loading': '正在加载工具调用...',
+    'empty.none': '暂无已索引工具调用',
+    'tooltip.viewDetails': '查看详情',
+    'fallback.unknown': '未知'
+  }
+})
 const loading = ref(true)
 const callLoading = ref(true)
 const toolLoading = ref(true)
@@ -34,18 +95,18 @@ const sortFilter = ref<ToolCallSort>(routeSortQuery())
 const selectedToolCall = ref<ToolCall | null>(null)
 let applyingRouteUpdate = false
 
-const callColumns = [
-  { title: 'Started', dataIndex: 'startedAt', key: 'startedAt', width: 140 },
-  { title: 'Tool', dataIndex: 'toolName', key: 'toolName', width: 140 },
-  { title: 'Status', dataIndex: 'status', key: 'status', width: 105 },
-  { title: 'Duration', dataIndex: 'durationMs', key: 'duration', width: 96, align: 'right' },
-  { title: 'Session', dataIndex: 'sessionId', key: 'session', width: 96 },
-  { title: 'Input', dataIndex: 'inputSummary', key: 'input', width: 440 },
-  { title: 'Output', dataIndex: 'outputSummary', key: 'output', width: 280 },
+const callColumns = computed(() => [
+  { title: t('column.started'), dataIndex: 'startedAt', key: 'startedAt', width: 140 },
+  { title: t('column.tool'), dataIndex: 'toolName', key: 'toolName', width: 140 },
+  { title: t('column.status'), dataIndex: 'status', key: 'status', width: 105 },
+  { title: t('column.duration'), dataIndex: 'durationMs', key: 'duration', width: 96, align: 'right' },
+  { title: t('column.session'), dataIndex: 'sessionId', key: 'session', width: 96 },
+  { title: t('column.input'), dataIndex: 'inputSummary', key: 'input', width: 440 },
+  { title: t('column.output'), dataIndex: 'outputSummary', key: 'output', width: 280 },
   { title: '', key: 'detail', width: 56, align: 'right' }
-]
+])
 
-const toolOptions = computed(() => tools.value.map((item) => ({ value: item.toolName, label: item.toolName || 'unknown' })))
+const toolOptions = computed(() => tools.value.map((item) => ({ value: item.toolName, label: item.toolName || t('fallback.unknown') })))
 const agentOptions = computed(() => {
   const values = new Map<string, string>()
   for (const item of agents.value) {
@@ -53,17 +114,18 @@ const agentOptions = computed(() => {
   }
   return [...values.entries()].sort((left, right) => left[1].localeCompare(right[1])).map(([value, label]) => ({ value, label }))
 })
-const sortOptions = [
-  { value: DEFAULT_SORT, label: 'Recent first' },
-  { value: 'duration_desc', label: 'Duration high to low' },
-  { value: 'duration_asc', label: 'Duration low to high' }
-]
+const sortOptions = computed(() => [
+  { value: DEFAULT_SORT, label: t('sort.recent') },
+  { value: 'duration_desc', label: t('sort.durationDesc') },
+  { value: 'duration_asc', label: t('sort.durationAsc') }
+])
+const tableLocale = computed(() => ({ emptyText: callLoading.value ? t('empty.loading') : t('empty.none') }))
 const hasActiveFilters = computed(() => Boolean(toolFilter.value || agentFilter.value || fromFilter.value || toFilter.value))
 const toolCallCountText = computed(() => {
   const visible = formatNumber(toolCalls.value.length)
-  if (hasActiveFilters.value) return `${visible} matching calls`
-  if (sortFilter.value !== DEFAULT_SORT) return `${visible} sorted calls`
-  return `${visible} recent calls`
+  if (hasActiveFilters.value) return t('count.matching', { count: visible })
+  if (sortFilter.value !== DEFAULT_SORT) return t('count.sorted', { count: visible })
+  return t('count.recent', { count: visible })
 })
 
 async function load() {
@@ -254,8 +316,8 @@ onMounted(load)
   <section class="panel">
     <div class="panel-header">
       <div>
-        <h2 class="panel-title">Recent Tool Calls</h2>
-        <div class="panel-kicker">Individual calls with parsed input, output, raw events and session context</div>
+        <h2 class="panel-title">{{ t('title') }}</h2>
+        <div class="panel-kicker">{{ t('kicker') }}</div>
       </div>
       <span class="row-count">{{ toolCallCountText }}</span>
     </div>
@@ -266,7 +328,7 @@ onMounted(load)
             v-model:value="agentFilter"
             class="control-medium"
             allow-clear
-            placeholder="Agent type"
+            :placeholder="t('filter.agent')"
             :options="agentOptions"
             :loading="loading"
             @change="updateFilters('agent')"
@@ -275,18 +337,18 @@ onMounted(load)
             v-model:value="toolFilter"
             class="control-medium"
             allow-clear
-            placeholder="Tool"
+            :placeholder="t('filter.tool')"
             :options="toolOptions"
             :loading="loading || toolLoading"
             @change="() => updateFilters()"
           />
           <label class="inline-field tool-time-filter">
-            <span>From</span>
-            <input v-model="fromFilter" class="native-date-input" type="datetime-local" aria-label="Started from" @change="() => updateFilters()" />
+            <span>{{ t('filter.from') }}</span>
+            <input v-model="fromFilter" class="native-date-input" type="datetime-local" :aria-label="t('filter.fromAria')" @change="() => updateFilters()" />
           </label>
           <label class="inline-field tool-time-filter">
-            <span>To</span>
-            <input v-model="toFilter" class="native-date-input" type="datetime-local" aria-label="Started to" @change="() => updateFilters()" />
+            <span>{{ t('filter.to') }}</span>
+            <input v-model="toFilter" class="native-date-input" type="datetime-local" :aria-label="t('filter.toAria')" @change="() => updateFilters()" />
           </label>
           <a-select
             v-model:value="sortFilter"
@@ -294,14 +356,14 @@ onMounted(load)
             :options="sortOptions"
             @change="() => updateFilters()"
           />
-          <a-button @click="resetFilters">Reset</a-button>
+          <a-button @click="resetFilters">{{ t('action.reset') }}</a-button>
         </div>
         <div class="toolbar-right">
           <a-button @click="load">
             <template #icon>
               <ReloadOutlined />
             </template>
-            Refresh
+            {{ t('action.refresh') }}
           </a-button>
         </div>
       </div>
@@ -312,7 +374,7 @@ onMounted(load)
         row-key="id"
         size="small"
         :loading="callLoading"
-        :locale="{ emptyText: callLoading ? 'Loading tool calls...' : 'No tool calls indexed' }"
+        :locale="tableLocale"
         :pagination="{ pageSize: 20, showSizeChanger: true }"
         :scroll="{ x: 1350 }"
       >
@@ -320,13 +382,13 @@ onMounted(load)
           <template v-if="column.key === 'startedAt'">{{ formatDateTime(record.startedAt) }}</template>
           <template v-else-if="column.key === 'toolName'">
             <a-typography-text :ellipsis="{ tooltip: record.toolName }">
-              {{ record.toolName || 'unknown' }}
+              {{ record.toolName || t('fallback.unknown') }}
             </a-typography-text>
           </template>
           <template v-else-if="column.key === 'status'">
-            <a-tooltip :title="record.error || record.status || 'unknown'">
+            <a-tooltip :title="record.error || record.status || t('fallback.unknown')">
               <a-tag class="status-tag call-status-tag" :class="statusClass(record.status)" :color="statusColor(record.status)">
-                {{ record.status || 'unknown' }}
+                {{ record.status || t('fallback.unknown') }}
               </a-tag>
             </a-tooltip>
           </template>
@@ -350,7 +412,7 @@ onMounted(load)
             </a-typography-text>
           </template>
           <template v-else-if="column.key === 'detail'">
-            <a-tooltip title="View details">
+            <a-tooltip :title="t('tooltip.viewDetails')">
               <a-button type="text" size="small" @click="openToolCall(record)">
                 <template #icon>
                   <EyeOutlined />

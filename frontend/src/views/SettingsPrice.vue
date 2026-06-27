@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, type DefineComponent } from 'vue'
+import { computed, onMounted, ref, type DefineComponent } from 'vue'
 import AButton from 'ant-design-vue/es/button'
 import message from 'ant-design-vue/es/message'
 import ASpin from 'ant-design-vue/es/spin'
@@ -7,20 +7,50 @@ import AntTable from 'ant-design-vue/es/table'
 import Typography from 'ant-design-vue/es/typography'
 import { ReloadOutlined } from '@ant-design/icons-vue'
 import { api, formatDateTime, formatNumber, type PricingModel } from '../api'
+import { useMessages } from '../i18n'
 
 const ATable = AntTable as unknown as DefineComponent
 const ATypographyText = Typography.Text
+const { t } = useMessages({
+  en: {
+    'price.title': 'Price',
+    'price.kicker': 'Pricing registry',
+    'price.action.refresh': 'Refresh',
+    'price.meta.models': 'models',
+    'price.column.model': 'Model',
+    'price.column.input': 'Input / 1M',
+    'price.column.cached': 'Cached / 1M',
+    'price.column.output': 'Output / 1M',
+    'price.column.source': 'Source',
+    'price.empty': 'No pricing models',
+    'price.message.loadFailed': 'Load pricing failed'
+  },
+  'zh-CN': {
+    'price.title': '价格',
+    'price.kicker': '定价注册表',
+    'price.action.refresh': '刷新',
+    'price.meta.models': '个模型',
+    'price.column.model': '模型',
+    'price.column.input': '输入 / 1M',
+    'price.column.cached': '缓存 / 1M',
+    'price.column.output': '输出 / 1M',
+    'price.column.source': '来源',
+    'price.empty': '暂无定价模型',
+    'price.message.loadFailed': '加载定价失败'
+  }
+})
 
 const loading = ref(true)
 const pricingModels = ref<PricingModel[]>([])
 
-const pricingColumns = [
-  { title: 'Model', dataIndex: 'model', key: 'model', width: 300 },
-  { title: 'Input / 1M', dataIndex: 'inputPer1m', key: 'input', width: 112, align: 'right' },
-  { title: 'Cached / 1M', dataIndex: 'cachedInputPer1m', key: 'cached', width: 122, align: 'right' },
-  { title: 'Output / 1M', dataIndex: 'outputPer1m', key: 'output', width: 122, align: 'right' },
-  { title: 'Source', dataIndex: 'source', key: 'source', width: 180 }
-]
+const pricingColumns = computed(() => [
+  { title: t('price.column.model'), dataIndex: 'model', key: 'model', width: 300 },
+  { title: t('price.column.input'), dataIndex: 'inputPer1m', key: 'input', width: 112, align: 'right' },
+  { title: t('price.column.cached'), dataIndex: 'cachedInputPer1m', key: 'cached', width: 122, align: 'right' },
+  { title: t('price.column.output'), dataIndex: 'outputPer1m', key: 'output', width: 122, align: 'right' },
+  { title: t('price.column.source'), dataIndex: 'source', key: 'source', width: 180 }
+])
+const tableLocale = computed(() => ({ emptyText: t('price.empty') }))
 
 function formatPrice(value: number) {
   return `$${value.toFixed(4)}`
@@ -31,7 +61,7 @@ async function load() {
   try {
     pricingModels.value = await api.getPricingModels()
   } catch (error) {
-    message.error(error instanceof Error ? error.message : 'Load pricing failed')
+    message.error(error instanceof Error ? error.message : t('price.message.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -45,16 +75,16 @@ onMounted(load)
     <section class="panel">
       <div class="panel-header">
         <div>
-          <h2 class="panel-title">Price</h2>
-          <div class="panel-kicker">Pricing registry</div>
+          <h2 class="panel-title">{{ t('price.title') }}</h2>
+          <div class="panel-kicker">{{ t('price.kicker') }}</div>
         </div>
         <div class="summary-actions">
-          <span class="row-count">{{ formatNumber(pricingModels.length) }} models</span>
+          <span class="row-count">{{ formatNumber(pricingModels.length) }} {{ t('price.meta.models') }}</span>
           <a-button @click="load">
             <template #icon>
               <ReloadOutlined />
             </template>
-            Refresh
+            {{ t('price.action.refresh') }}
           </a-button>
         </div>
       </div>
@@ -65,6 +95,7 @@ onMounted(load)
         :data-source="pricingModels"
         row-key="id"
         :pagination="false"
+        :locale="tableLocale"
         :scroll="{ x: 900 }"
       >
         <template #bodyCell="{ column, record }">

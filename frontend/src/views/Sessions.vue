@@ -10,12 +10,73 @@ import ATooltip from 'ant-design-vue/es/tooltip'
 import Typography from 'ant-design-vue/es/typography'
 import { ArrowRightOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import { api, formatCost, formatDateTime, formatDuration, formatNumber, sessionLabel, shortPath, type Session } from '../api'
+import { useMessages } from '../i18n'
 import { statusClass, statusColor } from '../presentation/status'
 
 const ATable = AntTable as unknown as DefineComponent
 const ATypographyText = Typography.Text
 
 const router = useRouter()
+const { t } = useMessages({
+  en: {
+    'title': 'Sessions',
+    'subtitle': 'Compact local session workbench for traces, pricing, and indexing state',
+    'action.refresh': 'Refresh',
+    'action.apply': 'Apply',
+    'action.reset': 'Reset',
+    'filter.searchPlaceholder': 'Search project, model or file',
+    'filter.agentPlaceholder': 'Agent',
+    'filter.modelPlaceholder': 'Model',
+    'rowCount.matching': 'matching',
+    'rowCount.indexed': 'indexed',
+    'empty.loading': 'Loading sessions...',
+    'empty.filtered': 'No sessions match the current filters',
+    'empty.unindexed': 'No indexed sessions yet. Configure a source and run indexing to populate local history.',
+    'column.session': 'Session',
+    'column.agent': 'Agent',
+    'column.project': 'Project',
+    'column.model': 'Model',
+    'column.tokens': 'Tokens',
+    'column.cost': 'Cost',
+    'column.tools': 'Tools',
+    'column.wall': 'Wall',
+    'column.status': 'Status',
+    'status.parsePrefix': 'parse',
+    'status.unpriced': 'unpriced',
+    'fallback.unknown': 'unknown',
+    'fallback.indexMessage': 'No index message recorded',
+    'tooltip.openSession': 'Open session'
+  },
+  'zh-CN': {
+    'title': '会话',
+    'subtitle': '用于查看轨迹、费用和索引状态的本地会话工作台',
+    'action.refresh': '刷新',
+    'action.apply': '应用',
+    'action.reset': '重置',
+    'filter.searchPlaceholder': '搜索项目、模型或文件',
+    'filter.agentPlaceholder': 'Agent',
+    'filter.modelPlaceholder': '模型',
+    'rowCount.matching': '个匹配',
+    'rowCount.indexed': '个已索引',
+    'empty.loading': '正在加载会话...',
+    'empty.filtered': '没有会话符合当前筛选条件',
+    'empty.unindexed': '还没有已索引的会话。请配置来源并运行索引以填充本地历史。',
+    'column.session': '会话',
+    'column.agent': 'Agent',
+    'column.project': '项目',
+    'column.model': '模型',
+    'column.tokens': 'Token',
+    'column.cost': '费用',
+    'column.tools': '工具',
+    'column.wall': '耗时',
+    'column.status': '状态',
+    'status.parsePrefix': '解析',
+    'status.unpriced': '未定价',
+    'fallback.unknown': '未知',
+    'fallback.indexMessage': '没有记录索引消息',
+    'tooltip.openSession': '打开会话'
+  }
+})
 const loading = ref(false)
 const sessions = ref<Session[]>([])
 const catalogSessions = ref<Session[]>([])
@@ -23,18 +84,18 @@ const search = ref('')
 const model = ref<string | undefined>()
 const agent = ref<string | undefined>()
 
-const columns = [
-  { title: 'Session', dataIndex: 'sessionKey', key: 'identity', width: 250 },
-  { title: 'Agent', dataIndex: 'agentName', key: 'agent', width: 132 },
-  { title: 'Project', dataIndex: 'projectPath', key: 'projectPath' },
-  { title: 'Model', dataIndex: 'model', key: 'model', width: 90 },
-  { title: 'Tokens', dataIndex: ['tokenUsage', 'totalTokens'], key: 'tokens', width: 100, align: 'right' },
-  { title: 'Cost', dataIndex: 'estimatedCostUsd', key: 'cost', width: 100, align: 'right' },
-  { title: 'Tools', dataIndex: 'toolCallCount', key: 'tools', width: 70, align: 'right' },
-  { title: 'Wall', dataIndex: 'wallDurationMs', key: 'wall', width: 76, align: 'right' },
-  { title: 'Status', dataIndex: 'parseStatus', key: 'status', width: 170 },
+const columns = computed(() => [
+  { title: t('column.session'), dataIndex: 'sessionKey', key: 'identity', width: 250 },
+  { title: t('column.agent'), dataIndex: 'agentName', key: 'agent', width: 132 },
+  { title: t('column.project'), dataIndex: 'projectPath', key: 'projectPath' },
+  { title: t('column.model'), dataIndex: 'model', key: 'model', width: 90 },
+  { title: t('column.tokens'), dataIndex: ['tokenUsage', 'totalTokens'], key: 'tokens', width: 100, align: 'right' },
+  { title: t('column.cost'), dataIndex: 'estimatedCostUsd', key: 'cost', width: 100, align: 'right' },
+  { title: t('column.tools'), dataIndex: 'toolCallCount', key: 'tools', width: 70, align: 'right' },
+  { title: t('column.wall'), dataIndex: 'wallDurationMs', key: 'wall', width: 76, align: 'right' },
+  { title: t('column.status'), dataIndex: 'parseStatus', key: 'status', width: 170 },
   { title: '', key: 'open', width: 44, align: 'right' }
-]
+])
 
 const hasActiveFilters = computed(() => Boolean(search.value.trim() || model.value || agent.value))
 
@@ -56,14 +117,14 @@ const agentOptions = computed(() => {
 const rowCountText = computed(() => {
   const visible = formatNumber(sessions.value.length)
   const indexed = formatNumber(catalogSessions.value.length || sessions.value.length)
-  if (hasActiveFilters.value) return `${visible} matching / ${indexed} indexed`
-  return `${visible} indexed`
+  if (hasActiveFilters.value) return `${visible} ${t('rowCount.matching')} / ${indexed} ${t('rowCount.indexed')}`
+  return `${visible} ${t('rowCount.indexed')}`
 })
 
 const emptyText = computed(() => {
-  if (loading.value) return 'Loading sessions...'
-  if (hasActiveFilters.value) return 'No sessions match the current filters'
-  return 'No indexed sessions yet. Configure a source and run indexing to populate local history.'
+  if (loading.value) return t('empty.loading')
+  if (hasActiveFilters.value) return t('empty.filtered')
+  return t('empty.unindexed')
 })
 
 async function load() {
@@ -88,7 +149,7 @@ function resetFilters() {
 }
 
 function indexStatusHint(record: Session) {
-  return record.lastIndexedScanMessage || record.rawSourcePath || 'No index message recorded'
+  return record.lastIndexedScanMessage || record.rawSourcePath || t('fallback.indexMessage')
 }
 
 function openSession(id: number) {
@@ -106,14 +167,14 @@ onMounted(load)
   <div class="page">
     <div class="page-header">
       <div>
-        <h1 class="page-title">Sessions</h1>
-        <div class="page-subtitle">Compact local session workbench for traces, pricing, and indexing state</div>
+        <h1 class="page-title">{{ t('title') }}</h1>
+        <div class="page-subtitle">{{ t('subtitle') }}</div>
       </div>
       <a-button @click="load">
         <template #icon>
           <ReloadOutlined />
         </template>
-        Refresh
+        {{ t('action.refresh') }}
       </a-button>
     </div>
 
@@ -125,7 +186,7 @@ onMounted(load)
               v-model:value="search"
               class="sessions-search control-wide"
               allow-clear
-              placeholder="Search project, model or file"
+              :placeholder="t('filter.searchPlaceholder')"
               @press-enter="load"
             >
               <template #prefix>
@@ -136,7 +197,7 @@ onMounted(load)
               v-model:value="agent"
               class="sessions-model-filter control-medium"
               allow-clear
-              placeholder="Agent"
+              :placeholder="t('filter.agentPlaceholder')"
               :options="agentOptions"
               @change="load"
             />
@@ -144,12 +205,12 @@ onMounted(load)
               v-model:value="model"
               class="sessions-model-filter control-medium"
               allow-clear
-              placeholder="Model"
+              :placeholder="t('filter.modelPlaceholder')"
               :options="modelOptions"
               @change="load"
             />
-            <a-button type="primary" @click="load">Apply</a-button>
-            <a-button @click="resetFilters">Reset</a-button>
+            <a-button type="primary" @click="load">{{ t('action.apply') }}</a-button>
+            <a-button @click="resetFilters">{{ t('action.reset') }}</a-button>
           </div>
           <div class="toolbar-right muted sessions-row-count">{{ rowCountText }}</div>
         </div>
@@ -175,7 +236,7 @@ onMounted(load)
               <div class="timeline-event-raw">{{ formatDateTime(record.startedAt) }}</div>
             </template>
             <template v-else-if="column.key === 'agent'">
-              <a-tag class="model-lite-tag">{{ record.agentName || record.agentKind || 'unknown' }}</a-tag>
+              <a-tag class="model-lite-tag">{{ record.agentName || record.agentKind || t('fallback.unknown') }}</a-tag>
               <div class="timeline-event-raw">{{ record.agentKind || '-' }}</div>
             </template>
             <template v-else-if="column.key === 'projectPath'">
@@ -186,7 +247,7 @@ onMounted(load)
             </template>
             <template v-else-if="column.key === 'model'">
               <a-tooltip :title="record.model" placement="topLeft">
-                <span class="model-name">{{ record.model || 'unknown' }}</span>
+                <span class="model-name">{{ record.model || t('fallback.unknown') }}</span>
               </a-tooltip>
               <div class="timeline-event-raw">{{ record.modelProvider || '-' }}</div>
             </template>
@@ -205,7 +266,7 @@ onMounted(load)
             <template v-else-if="column.key === 'status'">
               <div class="timeline-event-head">
                 <a-tag class="status-tag parse-status-tag" :class="statusClass(record.parseStatus)" :color="statusColor(record.parseStatus)">
-                  parse {{ record.parseStatus || 'unknown' }}
+                  {{ t('status.parsePrefix') }} {{ record.parseStatus || t('fallback.unknown') }}
                 </a-tag>
                 <a-tooltip :title="indexStatusHint(record)" placement="topLeft">
                   <a-tag
@@ -213,14 +274,14 @@ onMounted(load)
                     :class="statusClass(record.lastIndexedScanStatus)"
                     :color="statusColor(record.lastIndexedScanStatus)"
                   >
-                    {{ record.lastIndexedScanStatus || 'unknown' }}
+                    {{ record.lastIndexedScanStatus || t('fallback.unknown') }}
                   </a-tag>
                 </a-tooltip>
-                <a-tag v-if="record.unpriced" class="status-tag model-status-tag" color="warning">unpriced</a-tag>
+                <a-tag v-if="record.unpriced" class="status-tag model-status-tag" color="warning">{{ t('status.unpriced') }}</a-tag>
               </div>
             </template>
             <template v-else-if="column.key === 'open'">
-              <a-tooltip title="Open session">
+              <a-tooltip :title="t('tooltip.openSession')">
                 <a-button type="text" size="small" @click.stop="openSession(record.id)">
                   <template #icon>
                     <ArrowRightOutlined />

@@ -6,6 +6,7 @@ import ATag from 'ant-design-vue/es/tag'
 import Typography from 'ant-design-vue/es/typography'
 import { ArrowRightOutlined } from '@ant-design/icons-vue'
 import { formatDateTime, formatDuration, formatNumber, shortPath, type ToolCall } from '../api'
+import { useMessages } from '../i18n'
 import { statusClass, statusColor } from '../presentation/status'
 import { parseToolInput } from '../toolInput'
 
@@ -26,9 +27,58 @@ const emit = defineEmits<{
   openSession: [id: number]
 }>()
 
+const { t } = useMessages({
+  en: {
+    'title.default': 'Tool Call Details',
+    'title.named': '{tool} Details',
+    'label.tool': 'Tool',
+    'label.started': 'Started',
+    'label.ended': 'Ended',
+    'label.duration': 'Duration',
+    'label.session': 'Session',
+    'label.agent': 'Agent',
+    'label.rawEvents': 'Raw Events',
+    'label.project': 'Project',
+    'label.rawSource': 'Raw Source',
+    'label.input': 'Input',
+    'label.output': 'Output',
+    'label.error': 'Error',
+    'label.rawEvent': 'Raw Event',
+    'action.session': 'Session',
+    'raw.start': 'Start raw event',
+    'raw.end': 'End raw event',
+    'raw.line': 'line',
+    'raw.none': 'No raw event recorded',
+    'fallback.unknown': 'unknown'
+  },
+  'zh-CN': {
+    'title.default': '工具调用详情',
+    'title.named': '{tool} 详情',
+    'label.tool': '工具',
+    'label.started': '开始',
+    'label.ended': '结束',
+    'label.duration': '耗时',
+    'label.session': '会话',
+    'label.agent': 'Agent',
+    'label.rawEvents': '原始事件',
+    'label.project': '项目',
+    'label.rawSource': '原始来源',
+    'label.input': '输入',
+    'label.output': '输出',
+    'label.error': '错误',
+    'label.rawEvent': '原始事件',
+    'action.session': '会话',
+    'raw.start': '开始原始事件',
+    'raw.end': '结束原始事件',
+    'raw.line': '行',
+    'raw.none': '没有记录原始事件',
+    'fallback.unknown': '未知'
+  }
+})
+
 const drawerTitle = computed(() => {
-  if (!props.call?.toolName) return 'Tool Call Details'
-  return `${props.call.toolName} Details`
+  if (!props.call?.toolName) return t('title.default')
+  return t('title.named', { tool: props.call.toolName })
 })
 
 const parsedInput = computed(() => parseToolInput(props.call))
@@ -61,11 +111,11 @@ function hasDistinctEndRaw(call: ToolCall) {
     <template v-if="props.call">
       <div class="tool-detail-summary">
         <div class="tool-detail-heading">
-          <div class="metric-label">Tool</div>
-          <div class="summary-title">{{ props.call.toolName || 'unknown' }}</div>
+          <div class="metric-label">{{ t('label.tool') }}</div>
+          <div class="summary-title">{{ props.call.toolName || t('fallback.unknown') }}</div>
           <div class="summary-meta">
             <a-tag class="status-tag call-status-tag" :class="statusClass(props.call.status)" :color="statusColor(props.call.status)">
-              {{ props.call.status || 'unknown' }}
+              {{ props.call.status || t('fallback.unknown') }}
             </a-tag>
             <span class="summary-chip mono">#{{ formatNumber(props.call.id) }}</span>
             <span v-if="props.call.callId" class="summary-chip mono">{{ props.call.callId }}</span>
@@ -75,45 +125,45 @@ function hasDistinctEndRaw(call: ToolCall) {
           <template #icon>
             <ArrowRightOutlined />
           </template>
-          Session
+          {{ t('action.session') }}
         </a-button>
       </div>
 
       <div class="metadata-grid tool-detail-grid">
         <div class="metadata-item">
-          <div class="metadata-label">Started</div>
+          <div class="metadata-label">{{ t('label.started') }}</div>
           <div class="metadata-value">{{ formatDateTime(props.call.startedAt) }}</div>
         </div>
         <div class="metadata-item">
-          <div class="metadata-label">Ended</div>
+          <div class="metadata-label">{{ t('label.ended') }}</div>
           <div class="metadata-value">{{ formatDateTime(props.call.endedAt) }}</div>
         </div>
         <div class="metadata-item">
-          <div class="metadata-label">Duration</div>
+          <div class="metadata-label">{{ t('label.duration') }}</div>
           <div class="metadata-value number-cell">{{ formatDuration(props.call.durationMs) }}</div>
         </div>
         <div class="metadata-item">
-          <div class="metadata-label">Session</div>
+          <div class="metadata-label">{{ t('label.session') }}</div>
           <div class="metadata-value mono">{{ sessionName(props.call) }}</div>
         </div>
         <div class="metadata-item">
-          <div class="metadata-label">Agent</div>
+          <div class="metadata-label">{{ t('label.agent') }}</div>
           <div class="metadata-value">{{ props.call.agentName || props.call.agentKind || '-' }}</div>
         </div>
         <div class="metadata-item">
-          <div class="metadata-label">Raw Events</div>
+          <div class="metadata-label">{{ t('label.rawEvents') }}</div>
           <div class="metadata-value mono">
             {{ formatLine(props.call.rawStartEventLine || props.call.rawEventLine) }} -> {{ formatLine(props.call.rawEndEventLine) }}
           </div>
         </div>
         <div class="metadata-item is-wide">
-          <div class="metadata-label">Project</div>
+          <div class="metadata-label">{{ t('label.project') }}</div>
           <a-typography-text class="metadata-value detail-path" :ellipsis="{ tooltip: props.call.projectPath }">
             {{ props.call.projectPath || '-' }}
           </a-typography-text>
         </div>
         <div class="metadata-item is-wide">
-          <div class="metadata-label">Raw Source</div>
+          <div class="metadata-label">{{ t('label.rawSource') }}</div>
           <a-typography-text class="metadata-value detail-path mono" :ellipsis="{ tooltip: props.call.rawSourcePath }">
             {{ props.call.rawSourcePath ? shortPath(props.call.rawSourcePath) : '-' }}
           </a-typography-text>
@@ -121,7 +171,7 @@ function hasDistinctEndRaw(call: ToolCall) {
       </div>
 
       <section class="detail-section">
-        <div class="metadata-label">Input</div>
+        <div class="metadata-label">{{ t('label.input') }}</div>
         <div v-if="parsedInput.isStructured" class="tool-input-detail-grid">
           <div v-for="field in parsedInput.fields" :key="field.key" class="tool-input-detail-field" :class="{ 'is-wide': field.isLong }">
             <div class="tool-input-detail-label">{{ field.label }}</div>
@@ -136,14 +186,14 @@ function hasDistinctEndRaw(call: ToolCall) {
       </section>
 
       <section class="detail-section">
-        <div class="metadata-label">Output</div>
+        <div class="metadata-label">{{ t('label.output') }}</div>
         <a-typography-paragraph class="detail-pre mono" copyable>
           {{ props.call.outputSummary || '-' }}
         </a-typography-paragraph>
       </section>
 
       <section v-if="props.call.error" class="detail-section">
-        <div class="metadata-label">Error</div>
+        <div class="metadata-label">{{ t('label.error') }}</div>
         <a-typography-paragraph class="detail-pre detail-pre-error mono" copyable>
           {{ props.call.error }}
         </a-typography-paragraph>
@@ -151,8 +201,8 @@ function hasDistinctEndRaw(call: ToolCall) {
 
       <details v-if="hasText(props.call.rawStartEventJson)" class="raw-detail" open>
         <summary>
-          Start raw event
-          <span class="muted mono">line {{ formatLine(props.call.rawStartEventLine || props.call.rawEventLine) }} · {{ props.call.rawStartEventType || '-' }}</span>
+          {{ t('raw.start') }}
+          <span class="muted mono">{{ t('raw.line') }} {{ formatLine(props.call.rawStartEventLine || props.call.rawEventLine) }} · {{ props.call.rawStartEventType || '-' }}</span>
         </summary>
         <div v-if="props.call.rawStartEventSummary" class="raw-detail-summary">{{ props.call.rawStartEventSummary }}</div>
         <a-typography-paragraph class="detail-pre raw-json mono" copyable>
@@ -162,8 +212,8 @@ function hasDistinctEndRaw(call: ToolCall) {
 
       <details v-if="hasDistinctEndRaw(props.call)" class="raw-detail">
         <summary>
-          End raw event
-          <span class="muted mono">line {{ formatLine(props.call.rawEndEventLine) }} · {{ props.call.rawEndEventType || '-' }}</span>
+          {{ t('raw.end') }}
+          <span class="muted mono">{{ t('raw.line') }} {{ formatLine(props.call.rawEndEventLine) }} · {{ props.call.rawEndEventType || '-' }}</span>
         </summary>
         <div v-if="props.call.rawEndEventSummary" class="raw-detail-summary">{{ props.call.rawEndEventSummary }}</div>
         <a-typography-paragraph class="detail-pre raw-json mono" copyable>
@@ -172,8 +222,8 @@ function hasDistinctEndRaw(call: ToolCall) {
       </details>
 
       <div v-if="!hasText(props.call.rawStartEventJson) && !hasText(props.call.rawEndEventJson)" class="metadata-item">
-        <div class="metadata-label">Raw Event</div>
-        <div class="metadata-value">No raw event recorded</div>
+        <div class="metadata-label">{{ t('label.rawEvent') }}</div>
+        <div class="metadata-value">{{ t('raw.none') }}</div>
       </div>
     </template>
   </a-drawer>

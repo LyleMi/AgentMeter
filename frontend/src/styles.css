@@ -2192,3 +2192,33 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+.language-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 8px;
+  color: var(--am-muted);
+  background: #ffffff;
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius-sm);
+}
+
+.language-switcher-label {
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.language-select {
+  height: 24px;
+  min-width: 76px;
+  color: var(--am-text-soft);
+  font: inherit;
+  font-size: 12px;
+  background: transparent;
+  border: 0;
+  outline: none;
+}

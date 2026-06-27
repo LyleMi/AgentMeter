@@ -15,11 +15,116 @@ import {
   WarningOutlined
 } from '@ant-design/icons-vue'
 import { formatDuration, formatNumber } from '../api'
+import { useMessages } from '../i18n'
 import { useOverviewContext } from './overviewContext'
 
 const ATypographyText = Typography.Text
 
 const { overview, loading, startupIndexing, hasIndexedData, sourcePathDisplay, indexFromOverview } = useOverviewContext()
+const { t, createNumberFormatter } = useMessages({
+  en: {
+    'metric.totalUsage': 'Total Usage',
+    'metric.indexedSessions': '{count} indexed sessions',
+    'metric.tokens': 'tokens',
+    'metric.tokensTitle': '{count} tokens',
+    'metric.exactTotal': '{count} exact total',
+    'pricing.none': 'No indexed pricing',
+    'pricing.unpriced': '{count} unpriced',
+    'pricing.covered': 'Pricing covered',
+    'token.input': 'Input',
+    'token.cached': 'Cached',
+    'token.output': 'Output',
+    'token.reasoning': 'Reasoning',
+    'card.sessions': 'Sessions',
+    'card.sessionsNote': '{duration} wall time',
+    'card.estimatedCost': 'Estimated Cost',
+    'card.missingPricing': '{count} sessions missing pricing',
+    'card.allPriced': 'All indexed sessions priced',
+    'card.toolCalls': 'Tool Calls',
+    'card.toolCallsNote': 'Across indexed sessions',
+    'card.activeTime': 'Active Time',
+    'card.activeTimeNote': 'Measured model and tool time',
+    'efficiency.title': 'Efficiency',
+    'efficiency.kicker': 'Session scale, cache reuse, and tool depth',
+    'efficiency.avgTokens': 'Avg tokens / session',
+    'efficiency.avgTokensNote': 'Total workload size per indexed session',
+    'efficiency.toolsPerSession': 'Tools / session',
+    'efficiency.toolsPerSessionNote': 'Tool invocations per session',
+    'efficiency.cacheHit': 'Cache hit rate',
+    'efficiency.cacheHitNote': '{count} cached input tokens',
+    'efficiency.outputInput': 'Output / input',
+    'efficiency.outputInputNote': 'Response token density',
+    'timeCost.title': 'Time & Cost',
+    'timeCost.kicker': 'Duration, active share, and spend density',
+    'timeCost.avgWall': 'Avg wall / session',
+    'timeCost.avgWallNote': 'First to last timestamp',
+    'timeCost.activeShare': 'Active share',
+    'timeCost.activeShareNote': 'Measured model and tool time',
+    'timeCost.costPer1k': 'Cost / 1K tokens',
+    'timeCost.completePricingNote': 'Uses complete pricing coverage',
+    'timeCost.needsPricingNote': 'Needs pricing for all sessions',
+    'timeCost.tokensPerHour': 'Tokens / active hour',
+    'timeCost.tokensPerHourNote': 'Token throughput during measured work',
+    'fallback.unpriced': 'unpriced',
+    'empty.title': 'No indexed sessions yet',
+    'empty.text': 'AgentMeter can scan configured local agent sources now and refresh this dashboard when indexing completes.',
+    'empty.sources': 'Sources',
+    'empty.sourcePath': 'Open Settings to choose a source path',
+    'empty.updateIndex': 'Update Index',
+    'empty.editSource': 'Edit Source'
+  },
+  'zh-CN': {
+    'metric.totalUsage': '总用量',
+    'metric.indexedSessions': '已索引 {count} 个会话',
+    'metric.tokens': 'Token',
+    'metric.tokensTitle': '{count} 个 Token',
+    'metric.exactTotal': '精确总数 {count}',
+    'pricing.none': '暂无已索引价格',
+    'pricing.unpriced': '{count} 个未定价',
+    'pricing.covered': '价格已覆盖',
+    'token.input': '输入',
+    'token.cached': '缓存',
+    'token.output': '输出',
+    'token.reasoning': '推理',
+    'card.sessions': '会话',
+    'card.sessionsNote': '总墙钟时间 {duration}',
+    'card.estimatedCost': '预估费用',
+    'card.missingPricing': '{count} 个会话缺少价格',
+    'card.allPriced': '所有已索引会话都有价格',
+    'card.toolCalls': '工具调用',
+    'card.toolCallsNote': '跨已索引会话统计',
+    'card.activeTime': '活跃时间',
+    'card.activeTimeNote': '已测量的模型和工具时间',
+    'efficiency.title': '效率',
+    'efficiency.kicker': '会话规模、缓存复用和工具深度',
+    'efficiency.avgTokens': '平均 Token / 会话',
+    'efficiency.avgTokensNote': '每个已索引会话的总工作量',
+    'efficiency.toolsPerSession': '工具 / 会话',
+    'efficiency.toolsPerSessionNote': '每个会话的工具调用次数',
+    'efficiency.cacheHit': '缓存命中率',
+    'efficiency.cacheHitNote': '{count} 个缓存输入 Token',
+    'efficiency.outputInput': '输出 / 输入',
+    'efficiency.outputInputNote': '响应 Token 密度',
+    'timeCost.title': '时间与费用',
+    'timeCost.kicker': '时长、活跃占比和花费密度',
+    'timeCost.avgWall': '平均墙钟 / 会话',
+    'timeCost.avgWallNote': '从第一条到最后一条时间戳',
+    'timeCost.activeShare': '活跃占比',
+    'timeCost.activeShareNote': '已测量的模型和工具时间',
+    'timeCost.costPer1k': '每 1K Token 费用',
+    'timeCost.completePricingNote': '使用完整价格覆盖计算',
+    'timeCost.needsPricingNote': '需要为所有会话补齐价格',
+    'timeCost.tokensPerHour': 'Token / 活跃小时',
+    'timeCost.tokensPerHourNote': '已测量工作期间的 Token 吞吐',
+    'fallback.unpriced': '未定价',
+    'empty.title': '还没有已索引会话',
+    'empty.text': 'AgentMeter 可以立即扫描已配置的本地代理来源，并在索引完成后刷新此仪表盘。',
+    'empty.sources': '来源',
+    'empty.sourcePath': '打开设置选择来源路径',
+    'empty.updateIndex': '更新索引',
+    'empty.editSource': '编辑来源'
+  }
+})
 
 interface DisplayNumber {
   main: string
@@ -32,21 +137,21 @@ const totalTokensDisplay = computed(() => compactNumber(overview.value?.totalTok
 const pricingStatus = computed(() => {
   const item = overview.value
   if (!item || item.totalSessions <= 0) {
-    return { label: 'No indexed pricing', tone: 'is-neutral', icon: WarningOutlined }
+    return { label: t('pricing.none'), tone: 'is-neutral', icon: WarningOutlined }
   }
   if ((item.unpricedSessions || 0) > 0) {
-    return { label: `${formatNumber(item.unpricedSessions)} unpriced`, tone: 'is-warning', icon: WarningOutlined }
+    return { label: t('pricing.unpriced', { count: formatNumber(item.unpricedSessions) }), tone: 'is-warning', icon: WarningOutlined }
   }
-  return { label: 'Pricing covered', tone: 'is-success', icon: CheckCircleOutlined }
+  return { label: t('pricing.covered'), tone: 'is-success', icon: CheckCircleOutlined }
 })
 
 const tokenBreakdown = computed(() => {
   const item = overview.value
   const values = [
-    { label: 'Input', value: item?.totalInputTokens || 0, tone: 'is-input' },
-    { label: 'Cached', value: item?.totalCachedInputTokens || 0, tone: 'is-cached' },
-    { label: 'Output', value: item?.totalOutputTokens || 0, tone: 'is-output' },
-    { label: 'Reasoning', value: item?.totalReasoningTokens || 0, tone: 'is-reasoning' }
+    { label: t('token.input'), value: item?.totalInputTokens || 0, tone: 'is-input' },
+    { label: t('token.cached'), value: item?.totalCachedInputTokens || 0, tone: 'is-cached' },
+    { label: t('token.output'), value: item?.totalOutputTokens || 0, tone: 'is-output' },
+    { label: t('token.reasoning'), value: item?.totalReasoningTokens || 0, tone: 'is-reasoning' }
   ]
   const total = values.reduce((sum, current) => sum + Math.max(current.value, 0), 0)
   return values.map((current) => {
@@ -63,34 +168,34 @@ const tokenBreakdown = computed(() => {
 
 const snapshotCards = computed(() => [
   {
-    label: 'Sessions',
+    label: t('card.sessions'),
     value: compactNumber(overview.value?.totalSessions),
-    note: `${formatDuration(overview.value?.totalWallDurationMs)} wall time`,
+    note: t('card.sessionsNote', { duration: formatDuration(overview.value?.totalWallDurationMs) }),
     icon: ClockCircleOutlined,
     tone: 'metric-primary'
   },
   {
-    label: 'Estimated Cost',
+    label: t('card.estimatedCost'),
     value: compactCurrency(overview.value?.estimatedCostUsd),
     note:
       (overview.value?.unpricedSessions || 0) > 0
-        ? `${formatNumber(overview.value?.unpricedSessions)} sessions missing pricing`
-        : 'All indexed sessions priced',
+        ? t('card.missingPricing', { count: formatNumber(overview.value?.unpricedSessions) })
+        : t('card.allPriced'),
     icon: DollarCircleOutlined,
     tone: 'metric-warning',
     warning: (overview.value?.unpricedSessions || 0) > 0
   },
   {
-    label: 'Tool Calls',
+    label: t('card.toolCalls'),
     value: compactNumber(overview.value?.totalToolCalls),
-    note: 'Across indexed sessions',
+    note: t('card.toolCallsNote'),
     icon: ToolOutlined,
     tone: 'metric-info'
   },
   {
-    label: 'Active Time',
+    label: t('card.activeTime'),
     value: textMetric(formatDuration(overview.value?.totalActiveDurationMs)),
-    note: 'Measured model and tool time',
+    note: t('card.activeTimeNote'),
     icon: ClockCircleOutlined,
     tone: 'metric-neutral'
   }
@@ -103,24 +208,24 @@ const efficiencyMetrics = computed(() => {
   const inputTokens = Math.max(item.totalInputTokens || 0, 0)
   return [
     {
-      label: 'Avg tokens / session',
+      label: t('efficiency.avgTokens'),
       value: formatNumber(Math.round((item.totalTokens || 0) / sessions)),
-      note: 'Total workload size per indexed session'
+      note: t('efficiency.avgTokensNote')
     },
     {
-      label: 'Tools / session',
+      label: t('efficiency.toolsPerSession'),
       value: formatRatio((item.totalToolCalls || 0) / sessions),
-      note: 'Tool invocations per session'
+      note: t('efficiency.toolsPerSessionNote')
     },
     {
-      label: 'Cache hit rate',
+      label: t('efficiency.cacheHit'),
       value: formatPercent((item.totalCachedInputTokens || 0) / Math.max(inputTokens, 1)),
-      note: `${formatNumber(item.totalCachedInputTokens)} cached input tokens`
+      note: t('efficiency.cacheHitNote', { count: formatNumber(item.totalCachedInputTokens) })
     },
     {
-      label: 'Output / input',
+      label: t('efficiency.outputInput'),
       value: `${formatRatio((item.totalOutputTokens || 0) / Math.max(inputTokens, 1))}x`,
-      note: 'Response token density'
+      note: t('efficiency.outputInputNote')
     }
   ]
 })
@@ -133,24 +238,24 @@ const timeCostMetrics = computed(() => {
   const hasCompletePricing = item.estimatedCostUsd !== undefined && item.estimatedCostUsd !== null && item.unpricedSessions === 0
   return [
     {
-      label: 'Avg wall / session',
+      label: t('timeCost.avgWall'),
       value: formatDuration((item.totalWallDurationMs || 0) / sessions),
-      note: 'First to last timestamp'
+      note: t('timeCost.avgWallNote')
     },
     {
-      label: 'Active share',
+      label: t('timeCost.activeShare'),
       value: formatPercent((item.totalActiveDurationMs || 0) / Math.max(item.totalWallDurationMs || 0, 1)),
-      note: 'Measured model and tool time'
+      note: t('timeCost.activeShareNote')
     },
     {
-      label: 'Cost / 1K tokens',
-      value: hasCompletePricing ? formatCostPerThousand(item.estimatedCostUsd || 0, item.totalTokens || 0) : 'unpriced',
-      note: hasCompletePricing ? 'Uses complete pricing coverage' : 'Needs pricing for all sessions'
+      label: t('timeCost.costPer1k'),
+      value: hasCompletePricing ? formatCostPerThousand(item.estimatedCostUsd || 0, item.totalTokens || 0) : t('fallback.unpriced'),
+      note: hasCompletePricing ? t('timeCost.completePricingNote') : t('timeCost.needsPricingNote')
     },
     {
-      label: 'Tokens / active hour',
+      label: t('timeCost.tokensPerHour'),
       value: activeHours > 0 ? formatNumber(Math.round((item.totalTokens || 0) / activeHours)) : '-',
-      note: 'Token throughput during measured work'
+      note: t('timeCost.tokensPerHourNote')
     }
   ]
 })
@@ -163,13 +268,13 @@ function formatPercent(value: number) {
 function formatRatio(value: number) {
   if (!Number.isFinite(value)) return '0'
   const normalized = Math.max(0, value)
-  return new Intl.NumberFormat(undefined, {
+  return createNumberFormatter({
     maximumFractionDigits: normalized > 0 && normalized < 0.1 ? 2 : 1
   }).format(normalized)
 }
 
 function formatCostPerThousand(cost: number, tokens: number) {
-  if (!tokens) return '$0'
+  if (!tokens) return formatUSD(0, 0)
   const value = cost / (tokens / 1000)
   return formatUSD(value, 4)
 }
@@ -190,7 +295,7 @@ function compactNumber(value: number | undefined): DisplayNumber {
   const scaled = normalized / tier.value
   const maximumFractionDigits = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2
   return {
-    main: new Intl.NumberFormat(undefined, { maximumFractionDigits }).format(scaled),
+    main: createNumberFormatter({ maximumFractionDigits }).format(scaled),
     suffix: tier.suffix,
     full
   }
@@ -201,7 +306,7 @@ function textMetric(value: string): DisplayNumber {
 }
 
 function compactCurrency(value: number | undefined): DisplayNumber {
-  if (value === undefined || value === null) return textMetric('unpriced')
+  if (value === undefined || value === null) return textMetric(t('fallback.unpriced'))
   const normalized = Math.max(0, Number(value || 0))
   const full = formatUSD(normalized, 4)
   if (normalized < 1_000) {
@@ -226,7 +331,7 @@ function compactCurrency(value: number | undefined): DisplayNumber {
 }
 
 function formatUSD(value: number, maximumFractionDigits: number) {
-  return `$${new Intl.NumberFormat(undefined, { maximumFractionDigits }).format(value)}`
+  return createNumberFormatter({ style: 'currency', currency: 'USD', maximumFractionDigits }).format(value)
 }
 
 function formatSharePercent(value: number) {
@@ -247,9 +352,9 @@ function formatShareWidth(value: number) {
       <div class="overview-snapshot-primary">
         <div class="overview-snapshot-head">
           <div>
-            <div class="metric-label">Total Usage</div>
+            <div class="metric-label">{{ t('metric.totalUsage') }}</div>
             <div class="overview-snapshot-caption">
-              {{ formatNumber(overview?.totalSessions) }} indexed sessions
+              {{ t('metric.indexedSessions', { count: formatNumber(overview?.totalSessions) }) }}
             </div>
           </div>
           <span class="overview-coverage-chip" :class="pricingStatus.tone">
@@ -257,12 +362,12 @@ function formatShareWidth(value: number) {
             {{ pricingStatus.label }}
           </span>
         </div>
-        <div class="overview-snapshot-value" :title="`${totalTokensDisplay.full} tokens`">
+        <div class="overview-snapshot-value" :title="t('metric.tokensTitle', { count: totalTokensDisplay.full })">
           <span>{{ totalTokensDisplay.main }}</span>
           <em v-if="totalTokensDisplay.suffix">{{ totalTokensDisplay.suffix }}</em>
         </div>
-        <div class="overview-snapshot-unit">tokens</div>
-        <div class="overview-snapshot-exact">{{ totalTokensDisplay.full }} exact total</div>
+        <div class="overview-snapshot-unit">{{ t('metric.tokens') }}</div>
+        <div class="overview-snapshot-exact">{{ t('metric.exactTotal', { count: totalTokensDisplay.full }) }}</div>
         <div class="overview-token-breakdown">
           <div v-for="item in tokenBreakdown" :key="item.label" class="overview-token-item" :class="item.tone">
             <div class="overview-token-row">
@@ -303,8 +408,8 @@ function formatShareWidth(value: number) {
       <section class="panel overview-signal-panel">
         <div class="panel-header">
           <div>
-            <h2 class="panel-title">Efficiency</h2>
-            <div class="panel-kicker">Session scale, cache reuse, and tool depth</div>
+            <h2 class="panel-title">{{ t('efficiency.title') }}</h2>
+            <div class="panel-kicker">{{ t('efficiency.kicker') }}</div>
           </div>
           <FunctionOutlined class="panel-header-icon" />
         </div>
@@ -322,8 +427,8 @@ function formatShareWidth(value: number) {
       <section class="panel overview-signal-panel">
         <div class="panel-header">
           <div>
-            <h2 class="panel-title">Time & Cost</h2>
-            <div class="panel-kicker">Duration, active share, and spend density</div>
+            <h2 class="panel-title">{{ t('timeCost.title') }}</h2>
+            <div class="panel-kicker">{{ t('timeCost.kicker') }}</div>
           </div>
           <DollarCircleOutlined class="panel-header-icon" />
         </div>
@@ -341,15 +446,15 @@ function formatShareWidth(value: number) {
 
     <div v-if="!loading && !hasIndexedData" class="empty-callout overview-empty-callout">
       <div class="empty-callout-main">
-        <div class="empty-callout-title">No indexed sessions yet</div>
+        <div class="empty-callout-title">{{ t('empty.title') }}</div>
         <div class="empty-callout-text">
-          AgentMeter can scan configured local agent sources now and refresh this dashboard when indexing completes.
+          {{ t('empty.text') }}
         </div>
         <div class="empty-source-line">
           <FolderOpenOutlined />
-          <span class="source-label">Sources</span>
+          <span class="source-label">{{ t('empty.sources') }}</span>
           <a-typography-text class="empty-source-path" :ellipsis="{ tooltip: sourcePathDisplay }">
-            {{ sourcePathDisplay || 'Open Settings to choose a source path' }}
+            {{ sourcePathDisplay || t('empty.sourcePath') }}
           </a-typography-text>
         </div>
       </div>
@@ -358,13 +463,13 @@ function formatShareWidth(value: number) {
           <template #icon>
             <PlayCircleOutlined />
           </template>
-          Update Index
+          {{ t('empty.updateIndex') }}
         </a-button>
         <a-button @click="$router.push('/settings')">
           <template #icon>
             <SettingOutlined />
           </template>
-          Edit Source
+          {{ t('empty.editSource') }}
         </a-button>
       </div>
     </div>

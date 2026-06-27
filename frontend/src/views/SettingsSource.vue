@@ -10,8 +10,61 @@ import Typography from 'ant-design-vue/es/typography'
 import { DeleteOutlined, FolderAddOutlined, PlusOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons-vue'
 import { api, formatNumber, type Settings, type SourceEntry } from '../api'
 import { notifyAppDataChanged } from '../events'
+import { useMessages } from '../i18n'
 
 const ATypographyText = Typography.Text
+const { t } = useMessages({
+  en: {
+    'source.title': 'Source',
+    'source.kicker': 'Local agent roots',
+    'source.action.refresh': 'Refresh',
+    'source.action.add': 'Add',
+    'source.action.save': 'Save',
+    'source.action.useDefaults': 'Use Defaults',
+    'source.action.remove': 'Remove',
+    'source.placeholder.path': 'Source path',
+    'source.meta.sources': 'Sources',
+    'source.meta.enabled': 'Enabled',
+    'source.meta.disabled': 'Disabled',
+    'source.meta.defaults': 'Defaults',
+    'source.meta.active': 'Active',
+    'source.meta.enabledSources': 'enabled sources',
+    'source.state.unsaved': 'Unsaved',
+    'source.state.enabledSuffix': 'enabled',
+    'source.state.allDisabled': 'All disabled',
+    'source.state.missing': 'Missing',
+    'source.empty': 'No sources configured',
+    'source.message.saved': 'Source settings saved',
+    'source.message.saveFailed': 'Save failed',
+    'source.message.duplicate': 'Source already exists',
+    'source.message.noDefaults': 'No default sources detected'
+  },
+  'zh-CN': {
+    'source.title': '来源',
+    'source.kicker': '本地代理根目录',
+    'source.action.refresh': '刷新',
+    'source.action.add': '添加',
+    'source.action.save': '保存',
+    'source.action.useDefaults': '使用默认值',
+    'source.action.remove': '移除',
+    'source.placeholder.path': '来源路径',
+    'source.meta.sources': '来源',
+    'source.meta.enabled': '已启用',
+    'source.meta.disabled': '已禁用',
+    'source.meta.defaults': '默认值',
+    'source.meta.active': '当前',
+    'source.meta.enabledSources': '个已启用来源',
+    'source.state.unsaved': '未保存',
+    'source.state.enabledSuffix': '个已启用',
+    'source.state.allDisabled': '全部禁用',
+    'source.state.missing': '缺失',
+    'source.empty': '尚未配置来源',
+    'source.message.saved': '来源设置已保存',
+    'source.message.saveFailed': '保存失败',
+    'source.message.duplicate': '来源已存在',
+    'source.message.noDefaults': '未检测到默认来源'
+  }
+})
 
 const loading = ref(true)
 const saving = ref(false)
@@ -26,10 +79,12 @@ const disabledCount = computed(() => normalizedEntries.value.length - enabledCou
 const entriesChanged = computed(() => JSON.stringify(normalizedEntries.value) !== JSON.stringify(savedEntries.value))
 
 const sourceState = computed(() => {
-  if (entriesChanged.value) return { color: 'warning', label: 'Unsaved' }
-  if (enabledCount.value > 0) return { color: 'success', label: `${formatNumber(enabledCount.value)} enabled` }
-  if (normalizedEntries.value.length > 0) return { color: 'default', label: 'All disabled' }
-  return { color: 'warning', label: 'Missing' }
+  if (entriesChanged.value) return { color: 'warning', label: t('source.state.unsaved') }
+  if (enabledCount.value > 0) {
+    return { color: 'success', label: `${formatNumber(enabledCount.value)} ${t('source.state.enabledSuffix')}` }
+  }
+  if (normalizedEntries.value.length > 0) return { color: 'default', label: t('source.state.allDisabled') }
+  return { color: 'warning', label: t('source.state.missing') }
 })
 
 function entryKey(path: string) {
@@ -76,9 +131,9 @@ async function save() {
     settings.value = await api.saveSourceSettings(normalizedEntries.value)
     sourceEntries.value = copyEntries(settings.value.sourceEntries || [])
     notifyAppDataChanged('settings')
-    message.success('Source settings saved')
+    message.success(t('source.message.saved'))
   } catch (error) {
-    message.error(error instanceof Error ? error.message : 'Save failed')
+    message.error(error instanceof Error ? error.message : t('source.message.saveFailed'))
   } finally {
     saving.value = false
   }
@@ -88,7 +143,7 @@ function addSource() {
   const path = newSourcePath.value.trim()
   if (!path) return
   if (normalizedEntries.value.some((entry) => entryKey(entry.path) === entryKey(path))) {
-    message.warning('Source already exists')
+    message.warning(t('source.message.duplicate'))
     return
   }
   sourceEntries.value.push({ path, enabled: true })
@@ -102,7 +157,7 @@ function removeSource(index: number) {
 function useDefaults() {
   const paths = settings.value?.defaultSourcePaths || []
   if (!paths.length) {
-    message.warning('No default sources detected')
+    message.warning(t('source.message.noDefaults'))
     return
   }
   sourceEntries.value = entriesFromPaths(paths)
@@ -117,8 +172,8 @@ onMounted(load)
       <section class="panel settings-tool-panel">
         <div class="panel-header">
           <div>
-            <h2 class="panel-title">Source</h2>
-            <div class="panel-kicker">Local agent roots</div>
+            <h2 class="panel-title">{{ t('source.title') }}</h2>
+            <div class="panel-kicker">{{ t('source.kicker') }}</div>
           </div>
           <div class="summary-actions">
             <a-tag :color="sourceState.color" class="status-tag">{{ sourceState.label }}</a-tag>
@@ -126,7 +181,7 @@ onMounted(load)
               <template #icon>
                 <ReloadOutlined />
               </template>
-              Refresh
+              {{ t('source.action.refresh') }}
             </a-button>
           </div>
         </div>
@@ -134,19 +189,19 @@ onMounted(load)
           <div class="section-stack">
             <div class="metadata-grid">
               <div class="metadata-item">
-                <div class="metadata-label">Sources</div>
+                <div class="metadata-label">{{ t('source.meta.sources') }}</div>
                 <div class="metadata-value">{{ formatNumber(normalizedEntries.length) }}</div>
               </div>
               <div class="metadata-item">
-                <div class="metadata-label">Enabled</div>
+                <div class="metadata-label">{{ t('source.meta.enabled') }}</div>
                 <div class="metadata-value status-ok">{{ formatNumber(enabledCount) }}</div>
               </div>
               <div class="metadata-item">
-                <div class="metadata-label">Disabled</div>
+                <div class="metadata-label">{{ t('source.meta.disabled') }}</div>
                 <div class="metadata-value">{{ formatNumber(disabledCount) }}</div>
               </div>
               <div class="metadata-item">
-                <div class="metadata-label">Defaults</div>
+                <div class="metadata-label">{{ t('source.meta.defaults') }}</div>
                 <div class="metadata-value">{{ formatNumber(settings?.defaultSourcePaths?.length || 0) }}</div>
               </div>
             </div>
@@ -161,11 +216,11 @@ onMounted(load)
                 <div class="source-entry-state">
                   <a-switch v-model:checked="entry.enabled" size="small" />
                   <a-tag :color="entry.enabled ? 'success' : 'default'" class="status-tag">
-                    {{ entry.enabled ? 'Enabled' : 'Disabled' }}
+                    {{ entry.enabled ? t('source.meta.enabled') : t('source.meta.disabled') }}
                   </a-tag>
                 </div>
                 <a-input v-model:value="entry.path" class="source-entry-input" />
-                <a-button type="text" danger title="Remove" @click="removeSource(index)">
+                <a-button type="text" danger :title="t('source.action.remove')" @click="removeSource(index)">
                   <template #icon>
                     <DeleteOutlined />
                   </template>
@@ -173,17 +228,17 @@ onMounted(load)
               </div>
               <div v-if="!sourceEntries.length" class="empty-state empty-state-compact">
                 <FolderAddOutlined class="empty-state-icon" />
-                <div class="empty-state-title">No sources configured</div>
+                <div class="empty-state-title">{{ t('source.empty') }}</div>
               </div>
             </div>
 
             <div class="source-add-row">
-              <a-input v-model:value="newSourcePath" placeholder="Source path" @pressEnter="addSource" />
+              <a-input v-model:value="newSourcePath" :placeholder="t('source.placeholder.path')" @pressEnter="addSource" />
               <a-button @click="addSource">
                 <template #icon>
                   <PlusOutlined />
                 </template>
-                Add
+                {{ t('source.action.add') }}
               </a-button>
             </div>
 
@@ -193,21 +248,21 @@ onMounted(load)
                   <template #icon>
                     <SaveOutlined />
                   </template>
-                  Save
+                  {{ t('source.action.save') }}
                 </a-button>
                 <a-button @click="useDefaults">
                   <template #icon>
                     <FolderAddOutlined />
                   </template>
-                  Use Defaults
+                  {{ t('source.action.useDefaults') }}
                 </a-button>
               </div>
             </div>
 
             <div class="settings-meta-line">
-              <span class="muted">Active</span>
+              <span class="muted">{{ t('source.meta.active') }}</span>
               <a-typography-text :ellipsis="{ tooltip: settings?.sourcePath }">
-                {{ settings?.sourcePaths?.length ? `${formatNumber(settings.sourcePaths.length)} enabled sources` : '-' }}
+                {{ settings?.sourcePaths?.length ? `${formatNumber(settings.sourcePaths.length)} ${t('source.meta.enabledSources')}` : '-' }}
               </a-typography-text>
             </div>
           </div>

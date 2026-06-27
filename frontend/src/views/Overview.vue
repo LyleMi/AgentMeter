@@ -12,6 +12,7 @@ import {
 } from '@ant-design/icons-vue'
 import { api, type Overview, type Settings } from '../api'
 import { notifyAppDataChanged } from '../events'
+import { useMessages } from '../i18n'
 import { overviewContextKey, type OverviewContext } from './overviewContext'
 
 const route = useRoute()
@@ -20,16 +21,40 @@ const loading = ref(true)
 const startupIndexing = ref(false)
 const overview = ref<Overview | null>(null)
 const settings = ref<Settings | null>(null)
+const { t } = useMessages({
+  en: {
+    'title': 'Overview',
+    'subtitle': 'Indexed coding-agent usage across local JSONL sessions',
+    'action.refresh': 'Refresh',
+    'tab.summary': 'Summary',
+    'tab.trends': 'Trends',
+    'tab.breakdown': 'Breakdown',
+    'tab.recent': 'Recent',
+    'message.indexed': '{indexed} indexed, {skipped} skipped, {failed} failed',
+    'message.indexFailed': 'Index failed'
+  },
+  'zh-CN': {
+    'title': '概览',
+    'subtitle': '基于本地 JSONL 会话索引的编码代理用量',
+    'action.refresh': '刷新',
+    'tab.summary': '汇总',
+    'tab.trends': '趋势',
+    'tab.breakdown': '拆分',
+    'tab.recent': '最近',
+    'message.indexed': '已索引 {indexed}，已跳过 {skipped}，失败 {failed}',
+    'message.indexFailed': '索引失败'
+  }
+})
 
 const hasIndexedData = computed(() => (overview.value?.totalSessions || 0) > 0)
 const sourcePathDisplay = computed(() => settings.value?.sourcePath || settings.value?.defaultSourcePath || '')
 
-const tabs = [
-  { key: 'summary', label: 'Summary', path: '/overview/summary', icon: BarChartOutlined },
-  { key: 'trends', label: 'Trends', path: '/overview/trends', icon: ClockCircleOutlined },
-  { key: 'breakdown', label: 'Breakdown', path: '/overview/breakdown', icon: DatabaseOutlined },
-  { key: 'recent', label: 'Recent', path: '/overview/recent', icon: HistoryOutlined }
-]
+const tabs = computed(() => [
+  { key: 'summary', label: t('tab.summary'), path: '/overview/summary', icon: BarChartOutlined },
+  { key: 'trends', label: t('tab.trends'), path: '/overview/trends', icon: ClockCircleOutlined },
+  { key: 'breakdown', label: t('tab.breakdown'), path: '/overview/breakdown', icon: DatabaseOutlined },
+  { key: 'recent', label: t('tab.recent'), path: '/overview/recent', icon: HistoryOutlined }
+])
 
 const activeKey = computed(() => {
   if (route.path.startsWith('/overview/trends')) return 'trends'
@@ -53,11 +78,17 @@ async function indexFromOverview() {
   startupIndexing.value = true
   try {
     const result = await api.indexNow(false)
-    message.success(`${result.indexed} indexed, ${result.skipped} skipped, ${result.failed} failed`)
+    message.success(
+      t('message.indexed', {
+        indexed: result.indexed,
+        skipped: result.skipped,
+        failed: result.failed
+      })
+    )
     await load()
     notifyAppDataChanged('index')
   } catch (error) {
-    message.error(error instanceof Error ? error.message : 'Index failed')
+    message.error(error instanceof Error ? error.message : t('message.indexFailed'))
   } finally {
     startupIndexing.value = false
   }
@@ -87,14 +118,14 @@ onMounted(load)
   <div class="page">
     <div class="page-header">
       <div>
-        <h1 class="page-title">Overview</h1>
-        <div class="page-subtitle">Indexed coding-agent usage across local JSONL sessions</div>
+        <h1 class="page-title">{{ t('title') }}</h1>
+        <div class="page-subtitle">{{ t('subtitle') }}</div>
       </div>
       <a-button :loading="loading" @click="load">
         <template #icon>
           <ReloadOutlined />
         </template>
-        Refresh
+        {{ t('action.refresh') }}
       </a-button>
     </div>
 

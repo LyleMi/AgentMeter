@@ -1,5 +1,7 @@
 # AgentMeter
 
+[中文](README.zh-CN.md) | [English](README.md)
+
 <p align="center">
   <img src="frontend/src/assets/agentmeter-logo.png" alt="AgentMeter logo" width="180">
 </p>
