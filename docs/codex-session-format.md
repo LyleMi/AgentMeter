@@ -96,8 +96,9 @@ Observed output/end payload types:
 - `tool_search_output`
 - `patch_apply_end`
 
-AgentMeter stores the tool name, status, input/output previews, error preview,
-and duration when both start and end timestamps are available.
+AgentMeter stores the tool name, call id, status, input/output previews, error
+preview, start/end raw event links, and duration when both start and end
+timestamps are available.
 
 ## Timing
 

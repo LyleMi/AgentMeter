@@ -166,7 +166,19 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 	if err := ensureColumn(ctx, conn, "sessions", "session_key", "session_key TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
+	if err := ensureColumn(ctx, conn, "tool_calls", "call_id", "call_id TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := ensureColumn(ctx, conn, "tool_calls", "raw_start_event_id", "raw_start_event_id INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := ensureColumn(ctx, conn, "tool_calls", "raw_end_event_id", "raw_end_event_id INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
 	if _, err := conn.ExecContext(ctx, `UPDATE sessions SET session_key = codex_session_id WHERE session_key = ''`); err != nil {
+		return err
+	}
+	if _, err := conn.ExecContext(ctx, `UPDATE tool_calls SET raw_start_event_id = raw_event_id WHERE raw_start_event_id = 0 AND raw_event_id != 0`); err != nil {
 		return err
 	}
 	return nil

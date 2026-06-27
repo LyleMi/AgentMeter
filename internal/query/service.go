@@ -157,6 +157,29 @@ func (s *Service) Tools(ctx context.Context) ([]model.ToolStat, error) {
 	return result, rows.Err()
 }
 
+func (s *Service) ToolCalls(ctx context.Context, filters model.ToolCallFilters) ([]model.ToolCall, error) {
+	where := []string{"1 = 1"}
+	args := []any{}
+	if strings.TrimSpace(filters.ToolName) != "" {
+		where = append(where, "tc.tool_name = ?")
+		args = append(args, strings.TrimSpace(filters.ToolName))
+	}
+	limit := filters.Limit
+	if limit <= 0 || limit > 1000 {
+		limit = 500
+	}
+	offset := filters.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	args = append(args, limit, offset)
+	query := fmt.Sprintf(`%s
+		WHERE %s
+		ORDER BY tc.started_at DESC, tc.id DESC
+		LIMIT ? OFFSET ?`, toolCallSelect, strings.Join(where, " AND "))
+	return s.scanToolCalls(ctx, query, args...)
+}
+
 func (s *Service) sessionByID(ctx context.Context, id int64) (model.Session, error) {
 	query := `SELECT
 		s.id, s.source_id, s.source_file_id, src.kind, src.name, COALESCE(NULLIF(s.session_key, ''), s.codex_session_id), s.codex_session_id, s.project_path, s.model, s.model_provider, s.originator, s.thread_source,
@@ -231,8 +254,27 @@ func (s *Service) modelCalls(ctx context.Context, sessionID int64) ([]model.Mode
 }
 
 func (s *Service) toolCalls(ctx context.Context, sessionID int64) ([]model.ToolCall, error) {
-	rows, err := s.conn.QueryContext(ctx, `SELECT id, session_id, started_at, ended_at, duration_ms, tool_name, status, input_summary, output_summary, error, raw_event_id
-		FROM tool_calls WHERE session_id = ? ORDER BY started_at, id`, sessionID)
+	return s.scanToolCalls(ctx, toolCallSelect+` WHERE tc.session_id = ? ORDER BY tc.started_at, tc.id`, sessionID)
+}
+
+const toolCallSelect = `SELECT
+		tc.id, tc.session_id, tc.started_at, tc.ended_at, tc.duration_ms, tc.tool_name, tc.status, tc.input_summary, tc.output_summary, tc.error,
+		tc.raw_event_id, tc.call_id, tc.raw_start_event_id, tc.raw_end_event_id,
+		COALESCE(start_event.source_line, 0), COALESCE(end_event.source_line, 0),
+		COALESCE(start_event.raw_type, ''), COALESCE(end_event.raw_type, ''),
+		COALESCE(start_event.summary, ''), COALESCE(end_event.summary, ''),
+		COALESCE(start_event.raw_json, ''), COALESCE(end_event.raw_json, ''),
+		COALESCE(NULLIF(sess.session_key, ''), sess.codex_session_id), sess.codex_session_id, sess.project_path,
+		src.kind, src.name, sf.path
+	FROM tool_calls tc
+	JOIN sessions sess ON sess.id = tc.session_id
+	JOIN sources src ON src.id = sess.source_id
+	JOIN source_files sf ON sf.id = sess.source_file_id
+	LEFT JOIN events start_event ON start_event.id = CASE WHEN tc.raw_start_event_id != 0 THEN tc.raw_start_event_id ELSE tc.raw_event_id END
+	LEFT JOIN events end_event ON end_event.id = tc.raw_end_event_id`
+
+func (s *Service) scanToolCalls(ctx context.Context, query string, args ...any) ([]model.ToolCall, error) {
+	rows, err := s.conn.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -241,11 +283,41 @@ func (s *Service) toolCalls(ctx context.Context, sessionID int64) ([]model.ToolC
 	for rows.Next() {
 		var item model.ToolCall
 		var started, ended string
-		if err := rows.Scan(&item.ID, &item.SessionID, &started, &ended, &item.DurationMS, &item.ToolName, &item.Status, &item.InputSummary, &item.OutputSummary, &item.Error, &item.RawEventID); err != nil {
+		if err := rows.Scan(
+			&item.ID,
+			&item.SessionID,
+			&started,
+			&ended,
+			&item.DurationMS,
+			&item.ToolName,
+			&item.Status,
+			&item.InputSummary,
+			&item.OutputSummary,
+			&item.Error,
+			&item.RawEventID,
+			&item.CallID,
+			&item.RawStartEventID,
+			&item.RawEndEventID,
+			&item.RawStartEventLine,
+			&item.RawEndEventLine,
+			&item.RawStartEventType,
+			&item.RawEndEventType,
+			&item.RawStartEventSummary,
+			&item.RawEndEventSummary,
+			&item.RawStartEventJSON,
+			&item.RawEndEventJSON,
+			&item.SessionKey,
+			&item.CodexSessionID,
+			&item.ProjectPath,
+			&item.AgentKind,
+			&item.AgentName,
+			&item.RawSourcePath,
+		); err != nil {
 			return nil, err
 		}
 		item.StartedAt = db.ParseTime(started)
 		item.EndedAt = db.ParseTime(ended)
+		item.RawEventLine = item.RawStartEventLine
 		result = append(result, item)
 	}
 	return result, rows.Err()

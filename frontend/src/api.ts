@@ -118,6 +118,7 @@ export interface ModelCall {
 
 export interface ToolCall {
   id: number
+  sessionId: number
   startedAt: string
   endedAt: string
   durationMs: number
@@ -126,7 +127,25 @@ export interface ToolCall {
   inputSummary: string
   outputSummary: string
   error: string
+  callId?: string
   rawEventId: number
+  rawStartEventId?: number
+  rawEndEventId?: number
+  rawEventLine?: number
+  rawStartEventLine?: number
+  rawEndEventLine?: number
+  rawStartEventType?: string
+  rawEndEventType?: string
+  rawStartEventSummary?: string
+  rawEndEventSummary?: string
+  rawStartEventJson?: string
+  rawEndEventJson?: string
+  sessionKey?: string
+  codexSessionId?: string
+  projectPath?: string
+  agentKind?: string
+  agentName?: string
+  rawSourcePath?: string
 }
 
 export interface SessionDetail {
@@ -186,6 +205,12 @@ export interface SessionFilters {
   offset?: number
 }
 
+export interface ToolCallFilters {
+  tool?: string
+  limit?: number
+  offset?: number
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
@@ -216,6 +241,13 @@ export const api = {
   },
   getSessionDetail: (id: number) => request<SessionDetail>(`/api/sessions/${id}`),
   getTools: () => request<ToolStat[]>('/api/tools'),
+  listToolCalls: (filters: ToolCallFilters = {}) => {
+    const params = new URLSearchParams()
+    if (filters.tool) params.set('tool', filters.tool)
+    if (filters.limit) params.set('limit', String(filters.limit))
+    if (filters.offset) params.set('offset', String(filters.offset))
+    return request<ToolCall[]>(`/api/tool-calls?${params}`)
+  },
   getPricingModels: () => request<PricingModel[]>('/api/pricing')
 }
 

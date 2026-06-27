@@ -145,7 +145,10 @@ Fields:
 - `input_summary`
 - `output_summary`
 - `error`
+- `call_id`
 - `raw_event_id`
+- `raw_start_event_id`
+- `raw_end_event_id`
 
 MVP statistics:
 

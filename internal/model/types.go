@@ -106,18 +106,35 @@ type ModelCall struct {
 }
 
 type ToolCall struct {
-	ID            int64     `json:"id"`
-	SessionID     int64     `json:"sessionId"`
-	StartedAt     time.Time `json:"startedAt"`
-	EndedAt       time.Time `json:"endedAt"`
-	DurationMS    int64     `json:"durationMs"`
-	ToolName      string    `json:"toolName"`
-	Status        string    `json:"status"`
-	InputSummary  string    `json:"inputSummary"`
-	OutputSummary string    `json:"outputSummary"`
-	Error         string    `json:"error"`
-	RawEventID    int64     `json:"rawEventId"`
-	RawEventLine  int       `json:"rawEventLine,omitempty"`
+	ID                   int64     `json:"id"`
+	SessionID            int64     `json:"sessionId"`
+	StartedAt            time.Time `json:"startedAt"`
+	EndedAt              time.Time `json:"endedAt"`
+	DurationMS           int64     `json:"durationMs"`
+	ToolName             string    `json:"toolName"`
+	Status               string    `json:"status"`
+	InputSummary         string    `json:"inputSummary"`
+	OutputSummary        string    `json:"outputSummary"`
+	Error                string    `json:"error"`
+	CallID               string    `json:"callId,omitempty"`
+	RawEventID           int64     `json:"rawEventId"`
+	RawStartEventID      int64     `json:"rawStartEventId,omitempty"`
+	RawEndEventID        int64     `json:"rawEndEventId,omitempty"`
+	RawEventLine         int       `json:"rawEventLine,omitempty"`
+	RawStartEventLine    int       `json:"rawStartEventLine,omitempty"`
+	RawEndEventLine      int       `json:"rawEndEventLine,omitempty"`
+	RawStartEventType    string    `json:"rawStartEventType,omitempty"`
+	RawEndEventType      string    `json:"rawEndEventType,omitempty"`
+	RawStartEventSummary string    `json:"rawStartEventSummary,omitempty"`
+	RawEndEventSummary   string    `json:"rawEndEventSummary,omitempty"`
+	RawStartEventJSON    string    `json:"rawStartEventJson,omitempty"`
+	RawEndEventJSON      string    `json:"rawEndEventJson,omitempty"`
+	SessionKey           string    `json:"sessionKey,omitempty"`
+	CodexSessionID       string    `json:"codexSessionId,omitempty"`
+	ProjectPath          string    `json:"projectPath,omitempty"`
+	AgentKind            string    `json:"agentKind,omitempty"`
+	AgentName            string    `json:"agentName,omitempty"`
+	RawSourcePath        string    `json:"rawSourcePath,omitempty"`
 }
 
 type PricingModel struct {
@@ -238,4 +255,10 @@ type SessionFilters struct {
 	Agent  string `json:"agent"`
 	Limit  int    `json:"limit"`
 	Offset int    `json:"offset"`
+}
+
+type ToolCallFilters struct {
+	ToolName string `json:"toolName"`
+	Limit    int    `json:"limit"`
+	Offset   int    `json:"offset"`
 }

@@ -275,15 +275,18 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 				status = firstNonEmpty(call.status, "completed")
 			}
 			parsed.ToolCall = append(parsed.ToolCall, model.ToolCall{
-				StartedAt:     call.startedAt,
-				EndedAt:       ts,
-				DurationMS:    duration,
-				ToolName:      call.name,
-				Status:        status,
-				InputSummary:  call.inputSummary,
-				OutputSummary: preview(outputSummary(raw.Payload), 500),
-				Error:         errText,
-				RawEventLine:  call.rawLine,
+				StartedAt:         call.startedAt,
+				EndedAt:           ts,
+				DurationMS:        duration,
+				ToolName:          call.name,
+				Status:            status,
+				InputSummary:      call.inputSummary,
+				OutputSummary:     preview(outputSummary(raw.Payload), 500),
+				Error:             errText,
+				CallID:            call.callID,
+				RawEventLine:      call.rawLine,
+				RawStartEventLine: call.rawLine,
+				RawEndEventLine:   lineNo,
 			})
 			delete(pending, callID)
 			modelBoundary = ts
@@ -316,15 +319,18 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 					status = firstNonEmpty(call.status, "completed")
 				}
 				parsed.ToolCall = append(parsed.ToolCall, model.ToolCall{
-					StartedAt:     call.startedAt,
-					EndedAt:       ts,
-					DurationMS:    duration,
-					ToolName:      firstNonEmpty(call.name, recordToolName(raw)),
-					Status:        status,
-					InputSummary:  call.inputSummary,
-					OutputSummary: preview(outputSummaryRecord(raw), 500),
-					Error:         errText,
-					RawEventLine:  call.rawLine,
+					StartedAt:         call.startedAt,
+					EndedAt:           ts,
+					DurationMS:        duration,
+					ToolName:          firstNonEmpty(call.name, recordToolName(raw)),
+					Status:            status,
+					InputSummary:      call.inputSummary,
+					OutputSummary:     preview(outputSummaryRecord(raw), 500),
+					Error:             errText,
+					CallID:            call.callID,
+					RawEventLine:      call.rawLine,
+					RawStartEventLine: call.rawLine,
+					RawEndEventLine:   lineNo,
 				})
 				delete(pending, callID)
 				modelBoundary = ts
@@ -359,15 +365,18 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 					duration := durationMS(call.startedAt, ts)
 					toolDurationMS += duration
 					parsed.ToolCall = append(parsed.ToolCall, model.ToolCall{
-						StartedAt:     call.startedAt,
-						EndedAt:       ts,
-						DurationMS:    duration,
-						ToolName:      firstNonEmpty(call.name, result.name),
-						Status:        firstNonEmpty(result.status, call.status, "completed"),
-						InputSummary:  call.inputSummary,
-						OutputSummary: preview(result.outputSummary, 500),
-						Error:         result.error,
-						RawEventLine:  call.rawLine,
+						StartedAt:         call.startedAt,
+						EndedAt:           ts,
+						DurationMS:        duration,
+						ToolName:          firstNonEmpty(call.name, result.name),
+						Status:            firstNonEmpty(result.status, call.status, "completed"),
+						InputSummary:      call.inputSummary,
+						OutputSummary:     preview(result.outputSummary, 500),
+						Error:             result.error,
+						CallID:            call.callID,
+						RawEventLine:      call.rawLine,
+						RawStartEventLine: call.rawLine,
+						RawEndEventLine:   lineNo,
 					})
 					delete(pending, result.callID)
 					modelBoundary = ts
@@ -406,13 +415,15 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 	}
 	for _, call := range pending {
 		parsed.ToolCall = append(parsed.ToolCall, model.ToolCall{
-			StartedAt:    call.startedAt,
-			EndedAt:      call.startedAt,
-			DurationMS:   0,
-			ToolName:     call.name,
-			Status:       firstNonEmpty(call.status, "pending"),
-			InputSummary: call.inputSummary,
-			RawEventLine: call.rawLine,
+			StartedAt:         call.startedAt,
+			EndedAt:           call.startedAt,
+			DurationMS:        0,
+			ToolName:          call.name,
+			Status:            firstNonEmpty(call.status, "pending"),
+			InputSummary:      call.inputSummary,
+			CallID:            call.callID,
+			RawEventLine:      call.rawLine,
+			RawStartEventLine: call.rawLine,
 		})
 	}
 

@@ -74,6 +74,17 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		value, err := service.GetTools()
 		writeJSON(w, value, err)
 	})
+	mux.HandleFunc("GET /api/tool-calls", func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		limit, _ := strconv.Atoi(query.Get("limit"))
+		offset, _ := strconv.Atoi(query.Get("offset"))
+		value, err := service.ListToolCalls(model.ToolCallFilters{
+			ToolName: query.Get("tool"),
+			Limit:    limit,
+			Offset:   offset,
+		})
+		writeJSON(w, value, err)
+	})
 	mux.HandleFunc("GET /api/pricing", func(w http.ResponseWriter, r *http.Request) {
 		value, err := service.GetPricingModels()
 		writeJSON(w, value, err)

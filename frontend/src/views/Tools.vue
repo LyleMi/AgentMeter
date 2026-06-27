@@ -1,24 +1,33 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, type DefineComponent } from 'vue'
+import { useRouter } from 'vue-router'
 import AButton from 'ant-design-vue/es/button'
+import ASelect from 'ant-design-vue/es/select'
 import ASpin from 'ant-design-vue/es/spin'
 import AntTable from 'ant-design-vue/es/table'
 import ATag from 'ant-design-vue/es/tag'
+import ATooltip from 'ant-design-vue/es/tooltip'
 import Typography from 'ant-design-vue/es/typography'
-import { BarChartOutlined, ReloadOutlined } from '@ant-design/icons-vue'
-import { api, formatDuration, formatNumber, type ToolStat } from '../api'
+import { BarChartOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import ToolCallDetailDrawer from '../components/ToolCallDetailDrawer.vue'
+import { api, formatDateTime, formatDuration, formatNumber, sessionLabel, shortPath, type ToolCall, type ToolStat } from '../api'
 import { chartPalette, toolChartColors } from '../chartPalette'
 import { init, type ECharts } from '../chartRuntime'
 
 const ATable = AntTable as unknown as DefineComponent
 const ATypographyText = Typography.Text
 
+const router = useRouter()
 const loading = ref(true)
+const callLoading = ref(true)
 const tools = ref<ToolStat[]>([])
+const toolCalls = ref<ToolCall[]>([])
+const toolFilter = ref<string | undefined>()
+const selectedToolCall = ref<ToolCall | null>(null)
 const chartEl = ref<HTMLDivElement | null>(null)
 let chart: ECharts | null = null
 
-const columns = [
+const statColumns = [
   { title: 'Tool', dataIndex: 'toolName', key: 'toolName' },
   { title: 'Calls', dataIndex: 'calls', key: 'calls', width: 120, align: 'right' },
   { title: 'Success', dataIndex: 'successCalls', key: 'success', width: 140, align: 'right' },
@@ -27,19 +36,49 @@ const columns = [
   { title: 'Average', dataIndex: 'avgDurationMs', key: 'average', width: 120, align: 'right' }
 ]
 
+const callColumns = [
+  { title: 'Started', dataIndex: 'startedAt', key: 'startedAt', width: 150 },
+  { title: 'Tool', dataIndex: 'toolName', key: 'toolName', width: 150 },
+  { title: 'Status', dataIndex: 'status', key: 'status', width: 110 },
+  { title: 'Duration', dataIndex: 'durationMs', key: 'duration', width: 110, align: 'right' },
+  { title: 'Session', dataIndex: 'sessionKey', key: 'session', width: 190 },
+  { title: 'Input', dataIndex: 'inputSummary', key: 'input' },
+  { title: 'Output', dataIndex: 'outputSummary', key: 'output' },
+  { title: '', key: 'detail', width: 56, align: 'right' }
+]
+
 const totalCalls = computed(() => tools.value.reduce((sum, item) => sum + item.calls, 0))
 const toolsUsed = computed(() => tools.value.length)
 const failedPendingCalls = computed(() => tools.value.reduce((sum, item) => sum + item.failedCalls, 0))
 const totalDurationMs = computed(() => tools.value.reduce((sum, item) => sum + item.totalDurationMs, 0))
 const averageDurationMs = computed(() => (totalCalls.value > 0 ? totalDurationMs.value / totalCalls.value : 0))
+const toolOptions = computed(() => tools.value.map((item) => ({ value: item.toolName, label: item.toolName || 'unknown' })))
+const toolCallCountText = computed(() => {
+  const visible = formatNumber(toolCalls.value.length)
+  if (toolFilter.value) return `${visible} ${toolFilter.value} calls`
+  return `${visible} recent calls`
+})
 
 async function load() {
   loading.value = true
+  callLoading.value = true
   try {
-    tools.value = (await api.getTools()) || []
+    const [nextTools, nextCalls] = await Promise.all([api.getTools(), api.listToolCalls({ tool: toolFilter.value, limit: 500 })])
+    tools.value = nextTools || []
+    toolCalls.value = nextCalls || []
     setTimeout(renderChart)
   } finally {
     loading.value = false
+    callLoading.value = false
+  }
+}
+
+async function loadToolCalls() {
+  callLoading.value = true
+  try {
+    toolCalls.value = (await api.listToolCalls({ tool: toolFilter.value, limit: 500 })) || []
+  } finally {
+    callLoading.value = false
   }
 }
 
@@ -126,6 +165,25 @@ function failureStatus(record: ToolStat) {
   }
 }
 
+function normalizedStatus(status?: string) {
+  return (status || 'unknown').toLowerCase()
+}
+
+function statusClass(status?: string) {
+  const normalized = normalizedStatus(status)
+  if (['completed', 'ok', 'indexed', 'success'].includes(normalized)) return 'status-ok'
+  if (['pending', 'warning', 'scanning', 'unknown', 'started'].includes(normalized)) return 'status-warning'
+  return 'status-error'
+}
+
+function statusColor(status?: string) {
+  const normalized = normalizedStatus(status)
+  if (['completed', 'ok', 'indexed', 'success'].includes(normalized)) return 'success'
+  if (normalized === 'scanning') return 'processing'
+  if (['pending', 'warning', 'unknown', 'started'].includes(normalized)) return 'warning'
+  return 'error'
+}
+
 function durationSignal() {
   if (!totalCalls.value) return { color: 'default', label: 'No calls' }
   if (averageDurationMs.value >= 60000) return { color: 'warning', label: 'Long average' }
@@ -135,6 +193,36 @@ function durationSignal() {
 
 function resize() {
   chart?.resize()
+}
+
+function selectTool(toolName: string) {
+  toolFilter.value = toolName || undefined
+  loadToolCalls()
+}
+
+function resetToolFilter() {
+  toolFilter.value = undefined
+  loadToolCalls()
+}
+
+function toolStatRow(record: ToolStat) {
+  return { class: 'is-clickable-row', onClick: () => selectTool(record.toolName) }
+}
+
+function callSessionLabel(call: ToolCall) {
+  return sessionLabel({ id: call.sessionId, sessionKey: call.sessionKey || '', codexSessionId: call.codexSessionId })
+}
+
+function openToolCall(call: ToolCall) {
+  selectedToolCall.value = call
+}
+
+function closeToolCall() {
+  selectedToolCall.value = null
+}
+
+function openSession(id: number) {
+  router.push(`/sessions/${id}`)
 }
 
 onMounted(() => {
@@ -212,20 +300,21 @@ onBeforeUnmount(() => {
         <section class="panel">
           <div class="panel-header">
             <div>
-              <h2 class="panel-title">Tool Calls</h2>
+              <h2 class="panel-title">Tool Summary</h2>
               <div class="panel-kicker">Status and duration by tool name</div>
             </div>
             <span class="row-count">{{ formatNumber(tools.length) }} tools</span>
           </div>
           <a-table
             class="dense-table tools-table"
-            :columns="columns"
+            :columns="statColumns"
             :data-source="tools"
             row-key="toolName"
             size="middle"
             :locale="{ emptyText: loading ? 'Loading tools...' : 'No tool calls indexed' }"
             :pagination="{ pageSize: 20, showSizeChanger: true }"
             :scroll="{ x: 900 }"
+            :custom-row="toolStatRow"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'toolName'">
@@ -263,7 +352,102 @@ onBeforeUnmount(() => {
             </template>
           </a-table>
         </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Recent Tool Calls</h2>
+              <div class="panel-kicker">Individual calls with input, output, raw events and session context</div>
+            </div>
+            <span class="row-count">{{ toolCallCountText }}</span>
+          </div>
+          <div class="panel-body">
+            <div class="toolbar toolbar-compact">
+              <div class="toolbar-left">
+                <a-select
+                  v-model:value="toolFilter"
+                  class="control-medium"
+                  allow-clear
+                  placeholder="Tool"
+                  :options="toolOptions"
+                  @change="loadToolCalls"
+                />
+                <a-button @click="resetToolFilter">Reset</a-button>
+              </div>
+              <div class="toolbar-right">
+                <a-button @click="loadToolCalls">
+                  <template #icon>
+                    <ReloadOutlined />
+                  </template>
+                  Refresh Calls
+                </a-button>
+              </div>
+            </div>
+            <a-table
+              class="dense-table tool-call-detail-table"
+              :columns="callColumns"
+              :data-source="toolCalls"
+              row-key="id"
+              size="small"
+              :loading="callLoading"
+              :locale="{ emptyText: callLoading ? 'Loading tool calls...' : 'No tool calls indexed' }"
+              :pagination="{ pageSize: 20, showSizeChanger: true }"
+              :scroll="{ x: 1250 }"
+            >
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.key === 'startedAt'">{{ formatDateTime(record.startedAt) }}</template>
+                <template v-else-if="column.key === 'toolName'">
+                  <a-typography-text :ellipsis="{ tooltip: record.toolName }">
+                    {{ record.toolName || 'unknown' }}
+                  </a-typography-text>
+                </template>
+                <template v-else-if="column.key === 'status'">
+                  <a-tooltip :title="record.error || record.status || 'unknown'">
+                    <a-tag class="status-tag call-status-tag" :class="statusClass(record.status)" :color="statusColor(record.status)">
+                      {{ record.status || 'unknown' }}
+                    </a-tag>
+                  </a-tooltip>
+                </template>
+                <template v-else-if="column.key === 'duration'">
+                  <span class="number-cell">{{ formatDuration(record.durationMs) }}</span>
+                </template>
+                <template v-else-if="column.key === 'session'">
+                  <a-tooltip :title="record.projectPath || record.rawSourcePath" placement="topLeft">
+                    <span class="mono path-cell">{{ callSessionLabel(record) }}</span>
+                  </a-tooltip>
+                  <div class="timeline-event-raw">{{ shortPath(record.projectPath || record.rawSourcePath || '') }}</div>
+                </template>
+                <template v-else-if="column.key === 'input'">
+                  <a-typography-text :ellipsis="{ tooltip: record.inputSummary }">
+                    {{ record.inputSummary || '-' }}
+                  </a-typography-text>
+                </template>
+                <template v-else-if="column.key === 'output'">
+                  <a-typography-text :ellipsis="{ tooltip: record.outputSummary || record.error }">
+                    {{ record.outputSummary || record.error || '-' }}
+                  </a-typography-text>
+                </template>
+                <template v-else-if="column.key === 'detail'">
+                  <a-tooltip title="View details">
+                    <a-button type="text" size="small" @click="openToolCall(record)">
+                      <template #icon>
+                        <EyeOutlined />
+                      </template>
+                    </a-button>
+                  </a-tooltip>
+                </template>
+              </template>
+            </a-table>
+          </div>
+        </section>
       </div>
     </a-spin>
+
+    <ToolCallDetailDrawer
+      :open="Boolean(selectedToolCall)"
+      :call="selectedToolCall"
+      @close="closeToolCall"
+      @open-session="openSession"
+    />
   </div>
 </template>

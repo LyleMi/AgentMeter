@@ -316,12 +316,14 @@ func (i *Indexer) replaceParsedSession(ctx context.Context, sourceFileID int64, 
 	}
 
 	for _, call := range parsed.ToolCall {
-		rawEventID := rawEventIDs[call.RawEventLine]
+		rawStartEventLine := firstNonZero(call.RawStartEventLine, call.RawEventLine)
+		rawStartEventID := rawEventIDs[rawStartEventLine]
+		rawEndEventID := rawEventIDs[call.RawEndEventLine]
 		_, err := tx.ExecContext(ctx, `INSERT INTO tool_calls
-			(session_id, started_at, ended_at, duration_ms, tool_name, status, input_summary, output_summary, error, raw_event_id)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			(session_id, started_at, ended_at, duration_ms, tool_name, status, input_summary, output_summary, error, raw_event_id, call_id, raw_start_event_id, raw_end_event_id)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			sessionID, db.FormatTime(call.StartedAt), db.FormatTime(call.EndedAt), call.DurationMS,
-			call.ToolName, call.Status, call.InputSummary, call.OutputSummary, call.Error, rawEventID)
+			call.ToolName, call.Status, call.InputSummary, call.OutputSummary, call.Error, rawStartEventID, call.CallID, rawStartEventID, rawEndEventID)
 		if err != nil {
 			return err
 		}
@@ -403,6 +405,15 @@ func nullableFloat(value *float64) any {
 		return nil
 	}
 	return *value
+}
+
+func firstNonZero(values ...int) int {
+	for _, value := range values {
+		if value != 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 func normalizeSourcePaths(paths []string) []string {

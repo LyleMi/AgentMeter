@@ -422,6 +422,13 @@ func (a *App) GetTools() ([]model.ToolStat, error) {
 	return a.query.Tools(a.ctx)
 }
 
+func (a *App) ListToolCalls(filters model.ToolCallFilters) ([]model.ToolCall, error) {
+	if err := a.ensureReady(); err != nil {
+		return nil, err
+	}
+	return a.query.ToolCalls(a.ctx, filters)
+}
+
 func (a *App) GetPricingModels() ([]model.PricingModel, error) {
 	if err := a.ensureReady(); err != nil {
 		return nil, err

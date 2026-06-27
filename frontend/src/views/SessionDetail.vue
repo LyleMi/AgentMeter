@@ -15,10 +15,12 @@ import {
   ArrowLeftOutlined,
   ClockCircleOutlined,
   DollarCircleOutlined,
+  EyeOutlined,
   FunctionOutlined,
   ReloadOutlined,
   ToolOutlined
 } from '@ant-design/icons-vue'
+import ToolCallDetailDrawer from '../components/ToolCallDetailDrawer.vue'
 import {
   api,
   formatCost,
@@ -28,7 +30,8 @@ import {
   sessionLabel,
   shortPath,
   type EventItem,
-  type SessionDetail
+  type SessionDetail,
+  type ToolCall
 } from '../api'
 
 const ATabPane = ATabs.TabPane
@@ -41,6 +44,7 @@ const route = useRoute()
 const router = useRouter()
 const loading = ref(true)
 const detail = ref<SessionDetail | null>(null)
+const selectedToolCall = ref<ToolCall | null>(null)
 
 const modelColumns = [
   { title: 'Ended', dataIndex: 'endedAt', key: 'endedAt', width: 150 },
@@ -63,7 +67,8 @@ const toolColumns = [
   { title: 'Duration', dataIndex: 'durationMs', key: 'duration', width: 110, align: 'right' },
   { title: 'Raw Event', dataIndex: 'rawEventId', key: 'rawEvent', width: 100, align: 'right' },
   { title: 'Input', dataIndex: 'inputSummary', key: 'input' },
-  { title: 'Output', dataIndex: 'outputSummary', key: 'output' }
+  { title: 'Output', dataIndex: 'outputSummary', key: 'output' },
+  { title: '', key: 'detail', width: 56, align: 'right' }
 ]
 
 const rawColumns = [
@@ -120,6 +125,14 @@ function indexStatusHint(session: SessionDetail['session']) {
 
 function goBack() {
   router.push('/sessions')
+}
+
+function openToolCall(call: ToolCall) {
+  selectedToolCall.value = call
+}
+
+function closeToolCall() {
+  selectedToolCall.value = null
 }
 
 onMounted(load)
@@ -350,7 +363,7 @@ onMounted(load)
                       <span class="number-cell">{{ formatDuration(record.durationMs) }}</span>
                     </template>
                     <template v-else-if="column.key === 'rawEvent'">
-                      <span class="number-cell">{{ formatNumber(record.rawEventId) }}</span>
+                      <span class="number-cell">{{ formatNumber(record.rawStartEventId || record.rawEventId) }}</span>
                     </template>
                     <template v-else-if="column.key === 'input'">
                       <a-typography-text :ellipsis="{ tooltip: record.inputSummary }">
@@ -361,6 +374,15 @@ onMounted(load)
                       <a-typography-text :ellipsis="{ tooltip: record.outputSummary || record.error }">
                         {{ record.outputSummary || record.error || '-' }}
                       </a-typography-text>
+                    </template>
+                    <template v-else-if="column.key === 'detail'">
+                      <a-tooltip title="View details">
+                        <a-button type="text" size="small" @click="openToolCall(record)">
+                          <template #icon>
+                            <EyeOutlined />
+                          </template>
+                        </a-button>
+                      </a-tooltip>
                     </template>
                   </template>
                 </a-table>
@@ -529,5 +551,7 @@ onMounted(load)
       </template>
       <a-empty v-else-if="!loading" description="Session not found" />
     </a-spin>
+
+    <ToolCallDetailDrawer :open="Boolean(selectedToolCall)" :call="selectedToolCall" :show-session-link="false" @close="closeToolCall" />
   </div>
 </template>
