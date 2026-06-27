@@ -60,9 +60,9 @@ Deliverables:
 - session rows in SQLite;
 - parser test coverage.
 
-## Phase 3: MVP UI
+## Phase 3: MVP Web UI
 
-Goal: make the indexed data useful.
+Goal: make the indexed data useful in the browser.
 
 Screens:
 
@@ -83,9 +83,47 @@ Tasks:
 
 Deliverables:
 
-- usable local dashboard for local coding-agent sessions.
+- usable local Web dashboard for local coding-agent sessions.
 
-## Phase 4: Packaging
+## Phase 4: TUI Mode
+
+Goal: keep the terminal interface useful without splitting AgentMeter into two
+products.
+
+Interface contract:
+
+- Web mode remains the default MVP path.
+- TUI mode uses the same SQLite database, pricing rules, indexing pipeline, and
+  query semantics as Web mode.
+- UI differences are presentational only: terminal tables and panes can replace
+  charts, but totals, filters, statuses, and drill-down meaning must match Web.
+
+Implemented command line:
+
+```text
+go run . -ui web -http 127.0.0.1:34115
+go run . -ui web -static frontend/dist
+go run . -ui tui
+```
+
+Delivered:
+
+- Add `-ui web|tui` mode selection while keeping Web as the default.
+- Define shared display helpers for formatting, status classification, Overview
+  derived metrics, and Tools summary.
+- Implement TUI navigation, table browsing, and session detail panes.
+- Support an index trigger and visible indexing/parse status in TUI mode.
+- Add terminal resize and narrow-width behavior.
+- Document TUI keyboard behavior and README examples.
+
+Remaining:
+
+- Add search/filter entry in TUI Sessions.
+- Add parity checks comparing Web and TUI values for the same database.
+- Improve compact visual treatment for pricing, parse status, and long paths.
+- Add terminal smoke checks to release validation.
+
+## Phase 5: Packaging
 
 Goal: make cross-platform usage easy.
 
@@ -95,6 +133,7 @@ Tasks:
 - macOS portable build.
 - Linux portable build.
 - Installer or portable zip.
+- Package both Web and TUI modes from the same binary when TUI mode is ready.
 - Local database path decision.
 - Log file location.
 - Basic crash/error reporting to local logs only.
@@ -103,7 +142,7 @@ Deliverables:
 
 - Windows release artifact.
 
-## Phase 5: Beyond MVP
+## Phase 6: Beyond MVP
 
 Possible additions:
 
@@ -116,4 +155,5 @@ Possible additions:
 - richer model-call timeline.
 - project grouping.
 - custom pricing UI.
+- TUI command palette and saved filter shortcuts.
 - dark/light theme.

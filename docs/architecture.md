@@ -2,7 +2,13 @@
 
 ## Decision
 
-Use a Go HTTP backend, SQLite storage, and a Vue 3 + Vite + TypeScript frontend.
+Use a Go application core with SQLite storage, shared query services, and two
+local interfaces:
+
+- Web UI: the current Vue 3 + Vite + TypeScript browser dashboard served by the
+  Go HTTP backend.
+- TUI: a terminal interface over the same app services, database, pricing rules,
+  and query semantics.
 
 ## Why Go HTTP + Vite
 
@@ -17,10 +23,17 @@ During development, Vite serves the frontend and proxies `/api` to the Go
 backend. For local production use, the Go server can serve the built
 `frontend/dist` assets from disk.
 
+The HTTP API remains the Web mode boundary. TUI mode should not require a
+separate ingestion path or a second persistence layer.
+
 ## High-level Components
 
 ```text
 AgentMeter
+  interfaces
+    web dashboard
+    terminal UI
+
   frontend
     Vue views
     charts
@@ -34,7 +47,7 @@ AgentMeter
     ingestion pipeline
     SQLite repository
     pricing service
-    query service
+    shared query service
     export service
 
   storage
@@ -68,6 +81,8 @@ internal/
   model/
   pricing/
   query/
+  tui/
+  viewmodel/
   export/
   platform/
 ```
@@ -81,12 +96,14 @@ Responsibilities:
 - `model`: normalized domain structs.
 - `pricing`: model aliases, pricing table, cost calculation.
 - `query`: read models for UI screens.
+- `viewmodel`: shared display formatting and presenter helpers for UI parity.
+- `tui`: terminal UI mode over `app.App`.
 - `export`: JSON and CSV export.
 - `platform`: OS-specific database and default source path discovery.
 
 ## UI Shape
 
-MVP screens:
+The Web and TUI interfaces should cover the same product areas:
 
 - Overview
 - Sessions
@@ -113,6 +130,48 @@ Session Detail should show:
 - model calls;
 - tool calls;
 - raw source path.
+
+The Web UI can use charts, wide layouts, and browser affordances. The TUI can
+use tables, panes, keyboard navigation, and compact summaries. Differences in
+presentation are acceptable; differences in totals, filters, status labels, or
+drill-down semantics are not.
+
+## Interface Synchronization
+
+Web and TUI modes should stay synchronized by design:
+
+- Token totals, cost estimates, durations, model normalization, and status
+  labels come from shared backend logic.
+- Overview, Sessions, Session Detail, Tools, Settings, and Pricing data use
+  shared query semantics.
+- Filtering and sorting rules should not be reimplemented with different
+  behavior in each UI.
+- New shared user-visible behavior should update both interface expectations in
+  the same change.
+- Documentation for command examples and UI capabilities should be updated with
+  the implementation state.
+
+## Command Line
+
+Default Web command:
+
+```powershell
+go run . -http 127.0.0.1:34115
+```
+
+Interface selector:
+
+```powershell
+go run . -ui web -http 127.0.0.1:34115
+go run . -ui web -static frontend/dist
+go run . -ui tui
+```
+
+Behavior:
+
+- `web` is the default mode for MVP compatibility.
+- `-http` and `-static` apply to Web mode.
+- TUI mode runs in the terminal and does not start an HTTP listener.
 
 ## Runtime Rules
 

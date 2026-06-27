@@ -33,7 +33,20 @@ The current version supports:
 - session duration from local JSONL timestamps;
 - tool-call statistics from local session events;
 - SQLite indexing;
-- local browser UI.
+- local browser UI;
+- synchronized terminal UI MVP.
+
+## Interface Direction
+
+AgentMeter should support two local interfaces over one shared application core:
+
+- Web UI for the current dashboard-oriented experience.
+- TUI for terminal-first workflows, SSH sessions, and users who prefer staying
+  inside a shell.
+
+The two interfaces should share the same database, indexing pipeline, pricing
+rules, query semantics, and user-visible definitions for tokens, cost, duration,
+status, filters, and session identity.
 
 ## Non-goals For MVP
 
@@ -44,6 +57,7 @@ The current version supports:
 - Remote database.
 - Automatic uploads or telemetry.
 - Complex eval workflows.
+- Divergent Web-only and TUI-only business logic for the same usage concepts.
 
 ## User
 
@@ -68,7 +82,7 @@ The first user is a developer who uses local coding agents and wants to understa
 
 ## First Usable Version
 
-The first useful build should let a user open AgentMeter, point it at one or
+The first useful Web build should let a user open AgentMeter, point it at one or
 more local agent data directories if needed, index sessions, and inspect:
 
 - overview totals;
@@ -77,3 +91,7 @@ more local agent data directories if needed, index sessions, and inspect:
 - session detail timeline;
 - model usage;
 - tool-call counts and durations.
+
+The first useful TUI build exposes the same core data in a terminal: Overview
+totals, session list, session detail, tool aggregates, settings, index trigger,
+and clear parse/pricing status labels.
