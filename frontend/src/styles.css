@@ -952,6 +952,10 @@ body {
   box-shadow: var(--am-shadow);
 }
 
+.overview-derived-block {
+  margin-bottom: var(--am-section-gap);
+}
+
 .overview-chart-panel {
   grid-row: span 2;
   box-shadow: var(--am-shadow);

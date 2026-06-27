@@ -60,6 +60,56 @@ const hasModelUsage = computed(() => rankedModelUsage.value.length > 0)
 const hasAgentUsage = computed(() => rankedAgentUsage.value.length > 0)
 const hasRecentSessions = computed(() => (overview.value?.recentSessions?.length || 0) > 0)
 const unpricedModelCount = computed(() => rankedModelUsage.value.filter((item) => item.unpriced).length)
+const derivedMetrics = computed(() => {
+  const item = overview.value
+  if (!item || item.totalSessions <= 0) return []
+  const sessions = item.totalSessions
+  const inputTokens = Math.max(item.totalInputTokens || 0, 0)
+  const activeHours = (item.totalActiveDurationMs || 0) / 3_600_000
+  const hasCompletePricing = item.estimatedCostUsd !== undefined && item.estimatedCostUsd !== null && item.unpricedSessions === 0
+  return [
+    {
+      label: 'Avg tokens / session',
+      value: formatNumber(Math.round((item.totalTokens || 0) / sessions)),
+      note: 'Total tokens divided by sessions'
+    },
+    {
+      label: 'Avg wall / session',
+      value: formatDuration((item.totalWallDurationMs || 0) / sessions),
+      note: 'First to last timestamp'
+    },
+    {
+      label: 'Active share',
+      value: formatPercent((item.totalActiveDurationMs || 0) / Math.max(item.totalWallDurationMs || 0, 1)),
+      note: 'Measured model and tool time'
+    },
+    {
+      label: 'Tools / session',
+      value: formatRatio((item.totalToolCalls || 0) / sessions),
+      note: 'Tool invocations per session'
+    },
+    {
+      label: 'Cache hit rate',
+      value: formatPercent((item.totalCachedInputTokens || 0) / Math.max(inputTokens, 1)),
+      note: 'Cached input over input tokens'
+    },
+    {
+      label: 'Output / input',
+      value: `${formatRatio((item.totalOutputTokens || 0) / Math.max(inputTokens, 1))}x`,
+      note: 'Output token density'
+    },
+    {
+      label: 'Cost / 1K tokens',
+      value: hasCompletePricing ? formatCostPerThousand(item.estimatedCostUsd || 0, item.totalTokens || 0) : 'unpriced',
+      note: hasCompletePricing ? 'Uses complete pricing coverage' : 'Needs pricing for all sessions'
+    },
+    {
+      label: 'Tokens / active hour',
+      value: activeHours > 0 ? formatNumber(Math.round((item.totalTokens || 0) / activeHours)) : '-',
+      note: 'Token throughput during measured work'
+    }
+  ]
+})
 
 const modelColumns = [
   { title: 'Model', dataIndex: 'model', key: 'model' },
@@ -212,6 +262,26 @@ function resize() {
   chart?.resize()
 }
 
+function formatPercent(value: number) {
+  if (!Number.isFinite(value)) return '0%'
+  return `${Math.round(Math.max(0, value) * 100)}%`
+}
+
+function formatRatio(value: number) {
+  if (!Number.isFinite(value)) return '0'
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(Math.max(0, value))
+}
+
+function formatCostPerThousand(cost: number, tokens: number) {
+  if (!tokens) return '$0'
+  const value = cost / (tokens / 1000)
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 4
+  }).format(value)
+}
+
 onMounted(() => {
   load()
   window.addEventListener('resize', resize)
@@ -278,6 +348,17 @@ onBeforeUnmount(() => {
           </div>
           <div class="metric-strip-value">{{ formatDuration(overview?.totalActiveDurationMs) }}</div>
           <div class="metric-strip-note">Measured model and tool time</div>
+        </div>
+      </section>
+
+      <section v-if="hasIndexedData" class="info-block overview-derived-block">
+        <div class="info-block-title">Derived Signals</div>
+        <div class="info-block-grid overview-derived-grid">
+          <div v-for="item in derivedMetrics" :key="item.label" class="info-stat">
+            <div class="info-stat-label">{{ item.label }}</div>
+            <div class="info-stat-value">{{ item.value }}</div>
+            <div class="metric-note">{{ item.note }}</div>
+          </div>
         </div>
       </section>
 
