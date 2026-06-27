@@ -6,10 +6,13 @@ import AConfigProvider from 'ant-design-vue/es/config-provider'
 import Layout from 'ant-design-vue/es/layout'
 import Menu from 'ant-design-vue/es/menu'
 import message from 'ant-design-vue/es/message'
+import Tooltip from 'ant-design-vue/es/tooltip'
 import Typography from 'ant-design-vue/es/typography'
 import {
   BarChartOutlined,
   HistoryOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
   SettingOutlined,
@@ -24,6 +27,7 @@ const ALayoutHeader = Layout.Header
 const ALayoutSider = Layout.Sider
 const AMenu = Menu
 const AMenuItem = Menu.Item
+const ATooltip = Tooltip
 const ATypographyText = Typography.Text
 
 const route = useRoute()
@@ -31,6 +35,7 @@ const router = useRouter()
 const settings = ref<Settings | null>(null)
 const indexing = ref(false)
 const refreshKey = ref(0)
+const sidebarCollapsed = ref(false)
 
 const hasSource = computed(() => Boolean(settings.value?.sourcePaths?.length || settings.value?.sourcePath))
 const sourceStatusLabel = computed(() => (hasSource.value ? 'Sources ready' : 'Sources missing'))
@@ -40,6 +45,7 @@ const sourceSummary = computed(() => {
   if (count > 1) return `${count} local sources`
   return sourcePathDisplay.value
 })
+const sidebarToggleLabel = computed(() => (sidebarCollapsed.value ? 'Expand sidebar' : 'Collapse sidebar'))
 
 const selectedKeys = computed(() => {
   if (route.path.startsWith('/sessions')) return ['sessions']
@@ -85,6 +91,10 @@ function navigate(path: string) {
   router.push(path)
 }
 
+function toggleSidebar() {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+}
+
 onMounted(() => {
   loadSettings()
   window.addEventListener(APP_DATA_CHANGED_EVENT, handleAppDataChanged)
@@ -110,7 +120,15 @@ onBeforeUnmount(() => {
     }"
   >
     <a-layout class="app-shell">
-      <a-layout-sider class="app-sider" width="216">
+      <a-layout-sider
+        class="app-sider"
+        :class="{ 'is-collapsed': sidebarCollapsed }"
+        width="216"
+        :collapsed-width="68"
+        :collapsed="sidebarCollapsed"
+        collapsible
+        :trigger="null"
+      >
         <div class="brand">
           <div class="brand-mark">
             <img class="brand-logo" src="/favicon.png" alt="AgentMeter" />
@@ -120,7 +138,22 @@ onBeforeUnmount(() => {
             <div class="brand-subtitle">Local agent usage</div>
           </div>
         </div>
-        <div class="nav-section-label">Inspect</div>
+        <div class="nav-section-head">
+          <div class="nav-section-label">Inspect</div>
+          <a-tooltip :title="sidebarToggleLabel" placement="right">
+            <a-button
+              class="sidebar-toggle"
+              type="text"
+              :aria-expanded="!sidebarCollapsed"
+              :aria-label="sidebarToggleLabel"
+              @click="toggleSidebar"
+            >
+              <template #icon>
+                <component :is="sidebarCollapsed ? MenuUnfoldOutlined : MenuFoldOutlined" />
+              </template>
+            </a-button>
+          </a-tooltip>
+        </div>
         <a-menu class="nav-menu" mode="inline" :selected-keys="selectedKeys">
           <a-menu-item v-for="item in menuItems" :key="item.key" @click="navigate(item.path)">
             <template #icon>

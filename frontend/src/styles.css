@@ -62,6 +62,15 @@ body {
   box-shadow: inset -1px 0 0 rgb(255 255 255 / 70%);
 }
 
+.app-sider,
+.app-sider .ant-layout-sider-children {
+  transition:
+    width 0.18s ease,
+    min-width 0.18s ease,
+    max-width 0.18s ease,
+    flex-basis 0.18s ease;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -91,6 +100,7 @@ body {
 
 .brand-copy {
   min-width: 0;
+  overflow: hidden;
 }
 
 .brand-title {
@@ -106,13 +116,37 @@ body {
   line-height: 18px;
 }
 
+.nav-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 10px 2px 20px;
+}
+
 .nav-section-label {
-  padding: 12px 20px 2px;
   color: var(--am-muted);
   font-size: 10px;
   font-weight: 780;
   line-height: 16px;
   text-transform: uppercase;
+}
+
+.sidebar-toggle {
+  display: inline-grid !important;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  color: var(--am-muted);
+  border-radius: var(--am-radius-sm);
+}
+
+.sidebar-toggle:hover,
+.sidebar-toggle:focus-visible {
+  color: var(--am-primary) !important;
+  background: #ffffff !important;
 }
 
 .nav-menu {
@@ -153,6 +187,34 @@ body {
 
 .nav-menu .ant-menu-item-selected .ant-menu-item-icon {
   color: var(--am-primary);
+}
+
+.app-sider.is-collapsed .brand {
+  justify-content: center;
+  padding: 0;
+}
+
+.app-sider.is-collapsed .brand-copy,
+.app-sider.is-collapsed .nav-section-label {
+  display: none;
+}
+
+.app-sider.is-collapsed .nav-section-head {
+  justify-content: center;
+  padding: 8px 0 2px;
+}
+
+.app-sider.is-collapsed .nav-menu {
+  padding-right: 6px;
+  padding-left: 6px;
+}
+
+.nav-menu.ant-menu-inline-collapsed .ant-menu-item {
+  padding-inline: calc(50% - 8px) !important;
+}
+
+.nav-menu.ant-menu-inline-collapsed .ant-menu-item-selected::before {
+  left: 4px;
 }
 
 .app-header {
