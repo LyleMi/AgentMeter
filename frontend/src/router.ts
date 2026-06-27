@@ -4,7 +4,17 @@ const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     { path: '/', redirect: '/overview' },
-    { path: '/overview', component: () => import('./views/Overview.vue') },
+    {
+      path: '/overview',
+      component: () => import('./views/Overview.vue'),
+      redirect: '/overview/summary',
+      children: [
+        { path: 'summary', component: () => import('./views/OverviewSummary.vue') },
+        { path: 'trends', component: () => import('./views/OverviewTrends.vue') },
+        { path: 'breakdown', component: () => import('./views/OverviewBreakdown.vue') },
+        { path: 'recent', component: () => import('./views/OverviewRecent.vue') }
+      ]
+    },
     { path: '/sessions', component: () => import('./views/Sessions.vue') },
     { path: '/sessions/:id', component: () => import('./views/SessionDetail.vue'), props: true },
     {

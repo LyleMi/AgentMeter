@@ -1,139 +1,42 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, type DefineComponent } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, provide, ref } from 'vue'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 import AButton from 'ant-design-vue/es/button'
 import message from 'ant-design-vue/es/message'
-import ASpin from 'ant-design-vue/es/spin'
-import AntTable from 'ant-design-vue/es/table'
-import ATag from 'ant-design-vue/es/tag'
-import Typography from 'ant-design-vue/es/typography'
 import {
   BarChartOutlined,
   ClockCircleOutlined,
-  DollarCircleOutlined,
-  FolderOpenOutlined,
-  FunctionOutlined,
-  PlayCircleOutlined,
-  SettingOutlined,
-  TableOutlined,
-  ToolOutlined
+  DatabaseOutlined,
+  HistoryOutlined,
+  ReloadOutlined
 } from '@ant-design/icons-vue'
-import {
-  api,
-  formatCost,
-  formatDateTime,
-  formatDuration,
-  formatNumber,
-  sessionLabel,
-  shortPath,
-  type AgentUsage,
-  type ModelUsage,
-  type Overview,
-  type Settings,
-  type Session
-} from '../api'
-import { chartPalette, usageChartColors } from '../chartPalette'
-import { init, type ECharts } from '../chartRuntime'
+import { api, type Overview, type Settings } from '../api'
 import { notifyAppDataChanged } from '../events'
+import { overviewContextKey, type OverviewContext } from './overviewContext'
 
-const ATable = AntTable as unknown as DefineComponent
-const ATypographyText = Typography.Text
-
+const route = useRoute()
 const router = useRouter()
 const loading = ref(true)
 const startupIndexing = ref(false)
 const overview = ref<Overview | null>(null)
 const settings = ref<Settings | null>(null)
-const chartEl = ref<HTMLDivElement | null>(null)
-let chart: ECharts | null = null
 
 const hasIndexedData = computed(() => (overview.value?.totalSessions || 0) > 0)
 const sourcePathDisplay = computed(() => settings.value?.sourcePath || settings.value?.defaultSourcePath || '')
-const hasDailyUsage = computed(() => (overview.value?.dailyUsage?.length || 0) > 0)
-const rankedModelUsage = computed(() =>
-  [...(overview.value?.modelUsage || [])].sort((left, right) => right.totalTokens - left.totalTokens)
-)
-const rankedAgentUsage = computed(() =>
-  [...(overview.value?.agentUsage || [])].sort((left, right) => right.sessionCount - left.sessionCount)
-)
-const hasModelUsage = computed(() => rankedModelUsage.value.length > 0)
-const hasAgentUsage = computed(() => rankedAgentUsage.value.length > 0)
-const hasRecentSessions = computed(() => (overview.value?.recentSessions?.length || 0) > 0)
-const unpricedModelCount = computed(() => rankedModelUsage.value.filter((item) => item.unpriced).length)
-const derivedMetrics = computed(() => {
-  const item = overview.value
-  if (!item || item.totalSessions <= 0) return []
-  const sessions = item.totalSessions
-  const inputTokens = Math.max(item.totalInputTokens || 0, 0)
-  const activeHours = (item.totalActiveDurationMs || 0) / 3_600_000
-  const hasCompletePricing = item.estimatedCostUsd !== undefined && item.estimatedCostUsd !== null && item.unpricedSessions === 0
-  return [
-    {
-      label: 'Avg tokens / session',
-      value: formatNumber(Math.round((item.totalTokens || 0) / sessions)),
-      note: 'Total tokens divided by sessions'
-    },
-    {
-      label: 'Avg wall / session',
-      value: formatDuration((item.totalWallDurationMs || 0) / sessions),
-      note: 'First to last timestamp'
-    },
-    {
-      label: 'Active share',
-      value: formatPercent((item.totalActiveDurationMs || 0) / Math.max(item.totalWallDurationMs || 0, 1)),
-      note: 'Measured model and tool time'
-    },
-    {
-      label: 'Tools / session',
-      value: formatRatio((item.totalToolCalls || 0) / sessions),
-      note: 'Tool invocations per session'
-    },
-    {
-      label: 'Cache hit rate',
-      value: formatPercent((item.totalCachedInputTokens || 0) / Math.max(inputTokens, 1)),
-      note: 'Cached input over input tokens'
-    },
-    {
-      label: 'Output / input',
-      value: `${formatRatio((item.totalOutputTokens || 0) / Math.max(inputTokens, 1))}x`,
-      note: 'Output token density'
-    },
-    {
-      label: 'Cost / 1K tokens',
-      value: hasCompletePricing ? formatCostPerThousand(item.estimatedCostUsd || 0, item.totalTokens || 0) : 'unpriced',
-      note: hasCompletePricing ? 'Uses complete pricing coverage' : 'Needs pricing for all sessions'
-    },
-    {
-      label: 'Tokens / active hour',
-      value: activeHours > 0 ? formatNumber(Math.round((item.totalTokens || 0) / activeHours)) : '-',
-      note: 'Token throughput during measured work'
-    }
-  ]
+
+const tabs = [
+  { key: 'summary', label: 'Summary', path: '/overview/summary', icon: BarChartOutlined },
+  { key: 'trends', label: 'Trends', path: '/overview/trends', icon: ClockCircleOutlined },
+  { key: 'breakdown', label: 'Breakdown', path: '/overview/breakdown', icon: DatabaseOutlined },
+  { key: 'recent', label: 'Recent', path: '/overview/recent', icon: HistoryOutlined }
+]
+
+const activeKey = computed(() => {
+  if (route.path.startsWith('/overview/trends')) return 'trends'
+  if (route.path.startsWith('/overview/breakdown')) return 'breakdown'
+  if (route.path.startsWith('/overview/recent')) return 'recent'
+  return 'summary'
 })
-
-const modelColumns = [
-  { title: 'Model', dataIndex: 'model', key: 'model' },
-  { title: 'Sessions', dataIndex: 'sessionCount', key: 'sessionCount', width: 96, align: 'right' },
-  { title: 'Tokens', dataIndex: 'totalTokens', key: 'totalTokens', width: 132, align: 'right' },
-  { title: 'Cost', dataIndex: 'estimatedCostUsd', key: 'cost', width: 118, align: 'right' }
-]
-
-const recentColumns = [
-  { title: 'Agent', dataIndex: 'agentName', key: 'agent', width: 132 },
-  { title: 'Project', dataIndex: 'projectPath', key: 'projectPath' },
-  { title: 'Model', dataIndex: 'model', key: 'model', width: 132 },
-  { title: 'Tokens', dataIndex: ['tokenUsage', 'totalTokens'], key: 'tokens', width: 120, align: 'right' },
-  { title: 'Tools', dataIndex: 'toolCallCount', key: 'tools', width: 80, align: 'right' },
-  { title: 'Started', dataIndex: 'startedAt', key: 'startedAt', width: 150 }
-]
-
-const agentColumns = [
-  { title: 'Agent', dataIndex: 'agentName', key: 'agent' },
-  { title: 'Sessions', dataIndex: 'sessionCount', key: 'sessionCount', width: 96, align: 'right' },
-  { title: 'Tokens', dataIndex: 'totalTokens', key: 'totalTokens', width: 132, align: 'right' },
-  { title: 'Tools', dataIndex: 'toolCalls', key: 'tools', width: 90, align: 'right' },
-  { title: 'Cost', dataIndex: 'estimatedCostUsd', key: 'cost', width: 118, align: 'right' }
-]
 
 async function load() {
   loading.value = true
@@ -144,8 +47,6 @@ async function load() {
   } finally {
     loading.value = false
   }
-  await nextTick()
-  renderChart()
 }
 
 async function indexFromOverview() {
@@ -162,134 +63,24 @@ async function indexFromOverview() {
   }
 }
 
-function renderChart() {
-  const dailyUsage = overview.value?.dailyUsage || []
-  if (!dailyUsage.length) {
-    chart?.dispose()
-    chart = null
-    return
-  }
-  if (!chartEl.value) return
-  if (!chart) chart = init(chartEl.value)
-  const days = dailyUsage.map((item) => item.date.slice(5))
-  chart.setOption({
-    color: usageChartColors,
-    tooltip: {
-      trigger: 'axis',
-      backgroundColor: chartPalette.tooltipBg,
-      borderWidth: 0,
-      textStyle: { color: chartPalette.tooltipText, fontSize: 12 },
-      axisPointer: { type: 'shadow', shadowStyle: { color: chartPalette.pointer } },
-      valueFormatter: (value: string | number) => formatNumber(Number(value))
-    },
-    grid: { left: 56, right: 44, top: 50, bottom: 36 },
-    legend: {
-      top: 4,
-      right: 8,
-      itemGap: 16,
-      itemWidth: 10,
-      itemHeight: 10,
-      textStyle: { color: chartPalette.axis, fontSize: 12 }
-    },
-    xAxis: {
-      type: 'category',
-      data: days,
-      axisTick: { show: false },
-      axisLine: { lineStyle: { color: chartPalette.border } },
-      axisLabel: { color: chartPalette.axis, fontSize: 11 }
-    },
-    yAxis: [
-      {
-        type: 'value',
-        axisLabel: { color: chartPalette.axis, fontSize: 11 },
-        splitLine: { lineStyle: { color: chartPalette.grid } }
-      },
-      {
-        type: 'value',
-        axisLabel: { color: chartPalette.axis, fontSize: 11 },
-        splitLine: { show: false }
-      }
-    ],
-    series: [
-      {
-        name: 'Input',
-        type: 'bar',
-        stack: 'tokens',
-        data: dailyUsage.map((item) => item.inputTokens),
-        barWidth: 16,
-        itemStyle: { borderRadius: [0, 0, 4, 4] },
-        emphasis: { focus: 'series' }
-      },
-      {
-        name: 'Output',
-        type: 'bar',
-        stack: 'tokens',
-        data: dailyUsage.map((item) => item.outputTokens),
-        barWidth: 16,
-        itemStyle: { borderRadius: [4, 4, 0, 0] },
-        emphasis: { focus: 'series' }
-      },
-      {
-        name: 'Tools',
-        type: 'line',
-        yAxisIndex: 1,
-        smooth: true,
-        symbolSize: 6,
-        lineStyle: { width: 2 },
-        data: dailyUsage.map((item) => item.toolCalls)
-      }
-    ]
-  }, true)
+function navigate(path: string) {
+  router.push(path)
 }
 
-function openSession(id: number) {
-  router.push(`/sessions/${id}`)
+const context: OverviewContext = {
+  overview,
+  settings,
+  loading,
+  startupIndexing,
+  hasIndexedData,
+  sourcePathDisplay,
+  load,
+  indexFromOverview
 }
 
-function recentRow(record: Session) {
-  return { class: 'overview-session-row is-clickable-row', onClick: () => openSession(record.id) }
-}
+provide(overviewContextKey, context)
 
-function modelRow(record: ModelUsage) {
-  return { class: record.unpriced ? 'overview-model-row is-unpriced-row' : 'overview-model-row' }
-}
-
-function agentRow(record: AgentUsage) {
-  return { class: record.unpriced ? 'overview-model-row is-unpriced-row' : 'overview-model-row' }
-}
-
-function resize() {
-  chart?.resize()
-}
-
-function formatPercent(value: number) {
-  if (!Number.isFinite(value)) return '0%'
-  return `${Math.round(Math.max(0, value) * 100)}%`
-}
-
-function formatRatio(value: number) {
-  if (!Number.isFinite(value)) return '0'
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(Math.max(0, value))
-}
-
-function formatCostPerThousand(cost: number, tokens: number) {
-  if (!tokens) return '$0'
-  const value = cost / (tokens / 1000)
-  return new Intl.NumberFormat(undefined, {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 4
-  }).format(value)
-}
-
-onMounted(() => {
-  load()
-  window.addEventListener('resize', resize)
-})
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', resize)
-  chart?.dispose()
-})
+onMounted(load)
 </script>
 
 <template>
@@ -299,263 +90,28 @@ onBeforeUnmount(() => {
         <h1 class="page-title">Overview</h1>
         <div class="page-subtitle">Indexed coding-agent usage across local JSONL sessions</div>
       </div>
-      <a-button @click="load">Refresh</a-button>
+      <a-button :loading="loading" @click="load">
+        <template #icon>
+          <ReloadOutlined />
+        </template>
+        Refresh
+      </a-button>
     </div>
 
-    <a-spin :spinning="loading">
-      <section class="metric-strip overview-summary-strip">
-        <div class="metric-strip-item metric-primary">
-          <div class="metric-strip-head">
-            <span class="metric-label">Sessions</span>
-            <ClockCircleOutlined class="metric-strip-icon" />
-          </div>
-          <div class="metric-strip-value">{{ formatNumber(overview?.totalSessions) }}</div>
-          <div class="metric-strip-note">{{ formatDuration(overview?.totalWallDurationMs) }} wall time</div>
-        </div>
-        <div class="metric-strip-item metric-success">
-          <div class="metric-strip-head">
-            <span class="metric-label">Tokens</span>
-            <FunctionOutlined class="metric-strip-icon" />
-          </div>
-          <div class="metric-strip-value">{{ formatNumber(overview?.totalTokens) }}</div>
-          <div class="metric-strip-note">
-            {{ formatNumber(overview?.totalInputTokens) }} in · {{ formatNumber(overview?.totalOutputTokens) }} out ·
-            {{ formatNumber(overview?.totalCachedInputTokens) }} cached
-          </div>
-        </div>
-        <div class="metric-strip-item metric-warning">
-          <div class="metric-strip-head">
-            <span class="metric-label">Estimated Cost</span>
-            <DollarCircleOutlined class="metric-strip-icon" />
-          </div>
-          <div class="metric-strip-value">{{ formatCost(overview?.estimatedCostUsd) }}</div>
-          <div class="metric-strip-note" :class="{ 'metric-note-warning': (overview?.unpricedSessions || 0) > 0 }">
-            {{ formatNumber(overview?.unpricedSessions) }} sessions missing pricing
-          </div>
-        </div>
-        <div class="metric-strip-item metric-info">
-          <div class="metric-strip-head">
-            <span class="metric-label">Tool Calls</span>
-            <ToolOutlined class="metric-strip-icon" />
-          </div>
-          <div class="metric-strip-value">{{ formatNumber(overview?.totalToolCalls) }}</div>
-          <div class="metric-strip-note">Across indexed sessions</div>
-        </div>
-        <div class="metric-strip-item metric-neutral">
-          <div class="metric-strip-head">
-            <span class="metric-label">Active Time</span>
-            <ClockCircleOutlined class="metric-strip-icon" />
-          </div>
-          <div class="metric-strip-value">{{ formatDuration(overview?.totalActiveDurationMs) }}</div>
-          <div class="metric-strip-note">Measured model and tool time</div>
-        </div>
-      </section>
+    <div class="settings-subnav overview-subnav">
+      <a-button
+        v-for="item in tabs"
+        :key="item.key"
+        :type="item.key === activeKey ? 'primary' : 'default'"
+        @click="navigate(item.path)"
+      >
+        <template #icon>
+          <component :is="item.icon" />
+        </template>
+        {{ item.label }}
+      </a-button>
+    </div>
 
-      <section v-if="hasIndexedData" class="info-block overview-derived-block">
-        <div class="info-block-title">Derived Signals</div>
-        <div class="info-block-grid overview-derived-grid">
-          <div v-for="item in derivedMetrics" :key="item.label" class="info-stat">
-            <div class="info-stat-label">{{ item.label }}</div>
-            <div class="info-stat-value">{{ item.value }}</div>
-            <div class="metric-note">{{ item.note }}</div>
-          </div>
-        </div>
-      </section>
-
-      <div v-if="!loading && !hasIndexedData" class="empty-callout overview-empty-callout">
-        <div class="empty-callout-main">
-          <div class="empty-callout-title">No indexed sessions yet</div>
-          <div class="empty-callout-text">
-            AgentMeter can scan configured local agent sources now and refresh this dashboard when indexing completes.
-          </div>
-          <div class="empty-source-line">
-            <FolderOpenOutlined />
-            <span class="source-label">Sources</span>
-            <a-typography-text class="empty-source-path" :ellipsis="{ tooltip: sourcePathDisplay }">
-              {{ sourcePathDisplay || 'Open Settings to choose a source path' }}
-            </a-typography-text>
-          </div>
-        </div>
-        <div class="empty-callout-actions">
-          <a-button type="primary" :loading="startupIndexing" :disabled="!sourcePathDisplay" @click="indexFromOverview">
-            <template #icon>
-              <PlayCircleOutlined />
-            </template>
-            Index Now
-          </a-button>
-          <a-button @click="$router.push('/settings')">
-            <template #icon>
-              <SettingOutlined />
-            </template>
-            Edit Source
-          </a-button>
-        </div>
-      </div>
-
-      <div class="content-grid overview-primary-grid">
-        <section class="panel overview-chart-panel">
-          <div class="panel-header">
-            <div>
-              <h2 class="panel-title">Daily Usage</h2>
-              <div class="panel-kicker">Input, output, and tool activity by day</div>
-            </div>
-            <BarChartOutlined class="panel-header-icon" />
-          </div>
-          <div class="panel-body">
-            <div v-if="hasDailyUsage" ref="chartEl" class="chart"></div>
-            <div v-else class="empty-state">
-              <BarChartOutlined class="empty-state-icon" />
-              <div class="empty-state-title">No daily usage to chart</div>
-              <div class="empty-state-text">Indexed sessions will appear here as input, output, and tool activity by day.</div>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel overview-model-panel">
-          <div class="panel-header">
-            <div>
-              <h2 class="panel-title">Model Usage</h2>
-              <div class="panel-kicker">Ranked by token volume</div>
-            </div>
-            <TableOutlined class="panel-header-icon" />
-          </div>
-          <a-table
-            v-if="hasModelUsage"
-            class="overview-model-table"
-            size="small"
-            :columns="modelColumns"
-            :data-source="rankedModelUsage"
-            :pagination="false"
-            row-key="model"
-            :custom-row="modelRow"
-          >
-            <template #bodyCell="{ column, record, index }">
-              <template v-if="column.key === 'model'">
-                <div class="model-rank-cell">
-                  <span class="model-rank">{{ index + 1 }}</span>
-                  <span class="model-name">{{ record.model || 'unknown' }}</span>
-                  <a-tag v-if="record.unpriced" class="model-status-tag" color="warning">unpriced</a-tag>
-                </div>
-              </template>
-              <template v-else-if="column.key === 'sessionCount'">
-                <span class="number-cell">{{ formatNumber(record.sessionCount) }}</span>
-              </template>
-              <template v-else-if="column.key === 'totalTokens'">
-                <span class="number-cell">{{ formatNumber(record.totalTokens) }}</span>
-              </template>
-              <template v-else-if="column.key === 'cost'">
-                <span class="number-cell">{{ formatCost(record.estimatedCostUsd) }}</span>
-              </template>
-            </template>
-          </a-table>
-          <div v-else class="empty-state empty-state-compact">
-            <TableOutlined class="empty-state-icon" />
-            <div class="empty-state-title">No model usage yet</div>
-            <div class="empty-state-text">Model rankings will appear after at least one session is indexed.</div>
-          </div>
-          <div v-if="unpricedModelCount > 0" class="panel-footer-note status-warning">
-            {{ formatNumber(unpricedModelCount) }} model entries need pricing coverage.
-          </div>
-        </section>
-
-        <section class="panel overview-model-panel">
-          <div class="panel-header">
-            <div>
-              <h2 class="panel-title">Agent Usage</h2>
-              <div class="panel-kicker">Sessions grouped by local agent source</div>
-            </div>
-            <TableOutlined class="panel-header-icon" />
-          </div>
-          <a-table
-            v-if="hasAgentUsage"
-            class="overview-model-table"
-            size="small"
-            :columns="agentColumns"
-            :data-source="rankedAgentUsage"
-            :pagination="false"
-            row-key="agentKind"
-            :custom-row="agentRow"
-          >
-            <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'agent'">
-                <div class="model-rank-cell">
-                  <span class="model-name">{{ record.agentName || record.agentKind || 'unknown' }}</span>
-                  <a-tag v-if="record.unpriced" class="model-status-tag" color="warning">unpriced</a-tag>
-                </div>
-                <div class="timeline-event-raw">{{ record.agentKind || '-' }}</div>
-              </template>
-              <template v-else-if="column.key === 'sessionCount'">
-                <span class="number-cell">{{ formatNumber(record.sessionCount) }}</span>
-              </template>
-              <template v-else-if="column.key === 'totalTokens'">
-                <span class="number-cell">{{ formatNumber(record.totalTokens) }}</span>
-              </template>
-              <template v-else-if="column.key === 'tools'">
-                <span class="number-cell">{{ formatNumber(record.toolCalls) }}</span>
-              </template>
-              <template v-else-if="column.key === 'cost'">
-                <span class="number-cell">{{ formatCost(record.estimatedCostUsd) }}</span>
-              </template>
-            </template>
-          </a-table>
-          <div v-else class="empty-state empty-state-compact">
-            <TableOutlined class="empty-state-icon" />
-            <div class="empty-state-title">No agent usage yet</div>
-            <div class="empty-state-text">Agent rankings will appear after at least one session is indexed.</div>
-          </div>
-        </section>
-      </div>
-
-      <section class="panel overview-recent-panel panel-spaced">
-        <div class="panel-header">
-          <div>
-            <h2 class="panel-title">Recent Sessions</h2>
-            <div class="panel-kicker">Open a row to inspect timeline and calls</div>
-          </div>
-          <a-button type="link" @click="$router.push('/sessions')">View all</a-button>
-        </div>
-        <a-table
-          v-if="hasRecentSessions"
-          class="overview-session-table"
-          size="middle"
-          :columns="recentColumns"
-          :data-source="overview?.recentSessions || []"
-          :pagination="false"
-          row-key="id"
-          :custom-row="recentRow"
-        >
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'startedAt'">
-              {{ formatDateTime(record.startedAt) }}
-            </template>
-            <template v-else-if="column.key === 'agent'">
-              <a-tag class="model-lite-tag">{{ record.agentName || record.agentKind || 'unknown' }}</a-tag>
-            </template>
-            <template v-else-if="column.key === 'projectPath'">
-              <div class="overview-session-identity">
-                <a-typography-text class="overview-session-project" :ellipsis="{ tooltip: record.projectPath }">
-                  {{ shortPath(record.projectPath) }}
-                </a-typography-text>
-                <span class="overview-session-meta mono">{{ sessionLabel(record) }}</span>
-              </div>
-            </template>
-            <template v-else-if="column.key === 'model'">
-              <a-tag class="model-lite-tag">{{ record.model || 'unknown' }}</a-tag>
-            </template>
-            <template v-else-if="column.key === 'tokens'">
-              <span class="number-cell">{{ formatNumber(record.tokenUsage.totalTokens) }}</span>
-            </template>
-            <template v-else-if="column.key === 'tools'">
-              <span class="number-cell">{{ formatNumber(record.toolCallCount) }}</span>
-            </template>
-          </template>
-        </a-table>
-        <div v-else class="empty-state empty-state-compact">
-          <ClockCircleOutlined class="empty-state-icon" />
-          <div class="empty-state-title">No recent sessions</div>
-          <div class="empty-state-text">Recently indexed sessions will be listed here for quick inspection.</div>
-        </div>
-      </section>
-    </a-spin>
+    <RouterView />
   </div>
 </template>

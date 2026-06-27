@@ -1139,17 +1139,39 @@ body {
   grid-template-columns: minmax(0, 1.95fr) minmax(360px, 0.8fr);
 }
 
+.overview-subnav {
+  margin-bottom: 14px;
+}
+
 .overview-summary-strip {
   box-shadow: var(--am-shadow);
+}
+
+.overview-summary-strip .metric-strip-note {
+  display: -webkit-box;
+  min-height: 36px;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .overview-derived-block {
   margin-bottom: var(--am-section-gap);
 }
 
+.overview-breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(360px, 1fr));
+  gap: var(--am-section-gap);
+}
+
 .overview-chart-panel {
   grid-row: span 2;
   box-shadow: var(--am-shadow);
+}
+
+.overview-trend-panel .chart {
+  height: 430px;
 }
 
 .overview-model-panel {
@@ -1786,6 +1808,7 @@ body {
 
   .content-grid,
   .empty-callout,
+  .overview-breakdown-grid,
   .split-row,
   .summary-panel,
   .session-summary {
