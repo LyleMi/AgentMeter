@@ -416,10 +416,14 @@ func (a *App) GetSessionDetail(id int64) (model.SessionDetail, error) {
 }
 
 func (a *App) GetTools() ([]model.ToolStat, error) {
+	return a.ListTools(model.ToolFilters{})
+}
+
+func (a *App) ListTools(filters model.ToolFilters) ([]model.ToolStat, error) {
 	if err := a.ensureReady(); err != nil {
 		return nil, err
 	}
-	return a.query.Tools(a.ctx)
+	return a.query.Tools(a.ctx, filters)
 }
 
 func (a *App) ListToolCalls(filters model.ToolCallFilters) ([]model.ToolCall, error) {

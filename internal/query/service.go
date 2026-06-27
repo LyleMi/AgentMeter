@@ -131,17 +131,27 @@ func (s *Service) SessionDetail(ctx context.Context, id int64) (model.SessionDet
 	}, nil
 }
 
-func (s *Service) Tools(ctx context.Context) ([]model.ToolStat, error) {
-	rows, err := s.conn.QueryContext(ctx, `SELECT
-		tool_name,
+func (s *Service) Tools(ctx context.Context, filters model.ToolFilters) ([]model.ToolStat, error) {
+	where := []string{"1 = 1"}
+	args := []any{}
+	if strings.TrimSpace(filters.Agent) != "" {
+		where = append(where, "src.kind = ?")
+		args = append(args, strings.TrimSpace(filters.Agent))
+	}
+	query := fmt.Sprintf(`SELECT
+		tc.tool_name,
 		COUNT(*),
-		SUM(CASE WHEN status IN ('completed', 'success') THEN 1 ELSE 0 END),
-		SUM(CASE WHEN status IN ('completed', 'success') THEN 0 ELSE 1 END),
-		COALESCE(SUM(duration_ms), 0),
-		COALESCE(AVG(duration_ms), 0)
-		FROM tool_calls
-		GROUP BY tool_name
-		ORDER BY COUNT(*) DESC, tool_name ASC`)
+		SUM(CASE WHEN tc.status IN ('completed', 'success') THEN 1 ELSE 0 END),
+		SUM(CASE WHEN tc.status IN ('completed', 'success') THEN 0 ELSE 1 END),
+		COALESCE(SUM(tc.duration_ms), 0),
+		COALESCE(AVG(tc.duration_ms), 0)
+		FROM tool_calls tc
+		JOIN sessions sess ON sess.id = tc.session_id
+		JOIN sources src ON src.id = sess.source_id
+		WHERE %s
+		GROUP BY tc.tool_name
+		ORDER BY COUNT(*) DESC, tc.tool_name ASC`, strings.Join(where, " AND "))
+	rows, err := s.conn.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -71,7 +71,10 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		writeJSON(w, value, err)
 	})
 	mux.HandleFunc("GET /api/tools", func(w http.ResponseWriter, r *http.Request) {
-		value, err := service.GetTools()
+		query := r.URL.Query()
+		value, err := service.ListTools(model.ToolFilters{
+			Agent: query.Get("agent"),
+		})
 		writeJSON(w, value, err)
 	})
 	mux.HandleFunc("GET /api/tool-calls", func(w http.ResponseWriter, r *http.Request) {

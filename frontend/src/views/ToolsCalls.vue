@@ -21,6 +21,7 @@ const route = useRoute()
 const router = useRouter()
 const loading = ref(true)
 const callLoading = ref(true)
+const toolLoading = ref(true)
 const tools = ref<ToolStat[]>([])
 const agents = ref<AgentUsage[]>([])
 const toolCalls = ref<ToolCall[]>([])
@@ -68,10 +69,12 @@ async function load() {
   loading.value = true
   callLoading.value = true
   try {
-    const [nextTools, overview, nextCalls] = await Promise.all([api.getTools(), api.getOverview(), api.listToolCalls(currentToolCallFilters())])
-    tools.value = nextTools || []
+    const overviewRequest = api.getOverview()
+    const clearedTool = await loadToolOptions(true)
+    const overview = await overviewRequest
+    if (clearedTool) await replaceRouteQuery()
     agents.value = overview?.agentUsage || []
-    toolCalls.value = nextCalls || []
+    toolCalls.value = (await api.listToolCalls(currentToolCallFilters())) || []
   } finally {
     loading.value = false
     callLoading.value = false
@@ -132,6 +135,29 @@ function currentToolCallFilters() {
   }
 }
 
+function currentToolFilters() {
+  return {
+    agent: agentFilter.value
+  }
+}
+
+function clearMissingToolFilter() {
+  if (!toolFilter.value) return false
+  if (tools.value.some((item) => item.toolName === toolFilter.value)) return false
+  toolFilter.value = undefined
+  return true
+}
+
+async function loadToolOptions(clearInvalidTool = false) {
+  toolLoading.value = true
+  try {
+    tools.value = (await api.getTools(currentToolFilters())) || []
+    return clearInvalidTool ? clearMissingToolFilter() : false
+  } finally {
+    toolLoading.value = false
+  }
+}
+
 function setQueryValue(query: Record<string, string>, key: string, value?: string) {
   if (value) query[key] = value
   else delete query[key]
@@ -150,13 +176,20 @@ function currentRouteQuery() {
   return query
 }
 
-async function updateFilters() {
+async function replaceRouteQuery() {
   applyingRouteUpdate = true
   try {
     await router.replace({ path: '/tools/calls', query: currentRouteQuery() })
   } finally {
     applyingRouteUpdate = false
   }
+}
+
+async function updateFilters(changedFilter?: 'agent') {
+  if (changedFilter === 'agent') {
+    await loadToolOptions(true)
+  }
+  await replaceRouteQuery()
   loadToolCalls()
 }
 
@@ -174,7 +207,7 @@ function resetFilters() {
   fromFilter.value = ''
   toFilter.value = ''
   sortFilter.value = DEFAULT_SORT
-  updateFilters()
+  updateFilters('agent')
 }
 
 function normalizedStatus(status?: string) {
@@ -223,9 +256,11 @@ function openSession(id: number) {
 
 watch(
   () => [route.query.tool, route.query.agent, route.query.from, route.query.to, route.query.sort],
-  () => {
+  async () => {
     if (applyingRouteUpdate) return
     syncFiltersFromRoute()
+    const clearedTool = await loadToolOptions(true)
+    if (clearedTool) await replaceRouteQuery()
     loadToolCalls()
   }
 )
@@ -246,36 +281,36 @@ onMounted(load)
       <div class="toolbar toolbar-compact">
         <div class="toolbar-left">
           <a-select
-            v-model:value="toolFilter"
-            class="control-medium"
-            allow-clear
-            placeholder="Tool"
-            :options="toolOptions"
-            :loading="loading"
-            @change="updateFilters"
-          />
-          <a-select
             v-model:value="agentFilter"
             class="control-medium"
             allow-clear
             placeholder="Agent type"
             :options="agentOptions"
             :loading="loading"
-            @change="updateFilters"
+            @change="updateFilters('agent')"
+          />
+          <a-select
+            v-model:value="toolFilter"
+            class="control-medium"
+            allow-clear
+            placeholder="Tool"
+            :options="toolOptions"
+            :loading="loading || toolLoading"
+            @change="() => updateFilters()"
           />
           <label class="inline-field tool-time-filter">
             <span>From</span>
-            <input v-model="fromFilter" class="native-date-input" type="datetime-local" aria-label="Started from" @change="updateFilters" />
+            <input v-model="fromFilter" class="native-date-input" type="datetime-local" aria-label="Started from" @change="() => updateFilters()" />
           </label>
           <label class="inline-field tool-time-filter">
             <span>To</span>
-            <input v-model="toFilter" class="native-date-input" type="datetime-local" aria-label="Started to" @change="updateFilters" />
+            <input v-model="toFilter" class="native-date-input" type="datetime-local" aria-label="Started to" @change="() => updateFilters()" />
           </label>
           <a-select
             v-model:value="sortFilter"
             class="control-medium"
             :options="sortOptions"
-            @change="updateFilters"
+            @change="() => updateFilters()"
           />
           <a-button @click="resetFilters">Reset</a-button>
         </div>

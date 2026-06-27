@@ -207,6 +207,10 @@ type ToolStat struct {
 	AvgDurationMS   float64 `json:"avgDurationMs"`
 }
 
+type ToolFilters struct {
+	Agent string `json:"agent"`
+}
+
 type SessionDetail struct {
 	Session    Session     `json:"session"`
 	Events     []Event     `json:"events"`

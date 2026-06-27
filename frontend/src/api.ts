@@ -215,6 +215,10 @@ export interface ToolCallFilters {
   offset?: number
 }
 
+export interface ToolFilters {
+  agent?: string
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
@@ -244,7 +248,12 @@ export const api = {
     return request<Session[]>(`/api/sessions?${params}`)
   },
   getSessionDetail: (id: number) => request<SessionDetail>(`/api/sessions/${id}`),
-  getTools: () => request<ToolStat[]>('/api/tools'),
+  getTools: (filters: ToolFilters = {}) => {
+    const params = new URLSearchParams()
+    if (filters.agent) params.set('agent', filters.agent)
+    const query = params.toString()
+    return request<ToolStat[]>(`/api/tools${query ? `?${query}` : ''}`)
+  },
   listToolCalls: (filters: ToolCallFilters = {}) => {
     const params = new URLSearchParams()
     if (filters.tool) params.set('tool', filters.tool)

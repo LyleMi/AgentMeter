@@ -124,6 +124,37 @@ func TestToolCallsFiltersByAgentTimeAndSortsByDuration(t *testing.T) {
 	}
 }
 
+func TestToolsFiltersByAgent(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	insertToolCallFixture(t, conn, "codex", "Codex", now, time.Second, "shell_command")
+	insertToolCallFixture(t, conn, "codex", "Codex", now.Add(time.Hour), 2*time.Second, "read_file")
+	insertToolCallFixture(t, conn, "claude", "Claude Code", now.Add(2*time.Hour), 5*time.Second, "Bash")
+
+	service := New(conn)
+	stats, err := service.Tools(ctx, model.ToolFilters{Agent: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stats) != 2 {
+		t.Fatalf("codex tools = %+v", stats)
+	}
+	for _, stat := range stats {
+		if stat.ToolName == "Bash" {
+			t.Fatalf("agent filtered tools included claude tool: %+v", stats)
+		}
+		if stat.Calls != 1 {
+			t.Fatalf("tool calls for %s = %d, want 1", stat.ToolName, stat.Calls)
+		}
+	}
+}
+
 func assertToolCallDetail(t *testing.T, call model.ToolCall, sessionID, startEventID, endEventID int64) {
 	t.Helper()
 	if call.SessionID != sessionID || call.SessionKey != "session-key" || call.ProjectPath != "/workspace/project" {
