@@ -9,7 +9,8 @@ import ATooltip from 'ant-design-vue/es/tooltip'
 import Typography from 'ant-design-vue/es/typography'
 import { EyeOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import ToolCallDetailDrawer from '../components/ToolCallDetailDrawer.vue'
-import { api, formatDateTime, formatDuration, formatNumber, sessionLabel, shortPath, type ToolCall, type ToolStat } from '../api'
+import ToolInputInline from '../components/ToolInputInline.vue'
+import { api, formatDateTime, formatDuration, formatNumber, sessionLabel, type ToolCall, type ToolStat } from '../api'
 
 const ATable = AntTable as unknown as DefineComponent
 const ATypographyText = Typography.Text
@@ -24,13 +25,13 @@ const toolFilter = ref<string | undefined>(routeToolQuery())
 const selectedToolCall = ref<ToolCall | null>(null)
 
 const callColumns = [
-  { title: 'Started', dataIndex: 'startedAt', key: 'startedAt', width: 150 },
-  { title: 'Tool', dataIndex: 'toolName', key: 'toolName', width: 150 },
-  { title: 'Status', dataIndex: 'status', key: 'status', width: 110 },
-  { title: 'Duration', dataIndex: 'durationMs', key: 'duration', width: 110, align: 'right' },
-  { title: 'Session', dataIndex: 'sessionKey', key: 'session', width: 190 },
-  { title: 'Input', dataIndex: 'inputSummary', key: 'input' },
-  { title: 'Output', dataIndex: 'outputSummary', key: 'output' },
+  { title: 'Started', dataIndex: 'startedAt', key: 'startedAt', width: 140 },
+  { title: 'Tool', dataIndex: 'toolName', key: 'toolName', width: 140 },
+  { title: 'Status', dataIndex: 'status', key: 'status', width: 105 },
+  { title: 'Duration', dataIndex: 'durationMs', key: 'duration', width: 96, align: 'right' },
+  { title: 'Session', dataIndex: 'sessionId', key: 'session', width: 96 },
+  { title: 'Input', dataIndex: 'inputSummary', key: 'input', width: 440 },
+  { title: 'Output', dataIndex: 'outputSummary', key: 'output', width: 280 },
   { title: '', key: 'detail', width: 56, align: 'right' }
 ]
 
@@ -108,6 +109,15 @@ function callSessionLabel(call: ToolCall) {
   return sessionLabel({ id: call.sessionId, sessionKey: call.sessionKey || '', codexSessionId: call.codexSessionId })
 }
 
+function callSessionShort(call: ToolCall) {
+  return `#${formatNumber(call.sessionId)}`
+}
+
+function callSessionTooltip(call: ToolCall) {
+  const context = call.projectPath || call.rawSourcePath || ''
+  return context ? `${callSessionLabel(call)}\n${context}` : callSessionLabel(call)
+}
+
 function openToolCall(call: ToolCall) {
   selectedToolCall.value = call
 }
@@ -138,7 +148,7 @@ onMounted(load)
     <div class="panel-header">
       <div>
         <h2 class="panel-title">Recent Tool Calls</h2>
-        <div class="panel-kicker">Individual calls with input, output, raw events and session context</div>
+        <div class="panel-kicker">Individual calls with parsed input, output, raw events and session context</div>
       </div>
       <span class="row-count">{{ toolCallCountText }}</span>
     </div>
@@ -174,7 +184,7 @@ onMounted(load)
         :loading="callLoading"
         :locale="{ emptyText: callLoading ? 'Loading tool calls...' : 'No tool calls indexed' }"
         :pagination="{ pageSize: 20, showSizeChanger: true }"
-        :scroll="{ x: 1250 }"
+        :scroll="{ x: 1350 }"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'startedAt'">{{ formatDateTime(record.startedAt) }}</template>
@@ -194,15 +204,15 @@ onMounted(load)
             <span class="number-cell">{{ formatDuration(record.durationMs) }}</span>
           </template>
           <template v-else-if="column.key === 'session'">
-            <a-tooltip :title="record.projectPath || record.rawSourcePath" placement="topLeft">
-              <span class="mono path-cell">{{ callSessionLabel(record) }}</span>
+            <a-tooltip :title="callSessionTooltip(record)" placement="topLeft">
+              <a-button type="link" size="small" class="tool-call-session-link" @click="openSession(record.sessionId)">
+                {{ callSessionShort(record) }}
+              </a-button>
             </a-tooltip>
-            <div class="timeline-event-raw">{{ shortPath(record.projectPath || record.rawSourcePath || '') }}</div>
+            <div class="tool-call-session-meta">{{ record.agentName || record.agentKind || '-' }}</div>
           </template>
           <template v-else-if="column.key === 'input'">
-            <a-typography-text :ellipsis="{ tooltip: record.inputSummary }">
-              {{ record.inputSummary || '-' }}
-            </a-typography-text>
+            <ToolInputInline :call="record" />
           </template>
           <template v-else-if="column.key === 'output'">
             <a-typography-text :ellipsis="{ tooltip: record.outputSummary || record.error }">

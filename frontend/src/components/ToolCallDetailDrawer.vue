@@ -6,6 +6,7 @@ import ATag from 'ant-design-vue/es/tag'
 import Typography from 'ant-design-vue/es/typography'
 import { ArrowRightOutlined } from '@ant-design/icons-vue'
 import { formatDateTime, formatDuration, formatNumber, shortPath, type ToolCall } from '../api'
+import { parseToolInput } from '../toolInput'
 
 const ATypographyParagraph = Typography.Paragraph
 const ATypographyText = Typography.Text
@@ -28,6 +29,8 @@ const drawerTitle = computed(() => {
   if (!props.call?.toolName) return 'Tool Call Details'
   return `${props.call.toolName} Details`
 })
+
+const parsedInput = computed(() => parseToolInput(props.call))
 
 function normalizedStatus(status?: string) {
   return (status || 'unknown').toLowerCase()
@@ -137,8 +140,16 @@ function hasDistinctEndRaw(call: ToolCall) {
 
       <section class="detail-section">
         <div class="metadata-label">Input</div>
-        <a-typography-paragraph class="detail-pre mono" copyable>
-          {{ props.call.inputSummary || '-' }}
+        <div v-if="parsedInput.isStructured" class="tool-input-detail-grid">
+          <div v-for="field in parsedInput.fields" :key="field.key" class="tool-input-detail-field" :class="{ 'is-wide': field.isLong }">
+            <div class="tool-input-detail-label">{{ field.label }}</div>
+            <a-typography-paragraph class="tool-input-detail-value mono" copyable>
+              {{ field.value || '-' }}
+            </a-typography-paragraph>
+          </div>
+        </div>
+        <a-typography-paragraph v-else class="detail-pre mono" copyable>
+          {{ parsedInput.rawText || '-' }}
         </a-typography-paragraph>
       </section>
 
