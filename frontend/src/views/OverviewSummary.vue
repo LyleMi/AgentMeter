@@ -14,12 +14,20 @@ import {
   ToolOutlined,
   WarningOutlined
 } from '@ant-design/icons-vue'
-import { formatCost, formatDuration, formatNumber } from '../api'
+import { formatDuration, formatNumber } from '../api'
 import { useOverviewContext } from './overviewContext'
 
 const ATypographyText = Typography.Text
 
 const { overview, loading, startupIndexing, hasIndexedData, sourcePathDisplay, indexFromOverview } = useOverviewContext()
+
+interface DisplayNumber {
+  main: string
+  suffix: string
+  full: string
+}
+
+const totalTokensDisplay = computed(() => compactNumber(overview.value?.totalTokens))
 
 const pricingStatus = computed(() => {
   const item = overview.value
@@ -32,24 +40,38 @@ const pricingStatus = computed(() => {
   return { label: 'Pricing covered', tone: 'is-success', icon: CheckCircleOutlined }
 })
 
-const tokenBreakdown = computed(() => [
-  { label: 'Input', value: formatNumber(overview.value?.totalInputTokens) },
-  { label: 'Cached', value: formatNumber(overview.value?.totalCachedInputTokens) },
-  { label: 'Output', value: formatNumber(overview.value?.totalOutputTokens) },
-  { label: 'Reasoning', value: formatNumber(overview.value?.totalReasoningTokens) }
-])
+const tokenBreakdown = computed(() => {
+  const item = overview.value
+  const values = [
+    { label: 'Input', value: item?.totalInputTokens || 0, tone: 'is-input' },
+    { label: 'Cached', value: item?.totalCachedInputTokens || 0, tone: 'is-cached' },
+    { label: 'Output', value: item?.totalOutputTokens || 0, tone: 'is-output' },
+    { label: 'Reasoning', value: item?.totalReasoningTokens || 0, tone: 'is-reasoning' }
+  ]
+  const total = values.reduce((sum, current) => sum + Math.max(current.value, 0), 0)
+  return values.map((current) => {
+    const share = total > 0 ? current.value / total : 0
+    return {
+      ...current,
+      display: compactNumber(current.value),
+      exact: formatNumber(current.value),
+      shareLabel: formatSharePercent(share),
+      shareWidth: formatShareWidth(share)
+    }
+  })
+})
 
 const snapshotCards = computed(() => [
   {
     label: 'Sessions',
-    value: formatNumber(overview.value?.totalSessions),
+    value: compactNumber(overview.value?.totalSessions),
     note: `${formatDuration(overview.value?.totalWallDurationMs)} wall time`,
     icon: ClockCircleOutlined,
     tone: 'metric-primary'
   },
   {
     label: 'Estimated Cost',
-    value: formatCost(overview.value?.estimatedCostUsd),
+    value: compactCurrency(overview.value?.estimatedCostUsd),
     note:
       (overview.value?.unpricedSessions || 0) > 0
         ? `${formatNumber(overview.value?.unpricedSessions)} sessions missing pricing`
@@ -60,14 +82,14 @@ const snapshotCards = computed(() => [
   },
   {
     label: 'Tool Calls',
-    value: formatNumber(overview.value?.totalToolCalls),
+    value: compactNumber(overview.value?.totalToolCalls),
     note: 'Across indexed sessions',
     icon: ToolOutlined,
     tone: 'metric-info'
   },
   {
     label: 'Active Time',
-    value: formatDuration(overview.value?.totalActiveDurationMs),
+    value: textMetric(formatDuration(overview.value?.totalActiveDurationMs)),
     note: 'Measured model and tool time',
     icon: ClockCircleOutlined,
     tone: 'metric-neutral'
@@ -149,11 +171,73 @@ function formatRatio(value: number) {
 function formatCostPerThousand(cost: number, tokens: number) {
   if (!tokens) return '$0'
   const value = cost / (tokens / 1000)
-  return new Intl.NumberFormat(undefined, {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 4
-  }).format(value)
+  return formatUSD(value, 4)
+}
+
+function compactNumber(value: number | undefined): DisplayNumber {
+  const normalized = Math.max(0, Number(value || 0))
+  const full = formatNumber(normalized)
+  if (normalized < 10_000) return { main: full, suffix: '', full }
+
+  const tiers = [
+    { value: 1_000_000_000, suffix: 'B' },
+    { value: 1_000_000, suffix: 'M' },
+    { value: 1_000, suffix: 'K' }
+  ]
+  const tier = tiers.find((candidate) => normalized >= candidate.value)
+  if (!tier) return { main: full, suffix: '', full }
+
+  const scaled = normalized / tier.value
+  const maximumFractionDigits = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2
+  return {
+    main: new Intl.NumberFormat(undefined, { maximumFractionDigits }).format(scaled),
+    suffix: tier.suffix,
+    full
+  }
+}
+
+function textMetric(value: string): DisplayNumber {
+  return { main: value, suffix: '', full: value }
+}
+
+function compactCurrency(value: number | undefined): DisplayNumber {
+  if (value === undefined || value === null) return textMetric('unpriced')
+  const normalized = Math.max(0, Number(value || 0))
+  const full = formatUSD(normalized, 4)
+  if (normalized < 1_000) {
+    return { main: formatUSD(normalized, normalized < 1 ? 4 : 2), suffix: '', full }
+  }
+
+  const tiers = [
+    { value: 1_000_000_000, suffix: 'B' },
+    { value: 1_000_000, suffix: 'M' },
+    { value: 1_000, suffix: 'K' }
+  ]
+  const tier = tiers.find((candidate) => normalized >= candidate.value)
+  if (!tier) return { main: full, suffix: '', full }
+
+  const scaled = normalized / tier.value
+  const maximumFractionDigits = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2
+  return {
+    main: formatUSD(scaled, maximumFractionDigits),
+    suffix: tier.suffix,
+    full
+  }
+}
+
+function formatUSD(value: number, maximumFractionDigits: number) {
+  return `$${new Intl.NumberFormat(undefined, { maximumFractionDigits }).format(value)}`
+}
+
+function formatSharePercent(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0%'
+  if (value < 0.01) return '<1%'
+  return formatPercent(value)
+}
+
+function formatShareWidth(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0%'
+  return `${Math.max(2, Math.round(value * 100))}%`
 }
 </script>
 
@@ -173,12 +257,24 @@ function formatCostPerThousand(cost: number, tokens: number) {
             {{ pricingStatus.label }}
           </span>
         </div>
-        <div class="overview-snapshot-value">{{ formatNumber(overview?.totalTokens) }}</div>
+        <div class="overview-snapshot-value" :title="`${totalTokensDisplay.full} tokens`">
+          <span>{{ totalTokensDisplay.main }}</span>
+          <em v-if="totalTokensDisplay.suffix">{{ totalTokensDisplay.suffix }}</em>
+        </div>
         <div class="overview-snapshot-unit">tokens</div>
+        <div class="overview-snapshot-exact">{{ totalTokensDisplay.full }} exact total</div>
         <div class="overview-token-breakdown">
-          <div v-for="item in tokenBreakdown" :key="item.label" class="overview-token-item">
-            <span>{{ item.label }}</span>
-            <strong>{{ item.value }}</strong>
+          <div v-for="item in tokenBreakdown" :key="item.label" class="overview-token-item" :class="item.tone">
+            <div class="overview-token-row">
+              <span>{{ item.label }}</span>
+              <strong :title="item.exact">
+                {{ item.display.main }}<em v-if="item.display.suffix">{{ item.display.suffix }}</em>
+              </strong>
+            </div>
+            <div class="overview-token-meter" :aria-label="`${item.label} ${item.shareLabel}`">
+              <span :style="{ width: item.shareWidth }"></span>
+            </div>
+            <div class="overview-token-share">{{ item.shareLabel }}</div>
           </div>
         </div>
       </div>
@@ -194,7 +290,10 @@ function formatCostPerThousand(cost: number, tokens: number) {
             <span class="metric-label">{{ item.label }}</span>
             <component :is="item.icon" class="metric-icon" />
           </div>
-          <div class="overview-kpi-value">{{ item.value }}</div>
+          <div class="overview-kpi-value" :title="item.value.full">
+            <span>{{ item.value.main }}</span>
+            <em v-if="item.value.suffix">{{ item.value.suffix }}</em>
+          </div>
           <div class="overview-kpi-note" :class="{ 'metric-note-warning': item.warning }">{{ item.note }}</div>
         </div>
       </div>
