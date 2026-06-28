@@ -1,6 +1,10 @@
 package tui
 
-import "fmt"
+import (
+	"fmt"
+
+	"AgentMeter/internal/viewmodel"
+)
 
 func (s *state) overviewLines() []string {
 	o := s.overview
@@ -14,8 +18,23 @@ func (s *state) overviewLines() []string {
 		fmt.Sprintf("Tool calls: %-10s Network-suspect: %-10s Unpriced sessions: %s",
 			formatInt(int64(o.TotalToolCalls)), formatInt(int64(o.SuspectedNetworkToolCalls)), formatInt(int64(o.UnpricedSessions))),
 		"",
-		bold("Top Models"),
 	}
+	lines = append(lines, bold("Efficiency"))
+	metrics := viewmodel.DerivedOverviewMetrics(o)
+	if len(metrics) == 0 {
+		lines = append(lines, "No derived metrics yet.")
+	} else {
+		for index := 0; index < len(metrics); index += 2 {
+			left := metrics[index]
+			if index+1 >= len(metrics) {
+				lines = append(lines, fmt.Sprintf("%-24s %12s", left.Label, left.Value))
+				continue
+			}
+			right := metrics[index+1]
+			lines = append(lines, fmt.Sprintf("%-24s %12s    %-24s %12s", left.Label, left.Value, right.Label, right.Value))
+		}
+	}
+	lines = append(lines, "", bold("Top Models"))
 	if len(o.ModelUsage) == 0 {
 		lines = append(lines, "No model usage yet.")
 	} else {

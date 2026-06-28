@@ -66,6 +66,13 @@ func (s *state) headerLine() string {
 		if s.toolCall != nil {
 			parts = append(parts, empty(s.toolCall.ToolName, "unknown"), "#"+formatInt(s.toolCall.ID))
 		}
+	case pageModelSignals:
+		summary := s.signals.HealthSummary
+		parts = append(parts,
+			"health "+modelSignalSeverityLabel(summary.Severity),
+			fmt.Sprintf("%s sessions", formatInt(int64(s.signals.TotalSessions))),
+			fmt.Sprintf("%s calls", formatInt(int64(s.signals.TotalModelCalls))),
+		)
 	case pagePrivacy:
 		parts = append(parts, fmt.Sprintf("%s targets", formatInt(int64(len(s.privacy)))))
 		if status := s.selectedPrivacyStatus(); status != nil {
@@ -88,6 +95,7 @@ func (s *state) navLine() string {
 		{"1", pageOverview, "Overview"},
 		{"2", pageSessions, "Sessions"},
 		{"3", pageTools, "Tools"},
+		{"m", pageModelSignals, "Model Signals"},
 		{"4", pageSettings, "Settings"},
 		{"5", pagePrivacy, "Agent Privacy"},
 	}
@@ -125,26 +133,68 @@ func (s *state) statusLine() string {
 }
 
 func (s *state) footerLine() string {
+	var text string
 	switch s.page {
 	case pageSessionDetail:
-		return dim("Keys: b/esc back  up/down scroll  r refresh  i update index  I rebuild index  q quit")
+		text = "Keys: b/esc back  up/down scroll  r refresh  i update index  I rebuild index  q quit"
 	case pageSessions:
-		return dim("Keys: enter detail  up/down select  tab cycle  r refresh  i update index  I rebuild index  q quit")
+		text = "Keys: enter detail  up/down select  tab cycle  r refresh  i update index  I rebuild index  q quit"
 	case pageTools:
-		return dim("Keys: enter calls  c all calls  up/down select  tab cycle  r refresh  i update index  I rebuild index  q quit")
+		text = "Keys: enter calls  c all calls  up/down select  tab cycle  r refresh  i update index  I rebuild index  q quit"
 	case pageToolCalls:
-		return dim("Keys: enter detail  b/esc tools  d sort  up/down select  r refresh  i update index  I rebuild index  q quit")
+		text = "Keys: enter detail  b/esc tools  d sort  up/down select  r refresh  i update index  I rebuild index  q quit"
 	case pageToolCallDetail:
-		return dim("Keys: b/esc calls  up/down scroll  r refresh  i update index  I rebuild index  q quit")
+		text = "Keys: b/esc calls  up/down scroll  r refresh  i update index  I rebuild index  q quit"
+	case pageModelSignals:
+		text = "Keys: up/down scroll  tab cycle  r refresh  i update index  I rebuild index  q quit"
 	case pagePrivacy:
 		if s.privacyPending != nil {
-			return dim("Keys: enter write profile  esc cancel  q quit")
+			text = "Keys: enter write profile  esc cancel  q quit"
+			break
 		}
-		return dim("Keys: up/down target  enter recommended  A strict  u defaults  pgup/pgdn detail  r refresh  q quit")
+		text = "Keys: up/down target  enter recommended  A strict  u defaults  pgup/pgdn detail  r refresh  q quit"
 	case pageSettings:
-		return dim("Keys: up/down scroll  tab cycle  r refresh  i update index  I rebuild index  q quit")
+		text = "Keys: up/down scroll  tab cycle  r refresh  i update index  I rebuild index  q quit"
 	default:
-		return dim("Keys: 1-5 switch  tab cycle  up/down select/scroll  r refresh  i update index  I rebuild index  q quit")
+		text = "Keys: 1-5/m switch  tab cycle  up/down select/scroll  r refresh  i update index  I rebuild index  q quit"
+	}
+	if position := s.positionLabel(); position != "" {
+		text += "  " + position
+	}
+	return dim(text)
+}
+
+func (s *state) positionLabel() string {
+	count := s.itemCount()
+	if count <= 0 {
+		return ""
+	}
+	if s.isListPage() {
+		visible := s.visibleListRows()
+		if count <= visible {
+			return ""
+		}
+		start := s.scroll + 1
+		end := s.scroll + visible
+		if end > count {
+			end = count
+		}
+		return fmt.Sprintf("Rows %s-%s/%s", formatInt(int64(start)), formatInt(int64(end)), formatInt(int64(count)))
+	}
+	switch s.page {
+	case pageSessionDetail, pageToolCallDetail, pageModelSignals, pageSettings:
+		visible := s.contentHeight()
+		if count <= visible {
+			return ""
+		}
+		start := s.scroll + 1
+		end := s.scroll + visible
+		if end > count {
+			end = count
+		}
+		return fmt.Sprintf("Lines %s-%s/%s", formatInt(int64(start)), formatInt(int64(end)), formatInt(int64(count)))
+	default:
+		return ""
 	}
 }
 
@@ -174,6 +224,8 @@ func (s *state) content() []string {
 		return s.toolCallLines()
 	case pageToolCallDetail:
 		return s.toolCallDetailViewportLines()
+	case pageModelSignals:
+		return s.modelSignalViewportLines()
 	case pageSettings:
 		return s.settingsViewportLines()
 	case pagePrivacy:
@@ -324,4 +376,12 @@ func accent(value string) string {
 
 func danger(value string) string {
 	return "\x1b[31m" + value + "\x1b[0m"
+}
+
+func warning(value string) string {
+	return "\x1b[33m" + value + "\x1b[0m"
+}
+
+func success(value string) string {
+	return "\x1b[32m" + value + "\x1b[0m"
 }

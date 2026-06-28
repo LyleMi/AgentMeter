@@ -9,6 +9,7 @@ import (
 
 type appService interface {
 	GetOverview() (agentmodel.Overview, error)
+	GetModelSignalsWithFilters(agentmodel.AnalyticsFilters) (agentmodel.ModelSignals, error)
 	ListSessions(agentmodel.SessionFilters) ([]agentmodel.Session, error)
 	GetSessionDetail(id int64) (agentmodel.SessionDetail, error)
 	GetTools() ([]agentmodel.ToolStat, error)
@@ -31,6 +32,7 @@ const (
 	pageTools
 	pageToolCalls
 	pageToolCallDetail
+	pageModelSignals
 	pageSettings
 	pagePrivacy
 )
@@ -49,6 +51,8 @@ func (p page) title() string {
 		return "Tool Calls"
 	case pageToolCallDetail:
 		return "Tool Call Detail"
+	case pageModelSignals:
+		return "Model Signals"
 	case pageSettings:
 		return "Settings"
 	case pagePrivacy:
@@ -92,6 +96,7 @@ type loadMsg struct {
 	tools     []agentmodel.ToolStat
 	toolCalls []agentmodel.ToolCall
 	toolCall  *agentmodel.ToolCall
+	signals   agentmodel.ModelSignals
 	settings  agentmodel.Settings
 	privacy   []agentmodel.PrivacyConfigStatus
 	err       error
@@ -149,6 +154,7 @@ type state struct {
 	tools     []agentmodel.ToolStat
 	toolCalls []agentmodel.ToolCall
 	toolCall  *agentmodel.ToolCall
+	signals   agentmodel.ModelSignals
 	settings  agentmodel.Settings
 	privacy   []agentmodel.PrivacyConfigStatus
 
@@ -219,6 +225,8 @@ func (s *state) update(msg message) (command, bool) {
 				s.toolCall = &call
 				s.scroll = 0
 			}
+		case pageModelSignals:
+			s.signals = m.signals
 		case pageSettings:
 			s.settings = m.settings
 		case pagePrivacy:
@@ -289,6 +297,8 @@ func (s *state) handleKey(k keyMsg) (command, bool) {
 			return s.switchPage(pageSettings), false
 		case '5', 'p', 'P':
 			return s.switchPage(pagePrivacy), false
+		case '6', 'm', 'M':
+			return s.switchPage(pageModelSignals), false
 		case 'r', 'R':
 			return s.refresh(), false
 		case 'c', 'C':
@@ -399,6 +409,8 @@ func (s *state) nextPage() page {
 	case pageSessions, pageSessionDetail:
 		return pageTools
 	case pageTools, pageToolCalls, pageToolCallDetail:
+		return pageModelSignals
+	case pageModelSignals:
 		return pageSettings
 	case pageSettings:
 		return pagePrivacy
@@ -417,8 +429,10 @@ func (s *state) previousPage() page {
 		return pageTools
 	case pageTools:
 		return pageSessions
-	case pageSettings:
+	case pageModelSignals:
 		return pageTools
+	case pageSettings:
+		return pageModelSignals
 	default:
 		return pageSettings
 	}
@@ -441,6 +455,8 @@ func (s *state) load(target page) command {
 			msg.tools, msg.err = s.service.GetTools()
 		case pageToolCalls:
 			msg.toolCalls, msg.err = s.service.ListToolCalls(toolCallFilters)
+		case pageModelSignals:
+			msg.signals, msg.err = s.service.GetModelSignalsWithFilters(agentmodel.AnalyticsFilters{})
 		case pageSettings:
 			msg.settings, msg.err = s.service.GetSettings()
 		case pagePrivacy:
@@ -585,6 +601,8 @@ func (s *state) itemCount() int {
 			return 0
 		}
 		return len(toolCallDetailLines(*s.toolCall, s.width))
+	case pageModelSignals:
+		return len(modelSignalLines(s.signals, s.width))
 	case pageSettings:
 		return len(settingsLines(s.settings, s.width))
 	case pagePrivacy:
@@ -638,7 +656,7 @@ func (s *state) move(delta int) {
 	if delta == 0 {
 		return
 	}
-	if s.page == pageSessionDetail || s.page == pageToolCallDetail || s.page == pageSettings || s.page == pagePrivacy {
+	if s.page == pageSessionDetail || s.page == pageToolCallDetail || s.page == pageModelSignals || s.page == pageSettings || s.page == pagePrivacy {
 		maxScroll := s.maxScroll()
 		s.scroll += delta
 		if s.scroll < 0 {
@@ -685,7 +703,7 @@ func (s *state) clampSelection(count int) {
 }
 
 func (s *state) ensureVisible() {
-	if s.page == pageSessionDetail || s.page == pageToolCallDetail || s.page == pageSettings || s.page == pagePrivacy {
+	if s.page == pageSessionDetail || s.page == pageToolCallDetail || s.page == pageModelSignals || s.page == pageSettings || s.page == pagePrivacy {
 		maxScroll := s.maxScroll()
 		if s.scroll > maxScroll {
 			s.scroll = maxScroll

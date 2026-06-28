@@ -13,6 +13,7 @@ import (
 
 type fakeService struct {
 	overview  agentmodel.Overview
+	signals   agentmodel.ModelSignals
 	sessions  []agentmodel.Session
 	detail    agentmodel.SessionDetail
 	tools     []agentmodel.ToolStat
@@ -35,6 +36,10 @@ type privacyApplyCall struct {
 
 func (f *fakeService) GetOverview() (agentmodel.Overview, error) {
 	return f.overview, nil
+}
+
+func (f *fakeService) GetModelSignalsWithFilters(_ agentmodel.AnalyticsFilters) (agentmodel.ModelSignals, error) {
+	return f.signals, nil
 }
 
 func (f *fakeService) ListSessions(_ agentmodel.SessionFilters) ([]agentmodel.Session, error) {
@@ -122,7 +127,7 @@ func (f *fakeService) ApplyPrivacyProfile(target, profile string) (agentmodel.Pr
 
 func TestOverviewLoadsAndRenders(t *testing.T) {
 	svc := sampleService()
-	st := newState(svc, 100, 24)
+	st := newState(svc, 100, 32)
 
 	cmd := st.init()
 	_, quit := st.update(runCommand(t, cmd))
@@ -268,6 +273,29 @@ func TestToolsOpenToolCallsAndDetail(t *testing.T) {
 	if st.page != pageToolCalls {
 		t.Fatalf("page = %v, want tool calls after back", st.page)
 	}
+}
+
+func TestModelSignalsLoadsAndRenders(t *testing.T) {
+	svc := sampleService()
+	st := newState(svc, 120, 60)
+
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: 'm'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+
+	view := st.view()
+	assertContains(t, view, "Model Signals")
+	assertContains(t, view, "Health:")
+	assertContains(t, view, "warning")
+	assertContains(t, view, "Model Breakdown")
+	assertContains(t, view, "gpt-5-codex")
+	assertContains(t, view, "Top Drift Cohorts")
+	assertContains(t, view, "Tool failures above baseline")
+	assertContains(t, view, "Daily Efficiency")
+	assertContains(t, view, "Project Hotspots")
+	assertContains(t, view, "Anomaly Sessions")
 }
 
 func TestToolsAndToolCallsKeepSelectedRowVisible(t *testing.T) {
@@ -614,6 +642,141 @@ func sampleService() *fakeService {
 				{SourceID: 7, SourceKey: "source:7", SourceLabel: "Work Codex", SourceRootPath: `D:\sessions\codex-work`, SourceSessionsPath: `D:\sessions\codex-work\sessions`, AgentKind: "codex", AgentName: "Codex", SessionCount: 2, TotalTokens: 12345, ToolCalls: 2, EstimatedCostUSD: &cost},
 			},
 			RecentSessions: []agentmodel.Session{session},
+		},
+		signals: agentmodel.ModelSignals{
+			TotalSessions:                        2,
+			TotalModelCalls:                      3,
+			TotalToolCalls:                       2,
+			FailedToolCalls:                      1,
+			ToolFailureRate:                      0.5,
+			ToolDependencyRate:                   1,
+			AvgModelCallsPerSession:              1.5,
+			OutputExpansionRate:                  0.54,
+			ReasoningTokenShare:                  0.18,
+			ReasoningOverheadRate:                0.22,
+			VisibleOutputTokens:                  3600,
+			BillableOutputTokens:                 4345,
+			CacheMissRate:                        0.72,
+			ModelThroughputTokensPerSecond:       18.4,
+			ModelThroughputOutputTokensPerSecond: 6.5,
+			HealthSummary: agentmodel.ModelSignalsHealthSummary{
+				CurrentWindow:        agentmodel.ModelSignalsWindow{From: "2026-06-27", To: "2026-06-27", SessionCount: 2, ModelCalls: 3},
+				BaselineWindow:       agentmodel.ModelSignalsWindow{From: "2026-05-28", To: "2026-06-26", SessionCount: 12, ModelCalls: 20},
+				Severity:             "warning",
+				CohortCount:          1,
+				WarningCohorts:       1,
+				CriticalCohorts:      0,
+				LowConfidenceCohorts: 0,
+				TopReasons:           []string{"Tool failures above baseline"},
+			},
+			ModelBreakdown: []agentmodel.ModelSignalsBreakdown{{
+				Model:                          "gpt-5-codex",
+				SessionCount:                   2,
+				ModelCalls:                     3,
+				ToolCalls:                      2,
+				FailedToolCalls:                1,
+				TotalTokens:                    12345,
+				OutputTokens:                   4345,
+				ReasoningOutputTokens:          745,
+				ToolFailureRate:                0.5,
+				ReasoningTokenShare:            0.18,
+				CacheMissRate:                  0.72,
+				ModelThroughputTokensPerSecond: 18.4,
+			}},
+			Cohorts: []agentmodel.ModelSignalsCohort{{
+				SourceID:      7,
+				SourceKey:     "source:7",
+				SourceLabel:   "Work Codex",
+				AgentKind:     "codex",
+				AgentName:     "Codex",
+				ModelProvider: "openai",
+				Model:         "gpt-5-codex",
+				ProjectPath:   session.ProjectPath,
+				CohortKey:     "openai:gpt-5-codex:codex:AgentMeter",
+				ModelSignalsMetricSet: agentmodel.ModelSignalsMetricSet{
+					SessionCount:                         2,
+					ModelCalls:                           3,
+					FailedToolCalls:                      1,
+					TotalTokens:                          12345,
+					ModelThroughputTokensPerSecond:       18.4,
+					ModelLatencyMsPer1kOutputTokens:      2100,
+					P90ModelLatencyMsPer1kOutputTokens:   2400,
+					P10ModelThroughputTokensPerSecond:    11.2,
+					ToolFailureRate:                      0.5,
+					FailurePressure:                      0.5,
+					DegradationRiskScore:                 0.43,
+					ModelThroughputOutputTokensPerSecond: 6.5,
+				},
+				Current: agentmodel.ModelSignalsMetricSet{
+					SessionCount:                       2,
+					ModelCalls:                         3,
+					FailedToolCalls:                    1,
+					TotalTokens:                        12345,
+					ModelThroughputTokensPerSecond:     18.4,
+					P90ModelLatencyMsPer1kOutputTokens: 2400,
+					P10ModelThroughputTokensPerSecond:  11.2,
+					ToolFailureRate:                    0.5,
+					FailurePressure:                    0.5,
+					DegradationRiskScore:               0.43,
+				},
+				Baseline: agentmodel.ModelSignalsMetricSet{
+					SessionCount:                   12,
+					ModelCalls:                     20,
+					ModelThroughputTokensPerSecond: 30,
+				},
+				Drift: agentmodel.ModelSignalsDrift{
+					Severity:   "warning",
+					Confidence: "medium",
+					Reasons:    []string{"Tool failures above baseline"},
+				},
+			}},
+			DailyMetrics: []agentmodel.ModelSignalsDailyMetric{{
+				Date:                  "2026-06-27",
+				ModelSignalsMetricSet: agentmodel.ModelSignalsMetricSet{SessionCount: 2, ModelCalls: 3, EstimatedCostUSD: &cost, CostPerSession: &cost, P90ModelLatencyMsPer1kOutputTokens: 2400, P10ModelThroughputTokensPerSecond: 11.2, DegradationRiskScore: 0.43},
+				LowSample:             true,
+				KeyReason:             "low sample",
+				Drift:                 agentmodel.ModelSignalsDrift{Severity: "watch", Confidence: "low"},
+				Baseline:              agentmodel.ModelSignalsMetricSet{SessionCount: 7},
+			}},
+			ProjectMetrics: []agentmodel.ModelSignalsProjectMetric{{
+				ProjectPath:           session.ProjectPath,
+				ModelCount:            1,
+				SourceCount:           1,
+				DominantModelProvider: "openai",
+				DominantModel:         "gpt-5-codex",
+				DominantModelShare:    1,
+				ModelSignalsMetricSet: agentmodel.ModelSignalsMetricSet{SessionCount: 2, TotalTokens: 12345},
+				Current:               agentmodel.ModelSignalsMetricSet{SessionCount: 2, EstimatedCostUSD: &cost, P90ModelLatencyMsPer1kOutputTokens: 2400, P10ModelThroughputTokensPerSecond: 11.2, DegradationRiskScore: 0.43},
+				Baseline:              agentmodel.ModelSignalsMetricSet{SessionCount: 12},
+				Drift:                 agentmodel.ModelSignalsDrift{Severity: "warning", Confidence: "medium", Reasons: []string{"Tool failures above baseline"}},
+			}},
+			Matrix: []agentmodel.ModelSignalsMatrixRow{{
+				SourceID:    7,
+				SourceKey:   "source:7",
+				SourceLabel: "Work Codex",
+				AgentKind:   "codex",
+				AgentName:   "Codex",
+				Cells:       []agentmodel.ModelSignalsMatrixCell{{ModelProvider: "openai", Model: "gpt-5-codex", Severity: "warning", Confidence: "medium", SessionCount: 2, ModelCalls: 3, TotalTokens: 12345}},
+			}},
+			AnomalySessions: []agentmodel.ModelSignalsAnomalySession{{
+				SessionID:                      session.ID,
+				SourceID:                       session.SourceID,
+				SourceKey:                      session.SourceKey,
+				SourceLabel:                    session.SourceLabel,
+				AgentKind:                      session.AgentKind,
+				AgentName:                      session.AgentName,
+				SessionKey:                     session.SessionKey,
+				ProjectPath:                    session.ProjectPath,
+				Model:                          session.Model,
+				StartedAt:                      started,
+				TotalTokens:                    12345,
+				FailedToolCalls:                1,
+				ReasoningTokenShare:            0.18,
+				CacheMissRate:                  0.72,
+				ModelThroughputTokensPerSecond: 18.4,
+				ReasonLabels:                   []string{"tool failures", "cache miss"},
+				Score:                          0.43,
+			}},
 		},
 		sessions: []agentmodel.Session{session},
 		detail: agentmodel.SessionDetail{
