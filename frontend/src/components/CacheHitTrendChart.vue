@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, watch } from 'vue'
 import ASpin from 'ant-design-vue/es/spin'
 import { LineChartOutlined } from '@ant-design/icons-vue'
-import { formatNumber, type CacheHitTrendPoint } from '../api'
+import { formatNumber, formatPercent, type CacheHitTrendPoint } from '../api'
 import { chartPalette } from '../chartPalette'
 import { useEChart } from '../composables/useEChart'
 import { useMessages } from '../i18n'
@@ -164,8 +164,8 @@ function tooltipMarkup(params: unknown) {
   if (!point) return ''
 
   const rows = [
-    `${t('series.daily')}: ${formatPercent(point.cacheUtilizationRate)}`,
-    `${t('series.rolling')}: ${formatPercent(point.rollingCacheUtilizationRate)}`,
+    `${t('series.daily')}: ${formatPercent(point.cacheUtilizationRate, { clamp: true })}`,
+    `${t('series.rolling')}: ${formatPercent(point.rollingCacheUtilizationRate, { clamp: true })}`,
     `${t('tooltip.input')}: ${formatNumber(point.inputTokens)}`,
     `${t('tooltip.cached')}: ${formatNumber(point.cachedInputTokens)}`,
     `${t('tooltip.sessions')}: ${formatNumber(point.sessionCount)}`
@@ -180,10 +180,6 @@ function tooltipMarkup(params: unknown) {
 function toPercent(value: number) {
   if (!Number.isFinite(value)) return 0
   return Math.max(0, Math.min(100, value * 100))
-}
-
-function formatPercent(value: number) {
-  return `${Math.round(toPercent(value))}%`
 }
 
 function compactNumber(value: number) {

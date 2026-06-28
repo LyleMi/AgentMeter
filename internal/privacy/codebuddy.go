@@ -1,10 +1,6 @@
 package privacy
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"AgentMeter/internal/model"
@@ -20,54 +16,34 @@ func NewCodeBuddyAdapter() CodeBuddyAdapter {
 }
 
 func (a CodeBuddyAdapter) Status() (model.PrivacyConfigStatus, error) {
-	path, err := a.settingsPath()
-	if err != nil {
-		return model.PrivacyConfigStatus{}, err
-	}
-	content, exists, err := readOptionalFile(path)
-	if err != nil {
-		return model.PrivacyConfigStatus{}, err
-	}
-	return buildCodeBuddyStatus(path, exists, content, nil), nil
+	return a.jsonAdapter().status()
 }
 
 func (a CodeBuddyAdapter) Apply(settingIDs []string) (model.PrivacyConfigApplyResult, error) {
-	path, err := a.settingsPath()
-	if err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-	return applyJSONSettingsMutation(path, a.now, buildCodeBuddyStatus, func(root map[string]any) ([]model.PrivacyConfigChange, []string, error) {
-		selected, warnings := selectedJSONSettingDefinitions(settingIDs, codeBuddySettingDefinitions, "CodeBuddy")
-		changes := plannedJSONChanges(root, selected)
-		if len(changes) > 0 {
-			applyJSONSettings(root, selected)
-		}
-		return changes, warnings, nil
-	})
+	return a.jsonAdapter().apply(settingIDs)
 }
 
 func (a CodeBuddyAdapter) ApplyChanges(edits []model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error) {
-	path, err := a.settingsPath()
-	if err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-	return applyJSONSettingsMutation(path, a.now, buildCodeBuddyStatus, func(root map[string]any) ([]model.PrivacyConfigChange, []string, error) {
-		return applyJSONEdits(root, edits, codeBuddySettingDefinitions, "CodeBuddy")
-	})
+	return a.jsonAdapter().applyChanges(edits)
 }
 
 func (a CodeBuddyAdapter) ApplyProfile(profile string) (model.PrivacyConfigApplyResult, error) {
-	normalized, err := normalizePrivacyProfile(profile)
-	if err != nil {
-		return model.PrivacyConfigApplyResult{}, err
+	return a.jsonAdapter().applyProfile(profile)
+}
+
+func (a CodeBuddyAdapter) jsonAdapter() jsonPrivacyAdapter {
+	return codeBuddyJSONAdapter(a.settingsPath, a.now)
+}
+
+func codeBuddyJSONAdapter(settingsPath func() (string, error), now func() time.Time) jsonPrivacyAdapter {
+	return jsonPrivacyAdapter{
+		target:       "codebuddy",
+		name:         "CodeBuddy Code/IDE",
+		agentName:    "CodeBuddy",
+		definitions:  codeBuddySettingDefinitions,
+		settingsPath: settingsPath,
+		now:          now,
 	}
-	path, err := a.settingsPath()
-	if err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-	return applyJSONSettingsMutation(path, a.now, buildCodeBuddyStatus, func(root map[string]any) ([]model.PrivacyConfigChange, []string, error) {
-		return applyJSONProfile(root, normalized, codeBuddySettingDefinitions), nil, nil
-	})
 }
 
 func (a CodeBuddyAdapter) now() time.Time {
@@ -78,94 +54,15 @@ func (a CodeBuddyAdapter) now() time.Time {
 }
 
 func (a CodeBuddyAdapter) settingsPath() (string, error) {
-	if strings.TrimSpace(a.ConfigPath) != "" {
-		return filepath.Clean(a.ConfigPath), nil
-	}
-	return codeBuddySettingsPath()
+	return jsonSettingsPath(a.ConfigPath, "AGENTMETER_CODEBUDDY_SETTINGS_PATH", "CODEBUDDY_CONFIG_DIR", ".codebuddy")
 }
 
 func codeBuddySettingsPath() (string, error) {
-	if path := strings.TrimSpace(os.Getenv("AGENTMETER_CODEBUDDY_SETTINGS_PATH")); path != "" {
-		return filepath.Clean(path), nil
-	}
-	if dir := strings.TrimSpace(os.Getenv("CODEBUDDY_CONFIG_DIR")); dir != "" {
-		return filepath.Join(filepath.Clean(dir), "settings.json"), nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".codebuddy", "settings.json"), nil
+	return jsonSettingsPath("", "AGENTMETER_CODEBUDDY_SETTINGS_PATH", "CODEBUDDY_CONFIG_DIR", ".codebuddy")
 }
 
 func buildCodeBuddyStatus(path string, exists bool, content []byte, warnings []string) model.PrivacyConfigStatus {
-	root, err := parseJSONSettings(content)
-	canApply := true
-	if err != nil {
-		canApply = false
-		warnings = append(warnings, fmt.Sprintf("CodeBuddy settings.json could not be parsed: %v", err))
-		root = map[string]any{}
-	}
-
-	settings := make([]model.PrivacyConfigSetting, 0, len(codeBuddySettingDefinitions))
-	summary := model.PrivacyConfigSummary{Total: len(codeBuddySettingDefinitions)}
-	for _, definition := range codeBuddySettingDefinitions {
-		current, ok := nestedJSONValue(root, definition.Key)
-		status := statusAttention
-		var currentValue any
-		if ok {
-			currentValue = current
-			if jsonSettingHardened(current, ok, definition) {
-				status = statusHardened
-			}
-		} else if definition.DefaultSafe && canApply {
-			status = statusImplicit
-		}
-
-		switch status {
-		case statusHardened:
-			summary.Hardened++
-		case statusImplicit:
-			summary.Implicit++
-		default:
-			summary.Attention++
-		}
-
-		strict := definition.Desired
-		if definition.MergeArray {
-			strict = jsonSettingAfter(current, ok, definition)
-		}
-		settings = append(settings, model.PrivacyConfigSetting{
-			ID:            definition.ID,
-			Group:         definition.Group,
-			Title:         definition.Title,
-			Description:   definition.Description,
-			Key:           definition.Key,
-			DesiredValue:  definition.Desired,
-			StrictValue:   strict,
-			ProfileValues: privacyProfileValues(definition.Recommended, strict, strict),
-			ValueType:     jsonValueType(definition.Desired),
-			Configured:    ok,
-			SupportsUnset: canApply,
-			CurrentValue:  currentValue,
-			Status:        status,
-			Impact:        definition.Impact,
-			CanApply:      canApply,
-		})
-	}
-	if summary.Total > 0 {
-		summary.Score = ((summary.Hardened + summary.Implicit) * 100) / summary.Total
-	}
-	return model.PrivacyConfigStatus{
-		Target:     "codebuddy",
-		Name:       "CodeBuddy Code/IDE",
-		ConfigPath: path,
-		Exists:     exists,
-		Profiles:   privacyConfigProfiles(),
-		Summary:    summary,
-		Settings:   settings,
-		Warnings:   warnings,
-	}
+	return codeBuddyJSONAdapter(nil, nil).buildStatus(path, exists, content, warnings)
 }
 
 var codeBuddySettingDefinitions = []jsonSettingDefinition{

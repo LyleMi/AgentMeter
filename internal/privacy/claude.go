@@ -1,10 +1,6 @@
 package privacy
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"AgentMeter/internal/model"
@@ -20,54 +16,34 @@ func NewClaudeAdapter() ClaudeAdapter {
 }
 
 func (a ClaudeAdapter) Status() (model.PrivacyConfigStatus, error) {
-	path, err := a.settingsPath()
-	if err != nil {
-		return model.PrivacyConfigStatus{}, err
-	}
-	content, exists, err := readOptionalFile(path)
-	if err != nil {
-		return model.PrivacyConfigStatus{}, err
-	}
-	return buildClaudeStatus(path, exists, content, nil), nil
+	return a.jsonAdapter().status()
 }
 
 func (a ClaudeAdapter) Apply(settingIDs []string) (model.PrivacyConfigApplyResult, error) {
-	path, err := a.settingsPath()
-	if err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-	return applyJSONSettingsMutation(path, a.now, buildClaudeStatus, func(root map[string]any) ([]model.PrivacyConfigChange, []string, error) {
-		selected, warnings := selectedJSONSettingDefinitions(settingIDs, claudeSettingDefinitions, "Claude Code")
-		changes := plannedJSONChanges(root, selected)
-		if len(changes) > 0 {
-			applyJSONSettings(root, selected)
-		}
-		return changes, warnings, nil
-	})
+	return a.jsonAdapter().apply(settingIDs)
 }
 
 func (a ClaudeAdapter) ApplyChanges(edits []model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error) {
-	path, err := a.settingsPath()
-	if err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-	return applyJSONSettingsMutation(path, a.now, buildClaudeStatus, func(root map[string]any) ([]model.PrivacyConfigChange, []string, error) {
-		return applyJSONEdits(root, edits, claudeSettingDefinitions, "Claude Code")
-	})
+	return a.jsonAdapter().applyChanges(edits)
 }
 
 func (a ClaudeAdapter) ApplyProfile(profile string) (model.PrivacyConfigApplyResult, error) {
-	normalized, err := normalizePrivacyProfile(profile)
-	if err != nil {
-		return model.PrivacyConfigApplyResult{}, err
+	return a.jsonAdapter().applyProfile(profile)
+}
+
+func (a ClaudeAdapter) jsonAdapter() jsonPrivacyAdapter {
+	return claudeJSONAdapter(a.settingsPath, a.now)
+}
+
+func claudeJSONAdapter(settingsPath func() (string, error), now func() time.Time) jsonPrivacyAdapter {
+	return jsonPrivacyAdapter{
+		target:       "claude",
+		name:         "Claude Code",
+		agentName:    "Claude Code",
+		definitions:  claudeSettingDefinitions,
+		settingsPath: settingsPath,
+		now:          now,
 	}
-	path, err := a.settingsPath()
-	if err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-	return applyJSONSettingsMutation(path, a.now, buildClaudeStatus, func(root map[string]any) ([]model.PrivacyConfigChange, []string, error) {
-		return applyJSONProfile(root, normalized, claudeSettingDefinitions), nil, nil
-	})
 }
 
 func (a ClaudeAdapter) now() time.Time {
@@ -78,94 +54,15 @@ func (a ClaudeAdapter) now() time.Time {
 }
 
 func (a ClaudeAdapter) settingsPath() (string, error) {
-	if strings.TrimSpace(a.ConfigPath) != "" {
-		return filepath.Clean(a.ConfigPath), nil
-	}
-	return claudeSettingsPath()
+	return jsonSettingsPath(a.ConfigPath, "AGENTMETER_CLAUDE_SETTINGS_PATH", "CLAUDE_CONFIG_DIR", ".claude")
 }
 
 func claudeSettingsPath() (string, error) {
-	if path := strings.TrimSpace(os.Getenv("AGENTMETER_CLAUDE_SETTINGS_PATH")); path != "" {
-		return filepath.Clean(path), nil
-	}
-	if dir := strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR")); dir != "" {
-		return filepath.Join(filepath.Clean(dir), "settings.json"), nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".claude", "settings.json"), nil
+	return jsonSettingsPath("", "AGENTMETER_CLAUDE_SETTINGS_PATH", "CLAUDE_CONFIG_DIR", ".claude")
 }
 
 func buildClaudeStatus(path string, exists bool, content []byte, warnings []string) model.PrivacyConfigStatus {
-	root, err := parseJSONSettings(content)
-	canApply := true
-	if err != nil {
-		canApply = false
-		warnings = append(warnings, fmt.Sprintf("Claude Code settings.json could not be parsed: %v", err))
-		root = map[string]any{}
-	}
-
-	settings := make([]model.PrivacyConfigSetting, 0, len(claudeSettingDefinitions))
-	summary := model.PrivacyConfigSummary{Total: len(claudeSettingDefinitions)}
-	for _, definition := range claudeSettingDefinitions {
-		current, ok := nestedJSONValue(root, definition.Key)
-		status := statusAttention
-		var currentValue any
-		if ok {
-			currentValue = current
-			if jsonSettingHardened(current, ok, definition) {
-				status = statusHardened
-			}
-		} else if definition.DefaultSafe && canApply {
-			status = statusImplicit
-		}
-
-		switch status {
-		case statusHardened:
-			summary.Hardened++
-		case statusImplicit:
-			summary.Implicit++
-		default:
-			summary.Attention++
-		}
-
-		strict := definition.Desired
-		if definition.MergeArray {
-			strict = jsonSettingAfter(current, ok, definition)
-		}
-		settings = append(settings, model.PrivacyConfigSetting{
-			ID:            definition.ID,
-			Group:         definition.Group,
-			Title:         definition.Title,
-			Description:   definition.Description,
-			Key:           definition.Key,
-			DesiredValue:  definition.Desired,
-			StrictValue:   strict,
-			ProfileValues: privacyProfileValues(definition.Recommended, strict, strict),
-			ValueType:     jsonValueType(definition.Desired),
-			Configured:    ok,
-			SupportsUnset: canApply,
-			CurrentValue:  currentValue,
-			Status:        status,
-			Impact:        definition.Impact,
-			CanApply:      canApply,
-		})
-	}
-	if summary.Total > 0 {
-		summary.Score = ((summary.Hardened + summary.Implicit) * 100) / summary.Total
-	}
-	return model.PrivacyConfigStatus{
-		Target:     "claude",
-		Name:       "Claude Code",
-		ConfigPath: path,
-		Exists:     exists,
-		Profiles:   privacyConfigProfiles(),
-		Summary:    summary,
-		Settings:   settings,
-		Warnings:   warnings,
-	}
+	return claudeJSONAdapter(nil, nil).buildStatus(path, exists, content, warnings)
 }
 
 var claudeSettingDefinitions = []jsonSettingDefinition{

@@ -24,244 +24,93 @@ import {
   formatDisplayNumber,
   formatDuration,
   formatNumber,
-  projectDisplay,
-  sessionDisplay,
-  type ModelSignalAnomalySession,
-  type ModelSignalCohort,
-  type ModelSignalMatrixCell,
-  type ModelSignalMatrixRow,
-  type ModelSignalMetricSet,
-  type ModelSignalProjectHotspot,
-  type ModelSignalsDailyMetric,
-  type ModelSignalsProjectMetric,
-  type ModelSignalsWindow,
-  type ModelSignals,
-  type ModelSignalsHealthSummary,
-  type Overview,
-  type Session,
-  type UsageBreakdownBucket
+  type ModelSignals
 } from '../api'
 import ModelSignalsMetricChart from '../components/ModelSignalsMetricChart.vue'
 import PageHeader from '../components/PageHeader.vue'
 import UsageScopeBar from '../components/UsageScopeBar.vue'
+import Panel from '../components/ui/Panel.vue'
 import { useAsyncResource } from '../composables/useAsyncResource'
 import { useMessages } from '../i18n'
-import { sourceDisplay } from '../presentation/sourceIdentity'
 import { useUsageScopeRoute, type UsageScopeForm } from './useUsageScope'
-import { buildUsageAgentOptions, buildUsageModelOptions, buildUsageProjectOptions } from './useUsageScopeOptions'
+import {
+  buildUsageAgentOptions,
+  buildUsageModelOptions,
+  buildUsageProjectOptions,
+  useUsageScopeOptionData
+} from './useUsageScopeOptions'
+import {
+  buildAnomalyColumns,
+  buildCohortColumns,
+  buildDailyColumns,
+  buildMatrixColumns,
+  buildOverviewColumns,
+  buildProjectColumns,
+  buildTableLocale
+} from './model-signals/columns'
+import { createModelSignalsDisplay } from './model-signals/display'
+import { modelSignalsMessages } from './model-signals/messages'
+import { buildModelSignalsTabs, type ModelSignalsTabKey } from './model-signals/tabs'
+import type { ProjectMetricRow } from './model-signals/types'
 
 const ATable = AntTable as unknown as DefineComponent
-
-type ProjectMetricRow = ModelSignalsProjectMetric | ModelSignalProjectHotspot
 
 const router = useRouter()
 const resource = useAsyncResource<ModelSignals | null>(null)
 const signals = computed(() => resource.data.value)
 const loading = resource.loading
 const error = resource.error
-const activeTab = ref('charts')
-const optionOverview = ref<Overview | null>(null)
-const projectOptionRows = ref<UsageBreakdownBucket[]>([])
+const activeTab = ref<ModelSignalsTabKey>('charts')
 const scope = useUsageScopeRoute(() => {
   void load()
 })
+const scopeOptionData = useUsageScopeOptionData()
 
-const { t } = useMessages({
-  en: {
-    'title': 'Model Signals',
-    'subtitle': 'Service health and behavior drift across model cohorts, agents, and projects',
-    'tab.charts': 'Metric Charts',
-    'tab.overview': 'Health Overview',
-    'tab.daily': 'Daily Metrics',
-    'tab.cohorts': 'Cohorts',
-    'tab.matrix': 'Matrix',
-    'tab.projects': 'Project Hotspots',
-    'tab.anomalies': 'Anomalies',
-    'metric.health': 'Health',
-    'metric.healthNote': '{current} vs {baseline}',
-    'metric.cohorts': 'Cohorts',
-    'metric.cohortsNote': '{sessions} sessions, {calls} model calls',
-    'metric.criticalWarning': 'Critical / Warning',
-    'metric.criticalWarningNote': '{critical} critical, {warning} warning',
-    'metric.lowConfidence': 'Low Confidence',
-    'metric.lowConfidenceNote': '{count} cohorts below confidence threshold',
-    'metric.throughput': 'Model Throughput',
-    'metric.throughputNote': 'Current scope total-token throughput',
-    'metric.toolFailure': 'Tool Failure Rate',
-    'metric.toolFailureNote': '{failed} failed of {total} tool calls',
-    'topReasons.label': 'Top reasons',
-    'overview.title': 'Top Drift Cohorts',
-    'overview.kicker': 'Highest-severity cohort drift in the current scope',
-    'daily.title': 'Daily Efficiency',
-    'daily.kicker': 'Daily model service cost, latency, throughput, and confidence signals',
-    'cohorts.title': 'Cohort Drift',
-    'cohorts.kicker': 'Provider, model, source, and project cohorts compared with baseline behavior',
-    'matrix.title': 'Source Model Matrix',
-    'matrix.kicker': 'Agent/source rows with compact model health cells',
-    'projects.title': 'Project Hotspots',
-    'projects.kicker': 'Projects with concentrated model service drift or elevated sample risk',
-    'anomaly.title': 'Anomaly Sessions',
-    'anomaly.kicker': 'Sessions with unusual operational signals for review',
-    'column.source': 'Source',
-    'column.model': 'Model',
-    'column.models': 'Models',
-    'column.project': 'Project',
-    'column.date': 'Date',
-    'column.samples': 'Samples',
-    'column.sessions': 'Sessions',
-    'column.modelCalls': 'Model calls',
-    'column.toolCalls': 'Tools',
-    'column.failedTools': 'Failed',
-    'column.tokens': 'Tokens',
-    'column.cost': 'Cost',
-    'column.costBurn': 'Cost burn',
-    'column.costPerSession': 'Cost/session',
-    'column.costPerActiveHour': 'Cost/active-hour',
-    'column.cacheSavings': 'Cache savings',
-    'column.latency': 'Latency',
-    'column.p90Latency': 'P90 latency',
-    'column.throughput': 'Throughput',
-    'column.p10Throughput': 'P10 throughput',
-    'column.outputThroughput': 'Out tok/s',
-    'column.toolFailure': 'Tool fail',
-    'column.retryPressure': 'Retry pressure',
-    'column.failurePressure': 'Failure pressure',
-    'column.mix': 'Mix',
-    'column.health': 'Health',
-    'column.severity': 'Severity',
-    'column.confidence': 'Confidence',
-    'column.reasons': 'Reasons',
-    'column.sources': 'Sources',
-    'column.session': 'Session',
-    'column.signal': 'Signals',
-    'column.outputExpansion': 'Generation overhead',
-    'column.reasoning': 'Reasoning overhead',
-    'column.cacheMiss': 'Cache miss',
-    'column.started': 'Started',
-    'column.wall': 'Model time',
-    'metric.current': 'current',
-    'metric.baseline': 'base',
-    'label.lowSample': 'low sample',
-    'label.unpriced': 'unpriced',
-    'empty.loading': 'Loading model signals...',
-    'empty.overview': 'No drift cohorts match the current scope',
-    'empty.daily': 'No daily metrics match the current scope',
-    'empty.cohorts': 'No cohort rows match the current scope',
-    'empty.matrix': 'No matrix rows match the current scope',
-    'empty.projects': 'No project hotspots match the current scope',
-    'empty.anomalies': 'No anomaly sessions match the current scope',
-    'fallback.unknown': 'unknown',
-    'fallback.noReason': 'No drift reason',
-    'error.title': 'Model signals failed to load',
-    'action.openSession': 'Open session',
-    'severity.ok': 'ok',
-    'severity.watch': 'watch',
-    'severity.warning': 'warning',
-    'severity.critical': 'critical',
-    'severity.healthy': 'healthy',
-    'severity.unknown': 'unknown',
-    'severity.high': 'high',
-    'severity.medium': 'medium',
-    'severity.low': 'low'
-  },
-  'zh-CN': {
-    'title': '模型表现',
-    'subtitle': '按模型、来源和项目查看健康状态、延迟、吞吐和费用变化',
-    'tab.charts': '指标图表',
-    'tab.overview': '健康概览',
-    'tab.daily': '每日指标',
-    'tab.cohorts': '分组',
-    'tab.matrix': '矩阵',
-    'tab.projects': '项目热点',
-    'tab.anomalies': '异常',
-    'metric.health': '健康',
-    'metric.healthNote': '{current} 对比 {baseline}',
-    'metric.cohorts': '分组',
-    'metric.cohortsNote': '{sessions} 个会话，{calls} 次模型调用',
-    'metric.criticalWarning': '严重 / 警告',
-    'metric.criticalWarningNote': '{critical} 个严重，{warning} 个警告',
-    'metric.lowConfidence': '低置信',
-    'metric.lowConfidenceNote': '{count} 个分组低于置信阈值',
-    'metric.throughput': '模型吞吐',
-    'metric.throughputNote': '当前范围总 Token 吞吐',
-    'metric.toolFailure': '工具失败率',
-    'metric.toolFailureNote': '{total} 次工具调用中 {failed} 次失败',
-    'topReasons.label': '主要原因',
-    'overview.title': '主要漂移分组',
-    'overview.kicker': '当前范围内严重程度最高的分组漂移',
-    'daily.title': '每日效率',
-    'daily.kicker': '按天展示模型服务费用、延迟、吞吐与置信度',
-    'cohorts.title': '分组漂移',
-    'cohorts.kicker': '按供应商、模型、来源和项目对比基线行为',
-    'matrix.title': '来源模型矩阵',
-    'matrix.kicker': '按 Agent/来源展示紧凑模型健康单元',
-    'projects.title': '项目热点',
-    'projects.kicker': '展示模型服务漂移集中或样本风险较高的项目',
-    'anomaly.title': '异常会话',
-    'anomaly.kicker': '列出指标异常的会话供复核',
-    'column.source': '来源',
-    'column.model': '模型',
-    'column.models': '模型',
-    'column.project': '项目',
-    'column.date': '日期',
-    'column.samples': '样本',
-    'column.sessions': '会话',
-    'column.modelCalls': '模型调用',
-    'column.toolCalls': '工具',
-    'column.failedTools': '失败',
-    'column.tokens': 'Token',
-    'column.cost': '费用',
-    'column.costBurn': '费用消耗',
-    'column.costPerSession': '每会话费用',
-    'column.costPerActiveHour': '每活跃小时',
-    'column.cacheSavings': '缓存节省',
-    'column.latency': '延迟',
-    'column.p90Latency': 'P90 延迟',
-    'column.throughput': '吞吐',
-    'column.p10Throughput': 'P10 吞吐',
-    'column.outputThroughput': '输出/秒',
-    'column.toolFailure': '工具失败',
-    'column.retryPressure': '重试压力',
-    'column.failurePressure': '失败压力',
-    'column.mix': '模型占比',
-    'column.health': '健康',
-    'column.severity': '严重度',
-    'column.confidence': '置信度',
-    'column.reasons': '原因',
-    'column.sources': '来源数',
-    'column.session': '会话',
-    'column.signal': '异常指标',
-    'column.outputExpansion': '生成开销',
-    'column.reasoning': '推理开销',
-    'column.cacheMiss': '缓存未命中',
-    'column.started': '开始',
-    'column.wall': '模型耗时',
-    'metric.current': '当前',
-    'metric.baseline': '基线',
-    'label.lowSample': '低样本',
-    'label.unpriced': '未定价',
-    'empty.loading': '正在加载模型表现...',
-    'empty.overview': '当前范围内没有漂移分组',
-    'empty.daily': '当前范围内没有每日指标',
-    'empty.cohorts': '当前范围内没有分组行',
-    'empty.matrix': '当前范围内没有矩阵行',
-    'empty.projects': '当前范围内没有项目热点',
-    'empty.anomalies': '当前范围内没有异常会话',
-    'fallback.unknown': '未知',
-    'fallback.noReason': '无漂移原因',
-    'error.title': '模型表现加载失败',
-    'action.openSession': '打开会话',
-    'severity.ok': '正常',
-    'severity.watch': '观察',
-    'severity.warning': '警告',
-    'severity.critical': '严重',
-    'severity.healthy': '健康',
-    'severity.unknown': '未知',
-    'severity.high': '高',
-    'severity.medium': '中',
-    'severity.low': '低'
-  }
-})
+const { t } = useMessages(modelSignalsMessages)
+const {
+  anomalyRowClass,
+  anomalyRowKey,
+  cohortRowKey,
+  confidenceReason,
+  dailyRowKey,
+  displayPair,
+  displayPercent,
+  displayRate,
+  displayText,
+  driftRowClass,
+  failurePressure,
+  fallbackHealthSummary,
+  formatConfidence,
+  formatLatency,
+  formatOptionalCost,
+  formatPercent,
+  formatPressure,
+  formatRate,
+  formatThroughput,
+  formatWindow,
+  matrixCellKey,
+  matrixCellTitle,
+  matrixRowKey,
+  metricClass,
+  normalizeAnomaly,
+  p10Throughput,
+  p90Latency,
+  projectHealthTitle,
+  projectInfo,
+  projectMixInfo,
+  projectRowKey,
+  reasonCount,
+  reasonSeverity,
+  reasonText,
+  sessionInfo,
+  severityClass,
+  severityLabel,
+  severityMetricTone,
+  severityRank,
+  severityTagColor,
+  sourceInfo,
+  unpricedNote
+} = createModelSignalsDisplay(t)
 
 const healthSummary = computed(() => signals.value?.healthSummary || fallbackHealthSummary(signals.value))
 const cohortRows = computed(() => signals.value?.cohorts || [])
@@ -280,9 +129,9 @@ const agentOptions = computed(() =>
     sources: [
       cohortRows.value,
       matrixRows.value,
-      optionOverview.value?.agentUsage,
-      optionOverview.value?.recentSessions,
-      optionOverview.value?.slowSessions,
+      scopeOptionData.optionOverview.value?.agentUsage,
+      scopeOptionData.optionOverview.value?.recentSessions,
+      scopeOptionData.optionOverview.value?.slowSessions,
       normalizedAnomalies.value
     ],
     selected: scope.filters.value.agent,
@@ -296,12 +145,12 @@ const modelOptions = computed(() =>
       cohortRows.value,
       matrixCells.value,
       signals.value?.modelBreakdown,
-      optionOverview.value?.modelUsage
+      scopeOptionData.optionOverview.value?.modelUsage
     ],
     sessions: [
       normalizedAnomalies.value,
-      optionOverview.value?.recentSessions,
-      optionOverview.value?.slowSessions
+      scopeOptionData.optionOverview.value?.recentSessions,
+      scopeOptionData.optionOverview.value?.slowSessions
     ],
     selected: scope.filters.value.model
   })
@@ -312,10 +161,10 @@ const projectOptions = computed(() =>
     projects: [
       cohortRows.value,
       projectRows.value,
-      projectOptionRows.value,
+      scopeOptionData.projectOptionRows.value,
       normalizedAnomalies.value,
-      optionOverview.value?.recentSessions,
-      optionOverview.value?.slowSessions
+      scopeOptionData.optionOverview.value?.recentSessions,
+      scopeOptionData.optionOverview.value?.slowSessions
     ],
     selected: scope.filters.value.project,
     fallback: t('fallback.unknown')
@@ -395,113 +244,29 @@ const metricCards = computed(() => {
   ]
 })
 
-const overviewColumns = computed(() => [
-  { title: t('column.source'), dataIndex: 'sourceLabel', key: 'source', width: 170 },
-  { title: t('column.project'), dataIndex: 'projectPath', key: 'project', width: 210 },
-  { title: t('column.model'), dataIndex: 'model', key: 'model', width: 190 },
-  { title: t('column.severity'), dataIndex: 'severity', key: 'severity', width: 104 },
-  { title: t('column.latency'), key: 'latency', width: 126, align: 'right' },
-  { title: t('column.throughput'), key: 'throughput', width: 126, align: 'right' },
-  { title: t('column.confidence'), key: 'confidence', width: 110, align: 'right' },
-  { title: t('column.reasons'), key: 'reasons', width: 280 }
-])
+const tabs = computed(() => buildModelSignalsTabs(t))
+const overviewColumns = computed(() => buildOverviewColumns(t))
+const dailyColumns = computed(() => buildDailyColumns(t))
+const cohortColumns = computed(() => buildCohortColumns(t))
+const matrixColumns = computed(() => buildMatrixColumns(t))
+const projectColumns = computed(() => buildProjectColumns(t, hasProjectMetrics.value))
+const anomalyColumns = computed(() => buildAnomalyColumns(t))
 
-const dailyColumns = computed(() => [
-  { title: t('column.date'), dataIndex: 'date', key: 'date', width: 112 },
-  { title: t('column.sessions'), dataIndex: 'sessionCount', key: 'sessions', width: 88, align: 'right' },
-  { title: t('column.cost'), dataIndex: 'estimatedCostUsd', key: 'cost', width: 108, align: 'right' },
-  { title: t('column.costPerSession'), dataIndex: 'costPerSession', key: 'costPerSession', width: 124, align: 'right' },
-  { title: t('column.costPerActiveHour'), dataIndex: 'costPerActiveHour', key: 'costPerActiveHour', width: 138, align: 'right' },
-  { title: t('column.cacheSavings'), dataIndex: 'cacheSavingsUsd', key: 'cacheSavings', width: 124, align: 'right' },
-  { title: t('column.p90Latency'), key: 'p90Latency', width: 124, align: 'right' },
-  { title: t('column.p10Throughput'), key: 'p10Throughput', width: 128, align: 'right' },
-  { title: t('column.retryPressure'), key: 'retryPressure', width: 130, align: 'right' },
-  { title: t('column.failurePressure'), key: 'failurePressure', width: 132, align: 'right' },
-  { title: t('column.confidence'), key: 'confidence', width: 220 }
-])
-
-const cohortColumns = computed(() => [
-  { title: t('column.source'), dataIndex: 'sourceLabel', key: 'source', width: 180 },
-  { title: t('column.project'), dataIndex: 'projectPath', key: 'project', width: 220 },
-  { title: t('column.model'), dataIndex: 'model', key: 'model', width: 190 },
-  { title: t('column.samples'), key: 'samples', width: 128, align: 'right' },
-  { title: t('column.latency'), key: 'latency', width: 136, align: 'right' },
-  { title: t('column.throughput'), key: 'throughput', width: 136, align: 'right' },
-  { title: t('column.outputThroughput'), key: 'outputThroughput', width: 118, align: 'right' },
-  { title: t('column.toolFailure'), key: 'toolFailure', width: 108, align: 'right' },
-  { title: t('column.severity'), key: 'severity', width: 104 },
-  { title: t('column.confidence'), key: 'confidence', width: 104, align: 'right' },
-  { title: t('column.reasons'), key: 'reasons', width: 280 }
-])
-
-const matrixColumns = computed(() => [
-  { title: t('column.source'), dataIndex: 'sourceLabel', key: 'source', width: 230 },
-  { title: t('column.models'), dataIndex: 'cells', key: 'models' }
-])
-
-const projectColumns = computed(() => {
-  if (!hasProjectMetrics.value) {
-    return [
-      { title: t('column.project'), dataIndex: 'projectPath', key: 'project', width: 260 },
-      { title: t('column.sessions'), dataIndex: 'sessionCount', key: 'sessions', width: 92, align: 'right' },
-      { title: t('column.sources'), dataIndex: 'sourceCount', key: 'sources', width: 88, align: 'right' },
-      { title: t('column.models'), dataIndex: 'modelCount', key: 'models', width: 88, align: 'right' },
-      { title: t('column.tokens'), dataIndex: 'totalTokens', key: 'tokens', width: 118, align: 'right' },
-      { title: t('column.latency'), key: 'latency', width: 136, align: 'right' },
-      { title: t('column.throughput'), key: 'throughput', width: 136, align: 'right' },
-      { title: t('column.severity'), key: 'severity', width: 104 },
-      { title: t('column.confidence'), key: 'confidence', width: 104, align: 'right' },
-      { title: t('column.reasons'), key: 'reasons', width: 280 }
-    ]
-  }
-
-  return [
-    { title: t('column.project'), dataIndex: 'projectPath', key: 'project', width: 260 },
-    { title: t('column.sessions'), dataIndex: 'sessionCount', key: 'sessions', width: 92, align: 'right' },
-    { title: t('column.mix'), key: 'mix', width: 210 },
-    { title: t('column.costBurn'), key: 'costBurn', width: 132, align: 'right' },
-    { title: t('column.cacheSavings'), key: 'cacheSavings', width: 124, align: 'right' },
-    { title: t('column.health'), key: 'health', width: 142 },
-    { title: t('column.p90Latency'), key: 'latency', width: 136, align: 'right' },
-    { title: t('column.p10Throughput'), key: 'throughput', width: 136, align: 'right' },
-    { title: t('column.failurePressure'), key: 'pressure', width: 136, align: 'right' },
-    { title: t('column.reasons'), key: 'reasons', width: 280 }
-  ]
-})
-
-const anomalyColumns = computed(() => [
-  { title: t('column.session'), dataIndex: 'sessionKey', key: 'session', width: 170 },
-  { title: t('column.source'), dataIndex: 'sourceLabel', key: 'source', width: 170 },
-  { title: t('column.project'), dataIndex: 'projectPath', key: 'project', width: 220 },
-  { title: t('column.model'), dataIndex: 'model', key: 'model', width: 170 },
-  { title: t('column.signal'), dataIndex: 'reasons', key: 'signal', width: 260 },
-  { title: t('column.outputExpansion'), dataIndex: 'outputExpansionRate', key: 'outputExpansion', width: 112, align: 'right' },
-  { title: t('column.reasoning'), dataIndex: 'reasoningTokenShare', key: 'reasoning', width: 100, align: 'right' },
-  { title: t('column.cacheMiss'), dataIndex: 'cacheMissRate', key: 'cacheMiss', width: 120, align: 'right' },
-  { title: t('column.failedTools'), dataIndex: 'failedToolCalls', key: 'failedTools', width: 90, align: 'right' },
-  { title: t('column.throughput'), dataIndex: 'modelThroughputTokensPerSecond', key: 'throughput', width: 100, align: 'right' },
-  { title: t('column.started'), dataIndex: 'startedAt', key: 'started', width: 136 },
-  { title: t('column.wall'), dataIndex: 'modelDurationMs', key: 'duration', width: 98, align: 'right' },
-  { title: '', key: 'open', width: 48, align: 'right' }
-])
-
-const overviewTableLocale = computed(() => ({ emptyText: loading.value ? t('empty.loading') : t('empty.overview') }))
-const dailyTableLocale = computed(() => ({ emptyText: loading.value ? t('empty.loading') : t('empty.daily') }))
-const cohortTableLocale = computed(() => ({ emptyText: loading.value ? t('empty.loading') : t('empty.cohorts') }))
-const matrixTableLocale = computed(() => ({ emptyText: loading.value ? t('empty.loading') : t('empty.matrix') }))
-const projectTableLocale = computed(() => ({ emptyText: loading.value ? t('empty.loading') : t('empty.projects') }))
-const anomalyTableLocale = computed(() => ({ emptyText: loading.value ? t('empty.loading') : t('empty.anomalies') }))
+const overviewTableLocale = computed(() => buildTableLocale(t, loading.value, 'empty.overview'))
+const dailyTableLocale = computed(() => buildTableLocale(t, loading.value, 'empty.daily'))
+const cohortTableLocale = computed(() => buildTableLocale(t, loading.value, 'empty.cohorts'))
+const matrixTableLocale = computed(() => buildTableLocale(t, loading.value, 'empty.matrix'))
+const projectTableLocale = computed(() => buildTableLocale(t, loading.value, 'empty.projects'))
+const anomalyTableLocale = computed(() => buildTableLocale(t, loading.value, 'empty.anomalies'))
 
 async function load() {
   return resource.run(async () => {
     const filters = scope.apiFilters.value
-    const [nextSignals, nextOptionOverview, projectBreakdown] = await Promise.all([
+    const [nextSignals, optionData] = await Promise.all([
       api.getModelSignals(filters),
-      api.getOverview(),
-      api.getUsageBreakdown({ groupBy: 'project' }).catch(() => null)
+      scopeOptionData.loadUsageScopeOptionData()
     ])
-    optionOverview.value = nextOptionOverview
-    projectOptionRows.value = projectBreakdown?.buckets || []
+    scopeOptionData.applyUsageScopeOptionData(optionData)
     return nextSignals
   }, { onErrorData: null })
 }
@@ -514,355 +279,6 @@ async function updateScopeFilters(nextFilters: UsageScopeForm) {
 async function clearScopeFilters() {
   await scope.clearFilters()
   await load()
-}
-
-function fallbackHealthSummary(item: ModelSignals | null | undefined): ModelSignalsHealthSummary {
-  const hasToolFailures = Boolean(item?.failedToolCalls)
-  return {
-    currentWindow: emptyWindow(),
-    baselineWindow: emptyWindow(),
-    severity: hasToolFailures ? 'warning' : 'ok',
-    cohortCount: item?.modelBreakdown?.length || 0,
-    warningCohorts: hasToolFailures ? 1 : 0,
-    criticalCohorts: 0,
-    lowConfidenceCohorts: 0,
-    topReasons: hasToolFailures ? ['Tool failures above baseline'] : []
-  }
-}
-
-function displayText(text: string) {
-  return { main: text, full: text }
-}
-
-function displayPair(left?: number, right?: number) {
-  const leftDisplay = formatDisplayNumber(left)
-  const rightDisplay = formatDisplayNumber(right)
-  return {
-    main: `${leftDisplay.main} / ${rightDisplay.main}`,
-    full: `${leftDisplay.full} / ${rightDisplay.full}`
-  }
-}
-
-function displayPercent(value?: number) {
-  const text = formatPercent(value)
-  return { main: text, full: text }
-}
-
-function displayRate(value?: number, suffix = '', digits = 0) {
-  const text = `${formatRate(value, digits)}${suffix}`
-  return { main: text, full: text }
-}
-
-function formatPercent(value?: number) {
-  if (!Number.isFinite(value)) return '0%'
-  const percent = Math.max(0, value || 0) * 100
-  if (percent > 0 && percent < 1) return '<1%'
-  return `${percent.toLocaleString(undefined, { maximumFractionDigits: percent >= 10 ? 0 : 1 })}%`
-}
-
-function formatRate(value?: number, digits = 0) {
-  if (!Number.isFinite(value)) return '0'
-  return (value || 0).toLocaleString(undefined, { maximumFractionDigits: digits })
-}
-
-function formatLatency(value?: number) {
-  return `${formatRate(value, 0)} ms/1k`
-}
-
-function formatOptionalCost(value?: number) {
-  if (value === undefined || value === null) return '-'
-  return formatCost(value)
-}
-
-function formatThroughput(value?: number) {
-  return `${formatRate(value, 1)} tok/s`
-}
-
-function formatPressure(value?: number) {
-  return `${formatRate(value, 2)}/session`
-}
-
-function p90Latency(metric?: ModelSignalMetricSet) {
-  return metric?.p90ModelLatencyMsPer1kOutputTokens ?? metric?.modelLatencyMsPer1kOutputTokens
-}
-
-function p10Throughput(metric?: ModelSignalMetricSet) {
-  return metric?.p10ModelThroughputTokensPerSecond ?? metric?.modelThroughputTokensPerSecond
-}
-
-function failurePressure(metric?: ModelSignalMetricSet) {
-  return metric?.failurePressure ?? safeMetricRate(metric?.failedToolCalls, metric?.sessionCount)
-}
-
-function safeMetricRate(numerator?: number, denominator?: number) {
-  return denominator && denominator > 0 ? (numerator || 0) / denominator : 0
-}
-
-function unpricedNote(metric?: ModelSignalMetricSet) {
-  const count = metric?.unpricedSessionCount || 0
-  return count > 0 ? `${formatNumber(count)} ${t('label.unpriced')}` : ''
-}
-
-function confidenceReason(record: Pick<ModelSignalsDailyMetric, 'keyReason' | 'drift' | 'lowSample'>) {
-  return record.keyReason || record.drift?.reasons?.[0] || record.drift?.sampleNote || (record.lowSample ? t('label.lowSample') : t('fallback.noReason'))
-}
-
-function formatConfidence(value?: string | number) {
-  if (typeof value === 'number') return formatPercent(value)
-  const normalized = (value || '').trim().toLowerCase()
-  if (!normalized) return t('fallback.unknown')
-  return normalized
-}
-
-function emptyWindow(): ModelSignalsWindow {
-  return {
-    from: '',
-    to: '',
-    sessionCount: 0,
-    modelCalls: 0
-  }
-}
-
-function formatWindow(window?: ModelSignalsWindow) {
-  if (!window?.from && !window?.to) return t('fallback.unknown')
-  const from = window.from ? window.from.slice(0, 10) : ''
-  const to = window.to ? window.to.slice(0, 10) : ''
-  const range = from && to && from !== to ? `${from} - ${to}` : from || to
-  if (!range) return t('fallback.unknown')
-  return `${range}, ${formatNumber(window.sessionCount || 0)} ${t('column.sessions')}`
-}
-
-function metricClass(current?: number, baseline?: number, lowerIsBetter = false) {
-  if (!Number.isFinite(current) || !Number.isFinite(baseline) || !baseline) return ''
-  const degraded = lowerIsBetter ? (current || 0) > (baseline || 0) * 1.15 : (current || 0) < (baseline || 0) * 0.85
-  const improved = lowerIsBetter ? (current || 0) < (baseline || 0) * 0.9 : (current || 0) > (baseline || 0) * 1.1
-  if (degraded) return 'status-error'
-  if (improved) return 'status-ok'
-  return ''
-}
-
-function severityRank(value?: string): number {
-  const normalized = (value || '').toLowerCase()
-  if (normalized === 'critical' || normalized === 'high') return 3
-  if (normalized === 'warning' || normalized === 'medium') return 2
-  if (normalized === 'watch' || normalized === 'low' || normalized === 'unknown') return 1
-  return 0
-}
-
-function severityLabel(value?: string) {
-  const normalized = (value || 'ok').toLowerCase()
-  if (normalized === 'critical') return t('severity.critical')
-  if (normalized === 'warning') return t('severity.warning')
-  if (normalized === 'watch') return t('severity.watch')
-  if (normalized === 'healthy') return t('severity.healthy')
-  if (normalized === 'unknown') return t('severity.unknown')
-  if (normalized === 'high') return t('severity.high')
-  if (normalized === 'medium') return t('severity.medium')
-  if (normalized === 'low') return t('severity.low')
-  if (normalized === 'ok') return t('severity.ok')
-  return normalized
-}
-
-function severityTagColor(value?: string) {
-  const rank = severityRank(value)
-  if (rank >= 3) return 'error'
-  if (rank === 2) return 'warning'
-  if (rank === 1) return 'processing'
-  return 'success'
-}
-
-function severityMetricTone(value?: string) {
-  const rank = severityRank(value)
-  if (rank >= 3) return 'metric-danger'
-  if (rank === 2) return 'metric-warning'
-  if (rank === 1) return 'metric-info'
-  return 'metric-success'
-}
-
-function severityClass(value?: string) {
-  const rank = severityRank(value)
-  if (rank >= 3) return 'severity-critical'
-  if (rank === 2) return 'severity-warning'
-  if (rank === 1) return 'severity-watch'
-  return 'severity-ok'
-}
-
-function driftRowClass(record: { drift?: { severity?: string } }) {
-  const rank = severityRank(record.drift?.severity)
-  return { class: rank >= 3 ? 'model-signals-critical-row' : rank === 2 ? 'model-signals-warning-row' : '' }
-}
-
-function anomalyRowClass(record: NormalizedAnomalySession) {
-  return { class: record.failedToolCalls > 0 || record.severity === 'high' ? 'model-signals-warning-row' : '' }
-}
-
-function reasonText(row: string): string {
-  return row
-}
-
-function reasonCount(_row: string): number | undefined {
-  return undefined
-}
-
-function reasonSeverity(_row: string): string | undefined {
-  return undefined
-}
-
-function sourceInfo(record: Parameters<typeof sourceDisplay>[0]) {
-  return sourceDisplay(record, t('fallback.unknown'))
-}
-
-function projectInfo(record: { projectPath?: string; rawSourcePath?: string }) {
-  return projectDisplay(record.projectPath || record.rawSourcePath)
-}
-
-function projectMixInfo(record: ProjectMetricRow) {
-  const projectMetric = record as Partial<ModelSignalsProjectMetric>
-  const model = projectMetric.dominantModel || t('fallback.unknown')
-  const provider = projectMetric.dominantModelProvider || ''
-  const share = projectMetric.dominantModelShare !== undefined ? formatPercent(projectMetric.dominantModelShare) : ''
-  const summary = [
-    share,
-    `${formatNumber(record.modelCount)} ${t('column.models')}`,
-    `${formatNumber(record.sourceCount)} ${t('column.sources')}`
-  ].filter(Boolean).join(' · ')
-  return {
-    model,
-    provider,
-    summary,
-    full: [provider, model, summary].filter(Boolean).join(' / ')
-  }
-}
-
-function projectHealthTitle(record: ProjectMetricRow) {
-  return [
-    `${t('column.health')}: ${severityLabel(record.drift?.severity)} (${formatConfidence(record.drift?.confidence)})`,
-    `${t('column.p90Latency')}: ${formatLatency(p90Latency(record.current))} / ${t('metric.baseline')} ${formatLatency(p90Latency(record.baseline))}`,
-    `${t('column.p10Throughput')}: ${formatThroughput(p10Throughput(record.current))} / ${t('metric.baseline')} ${formatThroughput(p10Throughput(record.baseline))}`,
-    `${t('column.failurePressure')}: ${formatPressure(failurePressure(record.current))} / ${t('metric.baseline')} ${formatPressure(failurePressure(record.baseline))}`
-  ].join('\n')
-}
-
-function cohortRowKey(record: ModelSignalCohort) {
-  return record.cohortKey || `${record.modelProvider}:${record.model}:${record.projectPath}`
-}
-
-function matrixRowKey(record: ModelSignalMatrixRow) {
-  return record.sourceKey || (record.sourceId !== undefined ? `source:${record.sourceId}` : `${record.agentKind}:${record.agentName}`)
-}
-
-function matrixCellKey(cell: ModelSignalMatrixCell) {
-  return `${cell.modelProvider}:${cell.model}`
-}
-
-function matrixCellTitle(cell: ModelSignalMatrixCell) {
-  return [
-    `${cell.modelProvider || t('fallback.unknown')} / ${cell.model || t('fallback.unknown')}`,
-    `${t('column.latency')}: ${formatLatency(cell.current?.modelLatencyMsPer1kOutputTokens)} (${t('metric.baseline')} ${formatLatency(cell.baseline?.modelLatencyMsPer1kOutputTokens)})`,
-    `${t('column.throughput')}: ${formatRate(cell.current?.modelThroughputTokensPerSecond, 1)} tok/s (${t('metric.baseline')} ${formatRate(cell.baseline?.modelThroughputTokensPerSecond, 1)})`,
-    `${t('column.confidence')}: ${formatConfidence(cell.confidence)}`
-  ].join('\n')
-}
-
-function dailyRowKey(record: ModelSignalsDailyMetric) {
-  return record.date
-}
-
-function projectRowKey(record: ProjectMetricRow) {
-  return record.projectPath || `${record.modelCount}:${record.sourceCount}:${record.totalTokens}`
-}
-
-function anomalyReasons(row: ModelSignalAnomalySession): string[] {
-  const candidates = [row.reasons, row.reasonLabels, row.signalReasons, row.reason, row.signal]
-  const values = candidates.flatMap((value) => {
-    if (Array.isArray(value)) return value
-    if (typeof value === 'string') return [value]
-    return []
-  })
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))]
-}
-
-interface NormalizedAnomalySession {
-  id: number
-  sessionKey?: string
-  codexSessionId?: string
-  startedAt?: string
-  projectPath?: string
-  rawSourcePath?: string
-  agentKind?: string
-  agentName?: string
-  sourceId?: number
-  sourceKey?: string
-  sourceLabel?: string
-  sourceRootPath?: string
-  sourceSessionsPath?: string
-  model?: string
-  totalTokens: number
-  outputExpansionRate: number
-  reasoningTokenShare: number
-  cacheMissRate: number
-  modelThroughputTokensPerSecond: number
-  failedToolCalls: number
-  modelDurationMs: number
-  severity?: string
-  reasons: string[]
-}
-
-function normalizeAnomaly(row: ModelSignalAnomalySession): NormalizedAnomalySession {
-  const session = row.session || ({} as Partial<Session>)
-  return {
-    id: numberField(row, ['id', 'sessionId']) || session.id || 0,
-    sessionKey: stringField(row, ['sessionKey']) || session.sessionKey,
-    codexSessionId: stringField(row, ['codexSessionId']) || session.codexSessionId,
-    startedAt: stringField(row, ['startedAt']) || session.startedAt,
-    projectPath: stringField(row, ['projectPath']) || session.projectPath,
-    rawSourcePath: stringField(row, ['rawSourcePath']) || session.rawSourcePath,
-    agentKind: stringField(row, ['agentKind']) || session.agentKind,
-    agentName: stringField(row, ['agentName']) || session.agentName,
-    sourceId: numberField(row, ['sourceId']) || session.sourceId,
-    sourceKey: stringField(row, ['sourceKey']) || session.sourceKey,
-    sourceLabel: stringField(row, ['sourceLabel']) || session.sourceLabel,
-    sourceRootPath: stringField(row, ['sourceRootPath']) || session.sourceRootPath,
-    sourceSessionsPath: stringField(row, ['sourceSessionsPath']) || session.sourceSessionsPath,
-    model: stringField(row, ['model']) || session.model,
-    totalTokens: numberField(row, ['totalTokens']) || session.tokenUsage?.totalTokens || 0,
-    outputExpansionRate: numberField(row, ['generationTokenOverhead', 'outputExpansionRate']),
-    reasoningTokenShare: numberField(row, ['reasoningOverheadRate', 'reasoningTokenOverhead', 'reasoningOutputShare', 'reasoningTokenShare']),
-    cacheMissRate: numberField(row, ['cacheMissRate']),
-    modelThroughputTokensPerSecond: numberField(row, ['modelThroughputTokensPerSecond']),
-    failedToolCalls: numberField(row, ['failedToolCalls']),
-    modelDurationMs: numberField(row, ['modelDurationMs']) || session.modelDurationMs || 0,
-    severity: stringField(row, ['severity']),
-    reasons: anomalyReasons(row)
-  }
-}
-
-function stringField(row: ModelSignalAnomalySession, keys: string[]) {
-  for (const key of keys) {
-    const value = row[key]
-    if (typeof value === 'string' && value.trim()) return value.trim()
-  }
-  return undefined
-}
-
-function numberField(row: ModelSignalAnomalySession, keys: string[]) {
-  for (const key of keys) {
-    const value = row[key]
-    if (typeof value === 'number' && Number.isFinite(value)) return value
-  }
-  return 0
-}
-
-function sessionInfo(record: NormalizedAnomalySession) {
-  return sessionDisplay({
-    id: record.id,
-    sessionKey: record.sessionKey || '',
-    codexSessionId: record.codexSessionId
-  })
-}
-
-function anomalyRowKey(record: NormalizedAnomalySession) {
-  return record.id || record.sessionKey || record.codexSessionId || `${record.model}:${record.startedAt}`
 }
 
 function openSession(id: number) {
@@ -899,33 +315,18 @@ onMounted(load)
     <a-spin :spinning="loading && !signals">
       <div class="section-stack">
         <div class="model-signals-tabs" role="tablist" :aria-label="t('title')">
-          <a-button :type="activeTab === 'charts' ? 'primary' : 'default'" role="tab" :aria-selected="activeTab === 'charts'" @click="activeTab = 'charts'">
-            <template #icon><LineChartOutlined /></template>
-            {{ t('tab.charts') }}
-          </a-button>
-          <a-button :type="activeTab === 'overview' ? 'primary' : 'default'" role="tab" :aria-selected="activeTab === 'overview'" @click="activeTab = 'overview'">
-            <template #icon><DashboardOutlined /></template>
-            {{ t('tab.overview') }}
-          </a-button>
-          <a-button :type="activeTab === 'daily' ? 'primary' : 'default'" role="tab" :aria-selected="activeTab === 'daily'" @click="activeTab = 'daily'">
-            <template #icon><CalendarOutlined /></template>
-            {{ t('tab.daily') }}
-          </a-button>
-          <a-button :type="activeTab === 'cohorts' ? 'primary' : 'default'" role="tab" :aria-selected="activeTab === 'cohorts'" @click="activeTab = 'cohorts'">
-            <template #icon><BranchesOutlined /></template>
-            {{ t('tab.cohorts') }}
-          </a-button>
-          <a-button :type="activeTab === 'matrix' ? 'primary' : 'default'" role="tab" :aria-selected="activeTab === 'matrix'" @click="activeTab = 'matrix'">
-            <template #icon><TableOutlined /></template>
-            {{ t('tab.matrix') }}
-          </a-button>
-          <a-button :type="activeTab === 'projects' ? 'primary' : 'default'" role="tab" :aria-selected="activeTab === 'projects'" @click="activeTab = 'projects'">
-            <template #icon><LineChartOutlined /></template>
-            {{ t('tab.projects') }}
-          </a-button>
-          <a-button :type="activeTab === 'anomalies' ? 'primary' : 'default'" role="tab" :aria-selected="activeTab === 'anomalies'" @click="activeTab = 'anomalies'">
-            <template #icon><WarningOutlined /></template>
-            {{ t('tab.anomalies') }}
+          <a-button
+            v-for="tab in tabs"
+            :key="tab.key"
+            :type="activeTab === tab.key ? 'primary' : 'default'"
+            role="tab"
+            :aria-selected="activeTab === tab.key"
+            @click="activeTab = tab.key"
+          >
+            <template #icon>
+              <component :is="tab.icon" />
+            </template>
+            {{ tab.label }}
           </a-button>
         </div>
 
@@ -965,14 +366,12 @@ onMounted(load)
               </div>
             </div>
 
-            <section class="panel">
-              <div class="panel-header">
-                <div>
-                  <h2 class="panel-title">{{ t('overview.title') }}</h2>
-                  <div class="panel-kicker">{{ t('overview.kicker') }}</div>
-                </div>
-                <WarningOutlined class="panel-header-icon" />
-              </div>
+            <Panel
+              class="model-signals-table-panel"
+              :title="t('overview.title')"
+              :kicker="t('overview.kicker')"
+              :icon="WarningOutlined"
+            >
               <a-table
                 class="dense-table model-signals-overview-table"
                 :columns="overviewColumns"
@@ -1030,7 +429,7 @@ onMounted(load)
                   </template>
                 </template>
               </a-table>
-            </section>
+            </Panel>
           </div>
         </div>
 
@@ -1044,14 +443,12 @@ onMounted(load)
               :allow-mode-switch="false"
             />
 
-            <section class="panel">
-              <div class="panel-header">
-                <div>
-                  <h2 class="panel-title">{{ t('daily.title') }}</h2>
-                  <div class="panel-kicker">{{ t('daily.kicker') }}</div>
-                </div>
-                <CalendarOutlined class="panel-header-icon" />
-              </div>
+            <Panel
+              class="model-signals-table-panel"
+              :title="t('daily.title')"
+              :kicker="t('daily.kicker')"
+              :icon="CalendarOutlined"
+            >
               <a-table
                 class="dense-table model-signals-daily-table"
                 :columns="dailyColumns"
@@ -1126,19 +523,17 @@ onMounted(load)
                   </template>
                 </template>
               </a-table>
-            </section>
+            </Panel>
           </div>
         </div>
 
         <div v-else-if="activeTab === 'cohorts'">
-          <section class="panel">
-            <div class="panel-header">
-              <div>
-                <h2 class="panel-title">{{ t('cohorts.title') }}</h2>
-                <div class="panel-kicker">{{ t('cohorts.kicker') }}</div>
-              </div>
-              <BranchesOutlined class="panel-header-icon" />
-            </div>
+          <Panel
+            class="model-signals-table-panel"
+            :title="t('cohorts.title')"
+            :kicker="t('cohorts.kicker')"
+            :icon="BranchesOutlined"
+          >
             <a-table
               class="dense-table model-signals-cohort-table"
               :columns="cohortColumns"
@@ -1214,18 +609,16 @@ onMounted(load)
                 </template>
               </template>
             </a-table>
-          </section>
+          </Panel>
         </div>
 
         <div v-else-if="activeTab === 'matrix'">
-          <section class="panel">
-            <div class="panel-header">
-              <div>
-                <h2 class="panel-title">{{ t('matrix.title') }}</h2>
-                <div class="panel-kicker">{{ t('matrix.kicker') }}</div>
-              </div>
-              <TableOutlined class="panel-header-icon" />
-            </div>
+          <Panel
+            class="model-signals-table-panel"
+            :title="t('matrix.title')"
+            :kicker="t('matrix.kicker')"
+            :icon="TableOutlined"
+          >
             <a-table
               class="dense-table model-signals-matrix-table"
               :columns="matrixColumns"
@@ -1270,7 +663,7 @@ onMounted(load)
                 </template>
               </template>
             </a-table>
-          </section>
+          </Panel>
         </div>
 
         <div v-else-if="activeTab === 'projects'">
@@ -1283,14 +676,12 @@ onMounted(load)
               :allow-mode-switch="false"
             />
 
-            <section class="panel">
-              <div class="panel-header">
-                <div>
-                  <h2 class="panel-title">{{ t('projects.title') }}</h2>
-                  <div class="panel-kicker">{{ t('projects.kicker') }}</div>
-                </div>
-                <DashboardOutlined class="panel-header-icon" />
-              </div>
+            <Panel
+              class="model-signals-table-panel"
+              :title="t('projects.title')"
+              :kicker="t('projects.kicker')"
+              :icon="DashboardOutlined"
+            >
               <a-table
                 class="dense-table model-signals-project-table"
                 :columns="projectColumns"
@@ -1384,19 +775,17 @@ onMounted(load)
                   </template>
                 </template>
               </a-table>
-            </section>
+            </Panel>
           </div>
         </div>
 
         <div v-else-if="activeTab === 'anomalies'">
-          <section class="panel">
-            <div class="panel-header">
-              <div>
-                <h2 class="panel-title">{{ t('anomaly.title') }}</h2>
-                <div class="panel-kicker">{{ t('anomaly.kicker') }}</div>
-              </div>
-              <WarningOutlined class="panel-header-icon" />
-            </div>
+          <Panel
+            class="model-signals-table-panel"
+            :title="t('anomaly.title')"
+            :kicker="t('anomaly.kicker')"
+            :icon="WarningOutlined"
+          >
             <a-table
               class="dense-table model-signals-anomaly-table"
               :columns="anomalyColumns"
@@ -1453,7 +842,7 @@ onMounted(load)
                 </template>
               </template>
             </a-table>
-          </section>
+          </Panel>
         </div>
       </div>
     </a-spin>
@@ -1467,6 +856,10 @@ onMounted(load)
 
 .model-signals-error {
   margin-bottom: var(--am-section-gap);
+}
+
+.model-signals-table-panel :deep(.panel-body) {
+  padding: 0;
 }
 
 .model-signals-tabs {

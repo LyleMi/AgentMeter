@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, provide, ref, type Component } from 'vue'
+import { computed, onMounted, provide, type Component } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 import AAlert from 'ant-design-vue/es/alert'
 import {
@@ -13,9 +13,9 @@ import {
   api,
   formatDuration,
   formatNumber,
+  formatPercent,
   sessionLabel,
-  type Overview,
-  type UsageBreakdownBucket
+  type Overview
 } from '../api'
 import PageHeader from '../components/PageHeader.vue'
 import PageTabs from '../components/PageTabs.vue'
@@ -23,7 +23,12 @@ import UsageScopeBar from '../components/UsageScopeBar.vue'
 import { useAsyncResource } from '../composables/useAsyncResource'
 import { useMessages } from '../i18n'
 import { applyUsageScopeToQuery, useUsageScopeRoute, type UsageScopeForm } from './useUsageScope'
-import { buildUsageAgentOptions, buildUsageModelOptions, buildUsageProjectOptions } from './useUsageScopeOptions'
+import {
+  buildUsageAgentOptions,
+  buildUsageModelOptions,
+  buildUsageProjectOptions,
+  useUsageScopeOptionData
+} from './useUsageScopeOptions'
 import { timeContextKey, type TimeContext, type TimeKpiCard, type TimeSegment } from './time/timeContext'
 
 const route = useRoute()
@@ -31,14 +36,13 @@ const resource = useAsyncResource<Overview | null>(null)
 const overview = computed(() => resource.data.value)
 const loading = resource.loading
 const error = resource.error
-const optionOverview = ref<Overview | null>(null)
-const projectOptionRows = ref<UsageBreakdownBucket[]>([])
 const scope = useUsageScopeRoute(() => {
   void load()
 })
+const scopeOptionData = useUsageScopeOptionData()
 let loadRequestId = 0
 
-const { t, createNumberFormatter } = useMessages({
+const { t } = useMessages({
   en: {
     'title': 'Time',
     'subtitle': 'Wall-time attribution across model, tool, source, and slow session activity',
@@ -149,19 +153,19 @@ const kpiCards = computed<TimeKpiCard[]>(() => [
   },
   {
     label: t('kpi.activeShare'),
-    value: formatPercent(activeDurationMs.value / Math.max(wallDurationMs.value, 1)),
+    value: formatTimePercent(activeDurationMs.value / Math.max(wallDurationMs.value, 1)),
     note: t('kpi.activeShareNote', { duration: formatDuration(activeDurationMs.value) }),
     icon: ClockCircleOutlined as Component
   },
   {
     label: t('kpi.toolShare'),
-    value: formatPercent(toolDurationMs.value / Math.max(wallDurationMs.value, 1)),
+    value: formatTimePercent(toolDurationMs.value / Math.max(wallDurationMs.value, 1)),
     note: t('kpi.toolShareNote', { duration: formatDuration(toolDurationMs.value) }),
     icon: ToolOutlined as Component
   },
   {
     label: t('kpi.networkShare'),
-    value: formatPercent(suspectedNetworkDurationMs.value / Math.max(wallDurationMs.value, 1)),
+    value: formatTimePercent(suspectedNetworkDurationMs.value / Math.max(wallDurationMs.value, 1)),
     note: t('kpi.networkShareNote', {
       duration: formatDuration(suspectedNetworkDurationMs.value),
       count: formatNumber(overview.value?.suspectedNetworkToolCalls)
@@ -191,12 +195,12 @@ const agentOptions = computed(() =>
     sources: [
       overview.value?.agentTimeUsage,
       overview.value?.agentUsage,
-      optionOverview.value?.agentTimeUsage,
-      optionOverview.value?.agentUsage,
+      scopeOptionData.optionOverview.value?.agentTimeUsage,
+      scopeOptionData.optionOverview.value?.agentUsage,
       overview.value?.slowSessions,
-      optionOverview.value?.slowSessions,
+      scopeOptionData.optionOverview.value?.slowSessions,
       overview.value?.recentSessions,
-      optionOverview.value?.recentSessions
+      scopeOptionData.optionOverview.value?.recentSessions
     ],
     selected: scope.filters.value.agent,
     fallback: t('fallback.unknown')
@@ -207,15 +211,15 @@ const modelOptions = computed(() =>
   buildUsageModelOptions({
     modelUsage: [
       overview.value?.modelUsage,
-      optionOverview.value?.modelUsage,
+      scopeOptionData.optionOverview.value?.modelUsage,
       overview.value?.modelTimeUsage,
-      optionOverview.value?.modelTimeUsage
+      scopeOptionData.optionOverview.value?.modelTimeUsage
     ],
     sessions: [
       overview.value?.slowSessions,
-      optionOverview.value?.slowSessions,
+      scopeOptionData.optionOverview.value?.slowSessions,
       overview.value?.recentSessions,
-      optionOverview.value?.recentSessions
+      scopeOptionData.optionOverview.value?.recentSessions
     ],
     selected: scope.filters.value.model
   })
@@ -224,11 +228,11 @@ const modelOptions = computed(() =>
 const projectOptions = computed(() =>
   buildUsageProjectOptions({
     projects: [
-      projectOptionRows.value,
+      scopeOptionData.projectOptionRows.value,
       overview.value?.slowSessions,
-      optionOverview.value?.slowSessions,
+      scopeOptionData.optionOverview.value?.slowSessions,
       overview.value?.recentSessions,
-      optionOverview.value?.recentSessions
+      scopeOptionData.optionOverview.value?.recentSessions
     ],
     selected: scope.filters.value.project,
     fallback: t('fallback.unknown')
@@ -258,25 +262,19 @@ function buildSegment(key: string, label: string, value: number, wall: number, t
   }
 }
 
-function formatPercent(value: number) {
-  if (!Number.isFinite(value) || value <= 0) return '0%'
-  if (value < 0.01) return '<1%'
-  return createNumberFormatter({ style: 'percent', maximumFractionDigits: 0 }).format(value)
+function formatTimePercent(value: number) {
+  return formatPercent(value, { lessThanOne: true })
 }
 
 function load() {
   const requestId = ++loadRequestId
   return resource.run(async () => {
-    const optionOverviewRequest = scope.hasActiveFilters.value ? api.getOverview() : Promise.resolve<Overview | null>(null)
-    const projectOptionsRequest = api.getUsageBreakdown({ groupBy: 'project' }).catch(() => null)
-    const [nextOverview, nextOptionOverview, projectBreakdown] = await Promise.all([
+    const [nextOverview, optionData] = await Promise.all([
       api.getOverview(scope.apiFilters.value),
-      optionOverviewRequest,
-      projectOptionsRequest
+      scopeOptionData.loadUsageScopeOptionData({ includeOverview: scope.hasActiveFilters.value })
     ])
     if (requestId === loadRequestId) {
-      optionOverview.value = nextOptionOverview || nextOverview
-      projectOptionRows.value = projectBreakdown?.buckets || []
+      scopeOptionData.applyUsageScopeOptionData(optionData, nextOverview)
     }
     return nextOverview
   }, { onErrorData: null })
@@ -294,7 +292,7 @@ async function clearScopeFilters() {
 
 const context: TimeContext = {
   overview,
-  optionOverview,
+  optionOverview: scopeOptionData.optionOverview,
   loading,
   error,
   hasIndexedData,
@@ -311,7 +309,7 @@ const context: TimeContext = {
   agentOptions,
   modelOptions,
   projectOptions,
-  formatPercent,
+  formatPercent: formatTimePercent,
   load,
   updateScopeFilters,
   clearScopeFilters

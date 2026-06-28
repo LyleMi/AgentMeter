@@ -21,6 +21,7 @@ import {
   formatDisplayNumber,
   formatDuration,
   formatNumber,
+  formatPercent as formatMetricPercent,
   isStaticDemo,
   projectDisplay,
   type DisplayNumber,
@@ -249,7 +250,7 @@ const dailyCacheSignal = computed<OverviewSignalMetric | null>(() => {
     : cachedInputRatio(day.inputTokens || 0, cachedInputTokens)
   return {
     label: t('efficiency.dayCache'),
-    value: formatPercent(rate),
+    value: formatOverviewPercent(rate),
     note: t('efficiency.dayCacheNote', {
       date: formatDayLabel(day.date),
       count: formatNumber(cachedInputTokens)
@@ -270,7 +271,7 @@ const projectCacheSignal = computed<OverviewSignalMetric | null>(() => {
   const project = projectDisplay(row.projectPath)
   return {
     label: t('efficiency.projectCache'),
-    value: formatPercent(row.cacheUtilizationRate),
+    value: formatOverviewPercent(row.cacheUtilizationRate),
     note: t('efficiency.projectCacheNote', {
       project: project.main,
       count: formatNumber(row.cachedInputTokens || 0)
@@ -297,7 +298,7 @@ const efficiencyMetrics = computed<OverviewSignalMetric[]>(() => {
     },
     {
       label: t('efficiency.cacheHit'),
-      value: formatPercent(cachedInputRatio(inputTokens, item.totalCachedInputTokens || 0)),
+      value: formatOverviewPercent(cachedInputRatio(inputTokens, item.totalCachedInputTokens || 0)),
       note: t('efficiency.cacheHitNote', { count: formatNumber(item.totalCachedInputTokens) })
     }
   ]
@@ -333,7 +334,7 @@ const timeCostMetrics = computed(() => {
     },
     {
       label: t('timeCost.activeShare'),
-      value: formatPercent((item.totalActiveDurationMs || 0) / Math.max(item.totalWallDurationMs || 0, 1)),
+      value: formatOverviewPercent((item.totalActiveDurationMs || 0) / Math.max(item.totalWallDurationMs || 0, 1)),
       note: t('timeCost.activeShareNote')
     },
     {
@@ -379,9 +380,8 @@ watch(
   { immediate: true }
 )
 
-function formatPercent(value: number) {
-  if (!Number.isFinite(value)) return '0%'
-  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`
+function formatOverviewPercent(value: number) {
+  return formatMetricPercent(value, { clamp: true })
 }
 
 function formatRatio(value: number) {
@@ -414,7 +414,7 @@ function formatDayLabel(value: string) {
 function formatSharePercent(value: number) {
   if (!Number.isFinite(value) || value <= 0) return '0%'
   if (value < 0.01) return '<1%'
-  return formatPercent(value)
+  return formatOverviewPercent(value)
 }
 
 function formatShareWidth(value: number) {

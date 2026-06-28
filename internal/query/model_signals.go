@@ -214,94 +214,34 @@ func (s *Service) modelSignalSessionMetrics(ctx context.Context, filters model.A
 
 func buildModelSignals(metrics []modelSignalSessionMetric) model.ModelSignals {
 	var result model.ModelSignals
-	breakdowns := map[string]*model.ModelSignalsBreakdown{}
-	breakdownSessionsWithTools := map[string]int{}
-	trendByDay := map[string]*model.ModelSignalsTrendPoint{}
-	trendSessionsWithTools := map[string]int{}
-	sessionsWithTools := 0
+	var totals modelSignalMetricAccumulator
+	breakdowns := map[string]*modelSignalMetricAccumulator{}
+	trendByDay := map[string]*modelSignalMetricAccumulator{}
 
 	for _, metric := range metrics {
-		result.TotalSessions++
-		result.TotalModelCalls += metric.ModelCalls
-		result.TotalToolCalls += metric.ToolCalls
-		result.FailedToolCalls += metric.FailedToolCalls
-		if metric.ToolCalls > 0 {
-			sessionsWithTools++
-		}
+		totals.add(metric)
 
 		breakdown := breakdowns[metric.Model]
 		if breakdown == nil {
-			breakdown = &model.ModelSignalsBreakdown{Model: metric.Model}
+			breakdown = &modelSignalMetricAccumulator{}
 			breakdowns[metric.Model] = breakdown
 		}
-		breakdown.SessionCount++
-		breakdown.ModelCalls += metric.ModelCalls
-		breakdown.ToolCalls += metric.ToolCalls
-		breakdown.FailedToolCalls += metric.FailedToolCalls
-		if metric.ToolCalls > 0 {
-			breakdownSessionsWithTools[metric.Model]++
-		}
-		addTokenAndDurationTotals(
-			&breakdown.TotalTokens,
-			&breakdown.InputTokens,
-			&breakdown.CachedInputTokens,
-			&breakdown.OutputTokens,
-			&breakdown.ReasoningOutputTokens,
-			&breakdown.ModelDurationMS,
-			metric,
-		)
-		breakdown.VisibleOutputTokens += metric.VisibleOutputTokens
-		breakdown.BillableOutputTokens += metric.BillableOutputTokens
+		breakdown.add(metric)
 
 		if metric.Day != "" {
 			point := trendByDay[metric.Day]
 			if point == nil {
-				point = &model.ModelSignalsTrendPoint{Date: metric.Day}
+				point = &modelSignalMetricAccumulator{}
 				trendByDay[metric.Day] = point
 			}
-			point.SessionCount++
-			point.ModelCalls += metric.ModelCalls
-			point.ToolCalls += metric.ToolCalls
-			point.FailedToolCalls += metric.FailedToolCalls
-			point.TotalTokens += metric.TotalTokens
-			point.InputTokens += metric.InputTokens
-			point.CachedInputTokens += metric.CachedInputTokens
-			point.OutputTokens += metric.OutputTokens
-			point.ReasoningOutputTokens += metric.ReasoningOutputTokens
-			point.VisibleOutputTokens += metric.VisibleOutputTokens
-			point.BillableOutputTokens += metric.BillableOutputTokens
-			point.ModelDurationMS += metric.ModelDurationMS
-			if metric.ToolCalls > 0 {
-				trendSessionsWithTools[metric.Day]++
-			}
+			point.add(metric)
 		}
 	}
 
-	var totalTokens, inputTokens, cachedInputTokens, outputTokens, reasoningOutputTokens, visibleOutputTokens, billableOutputTokens, modelDurationMS int64
-	for _, metric := range metrics {
-		totalTokens += metric.TotalTokens
-		inputTokens += metric.InputTokens
-		cachedInputTokens += metric.CachedInputTokens
-		outputTokens += metric.OutputTokens
-		reasoningOutputTokens += metric.ReasoningOutputTokens
-		visibleOutputTokens += metric.VisibleOutputTokens
-		billableOutputTokens += metric.BillableOutputTokens
-		modelDurationMS += metric.ModelDurationMS
-	}
-	result.ToolFailureRate = safeRateInt(result.FailedToolCalls, result.TotalToolCalls)
-	result.ToolDependencyRate = safeRateInt(sessionsWithTools, result.TotalSessions)
-	result.AvgModelCallsPerSession = safeRateInt(result.TotalModelCalls, result.TotalSessions)
-	result.OutputExpansionRate = safeRate(outputTokens, inputTokens)
-	result.VisibleOutputTokens = visibleOutputTokens
-	result.BillableOutputTokens = billableOutputTokens
-	result.ReasoningTokenShare, result.ReasoningOverheadRate = reasoningRates(reasoningOutputTokens, visibleOutputTokens, billableOutputTokens)
-	result.CacheMissRate = cacheMissRate(inputTokens, cachedInputTokens)
-	result.ModelThroughputTokensPerSecond = throughputPerSecond(totalTokens, modelDurationMS)
-	result.ModelThroughputOutputTokensPerSecond = throughputPerSecond(outputTokens, modelDurationMS)
+	applyModelSignalsTotals(&result, totals.metricSet())
 
-	for _, breakdown := range breakdowns {
-		applyModelSignalsBreakdownRates(breakdown, breakdownSessionsWithTools[breakdown.Model])
-		result.ModelBreakdown = append(result.ModelBreakdown, *breakdown)
+	for modelName, breakdown := range breakdowns {
+		result.ModelBreakdown = append(result.ModelBreakdown, modelSignalsBreakdownFromMetricSet(modelName, breakdown.metricSet()))
 	}
 	sort.Slice(result.ModelBreakdown, func(i, j int) bool {
 		left := result.ModelBreakdown[i]
@@ -312,10 +252,8 @@ func buildModelSignals(metrics []modelSignalSessionMetric) model.ModelSignals {
 		return left.Model < right.Model
 	})
 
-	for _, point := range trendByDay {
-		point.ToolDependencyRate = safeRateInt(trendSessionsWithTools[point.Date], point.SessionCount)
-		applyModelSignalsTrendRates(point)
-		result.Trend = append(result.Trend, *point)
+	for day, point := range trendByDay {
+		result.Trend = append(result.Trend, modelSignalsTrendPointFromMetricSet(day, point.metricSet()))
 	}
 	sort.Slice(result.Trend, func(i, j int) bool { return result.Trend[i].Date < result.Trend[j].Date })
 	if len(result.Trend) > 30 {
@@ -328,6 +266,78 @@ func buildModelSignals(metrics []modelSignalSessionMetric) model.ModelSignals {
 	result.DailyMetrics = buildModelSignalDailyMetrics(metrics)
 	result.HealthSummary, result.Cohorts, result.Matrix, result.ProjectHotspots, result.ProjectMetrics = buildModelSignalHealthReadModels(metrics)
 	return result
+}
+
+func applyModelSignalsTotals(result *model.ModelSignals, totals model.ModelSignalsMetricSet) {
+	result.TotalSessions = totals.SessionCount
+	result.TotalModelCalls = totals.ModelCalls
+	result.TotalToolCalls = totals.ToolCalls
+	result.FailedToolCalls = totals.FailedToolCalls
+	result.ToolFailureRate = totals.ToolFailureRate
+	result.ToolDependencyRate = totals.ToolDependencyRate
+	result.AvgModelCallsPerSession = totals.AvgModelCallsPerSession
+	result.OutputExpansionRate = totals.OutputExpansionRate
+	result.ReasoningTokenShare = totals.ReasoningTokenShare
+	result.ReasoningOverheadRate = totals.ReasoningOverheadRate
+	result.VisibleOutputTokens = totals.VisibleOutputTokens
+	result.BillableOutputTokens = totals.BillableOutputTokens
+	result.CacheMissRate = totals.CacheMissRate
+	result.ModelThroughputTokensPerSecond = totals.ModelThroughputTokensPerSecond
+	result.ModelThroughputOutputTokensPerSecond = totals.ModelThroughputOutputTokensPerSecond
+}
+
+func modelSignalsBreakdownFromMetricSet(modelName string, item model.ModelSignalsMetricSet) model.ModelSignalsBreakdown {
+	return model.ModelSignalsBreakdown{
+		Model:                                modelName,
+		SessionCount:                         item.SessionCount,
+		ModelCalls:                           item.ModelCalls,
+		ToolCalls:                            item.ToolCalls,
+		FailedToolCalls:                      item.FailedToolCalls,
+		TotalTokens:                          item.TotalTokens,
+		InputTokens:                          item.InputTokens,
+		CachedInputTokens:                    item.CachedInputTokens,
+		OutputTokens:                         item.OutputTokens,
+		ReasoningOutputTokens:                item.ReasoningOutputTokens,
+		VisibleOutputTokens:                  item.VisibleOutputTokens,
+		BillableOutputTokens:                 item.BillableOutputTokens,
+		ModelDurationMS:                      item.ModelDurationMS,
+		ToolFailureRate:                      item.ToolFailureRate,
+		ToolDependencyRate:                   item.ToolDependencyRate,
+		AvgModelCallsPerSession:              item.AvgModelCallsPerSession,
+		OutputExpansionRate:                  item.OutputExpansionRate,
+		ReasoningTokenShare:                  item.ReasoningTokenShare,
+		ReasoningOverheadRate:                item.ReasoningOverheadRate,
+		CacheMissRate:                        item.CacheMissRate,
+		ModelThroughputTokensPerSecond:       item.ModelThroughputTokensPerSecond,
+		ModelThroughputOutputTokensPerSecond: item.ModelThroughputOutputTokensPerSecond,
+	}
+}
+
+func modelSignalsTrendPointFromMetricSet(day string, item model.ModelSignalsMetricSet) model.ModelSignalsTrendPoint {
+	return model.ModelSignalsTrendPoint{
+		Date:                                 day,
+		SessionCount:                         item.SessionCount,
+		ModelCalls:                           item.ModelCalls,
+		ToolCalls:                            item.ToolCalls,
+		FailedToolCalls:                      item.FailedToolCalls,
+		TotalTokens:                          item.TotalTokens,
+		InputTokens:                          item.InputTokens,
+		CachedInputTokens:                    item.CachedInputTokens,
+		OutputTokens:                         item.OutputTokens,
+		ReasoningOutputTokens:                item.ReasoningOutputTokens,
+		VisibleOutputTokens:                  item.VisibleOutputTokens,
+		BillableOutputTokens:                 item.BillableOutputTokens,
+		ModelDurationMS:                      item.ModelDurationMS,
+		OutputExpansionRate:                  item.OutputExpansionRate,
+		ReasoningTokenShare:                  item.ReasoningTokenShare,
+		ReasoningOverheadRate:                item.ReasoningOverheadRate,
+		CacheMissRate:                        item.CacheMissRate,
+		ModelThroughputTokensPerSecond:       item.ModelThroughputTokensPerSecond,
+		ModelThroughputOutputTokensPerSecond: item.ModelThroughputOutputTokensPerSecond,
+		ToolFailureRate:                      item.ToolFailureRate,
+		ToolDependencyRate:                   item.ToolDependencyRate,
+		LowSample:                            modelSignalMetricSetLowSample(item),
+	}
 }
 
 const (
@@ -728,6 +738,166 @@ func (a modelSignalMetricAccumulator) metricSet() model.ModelSignalsMetricSet {
 	return item
 }
 
+type modelSignalDriftRuleKind int
+
+const (
+	modelSignalDriftRelativeIncrease modelSignalDriftRuleKind = iota
+	modelSignalDriftRelativeDecrease
+	modelSignalDriftAbsoluteIncrease
+)
+
+type modelSignalDriftField int
+
+const (
+	modelSignalDriftP90Latency modelSignalDriftField = iota
+	modelSignalDriftLatency
+	modelSignalDriftP10Throughput
+	modelSignalDriftOutputThroughput
+	modelSignalDriftToolFailureRate
+	modelSignalDriftFailurePressure
+	modelSignalDriftCacheMissRate
+	modelSignalDriftAvgModelCalls
+	modelSignalDriftOutputExpansion
+	modelSignalDriftReasoningOverhead
+	modelSignalDriftDegradationRisk
+)
+
+type modelSignalDriftRule struct {
+	kind              modelSignalDriftRuleKind
+	field             modelSignalDriftField
+	key               string
+	label             string
+	direction         string
+	reason            string
+	warningThreshold  float64
+	criticalThreshold float64
+	minimumThreshold  float64
+}
+
+var modelSignalDriftRules = []modelSignalDriftRule{
+	{
+		kind:              modelSignalDriftRelativeIncrease,
+		field:             modelSignalDriftP90Latency,
+		key:               "p90ModelLatencyMsPer1kOutputTokens",
+		label:             "p90 model latency per 1k output tokens",
+		direction:         "higher_worse",
+		reason:            "model latency increased",
+		warningThreshold:  0.5,
+		criticalThreshold: 1.0,
+		minimumThreshold:  250,
+	},
+	{
+		kind:              modelSignalDriftRelativeIncrease,
+		field:             modelSignalDriftLatency,
+		key:               "modelLatencyMsPer1kOutputTokens",
+		label:             "model latency per 1k output tokens",
+		direction:         "higher_worse",
+		reason:            "model latency increased",
+		warningThreshold:  0.5,
+		criticalThreshold: 1.0,
+		minimumThreshold:  250,
+	},
+	{
+		kind:              modelSignalDriftRelativeDecrease,
+		field:             modelSignalDriftP10Throughput,
+		key:               "p10ModelThroughputTokensPerSecond",
+		label:             "p10 model throughput",
+		direction:         "lower_worse",
+		reason:            "output throughput dropped",
+		warningThreshold:  0.25,
+		criticalThreshold: 0.5,
+		minimumThreshold:  25,
+	},
+	{
+		kind:              modelSignalDriftRelativeDecrease,
+		field:             modelSignalDriftOutputThroughput,
+		key:               "modelThroughputOutputTokensPerSecond",
+		label:             "model output throughput",
+		direction:         "lower_worse",
+		reason:            "output throughput dropped",
+		warningThreshold:  0.25,
+		criticalThreshold: 0.5,
+		minimumThreshold:  25,
+	},
+	{
+		kind:              modelSignalDriftAbsoluteIncrease,
+		field:             modelSignalDriftToolFailureRate,
+		key:               "toolFailureRate",
+		label:             "tool failure rate",
+		direction:         "higher_downstream_symptom",
+		reason:            "tool failure rate increased",
+		warningThreshold:  0.10,
+		criticalThreshold: 0.25,
+		minimumThreshold:  0.10,
+	},
+	{
+		kind:              modelSignalDriftAbsoluteIncrease,
+		field:             modelSignalDriftFailurePressure,
+		key:               "failurePressure",
+		label:             "failure pressure",
+		direction:         "higher_worse",
+		reason:            "failure pressure increased",
+		warningThreshold:  0.10,
+		criticalThreshold: 0.25,
+		minimumThreshold:  0.10,
+	},
+	{
+		kind:              modelSignalDriftAbsoluteIncrease,
+		field:             modelSignalDriftCacheMissRate,
+		key:               "cacheMissRate",
+		label:             "cache miss rate",
+		direction:         "higher_symptom",
+		reason:            "cache miss rate increased",
+		warningThreshold:  0.20,
+		criticalThreshold: 0.40,
+		minimumThreshold:  0.50,
+	},
+	{
+		kind:              modelSignalDriftRelativeIncrease,
+		field:             modelSignalDriftAvgModelCalls,
+		key:               "avgModelCallsPerSession",
+		label:             "model calls per session",
+		direction:         "higher_retry_loop_symptom",
+		reason:            "model calls per session increased",
+		warningThreshold:  0.5,
+		criticalThreshold: 1.0,
+		minimumThreshold:  0.5,
+	},
+	{
+		kind:              modelSignalDriftRelativeIncrease,
+		field:             modelSignalDriftOutputExpansion,
+		key:               "outputExpansionRate",
+		label:             "output expansion rate",
+		direction:         "behavior_higher",
+		reason:            "output expansion increased",
+		warningThreshold:  1.0,
+		criticalThreshold: 2.0,
+		minimumThreshold:  1.0,
+	},
+	{
+		kind:              modelSignalDriftAbsoluteIncrease,
+		field:             modelSignalDriftReasoningOverhead,
+		key:               "reasoningOverheadRate",
+		label:             "reasoning overhead rate",
+		direction:         "cost_shape_review",
+		reason:            "reasoning overhead increased",
+		warningThreshold:  0.50,
+		criticalThreshold: 1.00,
+		minimumThreshold:  0.50,
+	},
+	{
+		kind:              modelSignalDriftAbsoluteIncrease,
+		field:             modelSignalDriftDegradationRisk,
+		key:               "degradationRiskScore",
+		label:             "degradation risk score",
+		direction:         "higher_worse",
+		reason:            "degradation risk increased",
+		warningThreshold:  0.15,
+		criticalThreshold: 0.30,
+		minimumThreshold:  0.30,
+	},
+}
+
 func compareModelSignalDrift(current, baseline model.ModelSignalsMetricSet) model.ModelSignalsDrift {
 	drift := model.ModelSignalsDrift{
 		Severity:   modelSignalSeverityHealthy,
@@ -743,19 +913,53 @@ func compareModelSignalDrift(current, baseline model.ModelSignalsMetricSet) mode
 		return drift
 	}
 
-	addRelativeIncreaseDriftMetric(&drift, "p90ModelLatencyMsPer1kOutputTokens", "p90 model latency per 1k output tokens", "higher_worse", "model latency increased", current.P90ModelLatencyMsPer1kOutputTokens, baseline.P90ModelLatencyMsPer1kOutputTokens, 0.5, 1.0, 250)
-	addRelativeIncreaseDriftMetric(&drift, "modelLatencyMsPer1kOutputTokens", "model latency per 1k output tokens", "higher_worse", "model latency increased", current.ModelLatencyMsPer1kOutputTokens, baseline.ModelLatencyMsPer1kOutputTokens, 0.5, 1.0, 250)
-	addRelativeDecreaseDriftMetric(&drift, "p10ModelThroughputTokensPerSecond", "p10 model throughput", "lower_worse", "output throughput dropped", current.P10ModelThroughputTokensPerSecond, baseline.P10ModelThroughputTokensPerSecond, 0.25, 0.5, 25)
-	addRelativeDecreaseDriftMetric(&drift, "modelThroughputOutputTokensPerSecond", "model output throughput", "lower_worse", "output throughput dropped", current.ModelThroughputOutputTokensPerSecond, baseline.ModelThroughputOutputTokensPerSecond, 0.25, 0.5, 25)
-	addAbsoluteIncreaseDriftMetric(&drift, "toolFailureRate", "tool failure rate", "higher_downstream_symptom", "tool failure rate increased", current.ToolFailureRate, baseline.ToolFailureRate, 0.10, 0.25, 0.10)
-	addAbsoluteIncreaseDriftMetric(&drift, "failurePressure", "failure pressure", "higher_worse", "failure pressure increased", current.FailurePressure, baseline.FailurePressure, 0.10, 0.25, 0.10)
-	addAbsoluteIncreaseDriftMetric(&drift, "cacheMissRate", "cache miss rate", "higher_symptom", "cache miss rate increased", current.CacheMissRate, baseline.CacheMissRate, 0.20, 0.40, 0.50)
-	addRelativeIncreaseDriftMetric(&drift, "avgModelCallsPerSession", "model calls per session", "higher_retry_loop_symptom", "model calls per session increased", current.AvgModelCallsPerSession, baseline.AvgModelCallsPerSession, 0.5, 1.0, 0.5)
-	addRelativeIncreaseDriftMetric(&drift, "outputExpansionRate", "output expansion rate", "behavior_higher", "output expansion increased", current.OutputExpansionRate, baseline.OutputExpansionRate, 1.0, 2.0, 1.0)
-	addAbsoluteIncreaseDriftMetric(&drift, "reasoningOverheadRate", "reasoning overhead rate", "cost_shape_review", "reasoning overhead increased", current.ReasoningOverheadRate, baseline.ReasoningOverheadRate, 0.50, 1.00, 0.50)
-	addAbsoluteIncreaseDriftMetric(&drift, "degradationRiskScore", "degradation risk score", "higher_worse", "degradation risk increased", current.DegradationRiskScore, baseline.DegradationRiskScore, 0.15, 0.30, 0.30)
+	for _, rule := range modelSignalDriftRules {
+		rule.addTo(&drift, current, baseline)
+	}
 
 	return drift
+}
+
+func (rule modelSignalDriftRule) addTo(drift *model.ModelSignalsDrift, current, baseline model.ModelSignalsMetricSet) {
+	currentValue := rule.field.value(current)
+	baselineValue := rule.field.value(baseline)
+	switch rule.kind {
+	case modelSignalDriftRelativeIncrease:
+		addRelativeIncreaseDriftMetric(drift, rule.key, rule.label, rule.direction, rule.reason, currentValue, baselineValue, rule.warningThreshold, rule.criticalThreshold, rule.minimumThreshold)
+	case modelSignalDriftRelativeDecrease:
+		addRelativeDecreaseDriftMetric(drift, rule.key, rule.label, rule.direction, rule.reason, currentValue, baselineValue, rule.warningThreshold, rule.criticalThreshold, rule.minimumThreshold)
+	case modelSignalDriftAbsoluteIncrease:
+		addAbsoluteIncreaseDriftMetric(drift, rule.key, rule.label, rule.direction, rule.reason, currentValue, baselineValue, rule.warningThreshold, rule.criticalThreshold, rule.minimumThreshold)
+	}
+}
+
+func (field modelSignalDriftField) value(item model.ModelSignalsMetricSet) float64 {
+	switch field {
+	case modelSignalDriftP90Latency:
+		return item.P90ModelLatencyMsPer1kOutputTokens
+	case modelSignalDriftLatency:
+		return item.ModelLatencyMsPer1kOutputTokens
+	case modelSignalDriftP10Throughput:
+		return item.P10ModelThroughputTokensPerSecond
+	case modelSignalDriftOutputThroughput:
+		return item.ModelThroughputOutputTokensPerSecond
+	case modelSignalDriftToolFailureRate:
+		return item.ToolFailureRate
+	case modelSignalDriftFailurePressure:
+		return item.FailurePressure
+	case modelSignalDriftCacheMissRate:
+		return item.CacheMissRate
+	case modelSignalDriftAvgModelCalls:
+		return item.AvgModelCallsPerSession
+	case modelSignalDriftOutputExpansion:
+		return item.OutputExpansionRate
+	case modelSignalDriftReasoningOverhead:
+		return item.ReasoningOverheadRate
+	case modelSignalDriftDegradationRisk:
+		return item.DegradationRiskScore
+	default:
+		return 0
+	}
 }
 
 func modelSignalSampleNote(current, baseline model.ModelSignalsMetricSet) string {
@@ -1213,42 +1417,6 @@ func appendUniqueString(values []string, value string) []string {
 		}
 	}
 	return append(values, value)
-}
-
-func addTokenAndDurationTotals(totalTokens, inputTokens, cachedInputTokens, outputTokens, reasoningOutputTokens, modelDurationMS *int64, metric modelSignalSessionMetric) {
-	*totalTokens += metric.TotalTokens
-	*inputTokens += metric.InputTokens
-	*cachedInputTokens += metric.CachedInputTokens
-	*outputTokens += metric.OutputTokens
-	*reasoningOutputTokens += metric.ReasoningOutputTokens
-	*modelDurationMS += metric.ModelDurationMS
-}
-
-func applyModelSignalsBreakdownRates(item *model.ModelSignalsBreakdown, sessionsWithTools int) {
-	item.ToolFailureRate = safeRateInt(item.FailedToolCalls, item.ToolCalls)
-	item.ToolDependencyRate = safeRateInt(sessionsWithTools, item.SessionCount)
-	item.AvgModelCallsPerSession = safeRateInt(item.ModelCalls, item.SessionCount)
-	item.OutputExpansionRate = safeRate(item.OutputTokens, item.InputTokens)
-	if item.BillableOutputTokens <= 0 && item.OutputTokens > 0 {
-		item.VisibleOutputTokens, item.BillableOutputTokens = reasoningOutputDenominators(item.OutputTokens, item.ReasoningOutputTokens, false)
-	}
-	item.ReasoningTokenShare, item.ReasoningOverheadRate = reasoningRates(item.ReasoningOutputTokens, item.VisibleOutputTokens, item.BillableOutputTokens)
-	item.CacheMissRate = cacheMissRate(item.InputTokens, item.CachedInputTokens)
-	item.ModelThroughputTokensPerSecond = throughputPerSecond(item.TotalTokens, item.ModelDurationMS)
-	item.ModelThroughputOutputTokensPerSecond = throughputPerSecond(item.OutputTokens, item.ModelDurationMS)
-}
-
-func applyModelSignalsTrendRates(point *model.ModelSignalsTrendPoint) {
-	point.ToolFailureRate = safeRateInt(point.FailedToolCalls, point.ToolCalls)
-	point.OutputExpansionRate = safeRate(point.OutputTokens, point.InputTokens)
-	if point.BillableOutputTokens <= 0 && point.OutputTokens > 0 {
-		point.VisibleOutputTokens, point.BillableOutputTokens = reasoningOutputDenominators(point.OutputTokens, point.ReasoningOutputTokens, false)
-	}
-	point.ReasoningTokenShare, point.ReasoningOverheadRate = reasoningRates(point.ReasoningOutputTokens, point.VisibleOutputTokens, point.BillableOutputTokens)
-	point.CacheMissRate = cacheMissRate(point.InputTokens, point.CachedInputTokens)
-	point.ModelThroughputTokensPerSecond = throughputPerSecond(point.TotalTokens, point.ModelDurationMS)
-	point.ModelThroughputOutputTokensPerSecond = throughputPerSecond(point.OutputTokens, point.ModelDurationMS)
-	point.LowSample = point.SessionCount > 0 && (point.SessionCount < 3 || point.ModelCalls < 3 || point.ModelDurationMS <= 0)
 }
 
 func applyModelSignalsRollingRates(points []model.ModelSignalsTrendPoint) {

@@ -6,6 +6,7 @@ export {
   formatDisplayCost,
   formatDisplayNumber,
   formatDuration,
+  formatPercent,
   formatNumber,
   projectDisplay,
   projectName,

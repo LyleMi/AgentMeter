@@ -8,7 +8,7 @@ import {
   DatabaseOutlined,
   HistoryOutlined
 } from '@ant-design/icons-vue'
-import { api, isStaticDemo, type Overview, type Settings, type UsageBreakdownBucket } from '../api'
+import { api, isStaticDemo, type Overview, type Settings } from '../api'
 import PageHeader from '../components/PageHeader.vue'
 import PageTabs from '../components/PageTabs.vue'
 import UsageScopeBar from '../components/UsageScopeBar.vue'
@@ -16,16 +16,20 @@ import { notifyAppDataChanged } from '../events'
 import { useMessages } from '../i18n'
 import { overviewContextKey, type OverviewContext } from './overviewContext'
 import { applyUsageScopeToQuery, useUsageScopeRoute, type UsageScopeForm } from './useUsageScope'
-import { buildUsageAgentOptions, buildUsageModelOptions, buildUsageProjectOptions } from './useUsageScopeOptions'
+import {
+  buildUsageAgentOptions,
+  buildUsageModelOptions,
+  buildUsageProjectOptions,
+  useUsageScopeOptionData
+} from './useUsageScopeOptions'
 
 const route = useRoute()
 const loading = ref(true)
 const startupIndexing = ref(false)
 const overview = ref<Overview | null>(null)
-const optionOverview = ref<Overview | null>(null)
-const projectOptionRows = ref<UsageBreakdownBucket[]>([])
 const settings = ref<Settings | null>(null)
 const scope = useUsageScopeRoute(() => load())
+const scopeOptionData = useUsageScopeOptionData()
 const { t } = useMessages({
   en: {
     'title': 'Overview',
@@ -65,11 +69,11 @@ const agentOptions = computed(() =>
   buildUsageAgentOptions({
     sources: [
       overview.value?.agentUsage,
-      optionOverview.value?.agentUsage,
+      scopeOptionData.optionOverview.value?.agentUsage,
       overview.value?.recentSessions,
-      optionOverview.value?.recentSessions,
+      scopeOptionData.optionOverview.value?.recentSessions,
       overview.value?.slowSessions,
-      optionOverview.value?.slowSessions
+      scopeOptionData.optionOverview.value?.slowSessions
     ],
     selected: scope.filters.value.agent,
     fallback: 'unknown'
@@ -80,13 +84,13 @@ const modelOptions = computed(() =>
   buildUsageModelOptions({
     modelUsage: [
       overview.value?.modelUsage,
-      optionOverview.value?.modelUsage
+      scopeOptionData.optionOverview.value?.modelUsage
     ],
     sessions: [
       overview.value?.recentSessions,
-      optionOverview.value?.recentSessions,
+      scopeOptionData.optionOverview.value?.recentSessions,
       overview.value?.slowSessions,
-      optionOverview.value?.slowSessions
+      scopeOptionData.optionOverview.value?.slowSessions
     ],
     selected: scope.filters.value.model
   })
@@ -95,11 +99,11 @@ const modelOptions = computed(() =>
 const projectOptions = computed(() =>
   buildUsageProjectOptions({
     projects: [
-      projectOptionRows.value,
+      scopeOptionData.projectOptionRows.value,
       overview.value?.recentSessions,
-      optionOverview.value?.recentSessions,
+      scopeOptionData.optionOverview.value?.recentSessions,
       overview.value?.slowSessions,
-      optionOverview.value?.slowSessions
+      scopeOptionData.optionOverview.value?.slowSessions
     ],
     selected: scope.filters.value.project,
     fallback: 'unknown'
@@ -116,18 +120,14 @@ const activeKey = computed(() => {
 async function load() {
   loading.value = true
   try {
-    const optionOverviewRequest = scope.hasActiveFilters.value ? api.getOverview() : Promise.resolve<Overview | null>(null)
-    const projectOptionsRequest = api.getUsageBreakdown({ groupBy: 'project' }).catch(() => null)
-    const [settingsValue, overviewValue, optionOverviewValue, projectBreakdownValue] = await Promise.all([
+    const [settingsValue, overviewValue, optionData] = await Promise.all([
       api.getSettings(),
       api.getOverview(scope.apiFilters.value),
-      optionOverviewRequest,
-      projectOptionsRequest
+      scopeOptionData.loadUsageScopeOptionData({ includeOverview: scope.hasActiveFilters.value })
     ])
     settings.value = settingsValue
     overview.value = overviewValue
-    optionOverview.value = optionOverviewValue || overviewValue
-    projectOptionRows.value = projectBreakdownValue?.buckets || []
+    scopeOptionData.applyUsageScopeOptionData(optionData, overviewValue)
   } finally {
     loading.value = false
   }

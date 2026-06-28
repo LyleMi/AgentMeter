@@ -7,6 +7,11 @@ export interface DisplayNumber {
   full: string
 }
 
+export interface FormatPercentOptions extends Omit<Intl.NumberFormatOptions, 'style'> {
+  clamp?: boolean
+  lessThanOne?: boolean
+}
+
 export interface CollapsedText {
   main: string
   full: string
@@ -20,6 +25,19 @@ function localizedFallback(key: 'unknown' | 'unpriced') {
 
 export function formatNumber(value: number | undefined): string {
   return createNumberFormatter().format(value || 0)
+}
+
+export function formatPercent(value: number | undefined, options: FormatPercentOptions = {}): string {
+  const { clamp = false, lessThanOne = false, maximumFractionDigits = 0, ...formatterOptions } = options
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) return '0%'
+  const normalized = clamp ? Math.min(1, numeric) : numeric
+  if (lessThanOne && normalized < 0.01) return '<1%'
+  return createNumberFormatter({
+    ...formatterOptions,
+    style: 'percent',
+    maximumFractionDigits
+  }).format(normalized)
 }
 
 export function formatCost(value?: number): string {

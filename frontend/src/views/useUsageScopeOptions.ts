@@ -1,3 +1,5 @@
+import { ref } from 'vue'
+import { api, type Overview, type UsageBreakdownBucket } from '../api'
 import { sourceFilterOptions, type SourceFilterOption, type SourceIdentityLike } from '../presentation/sourceIdentity'
 import { projectDisplay } from '../presentation/formatters'
 
@@ -5,6 +7,15 @@ export interface UsageScopeOption {
   value: string
   label: string
   title?: string
+}
+
+export interface UsageScopeOptionData {
+  optionOverview: Overview | null
+  projectOptionRows: UsageBreakdownBucket[]
+}
+
+export interface LoadUsageScopeOptionDataInput {
+  includeOverview?: boolean
 }
 
 interface UsageAgentOptionsInput {
@@ -32,6 +43,35 @@ interface UsageProjectOptionsInput {
   projects?: Array<readonly ProjectLike[] | null | undefined>
   selected?: string
   fallback: string
+}
+
+export function useUsageScopeOptionData() {
+  const optionOverview = ref<Overview | null>(null)
+  const projectOptionRows = ref<UsageBreakdownBucket[]>([])
+
+  function applyUsageScopeOptionData(data: UsageScopeOptionData, fallbackOverview?: Overview | null) {
+    optionOverview.value = data.optionOverview || fallbackOverview || null
+    projectOptionRows.value = data.projectOptionRows
+  }
+
+  return {
+    optionOverview,
+    projectOptionRows,
+    loadUsageScopeOptionData,
+    applyUsageScopeOptionData
+  }
+}
+
+export async function loadUsageScopeOptionData(input: LoadUsageScopeOptionDataInput = {}): Promise<UsageScopeOptionData> {
+  const includeOverview = input.includeOverview ?? true
+  const [optionOverview, projectBreakdown] = await Promise.all([
+    includeOverview ? api.getOverview() : Promise.resolve<Overview | null>(null),
+    api.getUsageBreakdown({ groupBy: 'project' }).catch(() => null)
+  ])
+  return {
+    optionOverview,
+    projectOptionRows: projectBreakdown?.buckets || []
+  }
 }
 
 export function buildUsageAgentOptions(input: UsageAgentOptionsInput): SourceFilterOption[] {

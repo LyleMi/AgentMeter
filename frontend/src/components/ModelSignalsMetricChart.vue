@@ -9,6 +9,7 @@ import { BarChartOutlined, LineChartOutlined, UndoOutlined } from '@ant-design/i
 import {
   formatCost,
   formatNumber,
+  formatPercent as formatSharedPercent,
   projectDisplay,
   type ModelSignalMetricSet,
   type ModelSignalProjectHotspot,
@@ -922,9 +923,10 @@ function compactNumber(value: number) {
 }
 
 function formatPercent(value: number) {
-  const percent = Math.max(0, value || 0) * 100
-  if (percent > 0 && percent < 1) return '<1%'
-  return `${percent.toLocaleString(undefined, { maximumFractionDigits: percent >= 10 ? 0 : 1 })}%`
+  return formatSharedPercent(value, {
+    lessThanOne: true,
+    maximumFractionDigits: Number.isFinite(value) && value >= 0.1 ? 0 : 1
+  })
 }
 
 function formatRate(value: number, digits = 0) {

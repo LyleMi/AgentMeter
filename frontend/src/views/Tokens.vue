@@ -10,7 +10,6 @@ import {
 } from '@ant-design/icons-vue'
 import {
   api,
-  type Overview,
   type TokenAnalytics,
   type UsageBreakdownBucket,
   type UsageBreakdownGroupBy,
@@ -22,7 +21,12 @@ import UsageScopeBar from '../components/UsageScopeBar.vue'
 import { useAsyncResource } from '../composables/useAsyncResource'
 import { useMessages } from '../i18n'
 import { applyUsageScopeToQuery, useUsageScopeRoute, type UsageScopeForm } from './useUsageScope'
-import { buildUsageAgentOptions, buildUsageModelOptions, buildUsageProjectOptions } from './useUsageScopeOptions'
+import {
+  buildUsageAgentOptions,
+  buildUsageModelOptions,
+  buildUsageProjectOptions,
+  useUsageScopeOptionData
+} from './useUsageScopeOptions'
 import {
   DEFAULT_BREAKDOWN_GROUP,
   tokensContextKey,
@@ -37,11 +41,10 @@ const analytics = computed(() => resource.data.value)
 const loading = resource.loading
 const error = resource.error
 const breakdownRows = ref<UsageBreakdownBucket[]>([])
-const optionOverview = ref<Overview | null>(null)
-const projectOptionRows = ref<UsageBreakdownBucket[]>([])
 const scope = useUsageScopeRoute(() => {
   void load()
 })
+const scopeOptionData = useUsageScopeOptionData()
 const breakdownGroup = ref<TokenBreakdownGroup>(routeBreakdownGroup())
 let applyingBreakdownRouteUpdate = false
 let loadRequestId = 0
@@ -87,11 +90,11 @@ const agentOptions = computed(() =>
   buildUsageAgentOptions({
     sources: [
       analytics.value?.agentUsage,
-      optionOverview.value?.agentUsage,
+      scopeOptionData.optionOverview.value?.agentUsage,
       analytics.value?.recentSessions,
-      optionOverview.value?.recentSessions,
+      scopeOptionData.optionOverview.value?.recentSessions,
       analytics.value?.highTokenSessions,
-      optionOverview.value?.slowSessions
+      scopeOptionData.optionOverview.value?.slowSessions
     ],
     selected: scope.filters.value.agent,
     fallback: t('fallback.unknown')
@@ -102,13 +105,13 @@ const modelOptions = computed(() =>
   buildUsageModelOptions({
     modelUsage: [
       analytics.value?.modelUsage,
-      optionOverview.value?.modelUsage
+      scopeOptionData.optionOverview.value?.modelUsage
     ],
     sessions: [
       analytics.value?.recentSessions,
-      optionOverview.value?.recentSessions,
+      scopeOptionData.optionOverview.value?.recentSessions,
       analytics.value?.highTokenSessions,
-      optionOverview.value?.slowSessions
+      scopeOptionData.optionOverview.value?.slowSessions
     ],
     selected: scope.filters.value.model
   })
@@ -117,11 +120,11 @@ const modelOptions = computed(() =>
 const projectOptions = computed(() =>
   buildUsageProjectOptions({
     projects: [
-      projectOptionRows.value,
+      scopeOptionData.projectOptionRows.value,
       analytics.value?.recentSessions,
-      optionOverview.value?.recentSessions,
+      scopeOptionData.optionOverview.value?.recentSessions,
       analytics.value?.highTokenSessions,
-      optionOverview.value?.slowSessions
+      scopeOptionData.optionOverview.value?.slowSessions
     ],
     selected: scope.filters.value.project,
     fallback: t('fallback.unknown')
@@ -141,15 +144,13 @@ function load() {
   const requestId = ++loadRequestId
   return resource.run(async () => {
     const filters = scope.apiFilters.value
-    const [nextAnalytics, nextOptionOverview, projectBreakdown] = await Promise.all([
+    const [nextAnalytics, optionData] = await Promise.all([
       api.getTokenAnalytics(filters),
-      api.getOverview(),
-      api.getUsageBreakdown({ groupBy: 'project' }).catch(() => null)
+      scopeOptionData.loadUsageScopeOptionData()
     ])
     const nextBreakdownRows = await loadBreakdownRows(nextAnalytics, filters)
     if (requestId === loadRequestId) {
-      optionOverview.value = nextOptionOverview
-      projectOptionRows.value = projectBreakdown?.buckets || []
+      scopeOptionData.applyUsageScopeOptionData(optionData)
       breakdownRows.value = nextBreakdownRows
     }
     return nextAnalytics
@@ -229,7 +230,7 @@ watch(
 
 const context: TokensContext = {
   analytics,
-  optionOverview,
+  optionOverview: scopeOptionData.optionOverview,
   loading,
   error,
   breakdownRows,

@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import ASpin from 'ant-design-vue/es/spin'
 import { CheckCircleOutlined, LineChartOutlined, WarningOutlined } from '@ant-design/icons-vue'
-import { formatDisplayNumber, formatNumber } from '../../api'
+import { formatDisplayNumber, formatNumber, formatPercent } from '../../api'
 import CacheHitTrendChart from '../../components/CacheHitTrendChart.vue'
 import { useMessages } from '../../i18n'
 import { useTokensContext } from './tokensContext'
@@ -62,10 +62,6 @@ const trendMetrics = computed(() => [
   }
 ])
 
-function formatPercent(value: number) {
-  if (!Number.isFinite(value)) return '0%'
-  return `${Math.round(Math.max(0, value) * 100)}%`
-}
 </script>
 
 <template>
