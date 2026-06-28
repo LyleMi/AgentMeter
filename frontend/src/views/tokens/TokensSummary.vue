@@ -16,6 +16,7 @@ import {
 } from '../../api'
 import CacheHitTrendChart from '../../components/CacheHitTrendChart.vue'
 import { useMessages } from '../../i18n'
+import { tokenRatioShares } from '../../presentation/tokenRatios'
 import { useTokensContext } from './tokensContext'
 
 const { analytics, loading } = useTokensContext()
@@ -31,11 +32,11 @@ const { t } = useMessages({
     'metric.inputOutput': 'Input / Output',
     'metric.inputOutputNote': 'Prompt and response volume',
     'breakdown.title': 'Token Mix',
-    'breakdown.kicker': 'Input, cached input, output, and reasoning totals',
+    'breakdown.kicker': 'Input/output totals with cached input and reasoning sub-shares',
     'trend.title': 'Cache Hit Trend',
     'trend.kicker': 'Daily hit rate with input-weighted 7-day trend',
     'token.input': 'Input',
-    'token.cached': 'Cached',
+    'token.cached': 'Cached input',
     'token.output': 'Output',
     'token.reasoning': 'Reasoning'
   },
@@ -50,11 +51,11 @@ const { t } = useMessages({
     'metric.inputOutput': '输入 / 输出',
     'metric.inputOutputNote': '提示词和响应规模',
     'breakdown.title': 'Token 构成',
-    'breakdown.kicker': '输入、缓存输入、输出和推理 Token 总数',
+    'breakdown.kicker': '输入/输出总量及输入缓存、推理子占比',
     'trend.title': '缓存命中趋势',
     'trend.kicker': '每日命中率与按输入 Token 加权的 7 天趋势',
     'token.input': '输入',
-    'token.cached': '缓存',
+    'token.cached': '输入缓存',
     'token.output': '输出',
     'token.reasoning': '推理'
   }
@@ -62,17 +63,21 @@ const { t } = useMessages({
 
 const tokenMix = computed(() => {
   const item = analytics.value
+  const shares = tokenRatioShares({
+    inputTokens: item?.totalInputTokens,
+    cachedInputTokens: item?.totalCachedInputTokens,
+    outputTokens: item?.totalOutputTokens,
+    reasoningOutputTokens: item?.totalReasoningTokens
+  })
   const values = [
-    { key: 'input', label: t('token.input'), value: item?.totalInputTokens || 0, tone: 'is-input' },
-    { key: 'cached', label: t('token.cached'), value: item?.totalCachedInputTokens || 0, tone: 'is-cached' },
-    { key: 'output', label: t('token.output'), value: item?.totalOutputTokens || 0, tone: 'is-output' },
-    { key: 'reasoning', label: t('token.reasoning'), value: item?.totalReasoningTokens || 0, tone: 'is-reasoning' }
+    { key: 'input', label: t('token.input'), value: item?.totalInputTokens || 0, share: shares.input, tone: 'is-input' },
+    { key: 'cached', label: t('token.cached'), value: item?.totalCachedInputTokens || 0, share: shares.cachedInput, tone: 'is-cached' },
+    { key: 'output', label: t('token.output'), value: item?.totalOutputTokens || 0, share: shares.output, tone: 'is-output' },
+    { key: 'reasoning', label: t('token.reasoning'), value: item?.totalReasoningTokens || 0, share: shares.reasoningOutput, tone: 'is-reasoning' }
   ]
-  const total = values.reduce((sum, current) => sum + Math.max(current.value, 0), 0)
   return values.map((current) => ({
     ...current,
-    display: formatDisplayNumber(current.value),
-    share: total > 0 ? current.value / total : 0
+    display: formatDisplayNumber(current.value)
   }))
 })
 

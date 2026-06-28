@@ -28,6 +28,7 @@ import {
 } from '../api'
 import CacheHitTrendChart from '../components/CacheHitTrendChart.vue'
 import { useMessages } from '../i18n'
+import { cachedInputRatio, tokenRatioShares } from '../presentation/tokenRatios'
 import { useOverviewContext } from './overviewContext'
 import { readUsageScopeQuery, usageScopeToApiFilters } from './useUsageScope'
 
@@ -46,7 +47,7 @@ const { t, createNumberFormatter, createDateTimeFormatter } = useMessages({
     'pricing.unpriced': '{count} unpriced',
     'pricing.covered': 'Pricing covered',
     'token.input': 'Input',
-    'token.cached': 'Cached',
+    'token.cached': 'Cached input',
     'token.output': 'Output',
     'token.reasoning': 'Reasoning',
     'card.sessions': 'Sessions',
@@ -103,7 +104,7 @@ const { t, createNumberFormatter, createDateTimeFormatter } = useMessages({
     'pricing.unpriced': '{count} 个未定价',
     'pricing.covered': '价格已覆盖',
     'token.input': '输入',
-    'token.cached': '缓存',
+    'token.cached': '输入缓存',
     'token.output': '输出',
     'token.reasoning': '推理',
     'card.sessions': '会话',
@@ -177,21 +178,25 @@ const pricingStatus = computed(() => {
 
 const tokenBreakdown = computed(() => {
   const item = overview.value
+  const shares = tokenRatioShares({
+    inputTokens: item?.totalInputTokens,
+    cachedInputTokens: item?.totalCachedInputTokens,
+    outputTokens: item?.totalOutputTokens,
+    reasoningOutputTokens: item?.totalReasoningTokens
+  })
   const values = [
-    { label: t('token.input'), value: item?.totalInputTokens || 0, tone: 'is-input' },
-    { label: t('token.cached'), value: item?.totalCachedInputTokens || 0, tone: 'is-cached' },
-    { label: t('token.output'), value: item?.totalOutputTokens || 0, tone: 'is-output' },
-    { label: t('token.reasoning'), value: item?.totalReasoningTokens || 0, tone: 'is-reasoning' }
+    { label: t('token.input'), value: item?.totalInputTokens || 0, share: shares.input, tone: 'is-input' },
+    { label: t('token.cached'), value: item?.totalCachedInputTokens || 0, share: shares.cachedInput, tone: 'is-cached' },
+    { label: t('token.output'), value: item?.totalOutputTokens || 0, share: shares.output, tone: 'is-output' },
+    { label: t('token.reasoning'), value: item?.totalReasoningTokens || 0, share: shares.reasoningOutput, tone: 'is-reasoning' }
   ]
-  const total = values.reduce((sum, current) => sum + Math.max(current.value, 0), 0)
   return values.map((current) => {
-    const share = total > 0 ? current.value / total : 0
     return {
       ...current,
       display: formatDisplayNumber(current.value),
       exact: formatNumber(current.value),
-      shareLabel: formatSharePercent(share),
-      shareWidth: formatShareWidth(share)
+      shareLabel: formatSharePercent(current.share),
+      shareWidth: formatShareWidth(current.share)
     }
   })
 })
@@ -241,7 +246,7 @@ const dailyCacheSignal = computed<OverviewSignalMetric | null>(() => {
   const cachedInputTokens = day.cachedInputTokens || 0
   const rate = Number.isFinite(day.cacheUtilizationRate)
     ? day.cacheUtilizationRate
-    : cacheUtilizationRate(day.inputTokens || 0, cachedInputTokens)
+    : cachedInputRatio(day.inputTokens || 0, cachedInputTokens)
   return {
     label: t('efficiency.dayCache'),
     value: formatPercent(rate),
@@ -292,7 +297,7 @@ const efficiencyMetrics = computed<OverviewSignalMetric[]>(() => {
     },
     {
       label: t('efficiency.cacheHit'),
-      value: formatPercent(cacheUtilizationRate(inputTokens, item.totalCachedInputTokens || 0)),
+      value: formatPercent(cachedInputRatio(inputTokens, item.totalCachedInputTokens || 0)),
       note: t('efficiency.cacheHitNote', { count: formatNumber(item.totalCachedInputTokens) })
     }
   ]
@@ -377,14 +382,6 @@ watch(
 function formatPercent(value: number) {
   if (!Number.isFinite(value)) return '0%'
   return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`
-}
-
-function cacheUtilizationRate(inputTokens: number, cachedInputTokens: number) {
-  const input = Math.max(0, inputTokens || 0)
-  const cached = Math.max(0, cachedInputTokens || 0)
-  const denominator = cached > input ? input + cached : input
-  if (denominator <= 0 || cached <= 0) return 0
-  return cached / denominator
 }
 
 function formatRatio(value: number) {
