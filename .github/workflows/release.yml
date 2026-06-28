@@ -16,8 +16,6 @@ jobs:
   windows:
     name: Windows release
     runs-on: windows-latest
-    env:
-      WAILS_VERSION: v2.10.2
 
     steps:
       - name: Checkout
@@ -47,21 +45,81 @@ jobs:
       - name: Run Go tests
         run: go test ./...
 
-      - name: Install Wails CLI
+      - name: Build Windows executable
         shell: pwsh
         run: |
-          go install github.com/wailsapp/wails/v2/cmd/wails@${env:WAILS_VERSION}
-          "$(go env GOPATH)\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          go build -trimpath -ldflags "-s -w" -o dist/AgentMeter.exe .
 
-      - name: Build Windows app
-        run: wails build -platform windows/amd64 -clean -skipfrontend
+      - name: Package release
+        shell: pwsh
+        run: |
+          $packageRoot = Join-Path $PWD "dist/AgentMeter"
+          $asset = Join-Path $PWD "dist/AgentMeter-windows-amd64.zip"
+
+          Remove-Item -LiteralPath $packageRoot -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath $asset -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
+          New-Item -ItemType Directory -Path (Join-Path $packageRoot "frontend") -Force | Out-Null
+
+          Copy-Item -LiteralPath "dist/AgentMeter.exe" -Destination $packageRoot
+          Copy-Item -LiteralPath "frontend/dist" -Destination (Join-Path $packageRoot "frontend/dist") -Recurse
+          Copy-Item -LiteralPath "README.md", "README.zh-CN.md", "LICENSE", "CHANGELOG.md" -Destination $packageRoot
+
+          if (-not (Test-Path (Join-Path $packageRoot "frontend/dist/index.html"))) {
+            throw "Release package is missing frontend/dist/index.html"
+          }
+
+          $source = Join-Path $packageRoot "*"
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try {
+              Compress-Archive -Path $source -DestinationPath $asset -Force
+              break
+            } catch {
+              if ($attempt -eq 3) {
+                throw
+              }
+              Start-Sleep -Seconds 2
+            }
+          }
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: AgentMeter-windows-amd64
-          path: build/bin/AgentMeter.exe
+          path: dist/AgentMeter-windows-amd64.zip
           if-no-files-found: error
+
+      - name: Prepare release notes
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $escapedTag = [regex]::Escape($tag)
+          $lines = Get-Content CHANGELOG.md
+          $start = -1
+
+          for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match "^##\s+\[$escapedTag\]" -or $lines[$i] -match "^##\s+$escapedTag\b") {
+              $start = $i
+              break
+            }
+          }
+
+          $notesLines = @()
+          if ($start -ge 0) {
+            for ($i = $start + 1; $i -lt $lines.Count; $i++) {
+              if ($lines[$i] -match "^##\s+") {
+                break
+              }
+              $notesLines += $lines[$i]
+            }
+          }
+
+          $notes = ($notesLines -join "`n").Trim()
+          if (-not $notes) {
+            $notes = "Automated Windows amd64 build."
+          }
+          Set-Content -Path "dist/release-notes.md" -Value $notes -Encoding utf8
 
       - name: Publish GitHub release
         shell: pwsh
@@ -69,7 +127,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ github.ref_name }}"
-          $asset = "build/bin/AgentMeter.exe"
+          $asset = "dist/AgentMeter-windows-amd64.zip"
+          $notes = "dist/release-notes.md"
 
           if (-not (Test-Path $asset)) {
             throw "Release asset not found: $asset"
@@ -78,6 +137,7 @@ jobs:
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $asset --clobber
+            gh release edit $tag --title "AgentMeter $tag" --notes-file $notes
           } else {
-            gh release create $tag $asset --title "AgentMeter $tag" --notes "Automated Windows amd64 build."
+            gh release create $tag $asset --title "AgentMeter $tag" --notes-file $notes
           }
