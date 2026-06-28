@@ -100,8 +100,9 @@ AgentMeter 目前是面向本地 coding-agent JSONL 用量分析的 MVP。Web UI
 - [Architecture](docs/architecture.md)
 - [UI Modes](docs/ui-modes.md)
 - [Data Model](docs/data-model.md)
-- [Codex Session Format](docs/codex-session-format.md)
+- [Session Formats](docs/session-formats.md)
 - [Pricing Sources](docs/pricing-sources.md)
+- [Validation](docs/validation.md)
 - [Roadmap](docs/roadmap.md)
 
 ## 贡献

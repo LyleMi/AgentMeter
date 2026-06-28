@@ -4,12 +4,12 @@
 
 AgentMeter is a local-first Go and Vue application. The Go entry point is
 `main.go`; backend packages live under `internal/`, grouped by responsibility
-such as `app`, `ingest`, `query`, `pricing`, `privacy`, and `tui`. Frontend
-source is in `frontend/src`, with Vue views in `frontend/src/views`,
-reusable components in `frontend/src/components`, and assets in
-`frontend/src/assets`. Playwright smoke tests live in `frontend/tests`. Project
-docs are in `docs/`, scripts in `scripts/`, and static build assets are
-generated under `frontend/dist`.
+such as `app`, `audit`, `ingest`, `query`, `pricing`, `privacy`, `startup`,
+and `tui`. Frontend source is in `frontend/src`, with Vue views in
+`frontend/src/views`, reusable components in `frontend/src/components`, and
+assets in `frontend/src/assets`. Playwright smoke tests live in
+`frontend/tests`. Project docs are in `docs/`, scripts in `scripts/`, and static
+build assets are generated under `frontend/dist`.
 
 ## Build, Test, and Development Commands
 
@@ -24,6 +24,8 @@ generated under `frontend/dist`.
   read-only API smoke test against a running backend.
 - `cd frontend; npm run test:smoke`: Playwright browser smoke tests against
   frontend HMR.
+
+See `docs/validation.md` for the full validation and smoke source of truth.
 
 ## Coding Style & Naming Conventions
 
@@ -40,6 +42,8 @@ Prefer focused unit tests for backend parsing, indexing, pricing, privacy, and
 viewmodel behavior. For shared query or data-shape changes, verify both Web and
 TUI expectations where relevant. Browser smoke uses hash-router URLs such as
 `/#/overview/summary`; keep routine smoke validation read-only.
+
+Use `docs/validation.md` for detailed API, browser, and TUI smoke contracts.
 
 ## Commit & Pull Request Guidelines
 

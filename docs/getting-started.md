@@ -118,13 +118,12 @@ For mode behavior, command flags, and TUI keyboard bindings, see
 
 ## Development Checks
 
-Run the shared backend checks:
+The complete validation and smoke contract lives in
+[Validation](validation.md). Common commands:
 
 ```sh
 go test ./...
 ```
-
-Run the Web build check:
 
 ```sh
 cd frontend
@@ -133,14 +132,9 @@ npm run build
 cd ..
 ```
 
-Run the read-only API smoke against an already running backend:
-
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-api.ps1 -BaseUrl http://127.0.0.1:34115
 ```
-
-Run the browser smoke against frontend HMR, with Vite proxying API requests to
-the backend:
 
 ```sh
 cd frontend
@@ -148,18 +142,5 @@ npm run test:smoke
 cd ..
 ```
 
-For smoke checks, keep the existing dev processes running unless you started
-them yourself. The browser smoke should use hash-router paths under
-`http://127.0.0.1:5173/#/...`, not `go run . -start`, because start mode serves
-built assets rather than the HMR workflow. Override the browser smoke target with
-`AGENTMETER_WEB_URL` only when needed. Routine smoke validation should not click
-**Update Index**, **Rebuild Index**, save settings, or apply/change agent privacy
-settings unless the task explicitly requires that state change.
-
-For TUI changes, run the backend tests and a terminal smoke check covering
-startup, keyboard navigation, resize behavior, indexing, and parity for Overview
-totals, Session Detail values, and Tools aggregates against Web mode for the
-same database.
-
-When shared query behavior changes, update both UI expectations in the same
-change: Web views, TUI screens, README command examples, and `docs/ui-modes.md`.
+Routine smoke checks should be read-only unless the task explicitly asks to
+validate indexing, settings writes, or privacy config changes.

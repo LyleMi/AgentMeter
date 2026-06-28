@@ -221,6 +221,31 @@ Fields:
 - `source`
 - `effective_from`
 
+### app_config
+
+Local application key/value settings that are not source session data.
+
+Fields:
+
+- `key`
+- `value`
+- `updated_at`
+
+Known keys:
+
+- `source_entries`: JSON array of configured source entries. Each entry has a
+  `path` and `enabled` flag. This is the Settings source of truth for which
+  local agent roots are indexed.
+- `source_entries_auto_defaults`: JSON array tracking default source roots that
+  were auto-added by AgentMeter. This lets startup merge newly discovered
+  default roots without treating every user-edited source as auto-managed.
+- `last_index_result`: JSON-encoded `IndexResult` from the latest successful
+  index run. It is shown through Settings as local status metadata and is not a
+  replacement for the normalized indexed tables.
+
+`app_config` values are local AgentMeter state. They are not derived source
+records and should not be interpreted as agent session history.
+
 ## Timing Definitions
 
 ### Wall Duration
@@ -263,3 +288,37 @@ Rates are USD per 1M tokens.
 
 Unknown pricing should not block indexing. UI should show `unpriced` for those
 sessions.
+
+## Read-model Contract
+
+`internal/query` is the shared read-model layer for Web API responses and TUI
+screens. UI code should consume these semantics rather than recomputing business
+rules locally.
+
+Current read models:
+
+- Overview: session totals, token totals, estimated cost, unpriced session
+  count, wall/active duration totals, tool-call total, daily usage, model usage,
+  agent usage, and recent sessions.
+- Sessions: filtered list by search, model, agent, limit, and offset, ordered by
+  newest `started_at` first.
+- Session Detail: one session with normalized events, model calls, and tool
+  calls.
+- Tools: aggregate tool stats by name with success/failure counts, total
+  duration, and average duration.
+- Tool Calls: filtered list by tool, agent, start range, sort, limit, and offset.
+- Audit Summary: finding counts by severity/category and recent findings.
+- Audit Findings: filtered list by category, severity, shell family, search,
+  limit, and offset.
+- Pricing Models: seeded pricing rows returned from the local registry.
+
+Contract rules:
+
+- Web and TUI should show the same totals, filters, status labels, cost
+  semantics, and session identity for the same database.
+- UI-specific presentation may differ, but token, cost, duration, parse-status,
+  pricing-status, and audit-status definitions must remain shared.
+- `internal/model/types.go` defines the JSON/API field shape. Documentation
+  should be updated when those shapes change.
+- `source_entries` and `last_index_result` are surfaced through Settings, but
+  normalized usage analytics come from the indexed source tables.

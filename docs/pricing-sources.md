@@ -6,6 +6,22 @@ other coding agents may not map one-to-one to API billing.
 
 Verified: 2026-06-27.
 
+## Source Of Truth
+
+`internal/pricing/pricing.go` is the pricing registry source of truth. The
+seeded `Rate` rows in that file define the actual model aliases, normalized
+model keys, rates, source strings, and effective dates inserted into
+`pricing_models`.
+
+This document records provider source links and assumptions only. Do not copy a
+manual price table here; it will drift from the registry. When pricing changes:
+
+- update `internal/pricing/pricing.go`;
+- update pricing tests when aliases or expected behavior change;
+- update the verification date and assumptions in this file;
+- run the validation appropriate for pricing changes from
+  [Validation](validation.md).
+
 ## Sources
 
 - OpenAI: https://developers.openai.com/api/docs/pricing

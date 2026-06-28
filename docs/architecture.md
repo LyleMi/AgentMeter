@@ -1,32 +1,39 @@
-﻿# Architecture
+# Architecture
 
 ## Decision
 
-Use a Go application core with SQLite storage, shared query services, and two
-local interfaces:
+AgentMeter uses a Go application core with SQLite storage, shared query
+services, and two local interfaces:
 
-- Web UI: the current Vue 3 + Vite + TypeScript browser dashboard served by the
-  Go HTTP backend.
-- TUI: a terminal interface over the same app services, database, pricing rules,
-  and query semantics.
+- Web UI: the Vue 3 + Vite + TypeScript browser dashboard served by the Go HTTP
+  backend.
+- TUI: a terminal interface over the same `app.App`, database, indexing
+  pipeline, pricing rules, and query semantics.
 
-## Why Go HTTP + Vite
+The current product is local-first. It reads local agent JSONL files, indexes
+normalized records into SQLite, and exposes private local views over that data.
 
-AgentMeter is primarily a local Go data application with a browser-based
-dashboard. A single local HTTP API keeps the runtime model explicit:
+## Runtime Shape
 
 ```text
-Vue/Vite UI -> local HTTP API -> Go services -> SQLite
+local agent JSONL files
+  -> source discovery
+  -> JSONL parser
+  -> ingestion and offline audit
+  -> SQLite
+  -> shared query service
+  -> Web HTTP API / TUI
 ```
 
-During development, Vite serves the frontend and proxies `/api` to the Go
-backend. For local production use, the Go server can serve the built
-`frontend/dist` assets from disk.
+During Web development, Vite serves the frontend and proxies `/api` to the Go
+backend. For local production use, the Go server serves built `frontend/dist`
+assets from disk.
 
-The HTTP API remains the Web mode boundary. TUI mode should not require a
-separate ingestion path or a second persistence layer.
+The HTTP API remains the Web mode boundary. TUI mode does not require a
+separate ingestion path, pricing calculator, database schema, or persistence
+layer.
 
-## High-level Components
+## Implemented Components
 
 ```text
 AgentMeter
@@ -36,71 +43,85 @@ AgentMeter
 
   frontend
     Vue views
-    charts
+    charts and tables
     filters
     settings
+    audit views
     agent privacy controls
 
   backend
+    app service and HTTP routes
+    startup asset preparation
     source discovery
     agent source adapters
     JSONL parser
     ingestion pipeline
-    SQLite repository
-    pricing service
+    offline audit rules
+    SQLite repository and migrations
+    pricing registry and calculator
+    privacy config adapters
     shared query service
-    export service
+    shared view-model helpers
 
   storage
     normalized SQLite database
-    schema migrations
-    pricing registry
+    app_config key/value settings
+    seeded pricing registry
 ```
+
+Export is not an implemented backend package today. CSV and JSON export remain
+future work in the roadmap.
+
+## Backend Package Shape
+
+Current Go package responsibilities:
+
+- `app`: application lifecycle, settings, indexing coordination, privacy
+  actions, audit queries, and HTTP route registration.
+- `agent`: source-root classification for Codex, Claude Code, CodeBuddy,
+  WorkBuddy, and generic JSONL directories.
+- `audit`: offline command-risk, privacy, egress, file, and secret findings
+  derived from parsed local events.
+- `db`: SQLite connection, migrations, repositories, app config, and pricing
+  seeding.
+- `ingest`: scan, hash, deduplicate, parse, audit, and index source files.
+- `model`: shared domain and API structs.
+- `platform`: OS-specific database and default source path discovery.
+- `pricing`: seeded pricing registry, model normalization, and cost
+  calculation.
+- `privacy`: user-level external-agent privacy config adapters.
+- `query`: read models for UI screens and API responses.
+- `sessionjsonl`: supported JSONL event-shape parsing and normalization.
+- `startup`: frontend dependency/build checks and browser startup helpers.
+- `tui`: terminal UI mode over `app.App`.
+- `viewmodel`: shared display formatting and presenter helpers for UI parity.
+
+## Source Of Truth
+
+- Source session JSONL files are the source of truth for raw agent history.
+- SQLite is the local normalized cache and query store.
+- `internal/db/db.go` is the schema source of truth.
+- `internal/model/types.go` defines API/read-model shapes.
+- `internal/query` defines shared read-model semantics consumed by Web and TUI.
+- `internal/pricing/pricing.go` is the pricing registry source of truth; see
+  [Pricing Sources](pricing-sources.md) for source links and assumptions.
+- [Validation](validation.md) is the smoke and verification source of truth.
 
 ## Data Flow
 
 ```text
-discover configured agent source roots
-  -> scan session JSONL files
-  -> parse raw events
-  -> normalize to internal event model
-  -> upsert into SQLite
-  -> query from UI
+discover configured source roots
+  -> classify source kind and sessions path
+  -> scan JSONL files recursively
+  -> compare path, size, modified time, and content hash
+  -> parse raw events into normalized sessions, usage, model calls, and tools
+  -> run offline audit over parsed local data
+  -> upsert records into SQLite
+  -> query from Web API or TUI
 ```
 
-## Backend Package Shape
-
-Proposed Go layout:
-
-```text
-internal/
-  app/
-  agent/
-  sessionjsonl/
-  db/
-  ingest/
-  model/
-  pricing/
-  query/
-  tui/
-  viewmodel/
-  export/
-  platform/
-```
-
-Responsibilities:
-
-- `agent`: detect source roots such as Codex, Claude Code, CodeBuddy, WorkBuddy, or generic JSONL directories.
-- `sessionjsonl`: understand supported JSONL event shapes and convert them to normalized records.
-- `ingest`: scan, hash, deduplicate, and index files.
-- `db`: SQLite connection, migrations, repositories.
-- `model`: normalized domain structs.
-- `pricing`: model aliases, pricing table, cost calculation.
-- `query`: read models for UI screens.
-- `viewmodel`: shared display formatting and presenter helpers for UI parity.
-- `tui`: terminal UI mode over `app.App`.
-- `export`: JSON and CSV export.
-- `platform`: OS-specific database and default source path discovery.
+Indexing is incremental by default. Rebuild indexing clears indexed files for
+enabled sources and parses them again.
 
 ## UI Shape
 
@@ -108,61 +129,43 @@ UI contributors should follow the practical design guidance in
 [`docs/ui-design.md`](ui-design.md) for Web layout, visual quality, dense data
 tables, component consistency, and UI-state validation.
 
-The Web and TUI interfaces should cover the same product areas:
+The implemented Web product areas are:
 
 - Overview
 - Sessions
 - Session Detail
 - Tools
+- Audit
 - Agent Privacy
 - Settings
 
-Overview should show:
+The implemented TUI product areas are:
 
-- total sessions;
-- total input/output/cached/reasoning tokens;
-- estimated cost;
-- total wall duration;
-- total active duration;
-- total tool calls;
-- recent daily trend.
+- Overview
+- Sessions
+- Session Detail
+- Tools
+- Agent Privacy status
+- Settings
 
-Session Detail should show:
-
-- session metadata;
-- token and cost summary;
-- wall/model/tool/idle time;
-- timeline;
-- model calls;
-- tool calls;
-- raw source path.
-
-Agent Privacy should show external-agent privacy configuration status and edit
-supported user-level controls with explicit set/unset changes. Strict values are
-available as a privacy-first preset per option, but users can save custom values
-or remove configured values to return to tool defaults. The current
-implementation targets Codex user-level `config.toml` and Gemini CLI and
-Claude Code and CodeBuddy Code/IDE user-level `settings.json`.
-
-The Web UI can use charts, wide layouts, and browser affordances. The TUI can
-use tables, panes, keyboard navigation, and compact summaries. Differences in
-presentation are acceptable; differences in totals, filters, status labels, or
-drill-down semantics are not.
+The TUI Agent Privacy screen is read-only. Web Agent Privacy supports status and
+editable user-level controls for Codex `config.toml` and Gemini CLI, Claude
+Code, and CodeBuddy Code/IDE `settings.json`.
 
 ## Interface Synchronization
 
-Web and TUI modes should stay synchronized by design:
+Web and TUI modes stay synchronized by design:
 
 - Token totals, cost estimates, durations, model normalization, and status
   labels come from shared backend logic.
-- Overview, Sessions, Session Detail, Tools, Settings, and Pricing data use
-  shared query semantics.
+- Overview, Sessions, Session Detail, Tools, Settings, Pricing, and implemented
+  Agent Privacy status data use shared query or app-service semantics.
 - Filtering and sorting rules should not be reimplemented with different
   behavior in each UI.
 - New shared user-visible behavior should update both interface expectations in
   the same change.
-- Documentation for command examples and UI capabilities should be updated with
-  the implementation state.
+- Documentation for commands, capabilities, and validation should be updated
+  with the implementation state.
 
 ## Command Line
 
@@ -193,6 +196,7 @@ Behavior:
 
 - AgentMeter must not modify source session files.
 - AgentMeter must not upload data.
-- The HTTP server should bind to `127.0.0.1` by default, not a public interface.
-- Indexing should be incremental.
+- The HTTP server should bind to `127.0.0.1` by default, not a public
+  interface.
+- Indexing should be incremental unless the user explicitly chooses rebuild.
 - Raw parse errors should be visible but non-fatal.

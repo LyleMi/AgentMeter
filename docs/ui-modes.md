@@ -145,34 +145,10 @@ q / ctrl-c quit
 
 ## Development Checks
 
-For shared backend or query changes:
+Use [Validation](validation.md) as the source of truth for Go, frontend, API,
+browser, and TUI checks.
 
-```sh
-go test ./...
-```
-
-For Web UI changes:
-
-```sh
-cd frontend
-npm ci
-npm run build
-cd ..
-```
-
-For TUI changes:
-
-- Run the TUI smoke path from a clean terminal.
-- Verify resize behavior for narrow and wide terminal widths.
-- Verify keyboard navigation for each implemented screen.
-- Compare Overview totals, Session Detail values, and Tools
-  aggregates against Web mode for the same database.
-- When filter entry lands, compare Sessions filters against Web mode for the
-  same database.
-
-Before merging a feature that changes shared product behavior, check:
-
-- README command examples still match implemented flags.
-- `docs/architecture.md` still describes the actual interface boundaries.
-- `docs/roadmap.md` still reflects whether the TUI work is planned, active, or
-  delivered.
+For UI mode changes, the important contract is parity for shared behavior:
+Overview totals, Session Detail values, Tools aggregates, filters, status
+labels, pricing visibility, and source identity should match between Web and
+TUI for the same database.

@@ -1,163 +1,158 @@
-﻿# Roadmap
+# Roadmap
 
-## Phase 0: Discovery
+This roadmap separates delivered MVP behavior from remaining and future work.
+For current package boundaries, see [Architecture](architecture.md). For the
+verification contract, see [Validation](validation.md).
 
-Goal: understand local coding-agent session data well enough to design the parser safely.
+## Current Status
 
-Tasks:
+AgentMeter is an MVP for local coding-agent JSONL usage analysis.
+
+Implemented today:
+
+- Local Web dashboard over a Go HTTP API.
+- Terminal UI MVP over the same application core.
+- SQLite database creation, migrations, and normalized query storage.
+- App configuration storage for source entries and last index status.
+- Codex, Claude Code, CodeBuddy, WorkBuddy, and generic JSONL source detection
+  and parsing.
+- Multiple source roots with enabled/disabled entries.
+- Incremental indexing and rebuild indexing.
+- Overview, Sessions, Session Detail, Tools, Audit, Agent Privacy, and Settings
+  in Web mode.
+- Overview, Sessions, Session Detail, Tools, read-only Agent Privacy status, and
+  Settings in TUI mode.
+- Offline audit findings for indexed local session data, exposed through Web UI
+  and `/api/audit/*`.
+- Pricing registry seeding, model normalization, and `unpriced` handling.
+
+Not implemented today:
+
+- CSV export.
+- JSON export.
+- Packaged release artifacts.
+- TUI session search/filter entry.
+- Automated terminal smoke checks in release validation.
+
+## Delivered Phases
+
+### Phase 0: Discovery
+
+Delivered:
 
 - Locate Codex and Claude Code session directories across supported OSes.
-- Collect representative local JSONL samples.
-- Document event types found in real sessions.
-- Identify where token usage appears.
-- Identify how tool calls appear.
-- Identify whether model-call durations can be derived.
-- Capture parse edge cases: interrupted sessions, failed tool calls, empty
-  files, malformed lines, partial writes.
+- Collect representative JSONL samples through parser tests and fixtures.
+- Document observed event types and parsing assumptions.
+- Identify token usage and tool-call shapes.
+- Capture parser edge cases such as malformed lines, empty files, partial
+  sessions, missing timestamps, and pending tool calls.
 
-Deliverables:
+Primary document:
 
-- `docs/codex-session-format.md`
-- parser fixtures with redacted JSONL samples
-- initial parser tests
+- [Session Formats](session-formats.md)
 
-## Phase 1: Local Web Scaffold
+### Phase 1: Local Web Scaffold
 
-Goal: replace the exploratory prototype with the intended application shape.
+Delivered:
 
-Tasks:
+- Vue + TypeScript frontend with Vite.
+- Go HTTP backend.
+- SQLite dependency and migration runner.
+- App configuration storage.
+- Cross-platform database path and default source path discovery.
+- Local Web startup through `go run . -start`.
 
-- Create Vue + TypeScript frontend with Vite.
-- Create Go HTTP backend.
-- Set Go module name to AgentMeter.
-- Add SQLite dependency.
-- Add migration runner.
-- Add app configuration storage.
-- Add cross-platform database and default source path discovery.
+### Phase 2: Agent Indexer
 
-Deliverables:
+Delivered:
 
-- runnable local web app;
-- empty shell UI;
-- local SQLite database creation.
+- Source discovery for Codex, Claude Code, CodeBuddy, WorkBuddy, and generic
+  JSONL directories.
+- Recursive JSONL scanner.
+- Normalization for sessions, events, token usage, model calls, and tool calls.
+- Incremental indexing based on path, size, modified time, and content hash.
+- Parse warnings and scan status.
+- Offline audit generation during indexing.
 
-## Phase 2: Agent Indexer
+### Phase 3: MVP Web UI
 
-Goal: index local coding-agent sessions into SQLite.
-
-Tasks:
-
-- Implement source discovery.
-- Implement JSONL scanner.
-- Implement Codex, Claude Code, CodeBuddy, WorkBuddy, and generic JSONL parsing.
-- Normalize sessions, events, token usage, and tool calls.
-- Add incremental indexing based on path, size, modified time, and hash.
-- Add parse warnings.
-
-Deliverables:
-
-- Update index action;
-- session rows in SQLite;
-- parser test coverage.
-
-## Phase 3: MVP Web UI
-
-Goal: make the indexed data useful in the browser.
-
-Screens:
+Delivered Web screens:
 
 - Overview
 - Sessions
 - Session Detail
 - Tools
+- Audit
 - Agent Privacy
 - Settings
 
-Tasks:
+Delivered Web behavior:
 
-- Overview totals and daily trend.
-- Session table with filters.
-- Session detail timeline.
-- Tool-call breakdown.
-- Editable external-agent privacy controls for supported Codex, Gemini CLI, Claude Code, and CodeBuddy config settings.
+- Overview totals, daily trend, model usage, and agent usage.
+- Session table with search/model/agent filters.
+- Session detail timeline, model calls, tool calls, and raw source path.
+- Tool-call breakdown and tool-call list.
+- Audit summary and findings list.
+- Editable external-agent privacy controls for supported Codex, Gemini CLI,
+  Claude Code, and CodeBuddy config settings.
 - Pricing registry display.
-- Rebuild index action.
+- Update Index and Rebuild Index actions.
 
-Deliverables:
-
-- usable local Web dashboard for local coding-agent sessions.
-
-## Phase 4: TUI Mode
-
-Goal: keep the terminal interface useful without splitting AgentMeter into two
-products.
-
-Interface contract:
-
-- Web mode remains the default MVP path.
-- TUI mode uses the same SQLite database, pricing rules, indexing pipeline, and
-  query semantics as Web mode.
-- UI differences are presentational only: terminal tables and panes can replace
-  charts, but totals, filters, statuses, and drill-down meaning must match Web.
-
-Implemented command line:
-
-```text
-go run . -start
-go run . -ui web -http 127.0.0.1:34115
-go run . -ui web -static frontend/dist
-go run . -ui tui
-```
+### Phase 4: TUI Mode
 
 Delivered:
 
-- Add `-ui web|tui` mode selection while keeping Web as the default.
-- Define shared display helpers for formatting, status classification, Overview
+- `-ui web|tui` mode selection while keeping Web as default.
+- TUI mode over the same SQLite database, pricing rules, indexing pipeline, and
+  query semantics as Web mode.
+- Shared display helpers for formatting, status classification, Overview
   derived metrics, and Tools summary.
-- Implement TUI navigation, table browsing, and session detail panes.
-- Support an index trigger and visible indexing/parse status in TUI mode.
-- Add a read-only TUI Agent Privacy status screen for supported targets.
-- Add terminal resize and narrow-width behavior.
-- Document TUI keyboard behavior and README examples.
+- TUI navigation, table browsing, and session detail panes.
+- TUI index trigger and visible indexing/parse status.
+- Read-only TUI Agent Privacy status screen for supported targets.
+- Terminal resize and narrow-width behavior.
+- Documented TUI keyboard behavior and README examples.
 
-Remaining:
+Remaining for TUI:
 
 - Add search/filter entry in TUI Sessions.
 - Add parity checks comparing Web and TUI values for the same database.
 - Improve compact visual treatment for pricing, parse status, and long paths.
-- Add terminal smoke checks to release validation.
+- Add automated terminal smoke checks to release validation.
 
-## Phase 5: Packaging
+## Future Phases
+
+### Phase 5: Packaging
 
 Goal: make cross-platform usage easy.
 
-Tasks:
+Planned:
 
 - Windows portable build.
 - macOS portable build.
 - Linux portable build.
 - Installer or portable zip.
-- Package both Web and TUI modes from the same binary when TUI mode is ready.
-- Local database path decision.
-- Log file location.
-- Basic crash/error reporting to local logs only.
+- Package Web and TUI modes from the same binary.
+- Confirm local database path behavior for packaged builds.
+- Define log file location.
+- Keep crash/error reporting local-only.
 
-Deliverables:
+Deliverable:
 
-- Windows release artifact.
+- Windows release artifact, then macOS and Linux artifacts.
 
-## Phase 6: Beyond MVP
+### Phase 6: Beyond MVP
 
 Possible additions:
 
 - More complete Claude Code, CodeBuddy, and WorkBuddy adapter coverage.
-- Gemini CLI adapter.
+- Gemini CLI session adapter.
 - OpenCode adapter.
 - CSV export.
 - JSON export.
-- estimated token mode.
-- richer model-call timeline.
-- project grouping.
-- custom pricing UI.
+- Estimated token mode.
+- Richer model-call timeline.
+- Project grouping.
+- Custom pricing UI.
 - TUI command palette and saved filter shortcuts.
-- dark/light theme.
+- Dark/light theme.
