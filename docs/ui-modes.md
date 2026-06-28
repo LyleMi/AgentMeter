@@ -87,6 +87,8 @@ go run . web
 go run . start
 go run . tui
 go run . cli
+go run . privacy status
+go run . privacy apply codex
 go run . -ui web
 go run . -ui tui
 ```
@@ -101,6 +103,9 @@ go run . -ui web -http 127.0.0.1:34115
 go run . -ui web -static frontend/dist
 go run . tui
 go run . cli
+go run . privacy status
+go run . privacy apply codex
+go run . privacy apply all recommended
 go run . -ui tui
 ```
 
@@ -109,6 +114,7 @@ Flag behavior:
 - `web` is a shortcut for `-ui web`.
 - `start` is a shortcut for `-start`.
 - `tui` and `cli` are shortcuts for `-ui tui`.
+- `privacy` runs config-focused CLI subcommands without starting Web or TUI.
 - `-ui web` starts the local HTTP server and browser-oriented UI.
 - `-ui tui` starts the terminal UI without opening a browser or HTTP listener.
 - Default remains `web` for compatibility with the current MVP.

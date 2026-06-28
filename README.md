@@ -83,6 +83,20 @@ go run . tui
 go run . cli
 ```
 
+Privacy config CLI:
+
+```sh
+go run . privacy status
+go run . privacy settings codex
+go run . privacy apply codex
+go run . privacy apply all recommended
+go run . privacy apply gemini strict
+```
+
+`privacy apply <target>` uses the recommended profile by default. Supported
+targets are `codex`, `gemini`, `claude`, and `codebuddy`; existing config files
+are backed up before AgentMeter writes changes.
+
 ## Privacy Model
 
 AgentMeter is designed to stay local:

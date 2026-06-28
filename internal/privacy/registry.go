@@ -3,6 +3,7 @@ package privacy
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"AgentMeter/internal/model"
 )
@@ -133,5 +134,5 @@ func IsUnsupportedTarget(err error) bool {
 }
 
 func normalizeTarget(target string) string {
-	return target
+	return strings.ToLower(strings.TrimSpace(target))
 }

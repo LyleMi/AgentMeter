@@ -12,11 +12,16 @@ import (
 	"time"
 
 	"AgentMeter/internal/app"
+	"AgentMeter/internal/cli"
 	"AgentMeter/internal/startup"
 	"AgentMeter/internal/tui"
 )
 
 func main() {
+	if len(os.Args) > 1 && cli.IsCommand(os.Args[1]) {
+		os.Exit(cli.Run(os.Args[1:], os.Stdout, os.Stderr))
+	}
+
 	var uiMode string
 	var httpAddr string
 	var staticDir string
@@ -29,7 +34,17 @@ func main() {
 	flag.BoolVar(&start, "start", false, "install/build frontend assets before starting web mode and open the browser")
 	flag.BoolVar(&skipBrowser, "skip-browser", false, "with -start, do not open the browser")
 	flag.BoolVar(&forceBuild, "force-build", false, "with -start, rebuild the frontend even when built assets look current")
+	flag.Usage = func() {
+		cli.PrintUsage(os.Stderr)
+		fmt.Fprintln(os.Stderr, "\nFlags:")
+		flag.PrintDefaults()
+	}
 	flag.CommandLine.Parse(normalizeCommandArgs(os.Args[1:]))
+	if flag.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "unknown command or argument %q\n\n", flag.Arg(0))
+		cli.PrintUsage(os.Stderr)
+		os.Exit(cli.ExitUsage)
+	}
 
 	uiMode = strings.ToLower(strings.TrimSpace(uiMode))
 	if uiMode == "" {

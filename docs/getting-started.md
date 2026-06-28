@@ -99,10 +99,10 @@ http://127.0.0.1:5173
 
 Vite proxies `/api` requests to the Go backend.
 
-For Go backend auto-restart, install Air and run this instead of `go run`:
+For Go backend auto-restart, run Air through the Go tool directive:
 
 ```sh
-air -c .air.toml
+go tool air -c .air.toml
 ```
 
 ## TUI Mode
@@ -115,6 +115,24 @@ go run . -ui tui
 
 For mode behavior, command flags, and TUI keyboard bindings, see
 [UI Modes](ui-modes.md).
+
+## Privacy Config CLI
+
+AgentMeter can inspect and edit supported user-level privacy config files
+without opening the Web UI:
+
+```sh
+go run . privacy status
+go run . privacy settings codex
+go run . privacy apply codex
+go run . privacy apply all recommended
+go run . privacy apply gemini strict
+```
+
+`privacy apply <target>` defaults to the `recommended` profile. Use `strict` to
+write every managed hardening setting, or `default` to unset AgentMeter-managed
+keys and return to vendor defaults. Supported targets are `codex`, `gemini`,
+`claude`, and `codebuddy`. Existing config files are backed up before writes.
 
 ## Development Checks
 

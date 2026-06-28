@@ -100,3 +100,18 @@ func TestRegistryUnsupportedTarget(t *testing.T) {
 		t.Fatalf("IsUnsupportedTarget(%v) = false", err)
 	}
 }
+
+func TestRegistryNormalizesTargetNames(t *testing.T) {
+	codex := &registryFakeAdapter{target: "codex"}
+	registry := NewRegistry(map[string]AdapterFactory{
+		" Codex ": func() Adapter { return codex },
+	}, []string{" CODEX "})
+
+	status, err := registry.Status(" codex ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Target != "codex" || codex.statusCalls != 1 {
+		t.Fatalf("status = %#v calls=%d", status, codex.statusCalls)
+	}
+}

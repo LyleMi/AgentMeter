@@ -85,6 +85,20 @@ go run . tui
 go run . cli
 ```
 
+隐私配置 CLI：
+
+```sh
+go run . privacy status
+go run . privacy settings codex
+go run . privacy apply codex
+go run . privacy apply all recommended
+go run . privacy apply gemini strict
+```
+
+`privacy apply <target>` 默认使用 recommended 配置档。支持的目标包括
+`codex`、`gemini`、`claude` 和 `codebuddy`；写入已有配置文件前，
+AgentMeter 会先创建备份。
+
 ## 隐私模型
 
 AgentMeter 设计为留在本地运行：
