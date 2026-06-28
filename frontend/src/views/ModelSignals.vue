@@ -49,7 +49,13 @@ import {
   buildTableLocale
 } from './model-signals/columns'
 import { createModelSignalsDisplay } from './model-signals/display'
+import MetricComparisonCell from './model-signals/MetricComparisonCell.vue'
+import ModelCell from './model-signals/ModelCell.vue'
 import { modelSignalsMessages } from './model-signals/messages'
+import ProjectCell from './model-signals/ProjectCell.vue'
+import ReasonTags from './model-signals/ReasonTags.vue'
+import SeverityTag from './model-signals/SeverityTag.vue'
+import SourceCell from './model-signals/SourceCell.vue'
 import { buildModelSignalsTabs, type ModelSignalsTabKey } from './model-signals/tabs'
 import type { ProjectMetricRow } from './model-signals/types'
 
@@ -386,46 +392,41 @@ onMounted(load)
               >
                 <template #bodyCell="{ column, record }">
                   <template v-if="column.key === 'source'">
-                    <span class="source-identity-name">{{ sourceInfo(record).label }}</span>
-                    <div class="source-identity-meta">{{ sourceInfo(record).secondary || '-' }}</div>
+                    <SourceCell :info="sourceInfo(record)" />
                   </template>
                   <template v-else-if="column.key === 'project'">
-                    <a-tooltip :title="projectInfo(record).full" placement="topLeft">
-                      <span class="model-signals-project">{{ projectInfo(record).main }}</span>
-                    </a-tooltip>
+                    <ProjectCell :info="projectInfo(record)" />
                   </template>
                   <template v-else-if="column.key === 'model'">
-                    <span class="model-name">{{ record.model || t('fallback.unknown') }}</span>
-                    <div class="source-identity-meta">{{ record.modelProvider || '-' }}</div>
+                    <ModelCell :model="record.model" :provider="record.modelProvider" :fallback="t('fallback.unknown')" show-provider />
                   </template>
                   <template v-else-if="column.key === 'severity'">
-                    <a-tag class="status-tag" :color="severityTagColor(record.drift?.severity)">
-                      {{ severityLabel(record.drift?.severity) }}
-                    </a-tag>
+                    <SeverityTag :color="severityTagColor(record.drift?.severity)" :label="severityLabel(record.drift?.severity)" />
                   </template>
                   <template v-else-if="column.key === 'latency'">
-                    <div class="metric-comparison" :class="metricClass(record.current?.modelLatencyMsPer1kOutputTokens, record.baseline?.modelLatencyMsPer1kOutputTokens, true)">
-                      <span>{{ formatLatency(record.current?.modelLatencyMsPer1kOutputTokens) }}</span>
-                      <span>{{ t('metric.baseline') }} {{ formatLatency(record.baseline?.modelLatencyMsPer1kOutputTokens) }}</span>
-                    </div>
+                    <MetricComparisonCell
+                      :class="metricClass(record.current?.modelLatencyMsPer1kOutputTokens, record.baseline?.modelLatencyMsPer1kOutputTokens, true)"
+                      :primary="formatLatency(record.current?.modelLatencyMsPer1kOutputTokens)"
+                      :secondary="`${t('metric.baseline')} ${formatLatency(record.baseline?.modelLatencyMsPer1kOutputTokens)}`"
+                    />
                   </template>
                   <template v-else-if="column.key === 'throughput'">
-                    <div class="metric-comparison" :class="metricClass(record.current?.modelThroughputTokensPerSecond, record.baseline?.modelThroughputTokensPerSecond)">
-                      <span>{{ formatRate(record.current?.modelThroughputTokensPerSecond, 1) }} tok/s</span>
-                      <span>{{ t('metric.baseline') }} {{ formatRate(record.baseline?.modelThroughputTokensPerSecond, 1) }}</span>
-                    </div>
+                    <MetricComparisonCell
+                      :class="metricClass(record.current?.modelThroughputTokensPerSecond, record.baseline?.modelThroughputTokensPerSecond)"
+                      :primary="`${formatRate(record.current?.modelThroughputTokensPerSecond, 1)} tok/s`"
+                      :secondary="`${t('metric.baseline')} ${formatRate(record.baseline?.modelThroughputTokensPerSecond, 1)}`"
+                    />
                   </template>
                   <template v-else-if="column.key === 'confidence'">
                     <span class="number-cell">{{ formatConfidence(record.drift?.confidence) }}</span>
                     <div v-if="record.drift?.sampleNote" class="source-identity-meta">{{ record.drift.sampleNote }}</div>
                   </template>
                   <template v-else-if="column.key === 'reasons'">
-                    <div v-if="record.drift?.reasons?.length" class="model-signals-tags">
-                      <a-tag v-for="reason in record.drift.reasons" :key="reason" :color="severityTagColor(record.drift?.severity)">
-                        {{ reason }}
-                      </a-tag>
-                    </div>
-                    <span v-else class="muted">{{ t('fallback.noReason') }}</span>
+                    <ReasonTags
+                      :reasons="record.drift?.reasons"
+                      :color="severityTagColor(record.drift?.severity)"
+                      :empty-text="t('fallback.noReason')"
+                    />
                   </template>
                 </template>
               </a-table>
@@ -466,16 +467,16 @@ onMounted(load)
                     <span class="mono model-signals-date">{{ record.date }}</span>
                   </template>
                   <template v-else-if="column.key === 'sessions'">
-                    <div class="metric-comparison">
-                      <span>{{ formatNumber(record.sessionCount) }}</span>
-                      <span>{{ formatNumber(record.modelCalls) }} {{ t('column.modelCalls') }}</span>
-                    </div>
+                    <MetricComparisonCell
+                      :primary="formatNumber(record.sessionCount)"
+                      :secondary="`${formatNumber(record.modelCalls)} ${t('column.modelCalls')}`"
+                    />
                   </template>
                   <template v-else-if="column.key === 'cost'">
-                    <div class="metric-comparison">
-                      <span>{{ formatCost(record.estimatedCostUsd) }}</span>
-                      <span>{{ unpricedNote(record) || formatDuration(record.activeDurationMs) }}</span>
-                    </div>
+                    <MetricComparisonCell
+                      :primary="formatCost(record.estimatedCostUsd)"
+                      :secondary="unpricedNote(record) || formatDuration(record.activeDurationMs)"
+                    />
                   </template>
                   <template v-else-if="column.key === 'costPerSession'">
                     <span class="number-cell">{{ formatOptionalCost(record.costPerSession) }}</span>
@@ -487,28 +488,30 @@ onMounted(load)
                     <span class="number-cell status-ok">{{ formatOptionalCost(record.cacheSavingsUsd) }}</span>
                   </template>
                   <template v-else-if="column.key === 'p90Latency'">
-                    <div class="metric-comparison">
-                      <span>{{ formatLatency(p90Latency(record)) }}</span>
-                      <span>p50 {{ formatLatency(record.p50ModelLatencyMsPer1kOutputTokens) }}</span>
-                    </div>
+                    <MetricComparisonCell
+                      :primary="formatLatency(p90Latency(record))"
+                      :secondary="`p50 ${formatLatency(record.p50ModelLatencyMsPer1kOutputTokens)}`"
+                    />
                   </template>
                   <template v-else-if="column.key === 'p10Throughput'">
-                    <div class="metric-comparison">
-                      <span>{{ formatThroughput(p10Throughput(record)) }}</span>
-                      <span>p50 {{ formatThroughput(record.p50ModelThroughputTokensPerSecond) }}</span>
-                    </div>
+                    <MetricComparisonCell
+                      :primary="formatThroughput(p10Throughput(record))"
+                      :secondary="`p50 ${formatThroughput(record.p50ModelThroughputTokensPerSecond)}`"
+                    />
                   </template>
                   <template v-else-if="column.key === 'retryPressure'">
-                    <div class="metric-comparison" :class="{ 'status-error': record.avgModelCallsPerSession > 1.5 }">
-                      <span>{{ formatRate(record.avgModelCallsPerSession, 2) }}/session</span>
-                      <span>{{ formatNumber(record.modelCalls) }} {{ t('column.modelCalls') }}</span>
-                    </div>
+                    <MetricComparisonCell
+                      :class="{ 'status-error': record.avgModelCallsPerSession > 1.5 }"
+                      :primary="`${formatRate(record.avgModelCallsPerSession, 2)}/session`"
+                      :secondary="`${formatNumber(record.modelCalls)} ${t('column.modelCalls')}`"
+                    />
                   </template>
                   <template v-else-if="column.key === 'failurePressure'">
-                    <div class="metric-comparison" :class="{ 'status-error': failurePressure(record) > 0 }">
-                      <span>{{ formatPressure(failurePressure(record)) }}</span>
-                      <span>{{ formatPercent(record.toolFailureRate) }} {{ t('column.toolFailure') }}</span>
-                    </div>
+                    <MetricComparisonCell
+                      :class="{ 'status-error': failurePressure(record) > 0 }"
+                      :primary="formatPressure(failurePressure(record))"
+                      :secondary="`${formatPercent(record.toolFailureRate)} ${t('column.toolFailure')}`"
+                    />
                   </template>
                   <template v-else-if="column.key === 'confidence'">
                     <div class="model-signals-confidence-cell">
@@ -545,67 +548,64 @@ onMounted(load)
               size="small"
               :custom-row="driftRowClass"
               :scroll="{ x: 1740 }"
-            >
+              >
               <template #bodyCell="{ column, record }">
                 <template v-if="column.key === 'source'">
-                  <span class="source-identity-name">{{ sourceInfo(record).label }}</span>
-                  <div class="source-identity-meta">{{ sourceInfo(record).secondary || '-' }}</div>
+                  <SourceCell :info="sourceInfo(record)" />
                 </template>
                 <template v-else-if="column.key === 'project'">
-                  <a-tooltip :title="projectInfo(record).full" placement="topLeft">
-                    <span class="model-signals-project">{{ projectInfo(record).main }}</span>
-                  </a-tooltip>
+                  <ProjectCell :info="projectInfo(record)" />
                 </template>
                 <template v-else-if="column.key === 'model'">
-                  <span class="model-name">{{ record.model || t('fallback.unknown') }}</span>
-                  <div class="source-identity-meta">{{ record.modelProvider || '-' }}</div>
+                  <ModelCell :model="record.model" :provider="record.modelProvider" :fallback="t('fallback.unknown')" show-provider />
                 </template>
                 <template v-else-if="column.key === 'samples'">
-                  <div class="metric-comparison">
-                    <span>{{ formatNumber(record.sessionCount) }} {{ t('column.sessions') }}</span>
-                    <span>{{ formatNumber(record.modelCalls) }} {{ t('column.modelCalls') }}</span>
-                  </div>
+                  <MetricComparisonCell
+                    :primary="`${formatNumber(record.sessionCount)} ${t('column.sessions')}`"
+                    :secondary="`${formatNumber(record.modelCalls)} ${t('column.modelCalls')}`"
+                  />
                 </template>
                 <template v-else-if="column.key === 'latency'">
-                  <div class="metric-comparison" :class="metricClass(record.current?.modelLatencyMsPer1kOutputTokens, record.baseline?.modelLatencyMsPer1kOutputTokens, true)">
-                    <span>{{ formatLatency(record.current?.modelLatencyMsPer1kOutputTokens) }}</span>
-                    <span>{{ t('metric.baseline') }} {{ formatLatency(record.baseline?.modelLatencyMsPer1kOutputTokens) }}</span>
-                  </div>
+                  <MetricComparisonCell
+                    :class="metricClass(record.current?.modelLatencyMsPer1kOutputTokens, record.baseline?.modelLatencyMsPer1kOutputTokens, true)"
+                    :primary="formatLatency(record.current?.modelLatencyMsPer1kOutputTokens)"
+                    :secondary="`${t('metric.baseline')} ${formatLatency(record.baseline?.modelLatencyMsPer1kOutputTokens)}`"
+                  />
                 </template>
                 <template v-else-if="column.key === 'throughput'">
-                  <div class="metric-comparison" :class="metricClass(record.current?.modelThroughputTokensPerSecond, record.baseline?.modelThroughputTokensPerSecond)">
-                    <span>{{ formatRate(record.current?.modelThroughputTokensPerSecond, 1) }} tok/s</span>
-                    <span>{{ t('metric.baseline') }} {{ formatRate(record.baseline?.modelThroughputTokensPerSecond, 1) }}</span>
-                  </div>
+                  <MetricComparisonCell
+                    :class="metricClass(record.current?.modelThroughputTokensPerSecond, record.baseline?.modelThroughputTokensPerSecond)"
+                    :primary="`${formatRate(record.current?.modelThroughputTokensPerSecond, 1)} tok/s`"
+                    :secondary="`${t('metric.baseline')} ${formatRate(record.baseline?.modelThroughputTokensPerSecond, 1)}`"
+                  />
                 </template>
                 <template v-else-if="column.key === 'outputThroughput'">
-                  <div class="metric-comparison" :class="metricClass(record.current?.modelThroughputOutputTokensPerSecond, record.baseline?.modelThroughputOutputTokensPerSecond)">
-                    <span>{{ formatRate(record.current?.modelThroughputOutputTokensPerSecond, 1) }}</span>
-                    <span>{{ t('metric.baseline') }} {{ formatRate(record.baseline?.modelThroughputOutputTokensPerSecond, 1) }}</span>
-                  </div>
+                  <MetricComparisonCell
+                    :class="metricClass(record.current?.modelThroughputOutputTokensPerSecond, record.baseline?.modelThroughputOutputTokensPerSecond)"
+                    :primary="formatRate(record.current?.modelThroughputOutputTokensPerSecond, 1)"
+                    :secondary="`${t('metric.baseline')} ${formatRate(record.baseline?.modelThroughputOutputTokensPerSecond, 1)}`"
+                  />
                 </template>
                 <template v-else-if="column.key === 'toolFailure'">
-                  <div class="metric-comparison" :class="metricClass(record.current?.toolFailureRate, record.baseline?.toolFailureRate, true)">
-                    <span>{{ formatPercent(record.current?.toolFailureRate) }}</span>
-                    <span>{{ formatNumber(record.failedToolCalls) }} / {{ formatNumber(record.toolCalls) }}</span>
-                  </div>
+                  <MetricComparisonCell
+                    :class="metricClass(record.current?.toolFailureRate, record.baseline?.toolFailureRate, true)"
+                    :primary="formatPercent(record.current?.toolFailureRate)"
+                    :secondary="`${formatNumber(record.failedToolCalls)} / ${formatNumber(record.toolCalls)}`"
+                  />
                 </template>
                 <template v-else-if="column.key === 'severity'">
-                  <a-tag class="status-tag" :color="severityTagColor(record.drift?.severity)">
-                    {{ severityLabel(record.drift?.severity) }}
-                  </a-tag>
+                  <SeverityTag :color="severityTagColor(record.drift?.severity)" :label="severityLabel(record.drift?.severity)" />
                 </template>
                 <template v-else-if="column.key === 'confidence'">
                   <span class="number-cell">{{ formatConfidence(record.drift?.confidence) }}</span>
                   <div v-if="record.drift?.sampleNote" class="source-identity-meta">{{ record.drift.sampleNote }}</div>
                 </template>
                 <template v-else-if="column.key === 'reasons'">
-                  <div v-if="record.drift?.reasons?.length" class="model-signals-tags">
-                    <a-tag v-for="reason in record.drift.reasons" :key="reason" :color="severityTagColor(record.drift?.severity)">
-                      {{ reason }}
-                    </a-tag>
-                  </div>
-                  <span v-else class="muted">{{ t('fallback.noReason') }}</span>
+                  <ReasonTags
+                    :reasons="record.drift?.reasons"
+                    :color="severityTagColor(record.drift?.severity)"
+                    :empty-text="t('fallback.noReason')"
+                  />
                 </template>
               </template>
             </a-table>
@@ -629,11 +629,10 @@ onMounted(load)
               :row-key="matrixRowKey"
               size="small"
               :scroll="{ x: 980 }"
-            >
+              >
               <template #bodyCell="{ column, record }">
                 <template v-if="column.key === 'source'">
-                  <span class="source-identity-name">{{ sourceInfo(record).label }}</span>
-                  <div class="source-identity-meta">{{ sourceInfo(record).secondary || '-' }}</div>
+                  <SourceCell :info="sourceInfo(record)" />
                 </template>
                 <template v-else-if="column.key === 'models'">
                   <div class="model-signals-matrix-cells">
@@ -646,9 +645,7 @@ onMounted(load)
                       <div class="model-signals-matrix-cell" :class="severityClass(cell.severity)">
                         <div class="model-signals-matrix-cell-head">
                           <span class="model-name">{{ cell.model || t('fallback.unknown') }}</span>
-                          <a-tag class="status-tag" :color="severityTagColor(cell.severity)">
-                            {{ severityLabel(cell.severity) }}
-                          </a-tag>
+                          <SeverityTag :color="severityTagColor(cell.severity)" :label="severityLabel(cell.severity)" />
                         </div>
                         <div class="source-identity-meta">{{ cell.modelProvider || '-' }} · {{ formatNumber(cell.cohortCount) }} {{ t('tab.cohorts') }}</div>
                         <div class="model-signals-matrix-metrics">
@@ -696,17 +693,15 @@ onMounted(load)
               >
                 <template #bodyCell="{ column, record }">
                   <template v-if="column.key === 'project'">
-                    <a-tooltip :title="projectInfo(record).full" placement="topLeft">
-                      <span class="model-signals-project">{{ projectInfo(record).main }}</span>
-                    </a-tooltip>
-                    <div class="source-identity-meta">{{ projectInfo(record).full }}</div>
+                    <ProjectCell :info="projectInfo(record)" show-meta />
                   </template>
                   <template v-else-if="column.key === 'sessions'">
                     <span v-if="!hasProjectMetrics" class="number-cell">{{ formatNumber(record.sessionCount) }}</span>
-                    <div v-else class="metric-comparison">
-                      <span>{{ formatNumber(record.sessionCount) }}</span>
-                      <span>{{ formatNumber(record.totalTokens) }} {{ t('column.tokens') }}</span>
-                    </div>
+                    <MetricComparisonCell
+                      v-else
+                      :primary="formatNumber(record.sessionCount)"
+                      :secondary="`${formatNumber(record.totalTokens)} ${t('column.tokens')}`"
+                    />
                   </template>
                   <template v-else-if="column.key === 'sources'"><span class="number-cell">{{ formatNumber(record.sourceCount) }}</span></template>
                   <template v-else-if="column.key === 'models'"><span class="number-cell">{{ formatNumber(record.modelCount) }}</span></template>
@@ -720,10 +715,10 @@ onMounted(load)
                     </a-tooltip>
                   </template>
                   <template v-else-if="column.key === 'costBurn'">
-                    <div class="metric-comparison">
-                      <span>{{ formatCost(record.current?.estimatedCostUsd) }}</span>
-                      <span>{{ unpricedNote(record.current) || formatOptionalCost(record.current?.costPerActiveHour) }}</span>
-                    </div>
+                    <MetricComparisonCell
+                      :primary="formatCost(record.current?.estimatedCostUsd)"
+                      :secondary="unpricedNote(record.current) || formatOptionalCost(record.current?.costPerActiveHour)"
+                    />
                   </template>
                   <template v-else-if="column.key === 'cacheSavings'">
                     <span class="number-cell status-ok">{{ formatOptionalCost(record.current?.cacheSavingsUsd) }}</span>
@@ -731,47 +726,45 @@ onMounted(load)
                   <template v-else-if="column.key === 'health'">
                     <a-tooltip :title="projectHealthTitle(record)" placement="topLeft">
                       <div class="model-signals-health-cell">
-                        <a-tag class="status-tag" :color="severityTagColor(record.drift?.severity)">
-                          {{ severityLabel(record.drift?.severity) }}
-                        </a-tag>
+                        <SeverityTag :color="severityTagColor(record.drift?.severity)" :label="severityLabel(record.drift?.severity)" />
                         <span class="source-identity-meta">{{ formatConfidence(record.drift?.confidence) }}</span>
                       </div>
                     </a-tooltip>
                   </template>
                   <template v-else-if="column.key === 'latency'">
-                    <div class="metric-comparison" :class="metricClass(p90Latency(record.current), p90Latency(record.baseline), true)">
-                      <span>{{ formatLatency(p90Latency(record.current)) }}</span>
-                      <span>{{ t('metric.baseline') }} {{ formatLatency(p90Latency(record.baseline)) }}</span>
-                    </div>
+                    <MetricComparisonCell
+                      :class="metricClass(p90Latency(record.current), p90Latency(record.baseline), true)"
+                      :primary="formatLatency(p90Latency(record.current))"
+                      :secondary="`${t('metric.baseline')} ${formatLatency(p90Latency(record.baseline))}`"
+                    />
                   </template>
                   <template v-else-if="column.key === 'throughput'">
-                    <div class="metric-comparison" :class="metricClass(p10Throughput(record.current), p10Throughput(record.baseline))">
-                      <span>{{ formatThroughput(p10Throughput(record.current)) }}</span>
-                      <span>{{ t('metric.baseline') }} {{ formatThroughput(p10Throughput(record.baseline)) }}</span>
-                    </div>
+                    <MetricComparisonCell
+                      :class="metricClass(p10Throughput(record.current), p10Throughput(record.baseline))"
+                      :primary="formatThroughput(p10Throughput(record.current))"
+                      :secondary="`${t('metric.baseline')} ${formatThroughput(p10Throughput(record.baseline))}`"
+                    />
                   </template>
                   <template v-else-if="column.key === 'pressure'">
-                    <div class="metric-comparison" :class="metricClass(failurePressure(record.current), failurePressure(record.baseline), true)">
-                      <span>{{ formatPressure(failurePressure(record.current)) }}</span>
-                      <span>{{ formatRate(record.current?.avgModelCallsPerSession, 2) }}/session</span>
-                    </div>
+                    <MetricComparisonCell
+                      :class="metricClass(failurePressure(record.current), failurePressure(record.baseline), true)"
+                      :primary="formatPressure(failurePressure(record.current))"
+                      :secondary="`${formatRate(record.current?.avgModelCallsPerSession, 2)}/session`"
+                    />
                   </template>
                   <template v-else-if="column.key === 'severity'">
-                    <a-tag class="status-tag" :color="severityTagColor(record.drift?.severity)">
-                      {{ severityLabel(record.drift?.severity) }}
-                    </a-tag>
+                    <SeverityTag :color="severityTagColor(record.drift?.severity)" :label="severityLabel(record.drift?.severity)" />
                   </template>
                   <template v-else-if="column.key === 'confidence'">
                     <span class="number-cell">{{ formatConfidence(record.drift?.confidence) }}</span>
                     <div v-if="record.drift?.sampleNote" class="source-identity-meta">{{ record.drift.sampleNote }}</div>
                   </template>
                   <template v-else-if="column.key === 'reasons'">
-                    <div v-if="record.drift?.reasons?.length" class="model-signals-tags">
-                      <a-tag v-for="reason in record.drift.reasons" :key="reason" :color="severityTagColor(record.drift?.severity)">
-                        {{ reason }}
-                      </a-tag>
-                    </div>
-                    <span v-else class="muted">{{ t('fallback.noReason') }}</span>
+                    <ReasonTags
+                      :reasons="record.drift?.reasons"
+                      :color="severityTagColor(record.drift?.severity)"
+                      :empty-text="t('fallback.noReason')"
+                    />
                   </template>
                 </template>
               </a-table>
@@ -804,23 +797,20 @@ onMounted(load)
                   <div class="source-identity-meta">{{ formatNumber(record.totalTokens) }} {{ t('column.tokens') }}</div>
                 </template>
                 <template v-else-if="column.key === 'source'">
-                  <span class="source-identity-name">{{ sourceInfo(record).label }}</span>
-                  <div class="source-identity-meta">{{ sourceInfo(record).secondary || '-' }}</div>
+                  <SourceCell :info="sourceInfo(record)" />
                 </template>
                 <template v-else-if="column.key === 'project'">
-                  <a-tooltip :title="projectInfo(record).full" placement="topLeft">
-                    <span class="model-signals-project">{{ projectInfo(record).main }}</span>
-                  </a-tooltip>
+                  <ProjectCell :info="projectInfo(record)" />
                 </template>
                 <template v-else-if="column.key === 'model'">
-                  <span class="model-name">{{ record.model || t('fallback.unknown') }}</span>
+                  <ModelCell :model="record.model" :fallback="t('fallback.unknown')" />
                 </template>
                 <template v-else-if="column.key === 'signal'">
-                  <div class="model-signals-tags">
-                    <a-tag v-for="reason in record.reasons" :key="reason" :color="record.severity === 'high' ? 'warning' : 'processing'">
-                      {{ reason }}
-                    </a-tag>
-                  </div>
+                  <ReasonTags
+                    :reasons="record.reasons"
+                    :color="record.severity === 'high' ? 'warning' : 'processing'"
+                    :empty-text="t('fallback.noReason')"
+                  />
                 </template>
                 <template v-else-if="column.key === 'outputExpansion'"><span class="number-cell">{{ formatPercent(record.outputExpansionRate) }}</span></template>
                 <template v-else-if="column.key === 'reasoning'"><span class="number-cell">{{ formatPercent(record.reasoningTokenShare) }}</span></template>
@@ -900,8 +890,7 @@ onMounted(load)
 }
 
 .model-signals-session,
-.model-signals-date,
-.model-signals-project {
+.model-signals-date {
   display: inline-block;
   max-width: 100%;
   overflow: hidden;
@@ -914,12 +903,6 @@ onMounted(load)
 .model-signals-date {
   color: var(--am-text);
   font-variant-numeric: tabular-nums;
-}
-
-.model-signals-project + .source-identity-meta {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .model-signals-confidence-cell,
@@ -968,29 +951,6 @@ onMounted(load)
   max-width: 100%;
   margin-right: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.metric-comparison {
-  display: grid;
-  justify-items: end;
-  gap: 1px;
-  min-width: 0;
-  font-variant-numeric: tabular-nums;
-}
-
-.metric-comparison > span:first-child {
-  color: inherit;
-  font-weight: 650;
-}
-
-.metric-comparison > span:last-child {
-  max-width: 100%;
-  overflow: hidden;
-  color: var(--am-muted);
-  font-size: 11px;
-  line-height: 15px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

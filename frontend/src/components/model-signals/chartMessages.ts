@@ -156,3 +156,10 @@ export const modelSignalsMetricChartMessages = {
     'fallback.noReason': '无漂移原因'
   }
 } as const
+
+export type ModelSignalsMetricChartMessageKey = keyof typeof modelSignalsMetricChartMessages.en
+export type ModelSignalsMetricChartInterpolationValue = string | number | boolean | null | undefined
+export type ModelSignalsMetricChartTranslate = (
+  key: ModelSignalsMetricChartMessageKey,
+  params?: Record<string, ModelSignalsMetricChartInterpolationValue>
+) => string

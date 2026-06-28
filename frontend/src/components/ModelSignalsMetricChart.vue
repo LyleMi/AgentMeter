@@ -6,68 +6,29 @@ import ASpin from 'ant-design-vue/es/spin'
 import ATag from 'ant-design-vue/es/tag'
 import ATooltip from 'ant-design-vue/es/tooltip'
 import { BarChartOutlined, LineChartOutlined, UndoOutlined } from '@ant-design/icons-vue'
-import {
-  formatCost,
-  formatNumber,
-  projectDisplay,
-  type ModelSignalMetricSet,
-  type ModelSignalProjectHotspot,
-  type ModelSignalsDailyMetric,
-  type ModelSignalsProjectMetric
-} from '../api'
-import { chartPalette } from '../chartPalette'
+import type { ModelSignalsDailyMetric } from '../api'
 import { useEChart } from '../composables/useEChart'
 import { useMessages } from '../i18n'
 import { modelSignalsMetricChartMessages } from './model-signals/chartMessages'
 import {
-  formatModelSignalPercent as formatPercent,
-  formatModelSignalRate as formatRate
-} from '../presentation/modelSignals'
-
-type ChartMode = 'daily' | 'projects'
-type ChartKind = 'bar' | 'line'
-type MetricKind = 'cost' | 'latency' | 'throughput' | 'percent' | 'pressure' | 'ratio'
-type MetricGroupKey = 'performance' | 'cost' | 'pressure' | 'shape'
-type MetricWindow = 'current' | 'baseline' | 'total'
-type MetricDirection = 'lower' | 'higher' | 'context'
-type MetricKey =
-  | 'p90Latency'
-  | 'p50Latency'
-  | 'p10Throughput'
-  | 'outputThroughput'
-  | 'costBurn'
-  | 'costPerSession'
-  | 'costPerActiveHour'
-  | 'costPer1kTokens'
-  | 'cacheSavings'
-  | 'failurePressure'
-  | 'degradationRisk'
-  | 'retryPressure'
-  | 'modelFailureRate'
-  | 'toolFailureRate'
-  | 'cacheMiss'
-  | 'reasoningShare'
-  | 'outputExpansion'
-  | 'toolDependency'
-type ProjectChartRow = ModelSignalsProjectMetric | ModelSignalProjectHotspot
-type ChartRow = ModelSignalsDailyMetric | ProjectChartRow
-
-interface MetricDefinition {
-  key: MetricKey
-  label: string
-  description: string
-  group: MetricGroupKey
-  kind: MetricKind
-  color: string
-  chart: ChartKind
-  direction: MetricDirection
-  value: (metric?: ModelSignalMetricSet) => number | undefined
-}
-
-interface MetricGroup {
-  key: MetricGroupKey
-  label: string
-}
+  buildDailyChartOption,
+  buildProjectChartOption
+} from './model-signals/chartOptions'
+import {
+  buildMetricDefinitions,
+  buildMetricGroups,
+  defaultMetricsForMode,
+  hasBaselineComparison,
+  hasChartData,
+  metricKindsFor,
+  plottedRowsForMode,
+  resolveSelectedMetrics,
+  shouldNormalizeProjectScale,
+  type ChartMode,
+  type MetricGroupKey,
+  type MetricKey,
+  type ProjectChartRow
+} from './model-signals/chartMetrics'
 
 const props = withDefaults(
   defineProps<{
@@ -92,221 +53,14 @@ const showBaselineComparison = ref(false)
 const { chartEl, getChart, disposeChart } = useEChart()
 const { t, locale } = useMessages(modelSignalsMetricChartMessages)
 
-const metricGroups = computed<MetricGroup[]>(() => [
-  { key: 'performance', label: t('group.performance') },
-  { key: 'cost', label: t('group.cost') },
-  { key: 'pressure', label: t('group.pressure') },
-  { key: 'shape', label: t('group.shape') }
-])
-
-const metricDefinitions = computed<MetricDefinition[]>(() => [
-  {
-    key: 'p90Latency',
-    label: t('metric.p90Latency'),
-    description: t('metric.p90LatencyDesc'),
-    group: 'performance',
-    kind: 'latency',
-    color: chartPalette.danger,
-    chart: 'line',
-    direction: 'lower',
-    value: (metric) => firstFinite(metric?.p90ModelLatencyMsPer1kOutputTokens, metric?.modelLatencyMsPer1kOutputTokens)
-  },
-  {
-    key: 'p50Latency',
-    label: t('metric.p50Latency'),
-    description: t('metric.p50LatencyDesc'),
-    group: 'performance',
-    kind: 'latency',
-    color: '#ea580c',
-    chart: 'line',
-    direction: 'lower',
-    value: (metric) => firstFinite(metric?.p50ModelLatencyMsPer1kOutputTokens, metric?.modelLatencyMsPer1kOutputTokens)
-  },
-  {
-    key: 'p10Throughput',
-    label: t('metric.p10Throughput'),
-    description: t('metric.p10ThroughputDesc'),
-    group: 'performance',
-    kind: 'throughput',
-    color: chartPalette.success,
-    chart: 'line',
-    direction: 'higher',
-    value: (metric) => firstFinite(metric?.p10ModelThroughputTokensPerSecond, metric?.modelThroughputTokensPerSecond)
-  },
-  {
-    key: 'outputThroughput',
-    label: t('metric.outputThroughput'),
-    description: t('metric.outputThroughputDesc'),
-    group: 'performance',
-    kind: 'throughput',
-    color: chartPalette.info,
-    chart: 'line',
-    direction: 'higher',
-    value: (metric) => finiteNumber(metric?.modelThroughputOutputTokensPerSecond)
-  },
-  {
-    key: 'costBurn',
-    label: t('metric.costBurn'),
-    description: t('metric.costBurnDesc'),
-    group: 'cost',
-    kind: 'cost',
-    color: chartPalette.primary,
-    chart: 'bar',
-    direction: 'lower',
-    value: (metric) => finiteNumber(metric?.estimatedCostUsd)
-  },
-  {
-    key: 'costPerSession',
-    label: t('metric.costPerSession'),
-    description: t('metric.costPerSessionDesc'),
-    group: 'cost',
-    kind: 'cost',
-    color: '#7c3aed',
-    chart: 'bar',
-    direction: 'lower',
-    value: (metric) => finiteNumber(metric?.costPerSession)
-  },
-  {
-    key: 'costPerActiveHour',
-    label: t('metric.costPerActiveHour'),
-    description: t('metric.costPerActiveHourDesc'),
-    group: 'cost',
-    kind: 'cost',
-    color: chartPalette.indigo,
-    chart: 'bar',
-    direction: 'lower',
-    value: (metric) => finiteNumber(metric?.costPerActiveHour)
-  },
-  {
-    key: 'costPer1kTokens',
-    label: t('metric.costPer1kTokens'),
-    description: t('metric.costPer1kTokensDesc'),
-    group: 'cost',
-    kind: 'cost',
-    color: chartPalette.sky,
-    chart: 'bar',
-    direction: 'lower',
-    value: (metric) => finiteNumber(metric?.costPer1kTokens)
-  },
-  {
-    key: 'cacheSavings',
-    label: t('metric.cacheSavings'),
-    description: t('metric.cacheSavingsDesc'),
-    group: 'cost',
-    kind: 'cost',
-    color: '#059669',
-    chart: 'bar',
-    direction: 'higher',
-    value: (metric) => finiteNumber(metric?.cacheSavingsUsd)
-  },
-  {
-    key: 'failurePressure',
-    label: t('metric.failurePressure'),
-    description: t('metric.failurePressureDesc'),
-    group: 'pressure',
-    kind: 'pressure',
-    color: chartPalette.warning,
-    chart: 'line',
-    direction: 'lower',
-    value: (metric) => finiteNumber(metric?.failurePressure)
-  },
-  {
-    key: 'degradationRisk',
-    label: t('metric.degradationRisk'),
-    description: t('metric.degradationRiskDesc'),
-    group: 'pressure',
-    kind: 'percent',
-    color: '#be123c',
-    chart: 'line',
-    direction: 'lower',
-    value: (metric) => finiteNumber(metric?.degradationRiskScore)
-  },
-  {
-    key: 'retryPressure',
-    label: t('metric.retryPressure'),
-    description: t('metric.retryPressureDesc'),
-    group: 'pressure',
-    kind: 'pressure',
-    color: '#9333ea',
-    chart: 'line',
-    direction: 'lower',
-    value: (metric) => finiteNumber(metric?.avgModelCallsPerSession)
-  },
-  {
-    key: 'modelFailureRate',
-    label: t('metric.modelFailureRate'),
-    description: t('metric.modelFailureRateDesc'),
-    group: 'pressure',
-    kind: 'percent',
-    color: chartPalette.danger,
-    chart: 'line',
-    direction: 'lower',
-    value: (metric) => safeRate(metric?.failedModelCalls, metric?.modelCalls)
-  },
-  {
-    key: 'toolFailureRate',
-    label: t('metric.toolFailureRate'),
-    description: t('metric.toolFailureRateDesc'),
-    group: 'pressure',
-    kind: 'percent',
-    color: '#c2410c',
-    chart: 'line',
-    direction: 'lower',
-    value: (metric) => finiteNumber(metric?.toolFailureRate)
-  },
-  {
-    key: 'cacheMiss',
-    label: t('metric.cacheMiss'),
-    description: t('metric.cacheMissDesc'),
-    group: 'shape',
-    kind: 'percent',
-    color: '#d97706',
-    chart: 'line',
-    direction: 'lower',
-    value: (metric) => finiteNumber(metric?.cacheMissRate)
-  },
-  {
-    key: 'reasoningShare',
-    label: t('metric.reasoningShare'),
-    description: t('metric.reasoningShareDesc'),
-    group: 'shape',
-    kind: 'percent',
-    color: chartPalette.indigo,
-    chart: 'line',
-    direction: 'context',
-    value: (metric) => reasoningOverhead(metric)
-  },
-  {
-    key: 'outputExpansion',
-    label: t('metric.outputExpansion'),
-    description: t('metric.outputExpansionDesc'),
-    group: 'shape',
-    kind: 'ratio',
-    color: chartPalette.primary,
-    chart: 'line',
-    direction: 'context',
-    value: (metric) => generationOverhead(metric)
-  },
-  {
-    key: 'toolDependency',
-    label: t('metric.toolDependency'),
-    description: t('metric.toolDependencyDesc'),
-    group: 'shape',
-    kind: 'percent',
-    color: chartPalette.axis,
-    chart: 'line',
-    direction: 'lower',
-    value: (metric) => finiteNumber(metric?.toolDependencyRate)
-  }
-])
-
-const selectedMetrics = computed(() => {
-  const selected = selectedMetricKeys.value
-    .map((key) => metricDefinitions.value.find((item) => item.key === key))
-    .filter((item): item is MetricDefinition => Boolean(item))
-  return selected.length ? selected : metricDefinitions.value.slice(0, 1)
+const metricGroups = computed(() => buildMetricGroups(t))
+const metricDefinitions = computed(() => buildMetricDefinitions(t))
+const selectedMetrics = computed(() => resolveSelectedMetrics(selectedMetricKeys.value, metricDefinitions.value))
+const primaryMetric = computed(() => {
+  const metric = selectedMetrics.value[0] || metricDefinitions.value[0]
+  if (!metric) throw new Error('No model signal metrics configured')
+  return metric
 })
-const primaryMetric = computed(() => selectedMetrics.value[0] || metricDefinitions.value[0])
 const modeOptions = computed(() => [
   { label: t('mode.daily'), value: 'daily' },
   { label: t('mode.projects'), value: 'projects' }
@@ -322,32 +76,17 @@ const directionLabel = computed(() => {
   return t('direction.mixed')
 })
 const selectionCountLabel = computed(() => t('selection.count', { count: selectedMetrics.value.length }))
-const plottedRows = computed<ChartRow[]>(() => {
-  if (selectedMode.value === 'daily') {
-    return [...props.dailyRows].sort((left, right) => left.date.localeCompare(right.date))
-  }
-  return [...props.projectRows]
-    .sort((left, right) => metricSortValue(right) - metricSortValue(left))
-    .slice(0, 10)
-})
-const hasChart = computed(() =>
-  selectedMetrics.value.some((metric) =>
-    plottedRows.value.some((row) => metricValueForRow(row, metric, 'current') !== undefined)
-  )
+const plottedRows = computed(() =>
+  plottedRowsForMode(selectedMode.value, props.dailyRows, props.projectRows, primaryMetric.value)
 )
+const hasChart = computed(() => hasChartData(plottedRows.value, selectedMetrics.value, selectedMode.value))
 const canCompareBaseline = computed(() =>
-  selectedMetrics.value.some((metric) =>
-    plottedRows.value.some((row) => metricValueForRow(row, metric, 'baseline') !== undefined)
-  )
+  hasBaselineComparison(plottedRows.value, selectedMetrics.value, selectedMode.value)
 )
-const activeMetricKinds = computed<MetricKind[]>(() => {
-  const keys: MetricKind[] = []
-  selectedMetrics.value.forEach((metric) => {
-    if (!keys.includes(metric.kind)) keys.push(metric.kind)
-  })
-  return keys
-})
-const normalizeProjectScale = computed(() => selectedMode.value === 'projects' && activeMetricKinds.value.length > 1)
+const activeMetricKinds = computed(() => metricKindsFor(selectedMetrics.value))
+const normalizeProjectScale = computed(() =>
+  shouldNormalizeProjectScale(selectedMode.value, activeMetricKinds.value)
+)
 
 watch(() => props.initialMode, (mode) => {
   selectedMode.value = mode
@@ -388,280 +127,32 @@ function renderChart() {
 }
 
 function renderDailyChart() {
-  const rows = plottedRows.value as ModelSignalsDailyMetric[]
   const chart = getChart()
   if (!chart) return
 
-  chart.setOption({
-    tooltip: {
-      trigger: 'axis',
-      backgroundColor: chartPalette.tooltipBg,
-      borderWidth: 0,
-      textStyle: { color: chartPalette.tooltipText, fontSize: 12 },
-      axisPointer: { type: 'cross', lineStyle: { color: chartPalette.pointer }, shadowStyle: { color: chartPalette.pointer } },
-      formatter: (params: unknown) => dailyTooltipMarkup(params)
-    },
-    grid: dailyGrid(),
-    legend: legendOptions(),
-    xAxis: {
-      type: 'category',
-      data: rows.map((row) => row.date.slice(5)),
-      boundaryGap: true,
-      axisTick: { show: false },
-      axisLine: { lineStyle: { color: chartPalette.border } },
-      axisLabel: { color: chartPalette.axis, fontSize: 11, hideOverlap: true }
-    },
-    yAxis: activeMetricKinds.value.map((kind, index) => valueAxisOptions(kind, index)),
-    series: [
-      ...selectedMetrics.value.flatMap((metric) => dailyMetricSeries(metric, rows)),
-      lowSampleSeries(rows)
-    ].filter(Boolean)
-  }, true)
+  chart.setOption(buildDailyChartOption({
+    rows: plottedRows.value as ModelSignalsDailyMetric[],
+    selectedMetrics: selectedMetrics.value,
+    primaryMetric: primaryMetric.value,
+    activeMetricKinds: activeMetricKinds.value,
+    showBaselineComparison: showBaselineComparison.value,
+    t
+  }), true)
 }
 
 function renderProjectChart() {
-  const rows = plottedRows.value as ProjectChartRow[]
   const chart = getChart()
   if (!chart) return
-  const normalized = normalizeProjectScale.value
-  const axisKind = activeMetricKinds.value[0] || primaryMetric.value.kind
 
-  chart.setOption({
-    tooltip: {
-      trigger: 'axis',
-      backgroundColor: chartPalette.tooltipBg,
-      borderWidth: 0,
-      textStyle: { color: chartPalette.tooltipText, fontSize: 12 },
-      axisPointer: { type: 'shadow', shadowStyle: { color: chartPalette.pointer } },
-      formatter: (params: unknown) => projectTooltipMarkup(params)
-    },
-    grid: { left: 136, right: 56, top: 68, bottom: 38 },
-    legend: legendOptions(),
-    xAxis: {
-      type: 'value',
-      name: normalized ? t('axis.relative') : axisName(axisKind),
-      nameTextStyle: { color: chartPalette.axis, fontSize: 11, padding: [0, 0, 0, 4] },
-      axisLabel: { color: chartPalette.axis, fontSize: 11, formatter: (value: number) => normalized ? `${Math.round(value)}%` : axisLabelForKind(axisKind, value) },
-      splitLine: { lineStyle: { color: chartPalette.grid } }
-    },
-    yAxis: {
-      type: 'category',
-      inverse: true,
-      data: rows.map((row) => projectInfo(row).main),
-      axisTick: { show: false },
-      axisLine: { lineStyle: { color: chartPalette.border } },
-      axisLabel: { color: chartPalette.text, fontSize: 11, overflow: 'truncate', width: 110 }
-    },
-    series: selectedMetrics.value.flatMap((metric) => projectMetricSeries(metric, rows, normalized))
-  }, true)
-}
-
-function dailyMetricSeries(metric: MetricDefinition, rows: ModelSignalsDailyMetric[]) {
-  const series: Array<Record<string, unknown>> = [{
-    name: metric.label,
-    type: metric.chart,
-    yAxisIndex: metricAxisIndex(metric),
-    smooth: metric.chart === 'line',
-    barMaxWidth: 16,
-    symbolSize: 7,
-    lineStyle: { width: 2, color: metric.color },
-    itemStyle: { color: metric.color, borderRadius: metric.chart === 'bar' ? [3, 3, 0, 0] : 0 },
-    emphasis: { focus: 'series' },
-    data: rows.map((row) => valueOrNull(metricValueForRow(row, metric, 'current')))
-  }]
-  if (showBaselineComparison.value) {
-    series.push({
-      name: baselineSeriesName(metric),
-      type: metric.chart,
-      yAxisIndex: metricAxisIndex(metric),
-      smooth: metric.chart === 'line',
-      barMaxWidth: 12,
-      symbolSize: 5,
-      lineStyle: { width: 2, type: 'dashed', color: metric.color, opacity: 0.5 },
-      itemStyle: { color: metric.color, opacity: 0.28, borderRadius: metric.chart === 'bar' ? [3, 3, 0, 0] : 0 },
-      emphasis: { focus: 'series' },
-      data: rows.map((row) => valueOrNull(metricValueForRow(row, metric, 'baseline')))
-    })
-  }
-  return series
-}
-
-function lowSampleSeries(rows: ModelSignalsDailyMetric[]) {
-  const metric = primaryMetric.value
-  return {
-    name: t('series.lowSample'),
-    type: 'scatter',
-    yAxisIndex: metricAxisIndex(metric),
-    symbol: 'diamond',
-    symbolSize: 11,
-    itemStyle: { color: chartPalette.warning },
-    data: rows.map((row) => row.lowSample ? valueOrNull(metricValueForRow(row, metric, 'current')) : null)
-  }
-}
-
-function projectMetricSeries(metric: MetricDefinition, rows: ProjectChartRow[], normalized: boolean) {
-  const currentSeries: Record<string, unknown> = {
-    name: metric.label,
-    type: 'bar',
-    barMaxWidth: 12,
-    itemStyle: { color: metric.color, borderRadius: [0, 3, 3, 0] },
-    emphasis: { focus: 'series' },
-    data: rows.map((row) => valueOrNull(projectPlotValue(row, metric, 'current', normalized)))
-  }
-  if (!showBaselineComparison.value) return [currentSeries]
-
-  return [
-    currentSeries,
-    {
-      name: baselineSeriesName(metric),
-      type: 'bar',
-      barMaxWidth: 10,
-      itemStyle: { color: metric.color, opacity: 0.28, borderRadius: [0, 3, 3, 0] },
-      emphasis: { focus: 'series' },
-      data: rows.map((row) => valueOrNull(projectPlotValue(row, metric, 'baseline', normalized)))
-    }
-  ]
-}
-
-function dailyTooltipMarkup(params: unknown) {
-  const items = Array.isArray(params) ? params : [params]
-  const first = items[0] as { dataIndex?: number; axisValue?: string } | undefined
-  const row = plottedRows.value[first?.dataIndex ?? 0] as ModelSignalsDailyMetric | undefined
-  if (!row) return ''
-  return [
-    `<strong>${escapeHtml(row.date || first?.axisValue || '')}</strong>`,
-    ...selectedMetrics.value.map((metric) => metricTooltipLine(row, metric)),
-    `<div>${t('tooltip.sessions')}: ${formatNumber(row.sessionCount)}</div>`,
-    `<div>${t('tooltip.modelCalls')}: ${formatNumber(row.modelCalls)}</div>`,
-    `<div>${t('tooltip.tokens')}: ${formatNumber(row.totalTokens)}</div>`,
-    `<div>${t('tooltip.confidence')}: ${escapeHtml(row.drift?.confidence || t('fallback.unknown'))}</div>`,
-    `<div>${t('tooltip.reason')}: ${escapeHtml(row.keyReason || row.drift?.sampleNote || row.drift?.reasons?.[0] || t('fallback.noReason'))}</div>`
-  ].join('')
-}
-
-function projectTooltipMarkup(params: unknown) {
-  const items = Array.isArray(params) ? params : [params]
-  const first = items[0] as { dataIndex?: number; axisValue?: string } | undefined
-  const row = plottedRows.value[first?.dataIndex ?? 0] as ProjectChartRow | undefined
-  if (!row) return ''
-  const info = projectInfo(row)
-  const current = projectMetricSet(row, 'current')
-  const drift = row.drift
-  return [
-    `<strong>${escapeHtml(info.full || first?.axisValue || '')}</strong>`,
-    ...selectedMetrics.value.map((metric) => metricTooltipLine(row, metric)),
-    `<div>${t('tooltip.sessions')}: ${formatNumber(current?.sessionCount || row.sessionCount)}</div>`,
-    `<div>${t('tooltip.tokens')}: ${formatNumber(current?.totalTokens || row.totalTokens)}</div>`,
-    `<div>${t('tooltip.confidence')}: ${escapeHtml(drift?.confidence || t('fallback.unknown'))}</div>`,
-    `<div>${t('tooltip.reason')}: ${escapeHtml(drift?.reasons?.[0] || drift?.sampleNote || t('fallback.noReason'))}</div>`
-  ].join('')
-}
-
-function metricTooltipLine(row: ChartRow, metric: MetricDefinition) {
-  const currentValue = metricValueForRow(row, metric, 'current')
-  const baselineValue = metricValueForRow(row, metric, 'baseline')
-  const baseline = showBaselineComparison.value
-    ? ` / ${t('series.baseline')} ${escapeHtml(formatMetricValue(metric, baselineValue))}`
-    : ''
-  return `<div><span style="color:${metric.color}">●</span> ${escapeHtml(metric.label)}: ${escapeHtml(formatMetricValue(metric, currentValue))}${baseline}</div>`
-}
-
-function metricSortValue(row: ProjectChartRow) {
-  return metricValueForProject(row, primaryMetric.value, 'current') ?? metricValueForProject(row, primaryMetric.value, 'total') ?? -1
-}
-
-function metricValueForRow(row: ChartRow, metric: MetricDefinition, window: MetricWindow = 'current') {
-  if (selectedMode.value === 'projects') return metricValueForProject(row as ProjectChartRow, metric, window)
-  const dailyRow = row as ModelSignalsDailyMetric
-  if (window === 'baseline') return hasMetricSetSamples(dailyRow.baseline) ? metric.value(dailyRow.baseline) : undefined
-  return metric.value(dailyRow)
-}
-
-function metricValueForProject(row: ProjectChartRow, metric: MetricDefinition, window: MetricWindow) {
-  const set = projectMetricSet(row, window)
-  if (window === 'baseline' && !hasMetricSetSamples(set)) return undefined
-  return metric.value(set)
-}
-
-function projectMetricSet(row: ProjectChartRow, window: MetricWindow): ModelSignalMetricSet | undefined {
-  if (window === 'current') return row.current || row
-  if (window === 'baseline') return row.baseline
-  return row
-}
-
-function projectPlotValue(row: ProjectChartRow, metric: MetricDefinition, window: MetricWindow, normalized: boolean) {
-  const value = metricValueForProject(row, metric, window)
-  if (value === undefined || !normalized) return value
-  const max = projectMetricMax(metric)
-  if (max <= 0) return 0
-  return value / max * 100
-}
-
-function projectMetricMax(metric: MetricDefinition) {
-  const values: number[] = []
-  ;(plottedRows.value as ProjectChartRow[]).forEach((row) => {
-    const current = metricValueForProject(row, metric, 'current')
-    if (current !== undefined) values.push(Math.abs(current))
-    if (showBaselineComparison.value) {
-      const baseline = metricValueForProject(row, metric, 'baseline')
-      if (baseline !== undefined) values.push(Math.abs(baseline))
-    }
-  })
-  return Math.max(...values, 0)
-}
-
-function metricAxisIndex(metric: MetricDefinition) {
-  const index = activeMetricKinds.value.indexOf(metric.kind)
-  return index >= 0 ? index : 0
-}
-
-function valueAxisOptions(kind: MetricKind, index: number) {
-  const position = index % 2 === 0 ? 'left' : 'right'
-  const sameSideOffset = Math.floor(index / 2) * 54
-  return {
-    type: 'value',
-    name: axisName(kind),
-    position,
-    offset: sameSideOffset,
-    nameTextStyle: { color: chartPalette.axis, fontSize: 11, padding: [0, 0, 0, 4] },
-    axisLine: { show: index > 0, lineStyle: { color: chartPalette.border } },
-    axisLabel: { color: chartPalette.axis, fontSize: 11, formatter: (value: number) => axisLabelForKind(kind, value) },
-    splitLine: { show: index === 0, lineStyle: { color: chartPalette.grid } }
-  }
-}
-
-function dailyGrid() {
-  const leftCount = activeMetricKinds.value.filter((_, index) => index % 2 === 0).length
-  const rightCount = activeMetricKinds.value.length - leftCount
-  return {
-    left: 76 + Math.max(0, leftCount - 1) * 54,
-    right: 50 + Math.max(0, rightCount - 1) * 58,
-    top: 68,
-    bottom: 44
-  }
-}
-
-function legendOptions() {
-  return {
-    show: true,
-    top: 2,
-    left: 8,
-    right: 8,
-    type: 'scroll',
-    orient: 'horizontal',
-    itemGap: 10,
-    itemWidth: 10,
-    itemHeight: 10,
-    pageButtonPosition: 'end',
-    pageIconSize: 10,
-    textStyle: {
-      color: chartPalette.axis,
-      fontSize: 12,
-      width: 96,
-      overflow: 'truncate',
-      ellipsis: '...'
-    }
-  }
+  chart.setOption(buildProjectChartOption({
+    rows: plottedRows.value as ProjectChartRow[],
+    selectedMetrics: selectedMetrics.value,
+    primaryMetric: primaryMetric.value,
+    activeMetricKinds: activeMetricKinds.value,
+    normalizeProjectScale: normalizeProjectScale.value,
+    showBaselineComparison: showBaselineComparison.value,
+    t
+  }), true)
 }
 
 function toggleMetric(key: MetricKey) {
@@ -689,93 +180,6 @@ function isLastSelectedMetric(key: MetricKey) {
 
 function metricsForGroup(group: MetricGroupKey) {
   return metricDefinitions.value.filter((metric) => metric.group === group)
-}
-
-function baselineSeriesName(metric: MetricDefinition) {
-  return `${metric.label} ${t('series.baseline')}`
-}
-
-function defaultMetricsForMode(mode: ChartMode): MetricKey[] {
-  return mode === 'projects'
-    ? ['degradationRisk', 'costPer1kTokens', 'failurePressure']
-    : ['degradationRisk', 'p90Latency', 'p10Throughput']
-}
-
-function valueOrNull(value?: number) {
-  return value === undefined ? null : value
-}
-
-function firstFinite(...values: Array<number | undefined>) {
-  return values.find((value) => Number.isFinite(value))
-}
-
-function finiteNumber(value?: number) {
-  return Number.isFinite(value) ? value : undefined
-}
-
-function reasoningOverhead(metric?: ModelSignalMetricSet) {
-  return firstFinite(metric?.reasoningOverheadRate, metric?.reasoningTokenOverhead, metric?.reasoningOutputShare, metric?.reasoningTokenShare)
-}
-
-function generationOverhead(metric?: ModelSignalMetricSet) {
-  return firstFinite(metric?.generationTokenOverhead, metric?.outputExpansionRate)
-}
-
-function safeRate(numerator?: number, denominator?: number) {
-  if (!Number.isFinite(denominator) || !denominator) return undefined
-  return (Number.isFinite(numerator) ? numerator || 0 : 0) / denominator
-}
-
-function hasMetricSetSamples(metric?: ModelSignalMetricSet) {
-  return Boolean(metric && (metric.sessionCount > 0 || metric.modelCalls > 0))
-}
-
-function projectInfo(row: { projectPath?: string }) {
-  return projectDisplay(row.projectPath)
-}
-
-function formatMetricValue(metric: MetricDefinition, value?: number) {
-  if (value === undefined) return t('tooltip.unavailable')
-  if (metric.kind === 'cost') return formatCost(value)
-  if (metric.kind === 'latency') return `${formatRate(value, 0)} ms/1k`
-  if (metric.kind === 'throughput') return `${formatRate(value, 1)} tok/s`
-  if (metric.kind === 'percent') return formatPercent(value)
-  if (metric.kind === 'pressure') return `${formatRate(value, 2)}/session`
-  if (metric.kind === 'ratio') return `${formatRate(value, 2)}x`
-  return formatRate(value, 2)
-}
-
-function axisName(kind: MetricKind) {
-  return t(`axis.${kind}`)
-}
-
-function axisLabelForKind(kind: MetricKind, value: number) {
-  if (kind === 'cost') return compactCost(value)
-  if (kind === 'percent') return formatPercent(value)
-  if (kind === 'ratio') return `${formatRate(value, 1)}x`
-  return compactNumber(value)
-}
-
-function compactCost(value: number) {
-  if (Math.abs(value) >= 1) return formatCost(value)
-  if (Math.abs(value) >= 0.01) return `$${formatRate(value, 2)}`
-  return `$${formatRate(value, 4)}`
-}
-
-function compactNumber(value: number) {
-  const normalized = Number(value || 0)
-  if (Math.abs(normalized) >= 1_000_000) return `${formatRate(normalized / 1_000_000, 1)}M`
-  if (Math.abs(normalized) >= 1_000) return `${formatRate(normalized / 1_000, 1)}K`
-  return formatRate(normalized, Math.abs(normalized) >= 10 ? 0 : 1)
-}
-
-function escapeHtml(value: string | number | undefined) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
 }
 </script>
 
