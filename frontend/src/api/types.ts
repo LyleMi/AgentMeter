@@ -223,6 +223,58 @@ export interface ModelSignalRates {
   toolDependencyRate: number
 }
 
+export interface ModelSignalMetricSet extends ModelSignalRates {
+  sessionCount: number
+  modelCalls: number
+  toolCalls: number
+  failedToolCalls: number
+  totalTokens: number
+  inputTokens: number
+  cachedInputTokens: number
+  outputTokens: number
+  reasoningOutputTokens: number
+  modelDurationMs: number
+  avgModelCallsPerSession: number
+  modelLatencyMsPer1kOutputTokens: number
+}
+
+export interface ModelSignalsWindow {
+  from: string
+  to: string
+  sessionCount: number
+  modelCalls: number
+}
+
+export interface ModelSignalDriftMetric {
+  key: string
+  label: string
+  direction: string
+  severity: string
+  current: number
+  baseline: number
+  delta: number
+  deltaPct: number
+}
+
+export interface ModelSignalDrift {
+  severity: string
+  confidence: string
+  sampleNote?: string
+  reasons: string[]
+  metrics: ModelSignalDriftMetric[]
+}
+
+export interface ModelSignalsHealthSummary {
+  currentWindow: ModelSignalsWindow
+  baselineWindow: ModelSignalsWindow
+  severity: string
+  cohortCount: number
+  warningCohorts: number
+  criticalCohorts: number
+  lowConfidenceCohorts: number
+  topReasons: string[]
+}
+
 export interface ModelSignalsTrendPoint extends ModelSignalRates {
   date: string
   sessionCount: number
@@ -252,6 +304,54 @@ export interface ModelSignalBreakdown extends ModelSignalRates {
   outputTokens: number
   reasoningOutputTokens: number
   modelDurationMs: number
+}
+
+export interface ModelSignalCohort extends SourceIdentity {
+  agentKind?: string
+  agentName?: string
+  modelProvider: string
+  model: string
+  projectPath?: string
+  cohortKey: string
+  sessionCount: number
+  modelCalls: number
+  toolCalls: number
+  failedToolCalls: number
+  totalTokens: number
+  current: ModelSignalMetricSet
+  baseline: ModelSignalMetricSet
+  drift: ModelSignalDrift
+}
+
+export interface ModelSignalMatrixCell {
+  model: string
+  modelProvider: string
+  cohortCount: number
+  sessionCount: number
+  modelCalls: number
+  totalTokens: number
+  severity: string
+  confidence: string
+  keyReason?: string
+  current: ModelSignalMetricSet
+  baseline: ModelSignalMetricSet
+}
+
+export interface ModelSignalMatrixRow extends SourceIdentity {
+  agentKind?: string
+  agentName?: string
+  cells: ModelSignalMatrixCell[]
+}
+
+export interface ModelSignalProjectHotspot {
+  projectPath: string
+  sessionCount: number
+  modelCount: number
+  sourceCount: number
+  totalTokens: number
+  current: ModelSignalMetricSet
+  baseline: ModelSignalMetricSet
+  drift: ModelSignalDrift
 }
 
 export interface ModelSignalAnomalySession {
@@ -309,6 +409,10 @@ export interface ModelSignals {
   trend: ModelSignalsTrendPoint[]
   modelBreakdown: ModelSignalBreakdown[]
   anomalySessions: ModelSignalAnomalySession[]
+  healthSummary?: ModelSignalsHealthSummary
+  cohorts?: ModelSignalCohort[]
+  matrix?: ModelSignalMatrixRow[]
+  projectHotspots?: ModelSignalProjectHotspot[]
 }
 
 export interface EventItem {

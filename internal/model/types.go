@@ -332,6 +332,122 @@ type ModelSignals struct {
 	Trend                                []ModelSignalsTrendPoint     `json:"trend"`
 	ModelBreakdown                       []ModelSignalsBreakdown      `json:"modelBreakdown"`
 	AnomalySessions                      []ModelSignalsAnomalySession `json:"anomalySessions"`
+	HealthSummary                        ModelSignalsHealthSummary    `json:"healthSummary"`
+	Cohorts                              []ModelSignalsCohort         `json:"cohorts"`
+	Matrix                               []ModelSignalsMatrixRow      `json:"matrix"`
+	ProjectHotspots                      []ModelSignalsProjectHotspot `json:"projectHotspots"`
+}
+
+type ModelSignalsWindow struct {
+	From         string `json:"from"`
+	To           string `json:"to"`
+	SessionCount int    `json:"sessionCount"`
+	ModelCalls   int    `json:"modelCalls"`
+}
+
+type ModelSignalsMetricSet struct {
+	SessionCount                         int     `json:"sessionCount"`
+	ModelCalls                           int     `json:"modelCalls"`
+	ToolCalls                            int     `json:"toolCalls"`
+	FailedToolCalls                      int     `json:"failedToolCalls"`
+	TotalTokens                          int64   `json:"totalTokens"`
+	InputTokens                          int64   `json:"inputTokens"`
+	CachedInputTokens                    int64   `json:"cachedInputTokens"`
+	OutputTokens                         int64   `json:"outputTokens"`
+	ReasoningOutputTokens                int64   `json:"reasoningOutputTokens"`
+	ModelDurationMS                      int64   `json:"modelDurationMs"`
+	AvgModelCallsPerSession              float64 `json:"avgModelCallsPerSession"`
+	OutputExpansionRate                  float64 `json:"outputExpansionRate"`
+	ReasoningTokenShare                  float64 `json:"reasoningTokenShare"`
+	CacheMissRate                        float64 `json:"cacheMissRate"`
+	ModelThroughputTokensPerSecond       float64 `json:"modelThroughputTokensPerSecond"`
+	ModelThroughputOutputTokensPerSecond float64 `json:"modelThroughputOutputTokensPerSecond"`
+	ModelLatencyMsPer1kOutputTokens      float64 `json:"modelLatencyMsPer1kOutputTokens"`
+	ToolFailureRate                      float64 `json:"toolFailureRate"`
+	ToolDependencyRate                   float64 `json:"toolDependencyRate"`
+}
+
+type ModelSignalsDriftMetric struct {
+	Key       string  `json:"key"`
+	Label     string  `json:"label"`
+	Direction string  `json:"direction"`
+	Severity  string  `json:"severity"`
+	Current   float64 `json:"current"`
+	Baseline  float64 `json:"baseline"`
+	Delta     float64 `json:"delta"`
+	DeltaPct  float64 `json:"deltaPct"`
+}
+
+type ModelSignalsDrift struct {
+	Severity   string                    `json:"severity"`
+	Confidence string                    `json:"confidence"`
+	SampleNote string                    `json:"sampleNote"`
+	Reasons    []string                  `json:"reasons"`
+	Metrics    []ModelSignalsDriftMetric `json:"metrics"`
+}
+
+type ModelSignalsHealthSummary struct {
+	CurrentWindow        ModelSignalsWindow `json:"currentWindow"`
+	BaselineWindow       ModelSignalsWindow `json:"baselineWindow"`
+	Severity             string             `json:"severity"`
+	CohortCount          int                `json:"cohortCount"`
+	WarningCohorts       int                `json:"warningCohorts"`
+	CriticalCohorts      int                `json:"criticalCohorts"`
+	LowConfidenceCohorts int                `json:"lowConfidenceCohorts"`
+	TopReasons           []string           `json:"topReasons"`
+}
+
+type ModelSignalsCohort struct {
+	SourceID           int64  `json:"sourceId"`
+	SourceKey          string `json:"sourceKey"`
+	SourceLabel        string `json:"sourceLabel"`
+	SourceRootPath     string `json:"sourceRootPath"`
+	SourceSessionsPath string `json:"sourceSessionsPath"`
+	AgentKind          string `json:"agentKind"`
+	AgentName          string `json:"agentName"`
+	ModelProvider      string `json:"modelProvider"`
+	Model              string `json:"model"`
+	ProjectPath        string `json:"projectPath"`
+	CohortKey          string `json:"cohortKey"`
+	ModelSignalsMetricSet
+	Current  ModelSignalsMetricSet `json:"current"`
+	Baseline ModelSignalsMetricSet `json:"baseline"`
+	Drift    ModelSignalsDrift     `json:"drift"`
+}
+
+type ModelSignalsMatrixRow struct {
+	SourceID           int64                    `json:"sourceId"`
+	SourceKey          string                   `json:"sourceKey"`
+	SourceLabel        string                   `json:"sourceLabel"`
+	SourceRootPath     string                   `json:"sourceRootPath"`
+	SourceSessionsPath string                   `json:"sourceSessionsPath"`
+	AgentKind          string                   `json:"agentKind"`
+	AgentName          string                   `json:"agentName"`
+	Cells              []ModelSignalsMatrixCell `json:"cells"`
+}
+
+type ModelSignalsMatrixCell struct {
+	ModelProvider string                `json:"modelProvider"`
+	Model         string                `json:"model"`
+	CohortCount   int                   `json:"cohortCount"`
+	SessionCount  int                   `json:"sessionCount"`
+	ModelCalls    int                   `json:"modelCalls"`
+	TotalTokens   int64                 `json:"totalTokens"`
+	Severity      string                `json:"severity"`
+	Confidence    string                `json:"confidence"`
+	KeyReason     string                `json:"keyReason"`
+	Current       ModelSignalsMetricSet `json:"current"`
+	Baseline      ModelSignalsMetricSet `json:"baseline"`
+}
+
+type ModelSignalsProjectHotspot struct {
+	ProjectPath string `json:"projectPath"`
+	ModelCount  int    `json:"modelCount"`
+	SourceCount int    `json:"sourceCount"`
+	ModelSignalsMetricSet
+	Current  ModelSignalsMetricSet `json:"current"`
+	Baseline ModelSignalsMetricSet `json:"baseline"`
+	Drift    ModelSignalsDrift     `json:"drift"`
 }
 
 type ModelSignalsTrendPoint struct {

@@ -255,6 +255,22 @@ function Assert-NumberPropertyMatching {
     throw "expected $Label numeric field"
 }
 
+function Assert-AnyPropertyMatching {
+    param(
+        [Parameter(Mandatory = $true)][object]$Object,
+        [Parameter(Mandatory = $true)][string]$Pattern,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+
+    foreach ($property in $Object.PSObject.Properties) {
+        if ($property.Name -match $Pattern) {
+            return
+        }
+    }
+
+    throw "expected $Label field"
+}
+
 function Assert-TopLevelArray {
     param([Parameter(Mandatory = $true)][string]$Raw)
 
@@ -418,6 +434,20 @@ function Assert-ModelSignalMetricRow {
     Assert-NumberPropertyMatching -Object $Row -Pattern "(?i)(rate|share)" -Label "$Label rate"
 }
 
+function Assert-ModelHealthRow {
+    param(
+        [Parameter(Mandatory = $true)][object]$Row,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+
+    Assert-JsonObject -Value $Row -Label $Label
+    if (@($Row.PSObject.Properties).Count -eq 0) {
+        throw "expected $Label to have fields"
+    }
+    Assert-AnyPropertyMatching -Object $Row -Pattern "(?i)(cohort|provider|model|agent|source|project|row|column|cell|key)" -Label "$Label identity"
+    Assert-AnyPropertyMatching -Object $Row -Pattern "(?i)(health|status|confidence|current|baseline|sample|signal|latency|throughput|token|cost|error|rate|share|count|session|call|delta|cell)" -Label "$Label health data"
+}
+
 function Assert-ModelSignals {
     param([Parameter(Mandatory = $true)][object]$Payload)
 
@@ -437,6 +467,10 @@ function Assert-ModelSignals {
     Assert-ArrayProperty -Object $Payload -Name "trend"
     Assert-ArrayProperty -Object $Payload -Name "modelBreakdown"
     Assert-ArrayProperty -Object $Payload -Name "anomalySessions"
+    Assert-ObjectProperty -Object $Payload -Name "healthSummary"
+    Assert-ArrayProperty -Object $Payload -Name "cohorts"
+    Assert-ArrayProperty -Object $Payload -Name "matrix"
+    Assert-ArrayProperty -Object $Payload -Name "projectHotspots"
 
     $trend = @((Get-JsonProperty -Object $Payload -Name "trend").Value)
     if ($trend.Count -gt 0) {
@@ -451,6 +485,21 @@ function Assert-ModelSignals {
     $anomalies = @((Get-JsonProperty -Object $Payload -Name "anomalySessions").Value)
     if ($anomalies.Count -gt 0) {
         Assert-JsonObject -Value $anomalies[0] -Label "model signal anomaly session"
+    }
+
+    $cohorts = @((Get-JsonProperty -Object $Payload -Name "cohorts").Value)
+    if ($cohorts.Count -gt 0) {
+        Assert-ModelHealthRow -Row $cohorts[0] -Label "model health cohort row"
+    }
+
+    $matrix = @((Get-JsonProperty -Object $Payload -Name "matrix").Value)
+    if ($matrix.Count -gt 0) {
+        Assert-ModelHealthRow -Row $matrix[0] -Label "model health matrix row"
+    }
+
+    $hotspots = @((Get-JsonProperty -Object $Payload -Name "projectHotspots").Value)
+    if ($hotspots.Count -gt 0) {
+        Assert-ModelHealthRow -Row $hotspots[0] -Label "model health project hotspot"
     }
 }
 

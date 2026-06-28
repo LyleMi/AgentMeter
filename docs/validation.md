@@ -58,8 +58,11 @@ breakdowns, sessions, tools, audit, pricing, settings, and privacy status.
 Cache-related shape checks include `totalInputTokens`, `totalCachedInputTokens`,
 `cacheUtilizationRate`, `cacheHitTrend`, `dailyUsage.cachedInputTokens`, and
 usage-breakdown bucket `projectPath`/`cachedInputTokens`/
-`cacheUtilizationRate`. Model Signals checks include the top-level operational
-proxy metrics plus `trend`, `modelBreakdown`, and `anomalySessions` arrays.
+`cacheUtilizationRate`. Model Signals checks include the top-level raw
+operational metrics, `trend`, `modelBreakdown`, and `anomalySessions` arrays,
+plus the Model Health `healthSummary` object and `cohorts`, `matrix`, and
+`projectHotspots` arrays. Health arrays are compatible with empty data and only
+lightly validate row shape when rows exist.
 
 ## Browser Smoke
 
@@ -155,8 +158,13 @@ TUI expectations where relevant:
 - shared cache fields, including `dailyUsage.cachedInputTokens`,
   `dailyUsage.cacheUtilizationRate`, `cacheHitTrend`, and usage-breakdown
   `projectPath` for project grouping;
-- Model Signals fields and filters, including `trend`, `modelBreakdown`,
-  `anomalySessions`, and empty arrays returned as `[]` rather than `null`;
+- Model Signals fields and filters, including raw signal fields, `trend`,
+  `modelBreakdown`, `anomalySessions`, `healthSummary`, `cohorts`, `matrix`,
+  `projectHotspots`, and empty arrays returned as `[]` rather than `null`;
+- Model Signals health/drift interpretation, including current window as the
+  latest observed 24h in scope, baseline as the preceding 30d when available,
+  low-sample confidence states, and missing baseline not being labeled as
+  regression;
 - project-scoped analytics filters using the `project` query parameter;
 - session identity and source path display;
 - source instance filters using `source:<id>` and family filters using values

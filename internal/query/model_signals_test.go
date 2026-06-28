@@ -121,8 +121,11 @@ func TestModelSignalsEmptyAndZeroDenominatorResponses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if empty.TotalSessions != 0 || empty.Trend == nil || empty.ModelBreakdown == nil || empty.AnomalySessions == nil {
+	if empty.TotalSessions != 0 || empty.Trend == nil || empty.ModelBreakdown == nil || empty.AnomalySessions == nil || empty.Cohorts == nil || empty.Matrix == nil || empty.ProjectHotspots == nil || empty.HealthSummary.TopReasons == nil {
 		t.Fatalf("empty model signals = %+v", empty)
+	}
+	if empty.HealthSummary.Severity != "unknown" {
+		t.Fatalf("empty health summary severity = %q", empty.HealthSummary.Severity)
 	}
 	if _, err := json.Marshal(empty); err != nil {
 		t.Fatalf("empty model signals should marshal without NaN/Inf: %v", err)
@@ -144,6 +147,120 @@ func TestModelSignalsEmptyAndZeroDenominatorResponses(t *testing.T) {
 	}
 	if _, err := json.Marshal(signals); err != nil {
 		t.Fatalf("model signals should marshal without NaN/Inf: %v", err)
+	}
+}
+
+func TestModelSignalsEmitsDriftCohortsMatrixAndHotspots(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	anchor := time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)
+	sourceID := insertTimeSource(t, conn, "codex", "Codex", anchor)
+
+	baselineStarts := []time.Time{anchor.Add(-7 * 24 * time.Hour), anchor.Add(-6 * 24 * time.Hour)}
+	for index, started := range baselineStarts {
+		sessionID := insertModelSignalSession(t, conn, sourceID, started, "baseline-drift-"+string(rune('a'+index)), "/workspace/api", "gpt-5", "gpt-5", 1_000, 500, 1_000, 100, 2_000, 1_000)
+		insertModelSignalCall(t, conn, sessionID, started, 1_000, "gpt-5", "completed")
+		insertModelSignalToolCall(t, conn, sessionID, started, "shell_command", "completed")
+	}
+
+	currentStarts := []time.Time{anchor.Add(-2 * time.Hour), anchor}
+	for index, started := range currentStarts {
+		sessionID := insertModelSignalSession(t, conn, sourceID, started, "current-drift-"+string(rune('a'+index)), "/workspace/api/.", "gpt-5", "gpt-5", 1_000, 0, 1_000, 500, 2_000, 3_000)
+		insertModelSignalCall(t, conn, sessionID, started, 3_000, "gpt-5", "completed")
+		insertModelSignalToolCall(t, conn, sessionID, started, "shell_command", "failed")
+	}
+
+	signals, err := New(conn).ModelSignals(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if signals.HealthSummary.Severity != "critical" || signals.HealthSummary.CohortCount != 1 || signals.HealthSummary.CriticalCohorts != 1 {
+		t.Fatalf("health summary = %+v", signals.HealthSummary)
+	}
+	if signals.HealthSummary.CurrentWindow.SessionCount != 2 || signals.HealthSummary.BaselineWindow.SessionCount != 2 {
+		t.Fatalf("health windows = %+v / %+v", signals.HealthSummary.CurrentWindow, signals.HealthSummary.BaselineWindow)
+	}
+	if !containsModelSignalLabel(signals.HealthSummary.TopReasons, "model latency increased") {
+		t.Fatalf("top reasons = %+v", signals.HealthSummary.TopReasons)
+	}
+
+	if len(signals.Cohorts) != 1 {
+		t.Fatalf("cohorts = %+v", signals.Cohorts)
+	}
+	cohort := signals.Cohorts[0]
+	if cohort.ModelProvider != "openai" || cohort.Model != "gpt-5" || cohort.ProjectPath != "/workspace/api" || cohort.CohortKey == "" {
+		t.Fatalf("cohort identity = %+v", cohort)
+	}
+	if cohort.SessionCount != 4 || cohort.Current.SessionCount != 2 || cohort.Baseline.SessionCount != 2 {
+		t.Fatalf("cohort windows = %+v", cohort)
+	}
+	if cohort.Drift.Severity != "critical" || cohort.Drift.Confidence != "high" {
+		t.Fatalf("cohort drift = %+v", cohort.Drift)
+	}
+	if !containsModelSignalDriftMetric(cohort.Drift.Metrics, "modelLatencyMsPer1kOutputTokens") || !containsModelSignalDriftMetric(cohort.Drift.Metrics, "modelThroughputOutputTokensPerSecond") {
+		t.Fatalf("cohort drift metrics = %+v", cohort.Drift.Metrics)
+	}
+
+	if len(signals.Matrix) != 1 || len(signals.Matrix[0].Cells) != 1 {
+		t.Fatalf("matrix = %+v", signals.Matrix)
+	}
+	cell := signals.Matrix[0].Cells[0]
+	if cell.ModelProvider != "openai" || cell.Model != "gpt-5" || cell.CohortCount != 1 || cell.Severity != "critical" || cell.KeyReason == "" {
+		t.Fatalf("matrix cell = %+v", cell)
+	}
+
+	if len(signals.ProjectHotspots) != 1 {
+		t.Fatalf("project hotspots = %+v", signals.ProjectHotspots)
+	}
+	hotspot := signals.ProjectHotspots[0]
+	if hotspot.ProjectPath != "/workspace/api" || hotspot.ModelCount != 1 || hotspot.SourceCount != 1 || hotspot.Drift.Severity != "critical" {
+		t.Fatalf("project hotspot = %+v", hotspot)
+	}
+	if _, err := json.Marshal(signals); err != nil {
+		t.Fatalf("model signals with drift should marshal without NaN/Inf: %v", err)
+	}
+}
+
+func TestModelSignalsDriftLowConfidenceWhenWindowMissing(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	anchor := time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)
+	sourceID := insertTimeSource(t, conn, "codex", "Codex", anchor)
+	sessionID := insertModelSignalSession(t, conn, sourceID, anchor, "current-only", "/workspace/api", "gpt-5", "gpt-5", 1_000, 0, 1_000, 100, 2_000, 1_000)
+	insertModelSignalCall(t, conn, sessionID, anchor, 1_000, "gpt-5", "completed")
+
+	signals, err := New(conn).ModelSignals(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if signals.HealthSummary.Severity != "unknown" || signals.HealthSummary.LowConfidenceCohorts != 1 {
+		t.Fatalf("health summary = %+v", signals.HealthSummary)
+	}
+	if len(signals.Cohorts) != 1 {
+		t.Fatalf("cohorts = %+v", signals.Cohorts)
+	}
+	drift := signals.Cohorts[0].Drift
+	if drift.Severity != "unknown" || drift.Confidence != "low" || drift.SampleNote != "missing baseline window" {
+		t.Fatalf("low-confidence drift = %+v", drift)
+	}
+	if drift.Reasons == nil || drift.Metrics == nil {
+		t.Fatalf("low-confidence drift slices should be non-nil: %+v", drift)
+	}
+	if len(signals.Matrix) != 1 || signals.Matrix[0].Cells[0].Confidence != "low" || signals.Matrix[0].Cells[0].Severity != "unknown" {
+		t.Fatalf("matrix low confidence = %+v", signals.Matrix)
+	}
+	if len(signals.ProjectHotspots) != 1 || signals.ProjectHotspots[0].Drift.Confidence != "low" {
+		t.Fatalf("hotspots low confidence = %+v", signals.ProjectHotspots)
 	}
 }
 
@@ -193,6 +310,15 @@ func assertFloat(t *testing.T, got, want float64) {
 func containsModelSignalLabel(values []string, value string) bool {
 	for _, candidate := range values {
 		if candidate == value {
+			return true
+		}
+	}
+	return false
+}
+
+func containsModelSignalDriftMetric(values []model.ModelSignalsDriftMetric, key string) bool {
+	for _, candidate := range values {
+		if candidate.Key == key {
 			return true
 		}
 	}

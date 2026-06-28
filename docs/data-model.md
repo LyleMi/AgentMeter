@@ -350,11 +350,12 @@ Current read models:
   identity buckets grouped by source (`agent`), model, source plus model
   (`agent,model`), day, or project, with the same agent/source, model, and
   project and started-at range filters.
-- Model Signals: operational proxy signals for model behavior, including model
-  call density, output expansion, reasoning-token share, cache-miss rate, model
-  throughput, tool dependency, tool failures, per-model breakdown, trend rows,
-  and anomaly sessions. Model Signals can be scoped by agent/source, model,
-  project, and started-at range.
+- Model Signals: operational signals and health/drift read models for observed
+  provider/model behavior, including model call density, output expansion,
+  reasoning-token share, cache-miss rate, model throughput, tool dependency,
+  tool failures, per-model breakdown, trend rows, anomaly sessions, health
+  summary, cohort health rows, matrix rows, and project hotspots. Model Signals
+  can be scoped by agent/source, model, project, and started-at range.
 - Sessions: filtered list by search, model, agent/source, limit, and offset,
   ordered by newest `started_at` first.
 - Session Detail: one session with normalized events, model calls, and tool
@@ -398,17 +399,30 @@ Read-model shape notes:
   volatility from broader model/provider behavior.
 - `/api/model-signals` returns a Model Signals read model with the same
   analytics filters as Overview and Token Analytics: `agent`, `model`,
-  `project`, `from`, and `to`. Top-level fields include `totalSessions`,
-  `totalModelCalls`, `totalToolCalls`, `failedToolCalls`, `toolFailureRate`,
-  `toolDependencyRate`, `avgModelCallsPerSession`, `outputExpansionRate`,
-  `reasoningTokenShare`, `cacheMissRate`,
+  `project`, `from`, and `to`. Existing top-level raw signal fields include
+  `totalSessions`, `totalModelCalls`, `totalToolCalls`, `failedToolCalls`,
+  `toolFailureRate`, `toolDependencyRate`, `avgModelCallsPerSession`,
+  `outputExpansionRate`, `reasoningTokenShare`, `cacheMissRate`,
   `modelThroughputTokensPerSecond`,
   `modelThroughputOutputTokensPerSecond`, `trend`, `modelBreakdown`, and
   `anomalySessions`.
+- `/api/model-signals` also includes the Model Health layer: `healthSummary`,
+  `cohorts`, `matrix`, and `projectHotspots`. The core grouping is
+  provider/model + agent/source + project. The current health window is the
+  latest observed 24 hours in the filtered scope; the baseline is the preceding
+  30 days when enough matching history is available. Missing baseline and low
+  sample data should be surfaced as low confidence or unavailable history, not
+  as regression.
 - Model Signals `trend` and `modelBreakdown` rows expose count, token, duration,
   and rate fields so Web and TUI clients can present the same numerator and
   denominator semantics. Empty collection fields must be JSON arrays (`[]`),
   not `null`.
+- Model Health rows should expose enough cohort identity and sample/confidence
+  metadata for clients to explain a health label without recomputing it. Strong
+  signals are latency per 1k output tokens, throughput, model-call status/error
+  data when available, and token/cost shape. Tool failure, model calls per
+  session, output expansion, cache miss, and reasoning share are weaker
+  symptoms that require session context.
 - `/api/usage/breakdown` returns usage buckets selected by `groupBy`. Project
   buckets use `groupBy=project` and carry `projectPath`; project bucket keys use
   the same path normalization and platform case semantics as source paths. All

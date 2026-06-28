@@ -15,7 +15,7 @@ const routes: SmokeRoute[] = [
   { path: '/#/tokens/trends', hash: '#/tokens/trends', title: /^(Tokens|Token)$/, panelTitle: /^(Cache Hit Trend|缓存命中趋势)$/ },
   { path: '/#/tokens/breakdown', hash: '#/tokens/breakdown', title: /^(Tokens|Token)$/, panelTitle: /^(Usage Breakdown|用量拆分)$/ },
   { path: '/#/tokens/sessions', hash: '#/tokens/sessions', title: /^(Tokens|Token)$/, panelTitle: /^(High Token Sessions|高 Token 会话)$/ },
-  { path: '/#/model-signals', hash: '#/model-signals', title: /^(Model Signals|模型信号)$/, panelTitle: /^(Signal Trend|信号趋势)$/ },
+  { path: '/#/model-signals', hash: '#/model-signals', title: /^(Model Signals|模型信号)$/, panelTitle: /^(Health Summary|Model Health|Signal Trend|健康摘要|模型健康|信号趋势)$/ },
   { path: '/#/tools/overview', hash: '#/tools/overview', title: /^(Tools|工具)$/ },
   { path: '/#/tools/calls', hash: '#/tools/calls', title: /^(Tools|工具)$/ },
   { path: '/#/tools/shell', hash: '#/tools/shell', title: /^(Tools|工具)$/ },

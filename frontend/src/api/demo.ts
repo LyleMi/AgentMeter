@@ -10,8 +10,17 @@ import type {
   IndexResult,
   ModelSignalAnomalySession,
   ModelSignalBreakdown,
+  ModelSignalCohort,
+  ModelSignalDrift,
+  ModelSignalDriftMetric,
+  ModelSignalMatrixCell,
+  ModelSignalMatrixRow,
+  ModelSignalMetricSet,
+  ModelSignalProjectHotspot,
   ModelSignalRates,
+  ModelSignalsWindow,
   ModelSignals,
+  ModelSignalsHealthSummary,
   ModelSignalsTrendPoint,
   ModelCall,
   ModelTimeUsage,
@@ -29,6 +38,7 @@ import type {
   SessionDetail,
   SessionFilters,
   Settings,
+  SourceIdentity,
   SourceEntry,
   TokenAnalytics,
   ToolCall,
@@ -614,6 +624,367 @@ function signalRatesFor(group: Session[], groupToolCalls: ToolCall[]): ModelSign
   }
 }
 
+interface MetricTotals {
+  sessionCount: number
+  modelCalls: number
+  toolCalls: number
+  failedToolCalls: number
+  totalTokens: number
+  inputTokens: number
+  cachedInputTokens: number
+  outputTokens: number
+  reasoningOutputTokens: number
+  modelDurationMs: number
+  toolDependencyRate?: number
+}
+
+function metricSetFromTotals(totals: MetricTotals): ModelSignalMetricSet {
+  const modelDurationSeconds = totals.modelDurationMs / 1000
+  return {
+    sessionCount: totals.sessionCount,
+    modelCalls: totals.modelCalls,
+    toolCalls: totals.toolCalls,
+    failedToolCalls: totals.failedToolCalls,
+    totalTokens: totals.totalTokens,
+    inputTokens: totals.inputTokens,
+    cachedInputTokens: totals.cachedInputTokens,
+    outputTokens: totals.outputTokens,
+    reasoningOutputTokens: totals.reasoningOutputTokens,
+    modelDurationMs: totals.modelDurationMs,
+    avgModelCallsPerSession: safeRate(totals.modelCalls, totals.sessionCount),
+    outputExpansionRate: safeRate(totals.outputTokens, totals.inputTokens),
+    reasoningTokenShare: safeRate(totals.reasoningOutputTokens, totals.outputTokens),
+    cacheMissRate: clampRate(safeRate(totals.inputTokens - totals.cachedInputTokens, totals.inputTokens)),
+    modelThroughputTokensPerSecond: safeRate(totals.totalTokens, modelDurationSeconds),
+    modelThroughputOutputTokensPerSecond: safeRate(totals.outputTokens, modelDurationSeconds),
+    modelLatencyMsPer1kOutputTokens: safeRate(totals.modelDurationMs, totals.outputTokens / 1000),
+    toolFailureRate: safeRate(totals.failedToolCalls, totals.toolCalls),
+    toolDependencyRate: totals.toolDependencyRate ?? safeRate(totals.toolCalls, totals.sessionCount)
+  }
+}
+
+function metricSetFor(group: Session[], groupToolCalls: ToolCall[]): ModelSignalMetricSet {
+  const toolSessions = new Set(groupToolCalls.map((call) => call.sessionId)).size
+  return metricSetFromTotals({
+    sessionCount: group.length,
+    modelCalls: sum(group, modelCallsForSession),
+    toolCalls: groupToolCalls.length,
+    failedToolCalls: groupToolCalls.filter((call) => !isSuccessfulToolStatus(call.status)).length,
+    totalTokens: sum(group, (session) => session.tokenUsage.totalTokens),
+    inputTokens: sum(group, (session) => session.tokenUsage.inputTokens),
+    cachedInputTokens: sum(group, (session) => session.tokenUsage.cachedInputTokens),
+    outputTokens: sum(group, (session) => session.tokenUsage.outputTokens),
+    reasoningOutputTokens: sum(group, (session) => session.tokenUsage.reasoningOutputTokens),
+    modelDurationMs: sum(group, (session) => session.modelDurationMs),
+    toolDependencyRate: safeRate(toolSessions, group.length)
+  })
+}
+
+function stableHash(value: string): number {
+  let hash = 0
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash * 31) + value.charCodeAt(index)) >>> 0
+  }
+  return hash
+}
+
+function syntheticBaselineFor(current: ModelSignalMetricSet, key: string): ModelSignalMetricSet {
+  const profile = stableHash(key) % 5
+  const durationFactors = [0.64, 0.76, 0.88, 0.96, 1.08]
+  const outputFactors = [0.92, 0.96, 1.02, 1.05, 0.98]
+  const reasoningFactors = [0.72, 0.82, 0.94, 1.04, 0.9]
+  const cacheLift = [0.1, 0.07, 0.04, 0.02, -0.01]
+
+  const inputTokens = Math.max(0, Math.round(current.inputTokens * (profile === 4 ? 1.03 : 0.98)))
+  const outputTokens = Math.max(0, Math.round(current.outputTokens * outputFactors[profile]))
+  const reasoningOutputTokens = Math.max(0, Math.min(outputTokens, Math.round(current.reasoningOutputTokens * reasoningFactors[profile])))
+  const cachedInputTokens = Math.max(
+    0,
+    Math.min(inputTokens, Math.round((current.cachedInputTokens * 0.95) + (inputTokens * cacheLift[profile])))
+  )
+  const modelDurationMs = Math.max(1, Math.round(current.modelDurationMs * durationFactors[profile]))
+  const failedToolCalls = current.failedToolCalls > 0 ? Math.max(0, current.failedToolCalls - 1) : 0
+
+  return metricSetFromTotals({
+    sessionCount: current.sessionCount + (profile === 3 ? 1 : 0),
+    modelCalls: current.modelCalls + (profile === 3 ? 1 : 0),
+    toolCalls: current.toolCalls,
+    failedToolCalls,
+    totalTokens: inputTokens + outputTokens,
+    inputTokens,
+    cachedInputTokens,
+    outputTokens,
+    reasoningOutputTokens,
+    modelDurationMs,
+    toolDependencyRate: current.toolDependencyRate
+  })
+}
+
+function relativeIncrease(current: number, baseline: number): number {
+  if (baseline <= 0) return current > 0 ? 1 : 0
+  return (current - baseline) / baseline
+}
+
+function relativeDecrease(current: number, baseline: number): number {
+  if (baseline <= 0) return 0
+  return (baseline - current) / baseline
+}
+
+function modelSignalDriftFor(current: ModelSignalMetricSet, baseline: ModelSignalMetricSet): ModelSignalDrift {
+  const reasons: string[] = []
+  const metrics: ModelSignalDriftMetric[] = []
+  let severity = 'healthy'
+
+  const mark = (nextSeverity: string, key: string, label: string, direction: string, reason: string, currentValue: number, baselineValue: number) => {
+    if (severityRank(nextSeverity) > severityRank(severity)) severity = nextSeverity
+    metrics.push({
+      key,
+      label,
+      direction,
+      severity: nextSeverity,
+      current: currentValue,
+      baseline: baselineValue,
+      delta: currentValue - baselineValue,
+      deltaPct: baselineValue > 0 ? (currentValue - baselineValue) / baselineValue : 0
+    })
+    reasons.push(reason)
+  }
+
+  const latencyIncrease = relativeIncrease(current.modelLatencyMsPer1kOutputTokens, baseline.modelLatencyMsPer1kOutputTokens)
+  if (latencyIncrease >= 0.55) {
+    mark('critical', 'modelLatencyMsPer1kOutputTokens', 'model latency per 1k output tokens', 'higher_worse', 'Latency rose vs baseline', current.modelLatencyMsPer1kOutputTokens, baseline.modelLatencyMsPer1kOutputTokens)
+  } else if (latencyIncrease >= 0.22) {
+    mark('warning', 'modelLatencyMsPer1kOutputTokens', 'model latency per 1k output tokens', 'higher_worse', 'Latency rose vs baseline', current.modelLatencyMsPer1kOutputTokens, baseline.modelLatencyMsPer1kOutputTokens)
+  }
+
+  const throughputDrop = relativeDecrease(current.modelThroughputTokensPerSecond, baseline.modelThroughputTokensPerSecond)
+  if (throughputDrop >= 0.42) {
+    mark('critical', 'modelThroughputTokensPerSecond', 'model throughput', 'lower_worse', 'Throughput fell vs baseline', current.modelThroughputTokensPerSecond, baseline.modelThroughputTokensPerSecond)
+  } else if (throughputDrop >= 0.2) {
+    mark('warning', 'modelThroughputTokensPerSecond', 'model throughput', 'lower_worse', 'Throughput fell vs baseline', current.modelThroughputTokensPerSecond, baseline.modelThroughputTokensPerSecond)
+  }
+
+  const outputThroughputDrop = relativeDecrease(current.modelThroughputOutputTokensPerSecond, baseline.modelThroughputOutputTokensPerSecond)
+  if (outputThroughputDrop >= 0.24) {
+    mark(outputThroughputDrop >= 0.5 ? 'critical' : 'warning', 'modelThroughputOutputTokensPerSecond', 'model output throughput', 'lower_worse', 'Output throughput fell', current.modelThroughputOutputTokensPerSecond, baseline.modelThroughputOutputTokensPerSecond)
+  }
+
+  if (current.failedToolCalls > baseline.failedToolCalls && current.toolFailureRate >= 0.08) {
+    mark(current.toolFailureRate >= 0.2 ? 'critical' : 'warning', 'toolFailureRate', 'tool failure rate', 'higher_downstream_symptom', 'Tool failures above baseline', current.toolFailureRate, baseline.toolFailureRate)
+  }
+
+  if (current.cacheMissRate - baseline.cacheMissRate >= 0.12) {
+    mark('warning', 'cacheMissRate', 'cache miss rate', 'higher_symptom', 'Cache misses above baseline', current.cacheMissRate, baseline.cacheMissRate)
+  }
+
+  if (current.reasoningTokenShare - baseline.reasoningTokenShare >= 0.12) {
+    mark('warning', 'reasoningTokenShare', 'reasoning token share', 'behavior_higher', 'Reasoning share rose', current.reasoningTokenShare, baseline.reasoningTokenShare)
+  }
+
+  const uniqueReasons = [...new Set(reasons)]
+  return {
+    severity,
+    confidence: current.sessionCount < 2 || current.modelCalls < 3 ? 'low' : 'high',
+    sampleNote: current.sessionCount < 2 || current.modelCalls < 3 ? 'Low sample' : undefined,
+    reasons: uniqueReasons,
+    metrics
+  }
+}
+
+function severityRank(value?: string): number {
+  const normalized = (value || '').toLowerCase()
+  if (normalized === 'critical' || normalized === 'high') return 3
+  if (normalized === 'warning' || normalized === 'medium') return 2
+  if (normalized === 'watch' || normalized === 'low') return 1
+  return 0
+}
+
+function sourceIdentityKey(record: SourceIdentity): string {
+  return record.sourceKey || (record.sourceId !== undefined ? `source:${record.sourceId}` : '')
+}
+
+function cohortKeyFor(session: Session): string {
+  return [
+    session.modelProvider || 'unknown',
+    session.model || 'unknown',
+    sourceIdentityKey(session) || session.agentKind || session.agentName || 'unknown',
+    projectPathKey(session.projectPath || session.rawSourcePath)
+  ].join('|')
+}
+
+function modelSignalCohortsFor(items: Session[], scopedToolCalls: ToolCall[]): ModelSignalCohort[] {
+  return [...groupedBy(items, cohortKeyFor)].map(([cohortKey, group]) => {
+    const first = group[0]
+    const sessionIds = new Set(group.map((session) => session.id))
+    const groupToolCalls = scopedToolCalls.filter((call) => sessionIds.has(call.sessionId))
+    const current = metricSetFor(group, groupToolCalls)
+    const baseline = syntheticBaselineFor(current, cohortKey)
+    const drift = modelSignalDriftFor(current, baseline)
+    return {
+      sourceId: first.sourceId,
+      sourceKey: first.sourceKey,
+      sourceLabel: first.sourceLabel,
+      sourceRootPath: first.sourceRootPath,
+      sourceSessionsPath: first.sourceSessionsPath,
+      agentKind: first.agentKind,
+      agentName: first.agentName,
+      modelProvider: first.modelProvider,
+      model: first.model,
+      projectPath: first.projectPath,
+      cohortKey,
+      sessionCount: current.sessionCount,
+      modelCalls: current.modelCalls,
+      toolCalls: current.toolCalls,
+      failedToolCalls: current.failedToolCalls,
+      totalTokens: current.totalTokens,
+      current,
+      baseline,
+      drift
+    }
+  }).sort((left, right) =>
+    severityRank(right.drift.severity) - severityRank(left.drift.severity) ||
+    right.totalTokens - left.totalTokens
+  )
+}
+
+function combineMetricSets(items: ModelSignalMetricSet[]): ModelSignalMetricSet {
+  const sessionCount = items.reduce((total, item) => total + item.sessionCount, 0)
+  const modelCalls = items.reduce((total, item) => total + item.modelCalls, 0)
+  const toolDependencyRate = safeRate(
+    items.reduce((total, item) => total + item.toolDependencyRate * item.sessionCount, 0),
+    sessionCount
+  )
+  return metricSetFromTotals({
+    sessionCount,
+    modelCalls,
+    toolCalls: items.reduce((total, item) => total + item.toolCalls, 0),
+    failedToolCalls: items.reduce((total, item) => total + item.failedToolCalls, 0),
+    totalTokens: items.reduce((total, item) => total + item.totalTokens, 0),
+    inputTokens: items.reduce((total, item) => total + item.inputTokens, 0),
+    cachedInputTokens: items.reduce((total, item) => total + item.cachedInputTokens, 0),
+    outputTokens: items.reduce((total, item) => total + item.outputTokens, 0),
+    reasoningOutputTokens: items.reduce((total, item) => total + item.reasoningOutputTokens, 0),
+    modelDurationMs: items.reduce((total, item) => total + item.modelDurationMs, 0),
+    toolDependencyRate
+  })
+}
+
+function modelSignalMatrixFor(cohorts: ModelSignalCohort[]): ModelSignalMatrixRow[] {
+  return [...groupedBy(cohorts, (cohort) => sourceIdentityKey(cohort) || cohort.agentKind || cohort.agentName || 'unknown')]
+    .map(([, group]) => {
+      const first = group[0]
+      const cells: ModelSignalMatrixCell[] = [...groupedBy(group, (cohort) => `${cohort.modelProvider}:${cohort.model}`)]
+        .map(([, cellCohorts]) => {
+          const cellFirst = cellCohorts[0]
+          const current = combineMetricSets(cellCohorts.map((cohort) => cohort.current))
+          const baseline = combineMetricSets(cellCohorts.map((cohort) => cohort.baseline))
+          const drift = modelSignalDriftFor(current, baseline)
+          return {
+            model: cellFirst.model,
+            modelProvider: cellFirst.modelProvider,
+            cohortCount: cellCohorts.length,
+            sessionCount: current.sessionCount,
+            modelCalls: current.modelCalls,
+            totalTokens: current.totalTokens,
+            severity: drift.severity,
+            confidence: drift.confidence,
+            keyReason: drift.reasons[0],
+            current,
+            baseline
+          }
+        })
+        .sort((left, right) => severityRank(right.severity) - severityRank(left.severity) || right.totalTokens - left.totalTokens)
+      return {
+        sourceId: first.sourceId,
+        sourceKey: first.sourceKey,
+        sourceLabel: first.sourceLabel,
+        sourceRootPath: first.sourceRootPath,
+        sourceSessionsPath: first.sourceSessionsPath,
+        agentKind: first.agentKind,
+        agentName: first.agentName,
+        cells
+      }
+    })
+    .sort((left, right) =>
+      Math.max(...right.cells.map((cell) => severityRank(cell.severity)), 0) -
+      Math.max(...left.cells.map((cell) => severityRank(cell.severity)), 0)
+    )
+}
+
+function modelSignalProjectHotspotsFor(cohorts: ModelSignalCohort[]): ModelSignalProjectHotspot[] {
+  return [...groupedBy(cohorts, (cohort) => projectPathKey(cohort.projectPath || 'unknown'))].map(([, group]) => {
+    const current = combineMetricSets(group.map((cohort) => cohort.current))
+    const baseline = combineMetricSets(group.map((cohort) => cohort.baseline))
+    const drift = modelSignalDriftFor(current, baseline)
+    return {
+      projectPath: group[0].projectPath || 'unknown',
+      sessionCount: current.sessionCount,
+      modelCount: new Set(group.map((cohort) => `${cohort.modelProvider}:${cohort.model}`)).size,
+      sourceCount: new Set(group.map((cohort) => sourceIdentityKey(cohort) || cohort.agentKind || cohort.agentName)).size,
+      totalTokens: current.totalTokens,
+      current,
+      baseline,
+      drift
+    }
+  }).sort((left, right) =>
+    severityRank(right.drift.severity) - severityRank(left.drift.severity) ||
+    right.totalTokens - left.totalTokens
+  )
+}
+
+function modelSignalsHealthSummaryFor(items: Session[], cohorts: ModelSignalCohort[]): ModelSignalsHealthSummary {
+  const reasonCounts = new Map<string, number>()
+  for (const cohort of cohorts) {
+    for (const reason of cohort.drift.reasons) {
+      reasonCounts.set(reason, (reasonCounts.get(reason) || 0) + 1)
+    }
+  }
+  const criticalCohorts = cohorts.filter((cohort) => severityRank(cohort.drift.severity) >= 3).length
+  const warningCohorts = cohorts.filter((cohort) => severityRank(cohort.drift.severity) === 2).length
+  const lowConfidenceCohorts = cohorts.filter((cohort) => cohort.drift.confidence === 'low').length
+  return {
+    currentWindow: dateWindow(items),
+    baselineWindow: baselineWindow(items),
+    severity: criticalCohorts > 0 ? 'critical' : warningCohorts > 0 ? 'warning' : lowConfidenceCohorts > 0 ? 'unknown' : 'healthy',
+    cohortCount: cohorts.length,
+    warningCohorts,
+    criticalCohorts,
+    lowConfidenceCohorts,
+    topReasons: [...reasonCounts.entries()]
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+      .map(([reason]) => reason)
+      .slice(0, 5)
+  }
+}
+
+function dateWindow(items: Session[]): ModelSignalsWindow {
+  const dates = [...new Set(items.map((session) => session.startedAt.slice(0, 10)))].sort()
+  return {
+    from: dates[0] ? `${dates[0]}T00:00:00Z` : '',
+    to: dates[dates.length - 1] ? `${dates[dates.length - 1]}T23:59:59Z` : '',
+    sessionCount: items.length,
+    modelCalls: sum(items, modelCallsForSession)
+  }
+}
+
+function baselineWindow(items: Session[]): ModelSignalsWindow {
+  const dates = [...new Set(items.map((session) => session.startedAt.slice(0, 10)))].sort()
+  if (!dates.length) {
+    return { from: '', to: '', sessionCount: 0, modelCalls: 0 }
+  }
+  const first = new Date(`${dates[0]}T00:00:00Z`)
+  const last = new Date(`${dates[dates.length - 1]}T00:00:00Z`)
+  const spanDays = Math.max(1, Math.round((last.getTime() - first.getTime()) / 86_400_000) + 1)
+  const baselineEnd = new Date(first.getTime() - 86_400_000)
+  const baselineStart = new Date(first.getTime() - spanDays * 86_400_000)
+  return {
+    from: baselineStart.toISOString(),
+    to: baselineEnd.toISOString(),
+    sessionCount: items.length,
+    modelCalls: sum(items, modelCallsForSession)
+  }
+}
+
 function modelSignalsTrendFor(items: Session[], scopedToolCalls: ToolCall[]): ModelSignalsTrendPoint[] {
   const days = [...groupedBy(items, (session) => session.startedAt.slice(0, 10))]
     .map(([date, group]) => signalTrendPoint(date, group, scopedToolCalls))
@@ -741,6 +1112,7 @@ function modelSignals(filters: UsageScopeFilters = {}): ModelSignals {
   const scopedToolCalls = filteredToolCalls({ agent: filters.agent, project: filters.project, from: filters.from, to: filters.to })
     .filter((call) => sessionIds.has(call.sessionId))
   const rates = signalRatesFor(scoped, scopedToolCalls)
+  const cohorts = modelSignalCohortsFor(scoped, scopedToolCalls)
   return {
     totalSessions: scoped.length,
     totalModelCalls: sum(scoped, modelCallsForSession),
@@ -756,7 +1128,11 @@ function modelSignals(filters: UsageScopeFilters = {}): ModelSignals {
     modelThroughputOutputTokensPerSecond: rates.modelThroughputOutputTokensPerSecond,
     trend: modelSignalsTrendFor(scoped, scopedToolCalls),
     modelBreakdown: modelSignalsBreakdownFor(scoped, scopedToolCalls),
-    anomalySessions: anomalySessionsFor(scoped, scopedToolCalls)
+    anomalySessions: anomalySessionsFor(scoped, scopedToolCalls),
+    healthSummary: modelSignalsHealthSummaryFor(scoped, cohorts),
+    cohorts,
+    matrix: modelSignalMatrixFor(cohorts),
+    projectHotspots: modelSignalProjectHotspotsFor(cohorts)
   }
 }
 
