@@ -4,9 +4,35 @@ All notable changes to AgentMeter are documented in this file.
 
 ## [Unreleased]
 
+## [v0.3.0] - 2026-06-28
+
+### Added
+
+- Added a dedicated time attribution page with session duration, time composition, slow-session, and tool-duration views.
+- Added a dedicated tokens page for token usage and estimated-cost analysis.
+- Added scoped usage breakdowns and source-instance identity so usage can be filtered by agent family, source instance, and project.
+- Added Cursor source detection and expanded privacy profile workflows across the Web UI, TUI, and CLI.
+- Added audit token and shell-command views, including shell-command filtering for tool analytics.
+- Added a static GitHub Pages demo plus repository screenshot and social preview assets for public project pages.
+- Added multi-platform release archives for Windows, Linux, and macOS on amd64 and arm64, with SHA256 checksums.
+
 ### Changed
 
-- Expanded release automation to build Windows, Linux, and macOS portable artifacts for amd64 and arm64, with SHA256 checksums.
+- Split audit and tool analytics into focused summary, detail, findings, tool-call, and shell-command routes.
+- Consolidated Web UI page shell patterns, display preferences, compact number formatting, and responsive dashboard styling.
+- Refined query aggregation for scoped usage, estimated costs, orphan token records, and source filters.
+- Updated installation, supported-agent, privacy, release-distribution, repository setup, and validation documentation.
+
+### Fixed
+
+- Fixed GitHub Pages deployment and demo links so the live preview uses the default Pages URL.
+- Fixed estimated-cost aggregation and scope filter range behavior.
+- Ignored orphan token usage costs so detached token records do not skew totals.
+
+### Release Notes
+
+- Release assets are packaged as `AgentMeter-windows-amd64.zip`, `AgentMeter-windows-arm64.zip`, `AgentMeter-linux-amd64.tar.gz`, `AgentMeter-linux-arm64.tar.gz`, `AgentMeter-darwin-amd64.tar.gz`, and `AgentMeter-darwin-arm64.tar.gz`.
+- Each release includes `checksums.txt`; archives include the executable, built Web assets, README files, license, and changelog.
 
 ## [v0.2.0] - 2026-06-28
 
@@ -50,6 +76,7 @@ All notable changes to AgentMeter are documented in this file.
 
 - Initial MVP release with the redesigned AgentMeter UI.
 
-[Unreleased]: https://github.com/LyleMi/AgentMeter/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/LyleMi/AgentMeter/compare/v0.3.0...HEAD
+[v0.3.0]: https://github.com/LyleMi/AgentMeter/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/LyleMi/AgentMeter/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://github.com/LyleMi/AgentMeter/releases/tag/v0.1.0
