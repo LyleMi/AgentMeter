@@ -20,9 +20,12 @@ import {
   api,
   formatCost,
   formatDateTime,
+  formatDisplayCost,
+  formatDisplayNumber,
   formatNumber,
+  projectDisplay,
+  sessionFullLabel,
   sessionLabel,
-  shortPath,
   type AgentUsage,
   type ModelUsage,
   type Overview,
@@ -179,6 +182,7 @@ const tokenMix = computed(() => {
   const total = values.reduce((sum, current) => sum + Math.max(current.value, 0), 0)
   return values.map((current) => ({
     ...current,
+    display: formatDisplayNumber(current.value),
     share: total > 0 ? current.value / total : 0
   }))
 })
@@ -189,28 +193,28 @@ const metricCards = computed(() => {
   return [
     {
       label: t('metric.totalTokens'),
-      value: formatNumber(item?.totalTokens),
-      note: t('metric.totalTokensNote', { count: formatNumber(item?.totalSessions) }),
+      value: formatDisplayNumber(item?.totalTokens),
+      note: t('metric.totalTokensNote', { count: formatDisplayNumber(item?.totalSessions).main }),
       icon: DatabaseOutlined,
       tone: 'metric-primary'
     },
     {
       label: t('metric.cacheRate'),
-      value: `${cacheRatePercent.value}%`,
-      note: t('metric.cacheRateNote', { count: formatNumber(item?.totalCachedInputTokens) }),
+      value: { main: `${cacheRatePercent.value}%`, full: `${cacheRatePercent.value}%`, suffix: '' },
+      note: t('metric.cacheRateNote', { count: formatDisplayNumber(item?.totalCachedInputTokens).main }),
       icon: CheckCircleOutlined,
       tone: 'metric-success'
     },
     {
       label: t('metric.cost'),
-      value: formatCost(item?.estimatedCostUsd),
-      note: item?.unpricedCount ? t('metric.costNoteMissing', { count: formatNumber(item.unpricedCount) }) : t('metric.costNoteCovered'),
+      value: formatDisplayCost(item?.estimatedCostUsd),
+      note: item?.unpricedCount ? t('metric.costNoteMissing', { count: formatDisplayNumber(item.unpricedCount).main }) : t('metric.costNoteCovered'),
       icon: item?.unpricedCount ? WarningOutlined : DollarCircleOutlined,
       tone: item?.unpricedCount ? 'metric-warning' : 'metric-info'
     },
     {
       label: t('metric.inputOutput'),
-      value: `${formatNumber(item?.totalInputTokens)} / ${formatNumber(item?.totalOutputTokens)}`,
+      value: displayPair(item?.totalInputTokens, item?.totalOutputTokens),
       note: t('metric.inputOutputNote'),
       icon: TableOutlined,
       tone: 'metric-neutral'
@@ -419,6 +423,16 @@ function mixPercent(share: number) {
   return `${Math.round(share * 100)}%`
 }
 
+function displayPair(left: number | undefined, right: number | undefined) {
+  const leftDisplay = formatDisplayNumber(left)
+  const rightDisplay = formatDisplayNumber(right)
+  return {
+    main: `${leftDisplay.main} / ${rightDisplay.main}`,
+    suffix: '',
+    full: `${leftDisplay.full} / ${rightDisplay.full}`
+  }
+}
+
 function formatRate(value: number | undefined) {
   if (!Number.isFinite(value)) return '0%'
   return `${Math.round(Math.max(0, value || 0) * 100)}%`
@@ -430,6 +444,10 @@ function modelName(record: ModelUsage) {
 
 function sourceInfo(record: AgentUsage | Session) {
   return sourceDisplay(record, t('fallback.unknown'))
+}
+
+function sessionProject(record: Session) {
+  return projectDisplay(record.projectPath || record.rawSourcePath)
 }
 
 function breakdownScope(record: UsageBreakdownBucket) {
@@ -514,7 +532,7 @@ onMounted(load)
                 <component :is="item.icon" />
               </span>
             </div>
-            <div class="metric-strip-value">{{ item.value }}</div>
+            <div class="metric-strip-value" :title="item.value.full">{{ item.value.main }}</div>
             <div class="metric-strip-note">{{ item.note }}</div>
           </div>
         </section>
@@ -534,7 +552,7 @@ onMounted(load)
             <div v-for="item in tokenMix" :key="item.key" class="tokens-mix-item" :class="item.tone">
               <div class="tokens-mix-row">
                 <span>{{ item.label }}</span>
-                <strong>{{ formatNumber(item.value) }}</strong>
+                <strong :title="item.display.full">{{ item.display.main }}</strong>
               </div>
               <div class="tokens-mix-meter">
                 <span :style="{ width: mixWidth(item.share) }"></span>
@@ -679,12 +697,14 @@ onMounted(load)
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'session'">
-                <span class="mono">{{ sessionLabel(record) }}</span>
+                <a-typography-text class="mono" :ellipsis="{ tooltip: sessionFullLabel(record) }">
+                  {{ sessionLabel(record) }}
+                </a-typography-text>
                 <div class="source-identity-meta">{{ sourceInfo(record).label }}</div>
               </template>
               <template v-else-if="column.key === 'project'">
-                <a-typography-text :ellipsis="{ tooltip: record.projectPath || record.rawSourcePath }">
-                  {{ shortPath(record.projectPath || record.rawSourcePath || '') }}
+                <a-typography-text :ellipsis="{ tooltip: sessionProject(record).full }">
+                  {{ sessionProject(record).main }}
                 </a-typography-text>
               </template>
               <template v-else-if="column.key === 'started'">{{ formatDateTime(record.startedAt) }}</template>

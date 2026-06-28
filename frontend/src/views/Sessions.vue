@@ -14,7 +14,7 @@ import type { Session } from '../api/types'
 import PageHeader from '../components/PageHeader.vue'
 import { useAsyncResource } from '../composables/useAsyncResource'
 import { useMessages } from '../i18n'
-import { formatCost, formatDateTime, formatDuration, formatNumber, sessionLabel, shortPath } from '../presentation/formatters'
+import { formatCost, formatDateTime, formatDuration, formatNumber, projectDisplay, sessionFullLabel, sessionLabel, shortPath } from '../presentation/formatters'
 import { sourceDisplay, sourceFilterOptions } from '../presentation/sourceIdentity'
 import { statusClass, statusColor } from '../presentation/status'
 
@@ -94,7 +94,7 @@ const model = ref<string | undefined>()
 const agent = ref<string | undefined>()
 
 const columns = computed(() => [
-  { title: t('column.session'), dataIndex: 'sessionKey', key: 'identity', width: 250 },
+  { title: t('column.session'), dataIndex: 'sessionKey', key: 'identity', width: 176 },
   { title: t('column.agent'), dataIndex: 'sourceLabel', key: 'agent', width: 178 },
   { title: t('column.project'), dataIndex: 'projectPath', key: 'projectPath' },
   { title: t('column.model'), dataIndex: 'model', key: 'model', width: 90 },
@@ -165,6 +165,10 @@ function sourceInfo(record: Session) {
   return sourceDisplay(record, t('fallback.unknown'))
 }
 
+function projectInfo(record: Session) {
+  return projectDisplay(record.projectPath)
+}
+
 onMounted(load)
 </script>
 
@@ -233,7 +237,7 @@ onMounted(load)
         >
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'identity'">
-              <a-typography-text class="mono path-cell" :ellipsis="{ tooltip: sessionLabel(record) }">
+              <a-typography-text class="mono path-cell" :ellipsis="{ tooltip: sessionFullLabel(record) }">
                 {{ sessionLabel(record) }}
               </a-typography-text>
               <div class="timeline-event-raw">{{ formatDateTime(record.startedAt) }}</div>
@@ -246,7 +250,7 @@ onMounted(load)
             </template>
             <template v-else-if="column.key === 'projectPath'">
               <a-tooltip :title="record.projectPath" placement="topLeft">
-                <span class="sessions-project-path">{{ shortPath(record.projectPath) }}</span>
+                <span class="sessions-project-path">{{ projectInfo(record).main }}</span>
               </a-tooltip>
               <div class="timeline-event-raw">{{ shortPath(record.rawSourcePath) }}</div>
             </template>

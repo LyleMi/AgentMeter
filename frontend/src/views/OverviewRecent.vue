@@ -7,7 +7,7 @@ import AntTable from 'ant-design-vue/es/table'
 import ATag from 'ant-design-vue/es/tag'
 import Typography from 'ant-design-vue/es/typography'
 import { ClockCircleOutlined } from '@ant-design/icons-vue'
-import { formatDateTime, formatNumber, sessionLabel, shortPath, type Session } from '../api'
+import { formatDateTime, formatNumber, projectDisplay, sessionFullLabel, sessionLabel, type Session } from '../api'
 import { useMessages } from '../i18n'
 import { useOverviewContext } from './overviewContext'
 
@@ -65,6 +65,10 @@ function openSession(id: number) {
 function recentRow(record: Session) {
   return { class: 'overview-session-row is-clickable-row', onClick: () => openSession(record.id) }
 }
+
+function projectInfo(record: Session) {
+  return projectDisplay(record.projectPath)
+}
 </script>
 
 <template>
@@ -97,9 +101,11 @@ function recentRow(record: Session) {
           <template v-else-if="column.key === 'projectPath'">
             <div class="overview-session-identity">
               <a-typography-text class="overview-session-project" :ellipsis="{ tooltip: record.projectPath }">
-                {{ shortPath(record.projectPath) }}
+                {{ projectInfo(record).main }}
               </a-typography-text>
-              <span class="overview-session-meta mono">{{ sessionLabel(record) }}</span>
+              <a-typography-text class="overview-session-meta mono" :ellipsis="{ tooltip: sessionFullLabel(record) }">
+                {{ sessionLabel(record) }}
+              </a-typography-text>
             </div>
           </template>
           <template v-else-if="column.key === 'model'">

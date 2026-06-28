@@ -9,7 +9,7 @@ import ATooltip from 'ant-design-vue/es/tooltip'
 import Typography from 'ant-design-vue/es/typography'
 import { EyeOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import ToolCallDetailDrawer from '../components/ToolCallDetailDrawer.vue'
-import { api, formatDateTime, formatDuration, formatNumber, sessionLabel, shortPath, type AgentUsage, type ToolCall, type ToolStat } from '../api'
+import { api, formatDateTime, formatDuration, formatNumber, projectDisplay, sessionFullLabel, sessionLabel, shortPath, type AgentUsage, type ToolCall, type ToolStat } from '../api'
 import { useMessages } from '../i18n'
 import { sourceDisplay, sourceFilterOptions } from '../presentation/sourceIdentity'
 import { statusClass, statusColor } from '../presentation/status'
@@ -376,18 +376,22 @@ function callSessionLabel(call: ToolCall) {
   return sessionLabel({ id: call.sessionId, sessionKey: call.sessionKey || '', codexSessionId: call.codexSessionId })
 }
 
+function callSessionFullLabel(call: ToolCall) {
+  return sessionFullLabel({ id: call.sessionId, sessionKey: call.sessionKey || '', codexSessionId: call.codexSessionId })
+}
+
 function callSessionShort(call: ToolCall) {
   return `#${formatNumber(call.sessionId)}`
 }
 
 function callSessionTooltip(call: ToolCall) {
   const context = call.projectPath || call.rawSourcePath || ''
-  return context ? `${callSessionLabel(call)}\n${context}` : callSessionLabel(call)
+  return context ? `${callSessionFullLabel(call)}\n${context}` : callSessionFullLabel(call)
 }
 
 function projectContext(call: ToolCall) {
-  const value = call.projectPath || call.rawSourcePath || ''
-  return value ? shortPath(value) : t('fallback.none')
+  if (call.projectPath) return projectDisplay(call.projectPath).main
+  return call.rawSourcePath ? shortPath(call.rawSourcePath) : t('fallback.none')
 }
 
 function projectTooltip(call: ToolCall) {

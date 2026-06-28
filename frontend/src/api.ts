@@ -7,7 +7,11 @@ export {
   formatDisplayNumber,
   formatDuration,
   formatNumber,
+  projectDisplay,
+  projectName,
+  sessionDisplay,
+  sessionFullLabel,
   sessionLabel,
   shortPath
 } from './presentation/formatters'
-export type { DisplayNumber } from './presentation/formatters'
+export type { CollapsedText, DisplayNumber } from './presentation/formatters'

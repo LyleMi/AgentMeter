@@ -30,6 +30,8 @@ import {
   formatDateTime,
   formatDuration,
   formatNumber,
+  projectDisplay,
+  sessionFullLabel,
   sessionLabel,
   shortPath,
   type EventItem,
@@ -567,7 +569,7 @@ onMounted(load)
         </a-button>
         <h1 class="page-title">{{ t('title') }}</h1>
         <div class="page-subtitle">
-          {{ detail ? shortPath(detail.session.projectPath) : t('subtitle.fallback') }}
+          {{ detail ? projectDisplay(detail.session.projectPath).main : t('subtitle.fallback') }}
         </div>
       </div>
       <a-button @click="load">
@@ -583,9 +585,11 @@ onMounted(load)
         <section class="summary-panel session-summary-panel">
           <div class="session-summary-main">
             <div class="metric-label">{{ t('summary.trace') }}</div>
-            <div class="summary-title mono">{{ sessionLabel(detail.session) }}</div>
+            <a-tooltip :title="sessionFullLabel(detail.session)" placement="topLeft">
+              <div class="summary-title mono">{{ sessionLabel(detail.session) }}</div>
+            </a-tooltip>
             <a-tooltip :title="detail.session.projectPath" placement="topLeft">
-              <div class="session-summary-project">{{ shortPath(detail.session.projectPath) }}</div>
+              <div class="session-summary-project">{{ projectDisplay(detail.session.projectPath).main }}</div>
             </a-tooltip>
             <div class="summary-meta">
               <a-tag class="status-tag parse-status-tag" :class="statusClass(detail.session.parseStatus)" :color="statusColor(detail.session.parseStatus)">
@@ -892,7 +896,9 @@ onMounted(load)
                 </div>
                 <div class="metadata-item">
                   <div class="metadata-label">{{ t('metadata.sessionKey') }}</div>
-                  <div class="metadata-value mono">{{ sessionLabel(detail.session) }}</div>
+                  <a-typography-text class="metadata-value mono" :ellipsis="{ tooltip: sessionFullLabel(detail.session) }">
+                    {{ sessionLabel(detail.session) }}
+                  </a-typography-text>
                 </div>
                 <div class="metadata-item">
                   <div class="metadata-label">{{ t('metadata.agent') }}</div>
@@ -980,7 +986,7 @@ onMounted(load)
                 <div class="metadata-item is-wide">
                   <div class="metadata-label">{{ t('metadata.project') }}</div>
                   <a-typography-text class="metadata-value detail-path" :ellipsis="{ tooltip: detail.session.projectPath }">
-                    {{ detail.session.projectPath }}
+                    {{ projectDisplay(detail.session.projectPath).main }}
                   </a-typography-text>
                 </div>
                 <div class="metadata-item is-wide">

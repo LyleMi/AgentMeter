@@ -17,7 +17,7 @@ import {
 import type { AuditFinding, AuditSummary } from '../api/types'
 import { useAsyncResource } from '../composables/useAsyncResource'
 import { useMessages } from '../i18n'
-import { formatDateTime, formatNumber, shortPath } from '../presentation/formatters'
+import { formatDateTime, formatNumber, projectDisplay, sessionFullLabel, sessionLabel, shortPath } from '../presentation/formatters'
 import { sourceDisplay } from '../presentation/sourceIdentity'
 import { auditPath, categoryColor, cleanQueryValue, getAuditSummary, severityColor, titleCaseFallback } from './auditSupport'
 
@@ -182,7 +182,17 @@ function categoryLabel(value?: string | null) {
 }
 
 function sessionDisplay(record: AuditFinding) {
-  return record.sessionKey || record.codexSessionId || `#${formatNumber(record.sessionId)}`
+  return sessionLabel({ id: record.sessionId, sessionKey: record.sessionKey || '', codexSessionId: record.codexSessionId || '' })
+}
+
+function sessionTitle(record: AuditFinding) {
+  return sessionFullLabel({ id: record.sessionId, sessionKey: record.sessionKey || '', codexSessionId: record.codexSessionId || '' })
+}
+
+function sourceSecondary(record: AuditFinding) {
+  if (sourceInfo(record).secondary) return sourceInfo(record).secondary
+  if (record.projectPath) return projectDisplay(record.projectPath).main
+  return shortPath(record.rawSourcePath || '')
 }
 
 function sourceInfo(record: AuditFinding) {
@@ -271,9 +281,11 @@ onMounted(load)
           <template v-else-if="column.key === 'session'">
             <div class="source-identity-name">{{ sourceInfo(record).label }}</div>
             <a-tooltip :title="sourceInfo(record).title || record.projectPath || record.rawSourcePath || ''" placement="topLeft">
-              <div class="source-identity-meta">{{ sourceInfo(record).secondary || shortPath(record.projectPath || record.rawSourcePath || '') }}</div>
+              <div class="source-identity-meta">{{ sourceSecondary(record) }}</div>
             </a-tooltip>
-            <div class="timeline-event-raw mono">{{ sessionDisplay(record) }}</div>
+            <a-tooltip :title="sessionTitle(record)" placement="topLeft">
+              <div class="timeline-event-raw mono">{{ sessionDisplay(record) }}</div>
+            </a-tooltip>
           </template>
           <template v-else-if="column.key === 'time'">
             <span class="audit-time">{{ formatDateTime(record.timestamp) }}</span>

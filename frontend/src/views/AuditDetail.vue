@@ -12,7 +12,7 @@ import {
   HistoryOutlined,
   ReloadOutlined
 } from '@ant-design/icons-vue'
-import { api, formatDateTime, formatNumber, sessionLabel, shortPath, type SessionDetail } from '../api'
+import { api, formatDateTime, formatNumber, projectDisplay, sessionFullLabel, sessionLabel, shortPath, type SessionDetail } from '../api'
 import type { AuditFinding } from '../api/types'
 import { useAsyncResource } from '../composables/useAsyncResource'
 import { useMessages } from '../i18n'
@@ -131,7 +131,14 @@ const sessionName = computed(() => {
   if (item) return sessionLabel(item)
   const record = finding.value
   if (!record) return t('fallback.none')
-  return record.sessionKey || record.codexSessionId || `#${formatNumber(record.sessionId)}`
+  return sessionLabel({ id: record.sessionId, sessionKey: record.sessionKey || '', codexSessionId: record.codexSessionId || '' })
+})
+const sessionTitle = computed(() => {
+  const item = sessionDetail.value?.session
+  if (item) return sessionFullLabel(item)
+  const record = finding.value
+  if (!record) return t('fallback.none')
+  return sessionFullLabel({ id: record.sessionId, sessionKey: record.sessionKey || '', codexSessionId: record.codexSessionId || '' })
 })
 const linkedSource = computed(() => {
   const record = sessionDetail.value?.session || finding.value
@@ -190,6 +197,10 @@ function sourceContext(record: AuditFinding) {
     record.toolCallId ? `${t('label.toolCall')} #${formatNumber(record.toolCallId)}` : ''
   ].filter(Boolean)
   return items.join(' · ') || t('fallback.none')
+}
+
+function projectName(value?: string) {
+  return projectDisplay(value).main
 }
 
 function backToList() {
@@ -317,7 +328,9 @@ onMounted(load)
           <div class="audit-session-grid">
             <div class="audit-session-field">
               <span>{{ t('label.session') }}</span>
-              <strong class="mono">{{ sessionName }}</strong>
+              <a-tooltip :title="sessionTitle" placement="topLeft">
+                <strong class="mono">{{ sessionName }}</strong>
+              </a-tooltip>
             </div>
             <div class="audit-session-field">
               <span>{{ t('label.agent') }}</span>
@@ -335,7 +348,7 @@ onMounted(load)
             <div class="audit-session-field audit-session-field-wide">
               <span>{{ t('label.project') }}</span>
               <a-tooltip :title="sessionDetail?.session.projectPath || finding.projectPath || finding.rawSourcePath || ''" placement="topLeft">
-                <strong>{{ shortPath(sessionDetail?.session.projectPath || finding.projectPath || finding.rawSourcePath || '') }}</strong>
+                <strong>{{ sessionDetail?.session.projectPath || finding.projectPath ? projectName(sessionDetail?.session.projectPath || finding.projectPath) : shortPath(finding.rawSourcePath || '') }}</strong>
               </a-tooltip>
             </div>
             <div class="audit-session-field audit-session-field-wide">

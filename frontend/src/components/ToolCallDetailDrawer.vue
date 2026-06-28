@@ -5,7 +5,7 @@ import ADrawer from 'ant-design-vue/es/drawer'
 import ATag from 'ant-design-vue/es/tag'
 import Typography from 'ant-design-vue/es/typography'
 import { ArrowRightOutlined } from '@ant-design/icons-vue'
-import { formatDateTime, formatDuration, formatNumber, shortPath, type ToolCall } from '../api'
+import { formatDateTime, formatDuration, formatNumber, projectDisplay, sessionFullLabel, sessionLabel, shortPath, type ToolCall } from '../api'
 import { useMessages } from '../i18n'
 import { sourceDisplay } from '../presentation/sourceIdentity'
 import { statusClass, statusColor } from '../presentation/status'
@@ -86,7 +86,11 @@ const parsedInput = computed(() => parseToolInput(props.call))
 const callSource = computed(() => (props.call ? sourceDisplay(props.call, t('fallback.unknown')) : null))
 
 function sessionName(call: ToolCall) {
-  return call.sessionKey || call.codexSessionId || `#${call.sessionId}`
+  return sessionLabel({ id: call.sessionId, sessionKey: call.sessionKey || '', codexSessionId: call.codexSessionId })
+}
+
+function sessionFullName(call: ToolCall) {
+  return sessionFullLabel({ id: call.sessionId, sessionKey: call.sessionKey || '', codexSessionId: call.codexSessionId })
 }
 
 function hasText(value?: string) {
@@ -103,6 +107,10 @@ function openSession(call: ToolCall) {
 
 function hasDistinctEndRaw(call: ToolCall) {
   return hasText(call.rawEndEventJson) && call.rawEndEventJson !== call.rawStartEventJson
+}
+
+function projectName(call: ToolCall) {
+  return call.projectPath ? projectDisplay(call.projectPath).main : '-'
 }
 </script>
 
@@ -146,7 +154,9 @@ function hasDistinctEndRaw(call: ToolCall) {
         </div>
         <div class="metadata-item">
           <div class="metadata-label">{{ t('label.session') }}</div>
-          <div class="metadata-value mono">{{ sessionName(props.call) }}</div>
+          <a-typography-text class="metadata-value mono" :ellipsis="{ tooltip: sessionFullName(props.call) }">
+            {{ sessionName(props.call) }}
+          </a-typography-text>
         </div>
         <div class="metadata-item">
           <div class="metadata-label">{{ t('label.agent') }}</div>
@@ -164,7 +174,7 @@ function hasDistinctEndRaw(call: ToolCall) {
         <div class="metadata-item is-wide">
           <div class="metadata-label">{{ t('label.project') }}</div>
           <a-typography-text class="metadata-value detail-path" :ellipsis="{ tooltip: props.call.projectPath }">
-            {{ props.call.projectPath || '-' }}
+            {{ projectName(props.call) }}
           </a-typography-text>
         </div>
         <div class="metadata-item is-wide">

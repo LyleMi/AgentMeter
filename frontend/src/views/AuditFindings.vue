@@ -13,7 +13,7 @@ import { EyeOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-v
 import type { AuditFinding } from '../api/types'
 import { useAsyncResource } from '../composables/useAsyncResource'
 import { useMessages } from '../i18n'
-import { formatDateTime, formatNumber, shortPath } from '../presentation/formatters'
+import { formatDateTime, formatNumber, projectDisplay, sessionFullLabel, sessionLabel, shortPath } from '../presentation/formatters'
 import { sourceDisplay } from '../presentation/sourceIdentity'
 import {
   auditPath,
@@ -274,10 +274,13 @@ function snippet(value?: string | null) {
 }
 
 function sessionDisplay(record: AuditFinding) {
-  if (record.sessionKey) return record.sessionKey
-  if (record.codexSessionId) return record.codexSessionId
-  if (record.sessionId) return `#${formatNumber(record.sessionId)}`
-  return t('fallback.none')
+  if (!record.sessionId && !record.sessionKey && !record.codexSessionId) return t('fallback.none')
+  return sessionLabel({ id: record.sessionId, sessionKey: record.sessionKey || '', codexSessionId: record.codexSessionId || '' })
+}
+
+function sessionTitle(record: AuditFinding) {
+  if (!record.sessionId && !record.sessionKey && !record.codexSessionId) return t('fallback.none')
+  return sessionFullLabel({ id: record.sessionId, sessionKey: record.sessionKey || '', codexSessionId: record.codexSessionId || '' })
 }
 
 function sourceContext(record: AuditFinding) {
@@ -289,6 +292,12 @@ function sourceContext(record: AuditFinding) {
 
 function sourceInfo(record: AuditFinding) {
   return sourceDisplay(record, t('fallback.unknown'))
+}
+
+function sourceSecondary(record: AuditFinding) {
+  if (sourceInfo(record).secondary) return sourceInfo(record).secondary
+  if (record.projectPath) return projectDisplay(record.projectPath).main
+  return shortPath(record.rawSourcePath || '')
 }
 
 function safeDateTime(value?: string | null) {
@@ -446,9 +455,11 @@ onMounted(load)
                 {{ sourceInfo(record).label }}
               </a-button>
               <a-tooltip :title="sourceInfo(record).title || record.projectPath || record.rawSourcePath || ''" placement="topLeft">
-                <div class="source-identity-meta">{{ sourceInfo(record).secondary || shortPath(record.projectPath || record.rawSourcePath || '') }}</div>
+                <div class="source-identity-meta">{{ sourceSecondary(record) }}</div>
               </a-tooltip>
-              <div class="timeline-event-raw mono">{{ sessionDisplay(record) }}</div>
+              <a-tooltip :title="sessionTitle(record)" placement="topLeft">
+                <div class="timeline-event-raw mono">{{ sessionDisplay(record) }}</div>
+              </a-tooltip>
               <div v-if="sourceContext(record)" class="timeline-event-raw mono">{{ sourceContext(record) }}</div>
             </template>
 

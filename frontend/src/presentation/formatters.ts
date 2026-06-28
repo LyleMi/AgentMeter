@@ -7,6 +7,12 @@ export interface DisplayNumber {
   full: string
 }
 
+export interface CollapsedText {
+  main: string
+  full: string
+  collapsed: boolean
+}
+
 function localizedFallback(key: 'unknown' | 'unpriced') {
   if (currentLocale.value === 'zh-CN') return key === 'unknown' ? '未知' : '未定价'
   return key
@@ -115,6 +121,35 @@ export function shortPath(value: string): string {
   return `.../${parts.slice(-3).join('/')}`
 }
 
-export function sessionLabel(session: Pick<Session, 'id' | 'sessionKey' | 'codexSessionId'>): string {
+export function projectName(value: string | undefined): string {
+  if (!value) return localizedFallback('unknown')
+  const trimmed = value.trim().replace(/[\\/]+$/, '')
+  if (!trimmed) return localizedFallback('unknown')
+  const parts = trimmed.split(/[\\/]/).filter(Boolean)
+  return parts.at(-1) || trimmed
+}
+
+export function projectDisplay(value: string | undefined): CollapsedText {
+  const full = value?.trim() || localizedFallback('unknown')
+  const main = projectName(value)
+  return { main, full, collapsed: main !== full }
+}
+
+export function collapseMiddle(value: string, head = 10, tail = 6): string {
+  if (value.length <= head + tail + 3) return value
+  return `${value.slice(0, head)}...${value.slice(-tail)}`
+}
+
+export function sessionFullLabel(session: Pick<Session, 'id' | 'sessionKey' | 'codexSessionId'>): string {
   return session.sessionKey || session.codexSessionId || `#${session.id}`
+}
+
+export function sessionLabel(session: Pick<Session, 'id' | 'sessionKey' | 'codexSessionId'>): string {
+  return collapseMiddle(sessionFullLabel(session))
+}
+
+export function sessionDisplay(session: Pick<Session, 'id' | 'sessionKey' | 'codexSessionId'>): CollapsedText {
+  const full = sessionFullLabel(session)
+  const main = collapseMiddle(full)
+  return { main, full, collapsed: main !== full }
 }
