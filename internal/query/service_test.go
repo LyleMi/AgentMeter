@@ -267,6 +267,9 @@ func TestTokenAnalyticsAggregatesUsageCostsAndSessions(t *testing.T) {
 		codexUsage.ReasoningOutputTokens != 50_000 || !codexUsage.Unpriced {
 		t.Fatalf("codex agent usage = %+v", codexUsage)
 	}
+	if math.Abs(codexUsage.CacheUtilizationRate-0.2) > 0.000001 {
+		t.Fatalf("codex agent cache utilization = %f", codexUsage.CacheUtilizationRate)
+	}
 	claudeUsage := findAgentUsage(t, analytics.AgentUsage, "claude", "Claude Code")
 	if claudeUsage.SessionCount != 1 || claudeUsage.TotalTokens != 775_000 || claudeUsage.Unpriced {
 		t.Fatalf("claude agent usage = %+v", claudeUsage)
@@ -304,6 +307,9 @@ func TestTokenAnalyticsHandlesSeparateCacheReadInput(t *testing.T) {
 	agentUsage := findAgentUsage(t, analytics.AgentUsage, "claude", "Claude Code")
 	if agentUsage.InputTokens != 1_000 || agentUsage.CachedInputTokens != 10_000 {
 		t.Fatalf("agent usage tokens = %+v", agentUsage)
+	}
+	if math.Abs(agentUsage.CacheUtilizationRate-(float64(10_000)/float64(11_000))) > 0.000001 {
+		t.Fatalf("agent usage cache utilization = %f", agentUsage.CacheUtilizationRate)
 	}
 	if agentUsage.Unpriced {
 		t.Fatalf("agent usage should be priced: %+v", agentUsage)

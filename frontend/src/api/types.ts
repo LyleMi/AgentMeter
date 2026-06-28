@@ -128,6 +128,7 @@ export interface AgentUsage extends SourceIdentity {
   cachedInputTokens: number
   outputTokens: number
   reasoningOutputTokens: number
+  cacheUtilizationRate: number
   toolCalls: number
   estimatedCostUsd?: number
   unpriced: boolean

@@ -218,6 +218,7 @@ type AgentUsage struct {
 	CachedInputTokens     int64    `json:"cachedInputTokens"`
 	OutputTokens          int64    `json:"outputTokens"`
 	ReasoningOutputTokens int64    `json:"reasoningOutputTokens"`
+	CacheUtilizationRate  float64  `json:"cacheUtilizationRate"`
 	ToolCalls             int      `json:"toolCalls"`
 	EstimatedCostUSD      *float64 `json:"estimatedCostUsd,omitempty"`
 	Unpriced              bool     `json:"unpriced"`

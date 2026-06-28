@@ -523,6 +523,8 @@ function modelUsageFor(items: Session[]): ModelUsage[] {
 function agentUsageFor(items: Session[]): AgentUsage[] {
   return [...groupedBy(items, (session) => session.sourceKey || session.agentKind)].map(([, group]) => {
     const first = group[0]
+    const inputTokens = sum(group, (session) => session.tokenUsage.inputTokens)
+    const cachedInputTokens = sum(group, (session) => session.tokenUsage.cachedInputTokens)
     return {
       sourceId: first.sourceId,
       sourceKey: first.sourceKey,
@@ -533,10 +535,11 @@ function agentUsageFor(items: Session[]): AgentUsage[] {
       agentName: first.agentName,
       sessionCount: group.length,
       totalTokens: sum(group, (session) => session.tokenUsage.totalTokens),
-      inputTokens: sum(group, (session) => session.tokenUsage.inputTokens),
-      cachedInputTokens: sum(group, (session) => session.tokenUsage.cachedInputTokens),
+      inputTokens,
+      cachedInputTokens,
       outputTokens: sum(group, (session) => session.tokenUsage.outputTokens),
       reasoningOutputTokens: sum(group, (session) => session.tokenUsage.reasoningOutputTokens),
+      cacheUtilizationRate: inputTokens > 0 ? cachedInputTokens / inputTokens : 0,
       toolCalls: sum(group, (session) => session.toolCallCount),
       estimatedCostUsd: costSum(group),
       unpriced: group.some((session) => session.unpriced)

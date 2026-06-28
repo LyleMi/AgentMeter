@@ -475,6 +475,7 @@ func (s *Service) agentUsageWithFilters(ctx context.Context, filters model.Analy
 		}
 		item.SourceKey = sourceInstanceKey(item.SourceID)
 		item.SourceLabel = item.AgentName
+		item.CacheUtilizationRate = cacheUtilizationRate(item.InputTokens, item.CachedInputTokens)
 		result = append(result, item)
 	}
 	if err := rows.Err(); err != nil {
