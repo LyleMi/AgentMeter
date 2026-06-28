@@ -1071,6 +1071,7 @@ function modelSignalsDailyMetricsFor(items: Session[], scopedToolCalls: ToolCall
       return {
         date,
         ...current,
+        baseline,
         lowSample: group.length < 2 || current.modelCalls < 3 || current.totalTokens < 60_000,
         drift,
         keyReason: drift.reasons[0] || drift.sampleNote

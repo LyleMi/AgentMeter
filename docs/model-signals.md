@@ -62,15 +62,18 @@ general model capability score.
 ## Presentation Standard
 
 Model Signals should lead with configurable dynamic charts, not raw numeric
-tables. The primary view should let users switch between operational lenses
-such as P90 latency, P10 throughput, cost burn, cost per active hour, cost per
-1k tokens, cache savings, failure pressure, retry pressure, cache miss rate,
-reasoning share, and output expansion.
+tables. The primary view should let users select multiple compatible or
+complementary operational lenses in the same chart, such as P90/P50 latency,
+P10 and output throughput, cost burn, cost per session, cost per active hour,
+cost per 1k tokens, cache savings, model and tool failure pressure, retry
+pressure, cache miss rate, reasoning share, tool dependency, and output
+expansion.
 
 Tables remain useful as inspectable detail, but they should sit after the chart
 for traceability. Chart controls should preserve the active agent/source, model,
-project, and date filters, show current versus baseline values where available,
-and label low-sample or unavailable-price states directly.
+project, and date filters. Current-versus-baseline comparison should be an
+explicit chart option rather than a mandatory overlay, and low-sample or
+unavailable-price states should be labeled directly.
 
 ## Signals
 
@@ -179,8 +182,8 @@ returns day-level and project-level efficiency views:
 - `dailyMetrics`: day rows for operational efficiency, including cost, cost per
   session, cost per active hour, cost per 1k tokens, cache savings, p50/p90
   latency, p50/p10 throughput, failure pressure, retry pressure or model calls
-  per session, low sample flags, and drift against the preceding 7 calendar
-  days.
+  per session, low sample flags, baseline metric values from the preceding
+  7 calendar days, and drift against that baseline.
 - `projectMetrics`: project rows for operational efficiency, including project
   cost burn, cache savings, cost per session, cost per active hour, cost per 1k
   tokens, dominant model, model mix, retry pressure, failure pressure,

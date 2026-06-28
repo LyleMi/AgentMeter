@@ -960,7 +960,8 @@ func buildModelSignalDailyMetrics(metrics []modelSignalSessionMetric) []model.Mo
 		}
 
 		currentSet := current.metricSet()
-		drift := compareModelSignalDrift(currentSet, baseline.metricSet())
+		baselineSet := baseline.metricSet()
+		drift := compareModelSignalDrift(currentSet, baselineSet)
 		if observedDays < 7 && drift.Confidence != modelSignalConfidenceLow {
 			drift.Confidence = modelSignalConfidenceLow
 			drift.SampleNote = "insufficient baseline days"
@@ -972,6 +973,7 @@ func buildModelSignalDailyMetrics(metrics []modelSignalSessionMetric) []model.Mo
 		result = append(result, model.ModelSignalsDailyMetric{
 			Date:                  date,
 			ModelSignalsMetricSet: currentSet,
+			Baseline:              baselineSet,
 			LowSample:             drift.Confidence == modelSignalConfidenceLow || modelSignalMetricSetLowSample(currentSet),
 			Drift:                 drift,
 			KeyReason:             firstModelSignalReason(drift.Reasons),

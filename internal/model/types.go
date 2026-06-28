@@ -471,9 +471,10 @@ type ModelSignalsProjectHotspot struct {
 type ModelSignalsDailyMetric struct {
 	Date string `json:"date"`
 	ModelSignalsMetricSet
-	LowSample bool              `json:"lowSample"`
-	Drift     ModelSignalsDrift `json:"drift"`
-	KeyReason string            `json:"keyReason"`
+	Baseline  ModelSignalsMetricSet `json:"baseline"`
+	LowSample bool                  `json:"lowSample"`
+	Drift     ModelSignalsDrift     `json:"drift"`
+	KeyReason string                `json:"keyReason"`
 }
 
 type ModelSignalsProjectMetric struct {

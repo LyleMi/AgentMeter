@@ -370,6 +370,7 @@ export interface ModelSignalProjectHotspot extends ModelSignalMetricSet {
 
 export interface ModelSignalsDailyMetric extends ModelSignalMetricSet {
   date: string
+  baseline?: ModelSignalMetricSet
   lowSample: boolean
   drift: ModelSignalDrift
   keyReason?: string
