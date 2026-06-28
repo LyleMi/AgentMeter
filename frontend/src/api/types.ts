@@ -215,7 +215,11 @@ export interface TokenAnalytics {
 
 export interface ModelSignalRates {
   outputExpansionRate: number
+  generationTokenOverhead?: number
   reasoningTokenShare: number
+  reasoningOverheadRate?: number
+  reasoningTokenOverhead?: number
+  reasoningOutputShare?: number
   cacheMissRate: number
   modelThroughputTokensPerSecond: number
   modelThroughputOutputTokensPerSecond: number
@@ -234,6 +238,8 @@ export interface ModelSignalMetricSet extends ModelSignalRates {
   cachedInputTokens: number
   outputTokens: number
   reasoningOutputTokens: number
+  visibleOutputTokens?: number
+  billableOutputTokens?: number
   modelDurationMs: number
   wallDurationMs?: number
   activeDurationMs?: number
@@ -437,6 +443,9 @@ export interface ModelSignals {
   avgModelCallsPerSession: number
   outputExpansionRate: number
   reasoningTokenShare: number
+  reasoningOverheadRate?: number
+  visibleOutputTokens?: number
+  billableOutputTokens?: number
   cacheMissRate: number
   modelThroughputTokensPerSecond: number
   modelThroughputOutputTokensPerSecond: number

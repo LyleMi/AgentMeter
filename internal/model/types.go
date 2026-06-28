@@ -326,6 +326,9 @@ type ModelSignals struct {
 	AvgModelCallsPerSession              float64                      `json:"avgModelCallsPerSession"`
 	OutputExpansionRate                  float64                      `json:"outputExpansionRate"`
 	ReasoningTokenShare                  float64                      `json:"reasoningTokenShare"`
+	ReasoningOverheadRate                float64                      `json:"reasoningOverheadRate"`
+	VisibleOutputTokens                  int64                        `json:"visibleOutputTokens"`
+	BillableOutputTokens                 int64                        `json:"billableOutputTokens"`
 	CacheMissRate                        float64                      `json:"cacheMissRate"`
 	ModelThroughputTokensPerSecond       float64                      `json:"modelThroughputTokensPerSecond"`
 	ModelThroughputOutputTokensPerSecond float64                      `json:"modelThroughputOutputTokensPerSecond"`
@@ -358,6 +361,8 @@ type ModelSignalsMetricSet struct {
 	CachedInputTokens                    int64    `json:"cachedInputTokens"`
 	OutputTokens                         int64    `json:"outputTokens"`
 	ReasoningOutputTokens                int64    `json:"reasoningOutputTokens"`
+	VisibleOutputTokens                  int64    `json:"visibleOutputTokens"`
+	BillableOutputTokens                 int64    `json:"billableOutputTokens"`
 	WallDurationMS                       int64    `json:"wallDurationMs"`
 	ActiveDurationMS                     int64    `json:"activeDurationMs"`
 	ModelDurationMS                      int64    `json:"modelDurationMs"`
@@ -369,6 +374,7 @@ type ModelSignalsMetricSet struct {
 	AvgModelCallsPerSession              float64  `json:"avgModelCallsPerSession"`
 	OutputExpansionRate                  float64  `json:"outputExpansionRate"`
 	ReasoningTokenShare                  float64  `json:"reasoningTokenShare"`
+	ReasoningOverheadRate                float64  `json:"reasoningOverheadRate"`
 	CacheMissRate                        float64  `json:"cacheMissRate"`
 	CostPerSession                       *float64 `json:"costPerSession,omitempty"`
 	CostPerActiveHour                    *float64 `json:"costPerActiveHour,omitempty"`
@@ -501,9 +507,12 @@ type ModelSignalsTrendPoint struct {
 	CachedInputTokens                     int64   `json:"cachedInputTokens"`
 	OutputTokens                          int64   `json:"outputTokens"`
 	ReasoningOutputTokens                 int64   `json:"reasoningOutputTokens"`
+	VisibleOutputTokens                   int64   `json:"visibleOutputTokens"`
+	BillableOutputTokens                  int64   `json:"billableOutputTokens"`
 	ModelDurationMS                       int64   `json:"modelDurationMs"`
 	OutputExpansionRate                   float64 `json:"outputExpansionRate"`
 	ReasoningTokenShare                   float64 `json:"reasoningTokenShare"`
+	ReasoningOverheadRate                 float64 `json:"reasoningOverheadRate"`
 	CacheMissRate                         float64 `json:"cacheMissRate"`
 	ModelThroughputTokensPerSecond        float64 `json:"modelThroughputTokensPerSecond"`
 	ModelThroughputOutputTokensPerSecond  float64 `json:"modelThroughputOutputTokensPerSecond"`
@@ -525,12 +534,15 @@ type ModelSignalsBreakdown struct {
 	CachedInputTokens                    int64   `json:"cachedInputTokens"`
 	OutputTokens                         int64   `json:"outputTokens"`
 	ReasoningOutputTokens                int64   `json:"reasoningOutputTokens"`
+	VisibleOutputTokens                  int64   `json:"visibleOutputTokens"`
+	BillableOutputTokens                 int64   `json:"billableOutputTokens"`
 	ModelDurationMS                      int64   `json:"modelDurationMs"`
 	ToolFailureRate                      float64 `json:"toolFailureRate"`
 	ToolDependencyRate                   float64 `json:"toolDependencyRate"`
 	AvgModelCallsPerSession              float64 `json:"avgModelCallsPerSession"`
 	OutputExpansionRate                  float64 `json:"outputExpansionRate"`
 	ReasoningTokenShare                  float64 `json:"reasoningTokenShare"`
+	ReasoningOverheadRate                float64 `json:"reasoningOverheadRate"`
 	CacheMissRate                        float64 `json:"cacheMissRate"`
 	ModelThroughputTokensPerSecond       float64 `json:"modelThroughputTokensPerSecond"`
 	ModelThroughputOutputTokensPerSecond float64 `json:"modelThroughputOutputTokensPerSecond"`
@@ -559,9 +571,12 @@ type ModelSignalsAnomalySession struct {
 	CachedInputTokens                    int64     `json:"cachedInputTokens"`
 	OutputTokens                         int64     `json:"outputTokens"`
 	ReasoningOutputTokens                int64     `json:"reasoningOutputTokens"`
+	VisibleOutputTokens                  int64     `json:"visibleOutputTokens"`
+	BillableOutputTokens                 int64     `json:"billableOutputTokens"`
 	ModelDurationMS                      int64     `json:"modelDurationMs"`
 	OutputExpansionRate                  float64   `json:"outputExpansionRate"`
 	ReasoningTokenShare                  float64   `json:"reasoningTokenShare"`
+	ReasoningOverheadRate                float64   `json:"reasoningOverheadRate"`
 	CacheMissRate                        float64   `json:"cacheMissRate"`
 	ModelThroughputTokensPerSecond       float64   `json:"modelThroughputTokensPerSecond"`
 	ModelThroughputOutputTokensPerSecond float64   `json:"modelThroughputOutputTokensPerSecond"`

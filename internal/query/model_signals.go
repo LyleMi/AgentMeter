@@ -33,6 +33,8 @@ type modelSignalSessionMetric struct {
 	CachedInputTokens     int64
 	OutputTokens          int64
 	ReasoningOutputTokens int64
+	VisibleOutputTokens   int64
+	BillableOutputTokens  int64
 	TotalTokens           int64
 	WallDurationMS        int64
 	ActiveDurationMS      int64
@@ -185,6 +187,14 @@ func (s *Service) modelSignalSessionMetrics(ctx context.Context, filters model.A
 		}
 		item.EstimatedCostUSD, item.Unpriced = calculator.Compute(usage)
 		item.CacheSavingsUSD = calculator.CacheSavings(usage)
+		item.VisibleOutputTokens, item.BillableOutputTokens, _, _ = reasoningOutputSemantics(
+			item.InputTokens,
+			item.CachedInputTokens,
+			item.OutputTokens,
+			item.ReasoningOutputTokens,
+			item.TotalTokens,
+			item.Model,
+		)
 		item.LatencySamples = parseModelSignalSamples(latencySamples)
 		item.ThroughputSamples = parseModelSignalSamples(throughputSamples)
 		if len(item.LatencySamples) == 0 {
@@ -240,6 +250,8 @@ func buildModelSignals(metrics []modelSignalSessionMetric) model.ModelSignals {
 			&breakdown.ModelDurationMS,
 			metric,
 		)
+		breakdown.VisibleOutputTokens += metric.VisibleOutputTokens
+		breakdown.BillableOutputTokens += metric.BillableOutputTokens
 
 		if metric.Day != "" {
 			point := trendByDay[metric.Day]
@@ -256,6 +268,8 @@ func buildModelSignals(metrics []modelSignalSessionMetric) model.ModelSignals {
 			point.CachedInputTokens += metric.CachedInputTokens
 			point.OutputTokens += metric.OutputTokens
 			point.ReasoningOutputTokens += metric.ReasoningOutputTokens
+			point.VisibleOutputTokens += metric.VisibleOutputTokens
+			point.BillableOutputTokens += metric.BillableOutputTokens
 			point.ModelDurationMS += metric.ModelDurationMS
 			if metric.ToolCalls > 0 {
 				trendSessionsWithTools[metric.Day]++
@@ -263,20 +277,24 @@ func buildModelSignals(metrics []modelSignalSessionMetric) model.ModelSignals {
 		}
 	}
 
-	var totalTokens, inputTokens, cachedInputTokens, outputTokens, reasoningOutputTokens, modelDurationMS int64
+	var totalTokens, inputTokens, cachedInputTokens, outputTokens, reasoningOutputTokens, visibleOutputTokens, billableOutputTokens, modelDurationMS int64
 	for _, metric := range metrics {
 		totalTokens += metric.TotalTokens
 		inputTokens += metric.InputTokens
 		cachedInputTokens += metric.CachedInputTokens
 		outputTokens += metric.OutputTokens
 		reasoningOutputTokens += metric.ReasoningOutputTokens
+		visibleOutputTokens += metric.VisibleOutputTokens
+		billableOutputTokens += metric.BillableOutputTokens
 		modelDurationMS += metric.ModelDurationMS
 	}
 	result.ToolFailureRate = safeRateInt(result.FailedToolCalls, result.TotalToolCalls)
 	result.ToolDependencyRate = safeRateInt(sessionsWithTools, result.TotalSessions)
 	result.AvgModelCallsPerSession = safeRateInt(result.TotalModelCalls, result.TotalSessions)
 	result.OutputExpansionRate = safeRate(outputTokens, inputTokens)
-	result.ReasoningTokenShare = clamp01(safeRate(reasoningOutputTokens, outputTokens))
+	result.VisibleOutputTokens = visibleOutputTokens
+	result.BillableOutputTokens = billableOutputTokens
+	result.ReasoningTokenShare, result.ReasoningOverheadRate = reasoningRates(reasoningOutputTokens, visibleOutputTokens, billableOutputTokens)
 	result.CacheMissRate = cacheMissRate(inputTokens, cachedInputTokens)
 	result.ModelThroughputTokensPerSecond = throughputPerSecond(totalTokens, modelDurationMS)
 	result.ModelThroughputOutputTokensPerSecond = throughputPerSecond(outputTokens, modelDurationMS)
@@ -644,6 +662,8 @@ func (a *modelSignalMetricAccumulator) add(metric modelSignalSessionMetric) {
 	a.set.CachedInputTokens += metric.CachedInputTokens
 	a.set.OutputTokens += metric.OutputTokens
 	a.set.ReasoningOutputTokens += metric.ReasoningOutputTokens
+	a.set.VisibleOutputTokens += metric.VisibleOutputTokens
+	a.set.BillableOutputTokens += metric.BillableOutputTokens
 	a.set.WallDurationMS += metric.WallDurationMS
 	a.set.ActiveDurationMS += metric.ActiveDurationMS
 	a.set.ModelDurationMS += metric.ModelDurationMS
@@ -679,7 +699,10 @@ func (a modelSignalMetricAccumulator) metricSet() model.ModelSignalsMetricSet {
 	item.ToolDependencyRate = safeRateInt(a.sessionsWithTools, item.SessionCount)
 	item.AvgModelCallsPerSession = safeRateInt(item.ModelCalls, item.SessionCount)
 	item.OutputExpansionRate = safeRate(item.OutputTokens, item.InputTokens)
-	item.ReasoningTokenShare = clamp01(safeRate(item.ReasoningOutputTokens, item.OutputTokens))
+	if item.BillableOutputTokens <= 0 && item.OutputTokens > 0 {
+		item.VisibleOutputTokens, item.BillableOutputTokens = reasoningOutputDenominators(item.OutputTokens, item.ReasoningOutputTokens, false)
+	}
+	item.ReasoningTokenShare, item.ReasoningOverheadRate = reasoningRates(item.ReasoningOutputTokens, item.VisibleOutputTokens, item.BillableOutputTokens)
 	item.CacheMissRate = cacheMissRate(item.InputTokens, item.CachedInputTokens)
 	item.FailurePressure = safeRateInt(item.FailedModelCalls+item.FailedToolCalls, item.SessionCount)
 	item.ModelThroughputTokensPerSecond = throughputPerSecond(item.TotalTokens, item.ModelDurationMS)
@@ -728,7 +751,7 @@ func compareModelSignalDrift(current, baseline model.ModelSignalsMetricSet) mode
 	addAbsoluteIncreaseDriftMetric(&drift, "cacheMissRate", "cache miss rate", "higher_symptom", "cache miss rate increased", current.CacheMissRate, baseline.CacheMissRate, 0.20, 0.40, 0.50)
 	addRelativeIncreaseDriftMetric(&drift, "avgModelCallsPerSession", "model calls per session", "higher_retry_loop_symptom", "model calls per session increased", current.AvgModelCallsPerSession, baseline.AvgModelCallsPerSession, 0.5, 1.0, 0.5)
 	addRelativeIncreaseDriftMetric(&drift, "outputExpansionRate", "output expansion rate", "behavior_higher", "output expansion increased", current.OutputExpansionRate, baseline.OutputExpansionRate, 1.0, 2.0, 1.0)
-	addAbsoluteIncreaseDriftMetric(&drift, "reasoningTokenShare", "reasoning token share", "behavior_higher", "reasoning token share increased", current.ReasoningTokenShare, baseline.ReasoningTokenShare, 0.20, 0.40, 0.30)
+	addAbsoluteIncreaseDriftMetric(&drift, "reasoningOverheadRate", "reasoning overhead rate", "cost_shape_review", "reasoning overhead increased", current.ReasoningOverheadRate, baseline.ReasoningOverheadRate, 0.50, 1.00, 0.50)
 
 	return drift
 }
@@ -1204,7 +1227,10 @@ func applyModelSignalsBreakdownRates(item *model.ModelSignalsBreakdown, sessions
 	item.ToolDependencyRate = safeRateInt(sessionsWithTools, item.SessionCount)
 	item.AvgModelCallsPerSession = safeRateInt(item.ModelCalls, item.SessionCount)
 	item.OutputExpansionRate = safeRate(item.OutputTokens, item.InputTokens)
-	item.ReasoningTokenShare = clamp01(safeRate(item.ReasoningOutputTokens, item.OutputTokens))
+	if item.BillableOutputTokens <= 0 && item.OutputTokens > 0 {
+		item.VisibleOutputTokens, item.BillableOutputTokens = reasoningOutputDenominators(item.OutputTokens, item.ReasoningOutputTokens, false)
+	}
+	item.ReasoningTokenShare, item.ReasoningOverheadRate = reasoningRates(item.ReasoningOutputTokens, item.VisibleOutputTokens, item.BillableOutputTokens)
 	item.CacheMissRate = cacheMissRate(item.InputTokens, item.CachedInputTokens)
 	item.ModelThroughputTokensPerSecond = throughputPerSecond(item.TotalTokens, item.ModelDurationMS)
 	item.ModelThroughputOutputTokensPerSecond = throughputPerSecond(item.OutputTokens, item.ModelDurationMS)
@@ -1213,7 +1239,10 @@ func applyModelSignalsBreakdownRates(item *model.ModelSignalsBreakdown, sessions
 func applyModelSignalsTrendRates(point *model.ModelSignalsTrendPoint) {
 	point.ToolFailureRate = safeRateInt(point.FailedToolCalls, point.ToolCalls)
 	point.OutputExpansionRate = safeRate(point.OutputTokens, point.InputTokens)
-	point.ReasoningTokenShare = clamp01(safeRate(point.ReasoningOutputTokens, point.OutputTokens))
+	if point.BillableOutputTokens <= 0 && point.OutputTokens > 0 {
+		point.VisibleOutputTokens, point.BillableOutputTokens = reasoningOutputDenominators(point.OutputTokens, point.ReasoningOutputTokens, false)
+	}
+	point.ReasoningTokenShare, point.ReasoningOverheadRate = reasoningRates(point.ReasoningOutputTokens, point.VisibleOutputTokens, point.BillableOutputTokens)
 	point.CacheMissRate = cacheMissRate(point.InputTokens, point.CachedInputTokens)
 	point.ModelThroughputTokensPerSecond = throughputPerSecond(point.TotalTokens, point.ModelDurationMS)
 	point.ModelThroughputOutputTokensPerSecond = throughputPerSecond(point.OutputTokens, point.ModelDurationMS)
@@ -1324,17 +1353,15 @@ func modelSignalsAnomalyFromMetric(metric modelSignalSessionMetric) model.ModelS
 		ReasoningOutputTokens:                metric.ReasoningOutputTokens,
 		ModelDurationMS:                      metric.ModelDurationMS,
 		OutputExpansionRate:                  safeRate(metric.OutputTokens, metric.InputTokens),
-		ReasoningTokenShare:                  clamp01(safeRate(metric.ReasoningOutputTokens, metric.OutputTokens)),
 		CacheMissRate:                        cacheMissRate(metric.InputTokens, metric.CachedInputTokens),
 		ModelThroughputTokensPerSecond:       throughputPerSecond(metric.TotalTokens, metric.ModelDurationMS),
 		ModelThroughputOutputTokensPerSecond: throughputPerSecond(metric.OutputTokens, metric.ModelDurationMS),
 		ToolFailureRate:                      safeRateInt(metric.FailedToolCalls, metric.ToolCalls),
 		ReasonLabels:                         []string{},
 	}
-	if item.ReasoningTokenShare >= 0.5 {
-		item.ReasonLabels = append(item.ReasonLabels, "high reasoning share")
-		item.Score += item.ReasoningTokenShare * 2
-	}
+	item.VisibleOutputTokens = metric.VisibleOutputTokens
+	item.BillableOutputTokens = metric.BillableOutputTokens
+	item.ReasoningTokenShare, item.ReasoningOverheadRate = reasoningRates(metric.ReasoningOutputTokens, metric.VisibleOutputTokens, metric.BillableOutputTokens)
 	if item.OutputExpansionRate >= 3 {
 		item.ReasonLabels = append(item.ReasonLabels, "high output/input ratio")
 		item.Score += math.Min(item.OutputExpansionRate/3, 5)
@@ -1431,6 +1458,61 @@ func safeRateInt(numerator, denominator int) float64 {
 		return 0
 	}
 	return float64(numerator) / float64(denominator)
+}
+
+func reasoningOutputSemantics(inputTokens, cachedInputTokens, outputTokens, reasoningOutputTokens, totalTokens int64, modelName string) (visibleOutputTokens int64, billableOutputTokens int64, reasoningTokenShare float64, reasoningOverheadRate float64) {
+	if outputTokens <= 0 {
+		return 0, 0, 0, 0
+	}
+	if reasoningOutputTokens <= 0 {
+		return outputTokens, outputTokens, 0, 0
+	}
+	separateReasoning := reasoningOutputAppearsSeparate(inputTokens, cachedInputTokens, outputTokens, reasoningOutputTokens, totalTokens, modelName)
+	visibleOutputTokens, billableOutputTokens = reasoningOutputDenominators(outputTokens, reasoningOutputTokens, separateReasoning)
+	reasoningTokenShare, reasoningOverheadRate = reasoningRates(reasoningOutputTokens, visibleOutputTokens, billableOutputTokens)
+	return visibleOutputTokens, billableOutputTokens, reasoningTokenShare, reasoningOverheadRate
+}
+
+func reasoningOutputAppearsSeparate(inputTokens, cachedInputTokens, outputTokens, reasoningOutputTokens, totalTokens int64, modelName string) bool {
+	if outputTokens <= 0 || reasoningOutputTokens <= 0 || totalTokens <= 0 {
+		return false
+	}
+	if reasoningOutputTokens > outputTokens {
+		return true
+	}
+	normalizedModel := strings.ToLower(strings.TrimSpace(modelName))
+	normalizedModel = strings.TrimPrefix(normalizedModel, "models/")
+	if !strings.Contains(normalizedModel, "gemini") {
+		return false
+	}
+	promptTokens := inputTokens
+	if cachedInputTokens > inputTokens {
+		promptTokens += cachedInputTokens
+	}
+	return totalTokens >= promptTokens+outputTokens+reasoningOutputTokens
+}
+
+func reasoningOutputDenominators(outputTokens, reasoningOutputTokens int64, separateReasoning bool) (visibleOutputTokens int64, billableOutputTokens int64) {
+	if outputTokens <= 0 {
+		return 0, 0
+	}
+	if reasoningOutputTokens <= 0 {
+		return outputTokens, outputTokens
+	}
+	if separateReasoning {
+		return outputTokens, outputTokens + reasoningOutputTokens
+	}
+	visibleOutputTokens = outputTokens - reasoningOutputTokens
+	if visibleOutputTokens < 0 {
+		visibleOutputTokens = 0
+	}
+	return visibleOutputTokens, outputTokens
+}
+
+func reasoningRates(reasoningOutputTokens, visibleOutputTokens, billableOutputTokens int64) (reasoningTokenShare float64, reasoningOverheadRate float64) {
+	reasoningTokenShare = clamp01(safeRate(reasoningOutputTokens, billableOutputTokens))
+	reasoningOverheadRate = safeRate(reasoningOutputTokens, visibleOutputTokens)
+	return reasoningTokenShare, reasoningOverheadRate
 }
 
 func cacheMissRate(inputTokens, cachedInputTokens int64) float64 {

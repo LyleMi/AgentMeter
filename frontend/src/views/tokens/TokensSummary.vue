@@ -32,13 +32,13 @@ const { t } = useMessages({
     'metric.inputOutput': 'Input / Output',
     'metric.inputOutputNote': 'Prompt and response volume',
     'breakdown.title': 'Token Mix',
-    'breakdown.kicker': 'Input/output totals with cached input and reasoning sub-shares',
+    'breakdown.kicker': 'Input/output totals with cached input and reasoning overhead shape',
     'trend.title': 'Cache Hit Trend',
     'trend.kicker': 'Daily hit rate with input-weighted 7-day trend',
     'token.input': 'Input',
     'token.cached': 'Cached input',
     'token.output': 'Output',
-    'token.reasoning': 'Reasoning'
+    'token.reasoning': 'Reasoning overhead'
   },
   'zh-CN': {
     'metric.totalTokens': '总 Token',
@@ -51,13 +51,13 @@ const { t } = useMessages({
     'metric.inputOutput': '输入 / 输出',
     'metric.inputOutputNote': '提示词和响应规模',
     'breakdown.title': 'Token 构成',
-    'breakdown.kicker': '输入/输出总量及输入缓存、推理子占比',
+    'breakdown.kicker': '输入/输出总量及输入缓存、推理开销形态',
     'trend.title': '缓存命中趋势',
     'trend.kicker': '每日命中率与按输入 Token 加权的 7 天趋势',
     'token.input': '输入',
     'token.cached': '输入缓存',
     'token.output': '输出',
-    'token.reasoning': '推理'
+    'token.reasoning': '推理开销'
   }
 })
 

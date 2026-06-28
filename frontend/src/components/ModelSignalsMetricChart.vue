@@ -24,6 +24,7 @@ type ChartKind = 'bar' | 'line'
 type MetricKind = 'cost' | 'latency' | 'throughput' | 'percent' | 'pressure' | 'ratio'
 type MetricGroupKey = 'performance' | 'cost' | 'pressure' | 'shape'
 type MetricWindow = 'current' | 'baseline' | 'total'
+type MetricDirection = 'lower' | 'higher' | 'context'
 type MetricKey =
   | 'p90Latency'
   | 'p50Latency'
@@ -53,7 +54,7 @@ interface MetricDefinition {
   kind: MetricKind
   color: string
   chart: ChartKind
-  lowerIsBetter: boolean
+  direction: MetricDirection
   value: (metric?: ModelSignalMetricSet) => number | undefined
 }
 
@@ -98,6 +99,7 @@ const { t, locale } = useMessages({
     'action.reset': 'Reset',
     'direction.lower': 'lower is better',
     'direction.higher': 'higher is better',
+    'direction.context': 'context dependent',
     'direction.mixed': 'mixed directions',
     'selection.count': '{count} metrics',
     'series.current': 'Current',
@@ -142,10 +144,10 @@ const { t, locale } = useMessages({
     'metric.toolFailureRateDesc': 'Failed tool calls divided by tool calls',
     'metric.cacheMiss': 'Cache miss rate',
     'metric.cacheMissDesc': 'Uncached input share',
-    'metric.reasoningShare': 'Reasoning share',
-    'metric.reasoningShareDesc': 'Reasoning tokens divided by output tokens',
-    'metric.outputExpansion': 'Output expansion',
-    'metric.outputExpansionDesc': 'Output tokens divided by input tokens',
+    'metric.reasoningShare': 'Reasoning overhead',
+    'metric.reasoningShareDesc': 'Reasoning tokens relative to generated output; interpret by task shape',
+    'metric.outputExpansion': 'Generation overhead',
+    'metric.outputExpansionDesc': 'Generated output volume relative to input tokens',
     'metric.toolDependency': 'Tool dependency',
     'metric.toolDependencyDesc': 'Sessions with tool calls divided by sessions',
     'tooltip.sessions': 'Sessions',
@@ -173,6 +175,7 @@ const { t, locale } = useMessages({
     'action.reset': '重置',
     'direction.lower': '越低越好',
     'direction.higher': '越高越好',
+    'direction.context': '依上下文判断',
     'direction.mixed': '方向混合',
     'selection.count': '{count} 个指标',
     'series.current': '当前',
@@ -217,10 +220,10 @@ const { t, locale } = useMessages({
     'metric.toolFailureRateDesc': '失败工具调用占工具调用的比例',
     'metric.cacheMiss': '缓存未命中率',
     'metric.cacheMissDesc': '未缓存输入占比',
-    'metric.reasoningShare': '推理占比',
-    'metric.reasoningShareDesc': '推理 token 占输出 token 的比例',
-    'metric.outputExpansion': '输出扩张',
-    'metric.outputExpansionDesc': '输出 token 与输入 token 的比例',
+    'metric.reasoningShare': '推理开销',
+    'metric.reasoningShareDesc': '推理 token 相对生成输出的比例，需要结合任务形态解读',
+    'metric.outputExpansion': '生成开销',
+    'metric.outputExpansionDesc': '生成输出量相对输入 token 的比例',
     'metric.toolDependency': '工具依赖',
     'metric.toolDependencyDesc': '使用工具的会话占比',
     'tooltip.sessions': '会话',
@@ -252,7 +255,7 @@ const metricDefinitions = computed<MetricDefinition[]>(() => [
     kind: 'latency',
     color: chartPalette.danger,
     chart: 'line',
-    lowerIsBetter: true,
+    direction: 'lower',
     value: (metric) => firstFinite(metric?.p90ModelLatencyMsPer1kOutputTokens, metric?.modelLatencyMsPer1kOutputTokens)
   },
   {
@@ -263,7 +266,7 @@ const metricDefinitions = computed<MetricDefinition[]>(() => [
     kind: 'latency',
     color: '#ea580c',
     chart: 'line',
-    lowerIsBetter: true,
+    direction: 'lower',
     value: (metric) => firstFinite(metric?.p50ModelLatencyMsPer1kOutputTokens, metric?.modelLatencyMsPer1kOutputTokens)
   },
   {
@@ -274,7 +277,7 @@ const metricDefinitions = computed<MetricDefinition[]>(() => [
     kind: 'throughput',
     color: chartPalette.success,
     chart: 'line',
-    lowerIsBetter: false,
+    direction: 'higher',
     value: (metric) => firstFinite(metric?.p10ModelThroughputTokensPerSecond, metric?.modelThroughputTokensPerSecond)
   },
   {
@@ -285,7 +288,7 @@ const metricDefinitions = computed<MetricDefinition[]>(() => [
     kind: 'throughput',
     color: chartPalette.info,
     chart: 'line',
-    lowerIsBetter: false,
+    direction: 'higher',
     value: (metric) => finiteNumber(metric?.modelThroughputOutputTokensPerSecond)
   },
   {
@@ -296,7 +299,7 @@ const metricDefinitions = computed<MetricDefinition[]>(() => [
     kind: 'cost',
     color: chartPalette.primary,
     chart: 'bar',
-    lowerIsBetter: true,
+    direction: 'lower',
     value: (metric) => finiteNumber(metric?.estimatedCostUsd)
   },
   {
@@ -307,7 +310,7 @@ const metricDefinitions = computed<MetricDefinition[]>(() => [
     kind: 'cost',
     color: '#7c3aed',
     chart: 'bar',
-    lowerIsBetter: true,
+    direction: 'lower',
     value: (metric) => finiteNumber(metric?.costPerSession)
   },
   {
@@ -318,7 +321,7 @@ const metricDefinitions = computed<MetricDefinition[]>(() => [
     kind: 'cost',
     color: chartPalette.indigo,
     chart: 'bar',
-    lowerIsBetter: true,
+    direction: 'lower',
     value: (metric) => finiteNumber(metric?.costPerActiveHour)
   },
   {
@@ -329,7 +332,7 @@ const metricDefinitions = computed<MetricDefinition[]>(() => [
     kind: 'cost',
     color: chartPalette.sky,
     chart: 'bar',
-    lowerIsBetter: true,
+    direction: 'lower',
     value: (metric) => finiteNumber(metric?.costPer1kTokens)
   },
   {
@@ -340,7 +343,7 @@ const metricDefinitions = computed<MetricDefinition[]>(() => [
     kind: 'cost',
     color: '#059669',
     chart: 'bar',
-    lowerIsBetter: false,
+    direction: 'higher',
     value: (metric) => finiteNumber(metric?.cacheSavingsUsd)
   },
   {
@@ -351,7 +354,7 @@ const metricDefinitions = computed<MetricDefinition[]>(() => [
     kind: 'pressure',
     color: chartPalette.warning,
     chart: 'line',
-    lowerIsBetter: true,
+    direction: 'lower',
     value: (metric) => finiteNumber(metric?.failurePressure)
   },
   {
@@ -362,7 +365,7 @@ const metricDefinitions = computed<MetricDefinition[]>(() => [
     kind: 'pressure',
     color: '#9333ea',
     chart: 'line',
-    lowerIsBetter: true,
+    direction: 'lower',
     value: (metric) => finiteNumber(metric?.avgModelCallsPerSession)
   },
   {
@@ -373,7 +376,7 @@ const metricDefinitions = computed<MetricDefinition[]>(() => [
     kind: 'percent',
     color: chartPalette.danger,
     chart: 'line',
-    lowerIsBetter: true,
+    direction: 'lower',
     value: (metric) => safeRate(metric?.failedModelCalls, metric?.modelCalls)
   },
   {
@@ -384,7 +387,7 @@ const metricDefinitions = computed<MetricDefinition[]>(() => [
     kind: 'percent',
     color: '#c2410c',
     chart: 'line',
-    lowerIsBetter: true,
+    direction: 'lower',
     value: (metric) => finiteNumber(metric?.toolFailureRate)
   },
   {
@@ -395,7 +398,7 @@ const metricDefinitions = computed<MetricDefinition[]>(() => [
     kind: 'percent',
     color: '#d97706',
     chart: 'line',
-    lowerIsBetter: true,
+    direction: 'lower',
     value: (metric) => finiteNumber(metric?.cacheMissRate)
   },
   {
@@ -406,8 +409,8 @@ const metricDefinitions = computed<MetricDefinition[]>(() => [
     kind: 'percent',
     color: chartPalette.indigo,
     chart: 'line',
-    lowerIsBetter: true,
-    value: (metric) => finiteNumber(metric?.reasoningTokenShare)
+    direction: 'context',
+    value: (metric) => reasoningOverhead(metric)
   },
   {
     key: 'outputExpansion',
@@ -417,8 +420,8 @@ const metricDefinitions = computed<MetricDefinition[]>(() => [
     kind: 'ratio',
     color: chartPalette.primary,
     chart: 'line',
-    lowerIsBetter: true,
-    value: (metric) => finiteNumber(metric?.outputExpansionRate)
+    direction: 'context',
+    value: (metric) => generationOverhead(metric)
   },
   {
     key: 'toolDependency',
@@ -428,7 +431,7 @@ const metricDefinitions = computed<MetricDefinition[]>(() => [
     kind: 'percent',
     color: chartPalette.axis,
     chart: 'line',
-    lowerIsBetter: true,
+    direction: 'lower',
     value: (metric) => finiteNumber(metric?.toolDependencyRate)
   }
 ])
@@ -447,9 +450,11 @@ const modeOptions = computed(() => [
 const chartTitle = computed(() => selectedMode.value === 'projects' ? t('title.projects') : t('title.daily'))
 const chartKicker = computed(() => selectedMode.value === 'projects' ? t('kicker.projects') : t('kicker.daily'))
 const directionLabel = computed(() => {
-  const lower = selectedMetrics.value.filter((metric) => metric.lowerIsBetter).length
-  if (lower === selectedMetrics.value.length) return t('direction.lower')
-  if (lower === 0) return t('direction.higher')
+  const directions = new Set(selectedMetrics.value.map((metric) => metric.direction))
+  if (directions.size === 1) {
+    const [direction] = [...directions]
+    return t(`direction.${direction}`)
+  }
   return t('direction.mixed')
 })
 const selectionCountLabel = computed(() => t('selection.count', { count: selectedMetrics.value.length }))
@@ -844,6 +849,14 @@ function finiteNumber(value?: number) {
   return Number.isFinite(value) ? value : undefined
 }
 
+function reasoningOverhead(metric?: ModelSignalMetricSet) {
+  return firstFinite(metric?.reasoningOverheadRate, metric?.reasoningTokenOverhead, metric?.reasoningOutputShare, metric?.reasoningTokenShare)
+}
+
+function generationOverhead(metric?: ModelSignalMetricSet) {
+  return firstFinite(metric?.generationTokenOverhead, metric?.outputExpansionRate)
+}
+
 function safeRate(numerator?: number, denominator?: number) {
   if (!Number.isFinite(denominator) || !denominator) return undefined
   return (Number.isFinite(numerator) ? numerator || 0 : 0) / denominator
@@ -925,7 +938,7 @@ function escapeHtml(value: string | number | undefined) {
           {{ selectionCountLabel }}
         </a-tag>
         <a-tooltip :title="selectedMetrics.map((metric) => metric.description).join('\n')">
-          <a-tag class="status-tag model-signals-chart-direction" :color="directionLabel === t('direction.higher') ? 'success' : 'warning'">
+          <a-tag class="status-tag model-signals-chart-direction" :color="directionLabel === t('direction.higher') ? 'success' : directionLabel === t('direction.context') ? 'default' : 'warning'">
             {{ directionLabel }}
           </a-tag>
         </a-tooltip>

@@ -648,7 +648,11 @@ function signalRatesFor(group: Session[], groupToolCalls: ToolCall[]): ModelSign
 
   return {
     outputExpansionRate: safeRate(outputTokens, inputTokens),
+    generationTokenOverhead: safeRate(outputTokens, inputTokens),
     reasoningTokenShare: safeRate(reasoningOutputTokens, outputTokens),
+    reasoningOverheadRate: safeRate(reasoningOutputTokens, Math.max(0, outputTokens - reasoningOutputTokens)),
+    reasoningTokenOverhead: safeRate(reasoningOutputTokens, outputTokens),
+    reasoningOutputShare: safeRate(reasoningOutputTokens, outputTokens),
     cacheMissRate: clampRate(safeRate(inputTokens - cachedInputTokens, inputTokens)),
     modelThroughputTokensPerSecond: safeRate(totalTokens, modelDurationSeconds),
     modelThroughputOutputTokensPerSecond: safeRate(outputTokens, modelDurationSeconds),
@@ -721,7 +725,11 @@ function metricSetFromTotals(totals: MetricTotals): ModelSignalMetricSet {
     failurePressure: safeRate((totals.failedModelCalls || 0) + totals.failedToolCalls, totals.sessionCount),
     avgModelCallsPerSession: safeRate(totals.modelCalls, totals.sessionCount),
     outputExpansionRate: safeRate(totals.outputTokens, totals.inputTokens),
+    generationTokenOverhead: safeRate(totals.outputTokens, totals.inputTokens),
     reasoningTokenShare: safeRate(totals.reasoningOutputTokens, totals.outputTokens),
+    reasoningOverheadRate: safeRate(totals.reasoningOutputTokens, Math.max(0, totals.outputTokens - totals.reasoningOutputTokens)),
+    reasoningTokenOverhead: safeRate(totals.reasoningOutputTokens, totals.outputTokens),
+    reasoningOutputShare: safeRate(totals.reasoningOutputTokens, totals.outputTokens),
     cacheMissRate: clampRate(safeRate(totals.inputTokens - totals.cachedInputTokens, totals.inputTokens)),
     modelThroughputTokensPerSecond,
     modelThroughputOutputTokensPerSecond: safeRate(totals.outputTokens, modelDurationSeconds),
@@ -837,6 +845,10 @@ function relativeDecrease(current: number, baseline: number): number {
   return (baseline - current) / baseline
 }
 
+function reasoningOverhead(metric: Pick<ModelSignalRates, 'reasoningTokenShare' | 'reasoningOverheadRate' | 'reasoningTokenOverhead' | 'reasoningOutputShare'>): number {
+  return metric.reasoningOverheadRate ?? metric.reasoningTokenOverhead ?? metric.reasoningOutputShare ?? metric.reasoningTokenShare
+}
+
 function modelSignalDriftFor(current: ModelSignalMetricSet, baseline: ModelSignalMetricSet): ModelSignalDrift {
   const reasons: string[] = []
   const metrics: ModelSignalDriftMetric[] = []
@@ -884,8 +896,9 @@ function modelSignalDriftFor(current: ModelSignalMetricSet, baseline: ModelSigna
     mark('warning', 'cacheMissRate', 'cache miss rate', 'higher_symptom', 'Cache misses above baseline', current.cacheMissRate, baseline.cacheMissRate)
   }
 
-  if (current.reasoningTokenShare - baseline.reasoningTokenShare >= 0.12) {
-    mark('warning', 'reasoningTokenShare', 'reasoning token share', 'behavior_higher', 'Reasoning share rose', current.reasoningTokenShare, baseline.reasoningTokenShare)
+  const reasoningOverheadDelta = reasoningOverhead(current) - reasoningOverhead(baseline)
+  if (reasoningOverheadDelta >= 0.12) {
+    mark('warning', 'reasoningOverheadRate', 'reasoning overhead', 'cost_shape_review', 'Reasoning overhead rose', reasoningOverhead(current), reasoningOverhead(baseline))
   }
 
   const uniqueReasons = [...new Set(reasons)]
@@ -1248,8 +1261,8 @@ function anomalySessionsFor(items: Session[], scopedToolCalls: ToolCall[]): Mode
     const rates = signalRatesFor([session], sessionToolCalls)
     const reasons: string[] = []
     if (rates.toolFailureRate > 0) reasons.push('Tool failure in session')
-    if (rates.reasoningTokenShare >= 0.25) reasons.push('High reasoning token share')
-    if (rates.outputExpansionRate >= 0.2) reasons.push('Output expanded relative to input')
+    if (reasoningOverhead(rates) >= 0.25) reasons.push('High reasoning overhead')
+    if ((rates.generationTokenOverhead ?? rates.outputExpansionRate) >= 0.2) reasons.push('Generation overhead relative to input')
     if (rates.cacheMissRate >= 0.85) reasons.push('Low cache reuse')
     if (rates.modelThroughputTokensPerSecond > 0 && rates.modelThroughputTokensPerSecond < 85) reasons.push('Low model token throughput')
     if (!reasons.length) continue

@@ -129,6 +129,11 @@ Fields:
 - `total_tokens`
 - `source`
 
+`output_tokens` is normalized as generated output for cost and throughput.
+For providers that report visible output and thinking/reasoning separately,
+AgentMeter stores their billable/generated sum in `output_tokens` and keeps the
+thinking/reasoning portion in `reasoning_output_tokens` as a sub-share.
+
 `source` values:
 
 - `actual`
@@ -326,6 +331,11 @@ Cost formula:
 
 Rates are USD per 1M tokens.
 
+When older or generic records appear to report visible output and reasoning
+separately, pricing adds the reasoning side to billable output only when the
+model/total-token shape makes that separation explicit. This avoids
+double-counting providers whose reported output already includes reasoning.
+
 Unknown pricing should not block indexing. UI should show `unpriced` for those
 sessions.
 
@@ -403,7 +413,8 @@ Read-model shape notes:
   `project`, `from`, and `to`. Existing top-level raw signal fields include
   `totalSessions`, `totalModelCalls`, `totalToolCalls`, `failedToolCalls`,
   `toolFailureRate`, `toolDependencyRate`, `avgModelCallsPerSession`,
-  `outputExpansionRate`, `reasoningTokenShare`, `cacheMissRate`,
+  `outputExpansionRate`, `reasoningTokenShare`, `reasoningOverheadRate`,
+  `visibleOutputTokens`, `billableOutputTokens`, `cacheMissRate`,
   `modelThroughputTokensPerSecond`,
   `modelThroughputOutputTokensPerSecond`, `trend`, `modelBreakdown`, and
   `anomalySessions`.
@@ -430,14 +441,17 @@ Read-model shape notes:
   clients to present the same semantics.
 - Model Signals `trend` and `modelBreakdown` rows expose count, token, duration,
   and rate fields so Web and TUI clients can present the same numerator and
-  denominator semantics. Empty collection fields must be JSON arrays (`[]`),
-  not `null`.
+  denominator semantics. Reasoning fields keep `reasoningTokenShare` for API
+  compatibility and also expose `visibleOutputTokens`, `billableOutputTokens`,
+  and `reasoningOverheadRate` so clients can show reasoning as observability
+  and cost shape instead of assuming lower is always better. Empty collection
+  fields must be JSON arrays (`[]`), not `null`.
 - Model Health rows should expose enough cohort identity and sample/confidence
   metadata for clients to explain a health label without recomputing it. Strong
   signals are latency per 1k output tokens, throughput, model-call status/error
   data when available, and token/cost shape. Tool failure, model calls per
-  session, output expansion, cache miss, and reasoning share are weaker
-  symptoms that require session context.
+  session, output expansion, cache miss, and reasoning overhead are weaker
+  symptoms that require session context and baseline comparison.
 - Model Signals efficiency fields are operational proxies for local behavior,
   not universal model capability scores. Missing pricing, unavailable
   cache-token data, missing baseline history, and low sample sizes should be

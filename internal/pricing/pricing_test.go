@@ -139,6 +139,63 @@ func TestComputeHandlesCacheReadSeparateFromInput(t *testing.T) {
 	}
 }
 
+func TestComputeBillsSeparateReasoningOutputWithoutDoubleCounting(t *testing.T) {
+	conn := openSeededPricingDB(t)
+	defer conn.Close()
+
+	cost, unpriced := Compute(conn, model.Usage{
+		Model:                 "gemini-2.5-flash",
+		InputTokens:           1_000,
+		OutputTokens:          200,
+		ReasoningOutputTokens: 300,
+		TotalTokens:           1_500,
+	})
+	if unpriced {
+		t.Fatal("usage marked unpriced")
+	}
+	if cost == nil {
+		t.Fatal("cost is nil")
+	}
+	if math.Abs(*cost-0.00155) > 0.000001 {
+		t.Fatalf("cost = %f, want %f", *cost, 0.00155)
+	}
+
+	cost, unpriced = Compute(conn, model.Usage{
+		Model:                 "gpt-5",
+		InputTokens:           1_000,
+		OutputTokens:          500,
+		ReasoningOutputTokens: 300,
+		TotalTokens:           1_500,
+	})
+	if unpriced {
+		t.Fatal("usage marked unpriced")
+	}
+	if cost == nil {
+		t.Fatal("cost is nil")
+	}
+	if math.Abs(*cost-0.00625) > 0.000001 {
+		t.Fatalf("cost = %f, want %f", *cost, 0.00625)
+	}
+
+	cost, unpriced = Compute(conn, model.Usage{
+		Model:                 "claude-4.6-opus",
+		InputTokens:           1_000,
+		CachedInputTokens:     10_000,
+		OutputTokens:          1_000,
+		ReasoningOutputTokens: 100,
+		TotalTokens:           12_000,
+	})
+	if unpriced {
+		t.Fatal("usage marked unpriced")
+	}
+	if cost == nil {
+		t.Fatal("cost is nil")
+	}
+	if math.Abs(*cost-0.035) > 0.000001 {
+		t.Fatalf("cost = %f, want %f", *cost, 0.035)
+	}
+}
+
 func TestComputeDoesNotMarkEmptyUsageUnpriced(t *testing.T) {
 	conn := openSeededPricingDB(t)
 	defer conn.Close()

@@ -333,7 +333,8 @@ func computeWithRate(usage model.Usage, rate Rate, hasRate bool) (*float64, bool
 		return nil, true
 	}
 	uncachedInput, cachedInput := billableInputTokens(usage)
-	cost := (float64(uncachedInput)*rate.InputPer1M + float64(cachedInput)*rate.CachedInputPer1M + float64(usage.OutputTokens)*rate.OutputPer1M) / 1_000_000
+	outputTokens := billableOutputTokens(usage)
+	cost := (float64(uncachedInput)*rate.InputPer1M + float64(cachedInput)*rate.CachedInputPer1M + float64(outputTokens)*rate.OutputPer1M) / 1_000_000
 	return &cost, false
 }
 
@@ -350,6 +351,38 @@ func billableInputTokens(usage model.Usage) (int64, int64) {
 		return inputTokens, cachedInputTokens
 	}
 	return inputTokens - cachedInputTokens, cachedInputTokens
+}
+
+func billableOutputTokens(usage model.Usage) int64 {
+	outputTokens := usage.OutputTokens
+	if outputTokens < 0 {
+		outputTokens = 0
+	}
+	reasoningTokens := usage.ReasoningOutputTokens
+	if reasoningTokens <= 0 {
+		return outputTokens
+	}
+	if usageReasoningOutputAppearsSeparate(usage, outputTokens, reasoningTokens) {
+		return outputTokens + reasoningTokens
+	}
+	return outputTokens
+}
+
+func usageReasoningOutputAppearsSeparate(usage model.Usage, outputTokens, reasoningTokens int64) bool {
+	if outputTokens <= 0 || reasoningTokens <= 0 || usage.TotalTokens <= 0 {
+		return false
+	}
+	if reasoningTokens > outputTokens {
+		return true
+	}
+	if !strings.Contains(NormalizeModel(usage.Model), "gemini") {
+		return false
+	}
+	promptTokens := usage.InputTokens
+	if usage.CachedInputTokens > usage.InputTokens {
+		promptTokens += usage.CachedInputTokens
+	}
+	return usage.TotalTokens >= promptTokens+outputTokens+reasoningTokens
 }
 
 func hasBillableUsage(usage model.Usage) bool {

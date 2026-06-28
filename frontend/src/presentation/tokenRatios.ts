@@ -3,6 +3,9 @@ export interface TokenRatioInput {
   cachedInputTokens?: number | null
   outputTokens?: number | null
   reasoningOutputTokens?: number | null
+  reasoningOverheadRate?: number | null
+  reasoningTokenOverhead?: number | null
+  reasoningOutputShare?: number | null
 }
 
 export interface TokenRatioShares {
@@ -18,12 +21,18 @@ export function tokenRatioShares(input: TokenRatioInput): TokenRatioShares {
   const outputTokens = positiveNumber(input.outputTokens)
   const reasoningOutputTokens = positiveNumber(input.reasoningOutputTokens)
   const mainTotal = inputTokens + outputTokens
+  const reasoningOutput = firstRatio(
+    input.reasoningOverheadRate,
+    input.reasoningTokenOverhead,
+    input.reasoningOutputShare,
+    outputTokens > 0 ? reasoningOutputTokens / outputTokens : undefined
+  )
 
   return {
     input: mainTotal > 0 ? inputTokens / mainTotal : 0,
     cachedInput: cachedInputRatio(inputTokens, cachedInputTokens),
     output: mainTotal > 0 ? outputTokens / mainTotal : 0,
-    reasoningOutput: outputTokens > 0 ? clamp01(reasoningOutputTokens / outputTokens) : 0
+    reasoningOutput
   }
 }
 
@@ -48,6 +57,11 @@ function cacheInputDenominator(inputTokens: number, cachedInputTokens: number) {
 function positiveNumber(value?: number | null) {
   if (!Number.isFinite(value)) return 0
   return Math.max(0, value || 0)
+}
+
+function firstRatio(...values: Array<number | null | undefined>) {
+  const value = values.find((item) => Number.isFinite(item))
+  return clamp01(value || 0)
 }
 
 function clamp01(value: number) {

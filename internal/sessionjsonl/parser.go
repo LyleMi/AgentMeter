@@ -543,6 +543,12 @@ func headlessUsage(raw rawRecord) model.Usage {
 		if usage := usageFromValue(container["usage"]); hasUsage(usage) {
 			return usage
 		}
+		if usage := usageFromValue(container["usageMetadata"]); hasUsage(usage) {
+			return usage
+		}
+		if usage := usageFromValue(container["usage_metadata"]); hasUsage(usage) {
+			return usage
+		}
 	}
 	return model.Usage{}
 }
@@ -552,28 +558,48 @@ func usageFromValue(value any) model.Usage {
 	if raw == nil {
 		return model.Usage{}
 	}
+	geminiUsageMetadata := false
+	if usageMetadata, ok := firstMap(raw, "usageMetadata", "usage_metadata"); ok {
+		raw = usageMetadata
+		geminiUsageMetadata = true
+	}
+	candidateOutput := firstInt64(raw, "candidatesTokenCount", "candidates_token_count")
+	if candidateOutput > 0 {
+		geminiUsageMetadata = true
+	}
 	inputIncludesCached := false
-	input := firstInt64(raw, "input_tokens", "input", "inputTokens")
+	input := firstInt64(raw, "input_tokens", "input", "inputTokens", "promptTokenCount", "prompt_token_count")
 	if input > 0 {
 		input += firstInt64(raw, "cache_creation_input_tokens", "cache_write_input_tokens", "cacheCreationInputTokens", "cacheWriteInputTokens")
 	} else {
 		input = firstInt64(raw, "prompt_tokens", "promptTokens")
 		inputIncludesCached = input > 0
 	}
-	cached := firstInt64(raw, "cached_input_tokens", "cache_read_input_tokens", "cached_tokens", "cachedInputTokens", "cacheReadInputTokens", "cachedTokens")
+	cached := firstInt64(raw, "cached_input_tokens", "cache_read_input_tokens", "cached_tokens", "cachedInputTokens", "cacheReadInputTokens", "cachedTokens", "cachedContentTokenCount", "cached_content_token_count")
 	cached += nestedInt64(raw["inputTokensDetails"], "cached_tokens", "cachedTokens")
+	cached += nestedInt64(raw["input_tokens_details"], "cached_tokens", "cachedTokens")
 	cached += nestedInt64(raw["prompt_tokens_details"], "cached_tokens", "cachedTokens")
 	cacheRead := firstInt64(raw, "cache_read_input_tokens", "cacheReadInputTokens")
 	if cacheRead == 0 && !inputIncludesCached {
 		cacheRead = cached
 	}
 	output := firstInt64(raw, "output_tokens", "completion_tokens", "output", "outputTokens", "completionTokens")
-	reasoning := firstInt64(raw, "reasoning_output_tokens", "reasoning_tokens", "reasoningOutputTokens", "reasoningTokens", "completion_thinking_tokens")
+	if candidateOutput > 0 {
+		output = candidateOutput
+	}
+	reasoning := firstInt64(raw, "reasoning_output_tokens", "reasoning_tokens", "reasoningOutputTokens", "reasoningTokens", "completion_thinking_tokens", "thinking_tokens", "thinkingTokens", "thoughtsTokenCount", "thoughts_token_count")
 	reasoning += nestedInt64(raw["outputTokensDetails"], "reasoning_tokens", "reasoningTokens")
+	reasoning += nestedInt64(raw["output_tokens_details"], "reasoning_tokens", "reasoningTokens")
 	reasoning += nestedInt64(raw["completion_tokens_details"], "reasoning_tokens", "reasoningTokens")
-	total := firstInt64(raw, "total_tokens", "totalTokens")
+	if geminiUsageMetadata && candidateOutput > 0 && reasoning > 0 {
+		output += reasoning
+	}
+	total := firstInt64(raw, "total_tokens", "totalTokens", "totalTokenCount", "total_token_count")
 	if total <= 0 && input+cached+output+reasoning > 0 {
-		total = input + cacheRead + output + reasoning
+		total = input + cacheRead + output
+		if reasoning > output {
+			total += reasoning
+		}
 	}
 	return model.Usage{
 		InputTokens:           input,
@@ -765,6 +791,16 @@ func firstInt64(payload map[string]any, keys ...string) int64 {
 		}
 	}
 	return 0
+}
+
+func firstMap(payload map[string]any, keys ...string) (map[string]any, bool) {
+	for _, key := range keys {
+		value, ok := payload[key].(map[string]any)
+		if ok {
+			return value, true
+		}
+	}
+	return nil, false
 }
 
 func nestedInt64(value any, keys ...string) int64 {

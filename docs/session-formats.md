@@ -210,6 +210,16 @@ Recognized usage field variants include camelCase and snake_case names:
 - `outputTokens` / `output_tokens`
 - `reasoningTokens` / `reasoning_tokens`
 - `totalTokens` / `total_tokens`
+- OpenAI/OpenRouter-style detail objects such as
+  `output_tokens_details.reasoning_tokens`
+- Anthropic-style `thinking_tokens`
+- Gemini-style `usageMetadata` / `usage_metadata`, including
+  `promptTokenCount`, `candidatesTokenCount`, `thoughtsTokenCount`,
+  `cachedContentTokenCount`, and `totalTokenCount`
+
+Gemini-style visible candidates and thoughts are normalized so stored
+`output_tokens` represents generated/billable output while
+`reasoning_output_tokens` keeps the thinking portion as a sub-share.
 
 Recognized tool-call records include:
 
@@ -236,6 +246,8 @@ Observed generic usage shapes include:
 - `usage.prompt_tokens`
 - `usage.cached_tokens`
 - `usage.completion_tokens`
+- `usage.output_tokens_details.reasoning_tokens`
+- `usage.usageMetadata.thoughtsTokenCount`
 
 Generic sources may have less reliable session identity, project path, agent
 name, and provider metadata. AgentMeter falls back to the JSONL filename and

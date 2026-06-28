@@ -16,7 +16,8 @@ or worse than another.
 The feature has three related views:
 
 - **Raw operational signals** stay close to the observed data: tokens, duration,
-  throughput, cache shape, tool calls, model calls, and anomaly sessions.
+  throughput, reasoning cost shape, cache shape, tool calls, model calls, and
+  anomaly sessions.
 - **Daily and project efficiency metrics** summarize cost, cache savings,
   latency, throughput, failure pressure, retry pressure, sample confidence, and
   drift at day and project granularity.
@@ -66,7 +67,7 @@ tables. The primary view should let users select multiple compatible or
 complementary operational lenses in the same chart, such as P90/P50 latency,
 P10 and output throughput, cost burn, cost per session, cost per active hour,
 cost per 1k tokens, cache savings, model and tool failure pressure, retry
-pressure, cache miss rate, reasoning share, tool dependency, and output
+pressure, cache miss rate, reasoning overhead, tool dependency, and output
 expansion.
 
 Tables remain useful as inspectable detail, but they should sit after the chart
@@ -126,24 +127,45 @@ Weaker operational symptoms:
   higher rate means less observed prompt/context reuse. It can be affected by
   prompt shape, project churn, cache eligibility, model/provider behavior, and
   whether the session data reports cached input tokens.
-- **Reasoning token share:** reasoning output tokens divided by total output
-  tokens when the source exposes reasoning tokens. Higher shares can suggest
-  more hidden reasoning effort, but availability and accounting differ by agent,
-  model, and provider.
+- **Reasoning token share:** kept for API compatibility. It is reasoning output
+  tokens divided by billable/generated output tokens when that denominator can
+  be inferred. This is an observability and cost-shape signal, not a
+  lower-is-better quality score.
+- **Visible output tokens:** generated output tokens after subtracting reasoning
+  tokens when the source reports output as reasoning-inclusive. If the source
+  appears to report visible output and reasoning separately, this remains the
+  reported output token count.
+- **Billable output tokens:** generated output used as the denominator for
+  `reasoningTokenShare`. AgentMeter treats reported `outputTokens` as billable
+  output when it already covers reasoning, and falls back to visible plus
+  reasoning output when provider totals indicate separate visible/thinking
+  fields, or when reasoning tokens exceed reported output tokens.
+- **Reasoning overhead rate:** reasoning output tokens divided by visible output
+  tokens. This can exceed 1.0 and is intended to show reasoning cost shape
+  relative to visible output, not model failure.
 - **Tool dependency rate:** sessions with at least one tool call divided by
   total sessions in the selected row or scope. Higher dependency can mean the
   agent is doing more repository inspection, command execution, or file work
   rather than only chatting.
 - **Anomaly sessions:** sessions that cross fixed review thresholds for signals
-  such as high reasoning share, high output/input ratio, slow observed model
-  throughput, failed tool calls, or high cache miss. They are triage pointers
-  for session review, not automatic defects.
+  such as high output/input ratio, slow observed model throughput, failed tool
+  calls, or high cache miss. Reasoning-heavy sessions are better interpreted
+  through denominator fields and current-versus-baseline drift because high
+  reasoning can be an expected cost shape for harder work. Anomalies are triage
+  pointers for session review, not automatic defects.
 
 ## Denominators And Caveats
 
 Rates depend on their denominator. A cache miss rate over very few input tokens,
 a tool failure rate over one or two tool calls, or throughput from one short
 model call can move sharply and should be treated as low confidence.
+
+Reasoning rates have provider-specific accounting caveats. Some sources report
+`outputTokens` as the full generated/billable output including reasoning, while
+others can expose visible output and reasoning separately. AgentMeter keeps the
+existing `reasoningTokenShare` field but adds `visibleOutputTokens`,
+`billableOutputTokens`, and `reasoningOverheadRate` so clients can explain the
+denominator instead of assuming high reasoning is automatically bad.
 
 Small samples are volatile. Compare cohorts over similar projects, task types,
 date ranges, and agent families before drawing conclusions. A model used for a
@@ -170,6 +192,8 @@ Read the signals together:
 - Compare peer models only under the same filters for agent/source, project,
   and date range.
 - Treat high anomaly counts as a prompt to inspect session details.
+- Treat reasoning overhead as a cost-shape and task-complexity lens, especially
+  when it changes against the same cohort's baseline.
 - Pair tool dependency and tool failure rates with actual tool-call history.
 - Treat low-sample rows as directional only.
 

@@ -325,10 +325,109 @@ func TestParseFileSupportsHeadlessUsageRecords(t *testing.T) {
 	if parsed.Session.Model != "gpt-5.2-codex" {
 		t.Fatalf("model = %q", parsed.Session.Model)
 	}
-	if parsed.Usage.InputTokens != 179 || parsed.Usage.CachedInputTokens != 25 || parsed.Usage.OutputTokens != 46 || parsed.Usage.ReasoningOutputTokens != 1 || parsed.Usage.TotalTokens != 226 {
+	if parsed.Usage.InputTokens != 179 || parsed.Usage.CachedInputTokens != 25 || parsed.Usage.OutputTokens != 46 || parsed.Usage.ReasoningOutputTokens != 1 || parsed.Usage.TotalTokens != 225 {
 		t.Fatalf("usage = %+v", parsed.Usage)
 	}
 	if len(parsed.ModelCall) != 3 {
 		t.Fatalf("model calls = %d", len(parsed.ModelCall))
+	}
+}
+
+func TestUsageFromValueSupportsProviderReasoningShapes(t *testing.T) {
+	tests := []struct {
+		name  string
+		value any
+		want  struct {
+			input     int64
+			cached    int64
+			output    int64
+			reasoning int64
+			total     int64
+		}
+	}{
+		{
+			name: "openrouter snake details",
+			value: map[string]any{
+				"prompt_tokens":     float64(100),
+				"completion_tokens": float64(40),
+				"output_tokens_details": map[string]any{
+					"reasoning_tokens": float64(12),
+				},
+				"input_tokens_details": map[string]any{
+					"cached_tokens": float64(25),
+				},
+				"total_tokens": float64(140),
+			},
+			want: struct {
+				input     int64
+				cached    int64
+				output    int64
+				reasoning int64
+				total     int64
+			}{input: 100, cached: 25, output: 40, reasoning: 12, total: 140},
+		},
+		{
+			name: "anthropic thinking tokens",
+			value: map[string]any{
+				"input_tokens":    float64(80),
+				"output_tokens":   float64(30),
+				"thinking_tokens": float64(7),
+				"total_tokens":    float64(110),
+			},
+			want: struct {
+				input     int64
+				cached    int64
+				output    int64
+				reasoning int64
+				total     int64
+			}{input: 80, output: 30, reasoning: 7, total: 110},
+		},
+		{
+			name: "gemini usage metadata",
+			value: map[string]any{
+				"usageMetadata": map[string]any{
+					"promptTokenCount":        float64(100),
+					"candidatesTokenCount":    float64(20),
+					"thoughtsTokenCount":      float64(15),
+					"cachedContentTokenCount": float64(40),
+					"totalTokenCount":         float64(135),
+				},
+			},
+			want: struct {
+				input     int64
+				cached    int64
+				output    int64
+				reasoning int64
+				total     int64
+			}{input: 100, cached: 40, output: 35, reasoning: 15, total: 135},
+		},
+		{
+			name: "gemini snake usage metadata",
+			value: map[string]any{
+				"usage_metadata": map[string]any{
+					"prompt_token_count":         float64(90),
+					"candidates_token_count":     float64(25),
+					"thoughts_token_count":       float64(5),
+					"cached_content_token_count": float64(10),
+					"total_token_count":          float64(120),
+				},
+			},
+			want: struct {
+				input     int64
+				cached    int64
+				output    int64
+				reasoning int64
+				total     int64
+			}{input: 90, cached: 10, output: 30, reasoning: 5, total: 120},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := usageFromValue(tt.value)
+			if got.InputTokens != tt.want.input || got.CachedInputTokens != tt.want.cached || got.OutputTokens != tt.want.output || got.ReasoningOutputTokens != tt.want.reasoning || got.TotalTokens != tt.want.total {
+				t.Fatalf("usage = %+v", got)
+			}
+		})
 	}
 }

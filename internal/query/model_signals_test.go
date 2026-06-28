@@ -58,6 +58,10 @@ func TestModelSignalsAggregatesFiltersAndRanksAnomalies(t *testing.T) {
 	assertFloat(t, signals.AvgModelCallsPerSession, 1.5)
 	assertFloat(t, signals.OutputExpansionRate, 2.25)
 	assertFloat(t, signals.ReasoningTokenShare, float64(3_100)/4_500)
+	assertFloat(t, signals.ReasoningOverheadRate, float64(3_100)/1_400)
+	if signals.VisibleOutputTokens != 1_400 || signals.BillableOutputTokens != 4_500 {
+		t.Fatalf("reasoning denominator totals = visible %d billable %d", signals.VisibleOutputTokens, signals.BillableOutputTokens)
+	}
 	assertFloat(t, signals.CacheMissRate, 0.9)
 	assertFloat(t, signals.ModelThroughputTokensPerSecond, float64(6_500)/101)
 	assertFloat(t, signals.ModelThroughputOutputTokensPerSecond, float64(4_500)/101)
@@ -71,6 +75,10 @@ func TestModelSignalsAggregatesFiltersAndRanksAnomalies(t *testing.T) {
 	}
 	assertFloat(t, breakdown.ToolFailureRate, 0.8)
 	assertFloat(t, breakdown.ToolDependencyRate, 1)
+	assertFloat(t, breakdown.ReasoningOverheadRate, float64(3_100)/1_400)
+	if breakdown.VisibleOutputTokens != 1_400 || breakdown.BillableOutputTokens != 4_500 {
+		t.Fatalf("breakdown reasoning denominator totals = %+v", breakdown)
+	}
 
 	if len(signals.Trend) != 2 {
 		t.Fatalf("trend = %+v", signals.Trend)
@@ -82,6 +90,7 @@ func TestModelSignalsAggregatesFiltersAndRanksAnomalies(t *testing.T) {
 	assertFloat(t, firstDay.ToolFailureRate, 0.5)
 	assertFloat(t, firstDay.ModelThroughputTokensPerSecond, 1_500)
 	assertFloat(t, firstDay.ModelThroughputOutputTokensPerSecond, 500)
+	assertFloat(t, firstDay.ReasoningOverheadRate, 0.25)
 	secondDay := signals.Trend[1]
 	if secondDay.Date != "2026-06-26" || secondDay.SessionCount != 1 || secondDay.FailedToolCalls != 3 {
 		t.Fatalf("second trend point = %+v", secondDay)
@@ -93,10 +102,17 @@ func TestModelSignalsAggregatesFiltersAndRanksAnomalies(t *testing.T) {
 		t.Fatalf("anomalies = %+v", signals.AnomalySessions)
 	}
 	top := signals.AnomalySessions[0]
-	for _, label := range []string{"high reasoning share", "high output/input ratio", "slow model throughput", "failed tool calls", "high cache miss"} {
+	for _, label := range []string{"high output/input ratio", "slow model throughput", "failed tool calls", "high cache miss"} {
 		if !containsModelSignalLabel(top.ReasonLabels, label) {
 			t.Fatalf("top anomaly labels = %+v, missing %q", top.ReasonLabels, label)
 		}
+	}
+	if containsModelSignalLabel(top.ReasonLabels, "high reasoning share") {
+		t.Fatalf("reasoning share should not be a fixed anomaly label: %+v", top.ReasonLabels)
+	}
+	assertFloat(t, top.ReasoningOverheadRate, 3)
+	if top.VisibleOutputTokens != 1_000 || top.BillableOutputTokens != 4_000 {
+		t.Fatalf("anomaly reasoning denominator totals = %+v", top)
 	}
 
 	modelScoped, err := New(conn).ModelSignalsWithFilters(ctx, model.AnalyticsFilters{Model: "gpt-5"})
@@ -176,6 +192,32 @@ func TestModelSignalsHandlesSeparateCacheReadInput(t *testing.T) {
 	if daily.UnpricedSessionCount != 0 || daily.EstimatedCostUSD == nil {
 		t.Fatalf("daily metric should be priced: %+v", daily)
 	}
+}
+
+func TestModelSignalsAggregatesReasoningDenominatorsPerSession(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	sourceID := insertTimeSource(t, conn, "codex", "Codex", now)
+	inclusive := insertModelSignalSession(t, conn, sourceID, now, "inclusive-reasoning", "/workspace/project", "gpt-5", "gpt-5", 100, 0, 100, 40, 200, 1_000)
+	separate := insertModelSignalSession(t, conn, sourceID, now.Add(time.Minute), "separate-reasoning", "/workspace/project", "gemini-2.5-flash", "gemini-2.5-flash", 100, 0, 80, 20, 200, 1_000)
+	insertModelSignalCall(t, conn, inclusive, now, 1_000, "gpt-5", "completed")
+	insertModelSignalCall(t, conn, separate, now.Add(time.Minute), 1_000, "gemini-2.5-flash", "completed")
+
+	signals, err := New(conn).ModelSignals(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if signals.VisibleOutputTokens != 140 || signals.BillableOutputTokens != 200 {
+		t.Fatalf("reasoning denominator totals = visible %d billable %d", signals.VisibleOutputTokens, signals.BillableOutputTokens)
+	}
+	assertFloat(t, signals.ReasoningTokenShare, 0.3)
+	assertFloat(t, signals.ReasoningOverheadRate, float64(60)/140)
 }
 
 func TestModelSignalsDailyAndProjectEfficiencyMetrics(t *testing.T) {
