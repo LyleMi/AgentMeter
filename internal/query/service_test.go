@@ -396,6 +396,58 @@ func TestSourceInstanceAggregationAndFilters(t *testing.T) {
 	}
 }
 
+func TestSourceScopedTokenAnalyticsSumMatchesUnfilteredTotals(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	sourceIDs := []int64{
+		insertSource(t, conn, "codex", "Codex", "/home/me/.codex", "/home/me/.codex/sessions", now),
+		insertSource(t, conn, "codex", "Codex nightly", "/home/me/.ycodex", "/home/me/.ycodex/sessions", now),
+		insertSource(t, conn, "claude", "Claude Code", "/home/me/.claude", "/home/me/.claude/projects", now),
+	}
+	insertTokenAnalyticsSession(t, conn, sourceIDs[0], now, "stable-a", "gpt-5", "gpt-5", "actual", 100, 10, 20, 5, 125)
+	insertTokenAnalyticsSession(t, conn, sourceIDs[0], now.Add(time.Minute), "stable-b", "gpt-5-mini", "gpt-5-mini", "actual", 200, 20, 30, 6, 256)
+	insertTokenAnalyticsSession(t, conn, sourceIDs[1], now.Add(2*time.Minute), "nightly", "gpt-5", "gpt-5", "actual", 300, 30, 40, 7, 377)
+	insertTokenAnalyticsSession(t, conn, sourceIDs[2], now.Add(3*time.Minute), "claude", "claude-sonnet", "claude-sonnet", "actual", 400, 40, 50, 8, 498)
+
+	service := New(conn)
+	unfiltered, err := service.TokenAnalytics(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var scopedSessions int
+	var scopedInput int64
+	var scopedCached int64
+	var scopedOutput int64
+	var scopedReasoning int64
+	var scopedTotal int64
+	for _, sourceID := range sourceIDs {
+		scoped, err := service.TokenAnalyticsWithFilters(ctx, model.AnalyticsFilters{Agent: sourceInstanceKey(sourceID)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		scopedSessions += scoped.TotalSessions
+		scopedInput += scoped.TotalInputTokens
+		scopedCached += scoped.TotalCachedInputTokens
+		scopedOutput += scoped.TotalOutputTokens
+		scopedReasoning += scoped.TotalReasoningTokens
+		scopedTotal += scoped.TotalTokens
+	}
+
+	if scopedSessions != unfiltered.TotalSessions || scopedInput != unfiltered.TotalInputTokens ||
+		scopedCached != unfiltered.TotalCachedInputTokens || scopedOutput != unfiltered.TotalOutputTokens ||
+		scopedReasoning != unfiltered.TotalReasoningTokens || scopedTotal != unfiltered.TotalTokens {
+		t.Fatalf("source scoped totals = sessions %d input %d cached %d output %d reasoning %d total %d; unfiltered = %+v",
+			scopedSessions, scopedInput, scopedCached, scopedOutput, scopedReasoning, scopedTotal, unfiltered)
+	}
+}
+
 func TestOverviewWithFiltersScopesTotalsAndLists(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
@@ -444,6 +496,29 @@ func TestOverviewWithFiltersScopesTotalsAndLists(t *testing.T) {
 	}
 	if overview.TotalSessions != 1 || overview.TotalTokens != 300 || len(overview.RecentSessions) != 1 || overview.RecentSessions[0].ID != sessionC {
 		t.Fatalf("time filtered overview = %+v", overview)
+	}
+}
+
+func TestOverviewDateOnlyToIncludesWholeDay(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	firstDay := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	sourceID := insertTimeSource(t, conn, "codex", "Codex", firstDay)
+	insertOverviewTimeSession(t, conn, sourceID, firstDay, "early", "gpt-5", 1_000, 1_000, 1_000, 0, 0, 100)
+	insertOverviewTimeSession(t, conn, sourceID, firstDay.Add(22*time.Hour), "late", "gpt-5", 1_000, 1_000, 1_000, 0, 0, 200)
+	insertOverviewTimeSession(t, conn, sourceID, firstDay.Add(24*time.Hour), "next-day", "gpt-5", 1_000, 1_000, 1_000, 0, 0, 300)
+
+	overview, err := New(conn).OverviewWithFilters(ctx, model.AnalyticsFilters{StartedTo: "2026-06-27"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if overview.TotalSessions != 2 || overview.TotalTokens != 300 {
+		t.Fatalf("date-only to should include all of 2026-06-27, got %+v", overview)
 	}
 }
 

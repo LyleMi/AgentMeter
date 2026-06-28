@@ -29,6 +29,10 @@ export interface SourceFilterOption {
   title: string
 }
 
+export interface SourceFilterOptionsConfig {
+  includeSecondaryInLabel?: boolean
+}
+
 function clean(value?: string | null): string {
   return (value || '').trim()
 }
@@ -79,7 +83,12 @@ export function sourceDisplay(record: SourceIdentityLike, fallback = 'unknown'):
   }
 }
 
-export function sourceFilterOptions(records: SourceIdentityLike[], fallback = 'unknown'): SourceFilterOption[] {
+export function sourceFilterOptions(
+  records: SourceIdentityLike[],
+  fallback = 'unknown',
+  config: SourceFilterOptionsConfig = {}
+): SourceFilterOption[] {
+  const includeSecondaryInLabel = config.includeSecondaryInLabel ?? true
   const values = new Map<string, SourceFilterOption>()
   for (const record of records) {
     const display = sourceDisplay(record, fallback)
@@ -87,7 +96,7 @@ export function sourceFilterOptions(records: SourceIdentityLike[], fallback = 'u
     if (!values.has(display.filterValue)) {
       values.set(display.filterValue, {
         value: display.filterValue,
-        label: display.secondary ? `${display.label} · ${display.secondary}` : display.label,
+        label: includeSecondaryInLabel && display.secondary ? `${display.label} · ${display.secondary}` : display.label,
         title: display.title
       })
     }

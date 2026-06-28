@@ -5,11 +5,18 @@ import type { UsageScopeFilters } from '../api'
 export interface UsageScopeForm {
   agent?: string
   model?: string
+  range?: string
   from: string
   to: string
 }
 
-const scopeKeys = ['agent', 'model', 'from', 'to'] as const
+const scopeKeys = ['agent', 'model', 'range', 'from', 'to'] as const
+const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/
+const quickRangeDays: Record<string, number> = {
+  day: 1,
+  week: 7,
+  month: 30
+}
 
 function cleanQueryValue(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
@@ -25,6 +32,7 @@ export function normalizeUsageScope(filters: Partial<UsageScopeForm>): UsageScop
   return {
     agent: filters.agent?.trim() || undefined,
     model: filters.model?.trim() || undefined,
+    range: normalizeQuickRange(filters.range),
     from: filters.from?.trim() || '',
     to: filters.to?.trim() || ''
   }
@@ -34,6 +42,7 @@ export function readUsageScopeQuery(query: LocationQuery): UsageScopeForm {
   return normalizeUsageScope({
     agent: cleanQueryValue(query.agent),
     model: cleanQueryValue(query.model),
+    range: cleanQueryValue(query.range),
     from: cleanQueryValue(query.from) || '',
     to: cleanQueryValue(query.to) || ''
   })
@@ -41,12 +50,45 @@ export function readUsageScopeQuery(query: LocationQuery): UsageScopeForm {
 
 export function usageScopeToApiFilters(filters: UsageScopeForm): UsageScopeFilters {
   const normalized = normalizeUsageScope(filters)
+  if (normalized.range) {
+    return {
+      agent: normalized.agent,
+      model: normalized.model,
+      from: quickRangeFrom(normalized.range),
+      to: undefined
+    }
+  }
   return {
     agent: normalized.agent,
     model: normalized.model,
-    from: normalized.from || undefined,
-    to: normalized.to || undefined
+    from: toApiDateBoundary(normalized.from, 'start'),
+    to: toApiDateBoundary(normalized.to, 'end')
   }
+}
+
+function normalizeQuickRange(value?: string) {
+  const normalized = value?.trim()
+  return normalized && normalized in quickRangeDays ? normalized : undefined
+}
+
+function quickRangeFrom(value: string) {
+  const days = quickRangeDays[value]
+  if (!days) return undefined
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
+}
+
+function toApiDateBoundary(value: string, boundary: 'start' | 'end') {
+  const normalized = value.trim()
+  if (!normalized) return undefined
+  if (dateOnlyPattern.test(normalized)) {
+    const date = new Date(`${normalized}T00:00:00`)
+    if (Number.isNaN(date.getTime())) return undefined
+    if (boundary === 'end') date.setHours(23, 59, 59, 999)
+    return date.toISOString()
+  }
+  const date = new Date(normalized)
+  if (Number.isNaN(date.getTime())) return normalized
+  return date.toISOString()
 }
 
 export function applyUsageScopeToQuery(
@@ -73,7 +115,7 @@ export function useUsageScopeRoute(onRouteScopeChange?: () => void | Promise<voi
 
   const apiFilters = computed(() => usageScopeToApiFilters(filters.value))
   const hasActiveFilters = computed(() =>
-    Boolean(filters.value.agent || filters.value.model || filters.value.from || filters.value.to)
+    Boolean(filters.value.agent || filters.value.model || filters.value.range || filters.value.from || filters.value.to)
   )
 
   async function updateFilters(nextFilters: UsageScopeForm) {
@@ -94,7 +136,7 @@ export function useUsageScopeRoute(onRouteScopeChange?: () => void | Promise<voi
   }
 
   watch(
-    () => [route.query.agent, route.query.model, route.query.from, route.query.to],
+    () => [route.query.agent, route.query.model, route.query.range, route.query.from, route.query.to],
     () => {
       if (applyingRouteUpdate) return
       filters.value = readUsageScopeQuery(route.query)

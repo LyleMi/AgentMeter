@@ -69,7 +69,8 @@ const agentOptions = computed(() =>
         ...(overview.value?.slowSessions || []),
         ...(optionOverview.value?.slowSessions || [])
       ],
-      'unknown'
+      'unknown',
+      { includeSecondaryInLabel: false }
     ),
     scope.filters.value.agent
   )

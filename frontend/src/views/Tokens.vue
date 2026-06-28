@@ -229,7 +229,8 @@ const agentOptions = computed(() =>
         ...(analytics.value?.highTokenSessions || []),
         ...(optionOverview.value?.slowSessions || [])
       ],
-      t('fallback.unknown')
+      t('fallback.unknown'),
+      { includeSecondaryInLabel: false }
     ),
     scope.filters.value.agent
   )
