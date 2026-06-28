@@ -6,7 +6,7 @@ estimated cost, timing, sessions, projects, models, tool calls, and offline
 audit findings.
 
 GitHub: https://github.com/LyleMi/AgentMeter
-Demo: https://lylemi.github.io/AgentMeter/
+Demo: https://blog.lyle.ac.cn/AgentMeter/
 License: Apache-2.0
 
 This GitHub Pages site is a static mock preview with generated demo data only.

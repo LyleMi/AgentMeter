@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://lylemi.github.io/AgentMeter/">在线演示</a>
+  <a href="https://blog.lyle.ac.cn/AgentMeter/">在线演示</a>
   · <a href="https://github.com/LyleMi/AgentMeter/releases">下载发布版</a>
   · <a href="docs/assets/screenshots/overview.png">截图</a>
   · <a href="docs/install.md">安装</a>

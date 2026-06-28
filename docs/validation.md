@@ -92,7 +92,7 @@ require the Go backend or Vite. For preview changes, validate:
 - the session filter and density toggle work;
 - desktop and mobile viewports have no page-level horizontal overflow;
 - `robots.txt`, `sitemap.xml`, `llms.txt`, canonical, and Open Graph metadata
-  remain aligned with `https://lylemi.github.io/AgentMeter/`;
+  remain aligned with `https://blog.lyle.ac.cn/AgentMeter/`;
 - no real prompts, file paths, session IDs, secrets, or audit evidence appear
   in public assets.
 

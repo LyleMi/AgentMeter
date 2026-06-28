@@ -6,7 +6,7 @@ data into SQLite and shows tokens, estimated cost, timing, sessions, projects,
 models, tool-call behavior, and offline audit findings.
 
 Project URL: https://github.com/LyleMi/AgentMeter
-Public preview: https://lylemi.github.io/AgentMeter/
+Public preview: https://blog.lyle.ac.cn/AgentMeter/
 License: Apache-2.0
 
 ## Core Facts
