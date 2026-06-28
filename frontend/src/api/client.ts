@@ -8,6 +8,7 @@ import type {
   PrivacyConfigApplyResult,
   PrivacyConfigChange,
   PrivacyConfigStatus,
+  PrivacyProfileId,
   PrivacyTarget,
   Session,
   SessionDetail,
@@ -51,6 +52,11 @@ export const api = {
     request<PrivacyConfigApplyResult>(`/api/privacy/${target}/changes`, {
       method: 'POST',
       body: JSON.stringify({ changes })
+    }),
+  applyAgentPrivacyProfile: (target: PrivacyTarget, profile: PrivacyProfileId) =>
+    request<PrivacyConfigApplyResult>(`/api/privacy/${target}/profile`, {
+      method: 'POST',
+      body: JSON.stringify({ profile })
     }),
   indexNow: (rebuild = false) =>
     request<IndexResult>('/api/index', { method: 'POST', body: JSON.stringify({ rebuild }) }),

@@ -219,6 +219,77 @@ func TestCodeBuddyApplySelectedMergesDenyAndBacksUp(t *testing.T) {
 	}
 }
 
+func TestCodeBuddyApplyProfileRecommendedSetsTelemetryReportingAndUnsetsLocalControls(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), ".codebuddy", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := []byte(`{
+  "env": {
+    "DISABLE_TELEMETRY": "0",
+    "DISABLE_ERROR_REPORTING": "0",
+    "DISABLE_AUTOUPDATER": "1"
+  },
+  "autoUpdates": false,
+  "cleanupPeriodDays": 7,
+  "memory": { "autoMemoryEnabled": false },
+  "permissions": { "deny": ["WebFetch"] }
+}`)
+	if err := os.WriteFile(configPath, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	adapter := NewCodeBuddyAdapter()
+	adapter.ConfigPath = configPath
+	result, err := adapter.ApplyProfile("recommended")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Changed) == 0 {
+		t.Fatal("recommended profile should change explicit telemetry/network/local settings")
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved map[string]any
+	if err := json.Unmarshal(content, &saved); err != nil {
+		t.Fatal(err)
+	}
+	env := saved["env"].(map[string]any)
+	wantEnv := map[string]any{
+		"DISABLE_TELEMETRY":               "1",
+		"CODEBUDDY_CODE_ENABLE_TELEMETRY": "0",
+		"CLAUDE_CODE_ENABLE_TELEMETRY":    "0",
+		"OTEL_TRACES_EXPORTER":            "none",
+		"OTEL_LOG_USER_PROMPTS":           "0",
+		"OTEL_LOG_TOOL_DETAILS":           "0",
+		"OTEL_LOG_TOOL_CONTENT":           "0",
+		"OTEL_LOG_RAW_API_BODIES":         "0",
+		"DISABLE_ERROR_REPORTING":         "1",
+		"DISABLE_FEEDBACK_COMMAND":        "1",
+	}
+	for key, want := range wantEnv {
+		if env[key] != want {
+			t.Fatalf("recommended profile should set env.%s=%#v: %#v", key, want, saved)
+		}
+	}
+	if _, ok := env["DISABLE_AUTOUPDATER"]; ok {
+		t.Fatalf("recommended profile should leave network controls unset/default: %#v", saved)
+	}
+	for _, key := range []string{"autoUpdates", "cleanupPeriodDays"} {
+		if _, ok := saved[key]; ok {
+			t.Fatalf("recommended profile should leave %s unset/default: %#v", key, saved)
+		}
+	}
+	if _, ok := saved["memory"].(map[string]any)["autoMemoryEnabled"]; ok {
+		t.Fatalf("recommended profile should leave memory unset/default: %#v", saved)
+	}
+	if _, ok := saved["permissions"].(map[string]any)["deny"]; ok {
+		t.Fatalf("recommended profile should leave permissions unset/default: %#v", saved)
+	}
+}
+
 func TestCodeBuddyStatusStrictArrayPreservesExistingDenyRules(t *testing.T) {
 	content := []byte(`{
   "permissions": { "deny": ["Bash(rm:*)"] }

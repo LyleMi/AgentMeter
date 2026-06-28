@@ -29,6 +29,7 @@ type jsonSettingDefinition struct {
 	DefaultSafe bool
 	Impact      string
 	MergeArray  bool
+	Recommended bool
 }
 
 func NewGeminiAdapter() GeminiAdapter {
@@ -69,6 +70,20 @@ func (a GeminiAdapter) ApplyChanges(edits []model.PrivacyConfigEdit) (model.Priv
 	}
 	return applyJSONSettingsMutation(path, a.now, buildGeminiStatus, func(root map[string]any) ([]model.PrivacyConfigChange, []string, error) {
 		return applyJSONEdits(root, edits, geminiSettingDefinitions, "Gemini")
+	})
+}
+
+func (a GeminiAdapter) ApplyProfile(profile string) (model.PrivacyConfigApplyResult, error) {
+	normalized, err := normalizePrivacyProfile(profile)
+	if err != nil {
+		return model.PrivacyConfigApplyResult{}, err
+	}
+	path, err := a.settingsPath()
+	if err != nil {
+		return model.PrivacyConfigApplyResult{}, err
+	}
+	return applyJSONSettingsMutation(path, a.now, buildGeminiStatus, func(root map[string]any) ([]model.PrivacyConfigChange, []string, error) {
+		return applyJSONProfile(root, normalized, geminiSettingDefinitions), nil, nil
 	})
 }
 
@@ -142,6 +157,7 @@ func buildGeminiStatus(path string, exists bool, content []byte, warnings []stri
 			Key:           definition.Key,
 			DesiredValue:  definition.Desired,
 			StrictValue:   strict,
+			ProfileValues: privacyProfileValues(definition.Recommended, strict, strict),
 			ValueType:     jsonValueType(definition.Desired),
 			Configured:    ok,
 			SupportsUnset: canApply,
@@ -159,6 +175,7 @@ func buildGeminiStatus(path string, exists bool, content []byte, warnings []stri
 		Name:       "Gemini CLI",
 		ConfigPath: path,
 		Exists:     exists,
+		Profiles:   privacyConfigProfiles(),
 		Summary:    summary,
 		Settings:   settings,
 		Warnings:   warnings,
@@ -274,6 +291,44 @@ func applyJSONSettings(root map[string]any, selected []jsonSettingDefinition) {
 		}
 		setNestedJSONValue(root, definition.Key, jsonSettingAfter(current, ok, definition))
 	}
+}
+
+func applyJSONProfile(root map[string]any, profile string, definitions []jsonSettingDefinition) []model.PrivacyConfigChange {
+	changes := make([]model.PrivacyConfigChange, 0, len(definitions))
+	for _, definition := range definitions {
+		current, configured := nestedJSONValue(root, definition.Key)
+		var before any
+		if configured {
+			before = current
+		}
+
+		switch privacyProfileOperation(profile, definition.Recommended) {
+		case privacyProfileOpSet:
+			if jsonSettingHardened(current, configured, definition) {
+				continue
+			}
+			after := jsonSettingAfter(current, configured, definition)
+			setNestedJSONValue(root, definition.Key, after)
+			changes = append(changes, model.PrivacyConfigChange{
+				ID:     definition.ID,
+				Key:    definition.Key,
+				Before: before,
+				After:  cloneJSONValue(after),
+			})
+		case privacyProfileOpUnset:
+			if !configured {
+				continue
+			}
+			unsetNestedJSONValue(root, definition.Key)
+			changes = append(changes, model.PrivacyConfigChange{
+				ID:     definition.ID,
+				Key:    definition.Key,
+				Before: before,
+				After:  nil,
+			})
+		}
+	}
+	return changes
 }
 
 func jsonSettingHardened(current any, ok bool, definition jsonSettingDefinition) bool {
@@ -520,6 +575,7 @@ var geminiSettingDefinitions = []jsonSettingDefinition{
 		Key:         "privacy.usageStatisticsEnabled",
 		Desired:     false,
 		DefaultSafe: false,
+		Recommended: true,
 		Impact:      "Prevents Gemini CLI usage statistics from being sent to Google.",
 	},
 	{
@@ -530,6 +586,7 @@ var geminiSettingDefinitions = []jsonSettingDefinition{
 		Key:         "telemetry.enabled",
 		Desired:     false,
 		DefaultSafe: true,
+		Recommended: true,
 		Impact:      "Prevents telemetry logs, metrics, and traces from being exported.",
 	},
 	{
@@ -540,6 +597,7 @@ var geminiSettingDefinitions = []jsonSettingDefinition{
 		Key:         "telemetry.traces",
 		Desired:     false,
 		DefaultSafe: true,
+		Recommended: true,
 		Impact:      "Avoids detailed attributes such as tool output and file-read trace data.",
 	},
 	{
@@ -550,6 +608,7 @@ var geminiSettingDefinitions = []jsonSettingDefinition{
 		Key:         "telemetry.logPrompts",
 		Desired:     false,
 		DefaultSafe: false,
+		Recommended: true,
 		Impact:      "Keeps prompt text out of telemetry if telemetry is enabled later.",
 	},
 	{

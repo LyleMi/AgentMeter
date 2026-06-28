@@ -2013,6 +2013,62 @@ body {
   background: #f0f9ff;
 }
 
+.privacy-profile-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius);
+}
+
+.privacy-profile-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.privacy-profile-title,
+.privacy-profile-card-title {
+  color: var(--am-text);
+  font-size: 13px;
+  font-weight: 740;
+  line-height: 20px;
+}
+
+.privacy-profile-description,
+.privacy-profile-card-description {
+  margin-top: 2px;
+  color: var(--am-muted);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.privacy-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.privacy-profile-card {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+  background: var(--am-surface-subtle);
+  border: 1px solid var(--am-border-subtle);
+  border-radius: var(--am-radius-sm);
+}
+
+.privacy-profile-card .ant-btn {
+  justify-self: start;
+}
+
 .privacy-config-meta {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -2208,6 +2264,18 @@ body {
 .privacy-current-value {
   color: var(--am-text);
   font-weight: 650;
+}
+
+.privacy-profile-behavior {
+  min-width: 0;
+  padding: 6px 7px;
+  color: var(--am-text-soft);
+  font-size: 12px;
+  line-height: 17px;
+  background: var(--am-surface-subtle);
+  border: 1px solid var(--am-border-subtle);
+  border-radius: var(--am-radius-sm);
+  overflow-wrap: anywhere;
 }
 
 .privacy-type-chip {
@@ -2472,6 +2540,16 @@ body {
 
   .privacy-count-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .privacy-profile-heading,
+  .privacy-profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .privacy-profile-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .agent-privacy-tool-panel .summary-actions {

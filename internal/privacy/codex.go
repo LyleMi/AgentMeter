@@ -32,6 +32,7 @@ type settingDefinition struct {
 	Key         string
 	Desired     configValue
 	DefaultSafe bool
+	Recommended bool
 	Impact      string
 }
 
@@ -156,6 +157,17 @@ func (a CodexAdapter) ApplyChanges(edits []model.PrivacyConfigEdit) (model.Priva
 	return result, nil
 }
 
+func (a CodexAdapter) ApplyProfile(profile string) (model.PrivacyConfigApplyResult, error) {
+	normalized, err := normalizePrivacyProfile(profile)
+	if err != nil {
+		return model.PrivacyConfigApplyResult{}, err
+	}
+	if normalized == privacyProfileStrict {
+		return a.Apply(nil)
+	}
+	return a.ApplyChanges(codexProfileEdits(normalized))
+}
+
 func (a CodexAdapter) now() time.Time {
 	if a.Now != nil {
 		return a.Now()
@@ -212,20 +224,21 @@ func buildCodexStatus(path string, exists bool, content []byte, warnings []strin
 		}
 
 		settings = append(settings, model.PrivacyConfigSetting{
-			ID:               definition.ID,
-			Group:            definition.Group,
-			Title:            definition.Title,
-			Description:      definition.Description,
-			Key:              definition.FullKey(),
-			DesiredValue:     definition.Desired.JSON(),
-			StrictValue:      definition.Desired.JSON(),
-			ValueType:        definition.Desired.ValueType(),
-			Configured:       ok,
-			SupportsUnset:    true,
-			CurrentValue:     currentValue,
-			Status:           status,
-			Impact:           definition.Impact,
-			CanApply:         true,
+			ID:            definition.ID,
+			Group:         definition.Group,
+			Title:         definition.Title,
+			Description:   definition.Description,
+			Key:           definition.FullKey(),
+			DesiredValue:  definition.Desired.JSON(),
+			StrictValue:   definition.Desired.JSON(),
+			ProfileValues: privacyProfileValues(definition.Recommended, definition.Desired.JSON(), definition.Desired.JSON()),
+			ValueType:     definition.Desired.ValueType(),
+			Configured:    ok,
+			SupportsUnset: true,
+			CurrentValue:  currentValue,
+			Status:        status,
+			Impact:        definition.Impact,
+			CanApply:      true,
 		})
 	}
 	if summary.Total > 0 {
@@ -236,6 +249,7 @@ func buildCodexStatus(path string, exists bool, content []byte, warnings []strin
 		Name:       "Codex",
 		ConfigPath: path,
 		Exists:     exists,
+		Profiles:   privacyConfigProfiles(),
 		Summary:    summary,
 		Settings:   settings,
 		Warnings:   warnings,
@@ -318,6 +332,21 @@ func applySettingsToContent(content []byte, selected []settingDefinition) []byte
 		updated = doc.Bytes()
 	}
 	return updated
+}
+
+func codexProfileEdits(profile string) []model.PrivacyConfigEdit {
+	edits := make([]model.PrivacyConfigEdit, 0, len(codexSettingDefinitions))
+	for _, definition := range codexSettingDefinitions {
+		edit := model.PrivacyConfigEdit{
+			ID: definition.ID,
+			Op: privacyProfileOperation(profile, definition.Recommended),
+		}
+		if edit.Op == privacyProfileOpSet {
+			edit.Value = definition.Desired.JSON()
+		}
+		edits = append(edits, edit)
+	}
+	return edits
 }
 
 func applyCodexEditsToContent(content []byte, edits []model.PrivacyConfigEdit) ([]byte, []model.PrivacyConfigChange, []string, error) {
@@ -490,6 +519,7 @@ var codexSettingDefinitions = []settingDefinition{
 		Key:         "enabled",
 		Desired:     boolValue(false),
 		DefaultSafe: false,
+		Recommended: true,
 		Impact:      "Keeps analytics disabled explicitly.",
 	},
 	{
@@ -501,6 +531,7 @@ var codexSettingDefinitions = []settingDefinition{
 		Key:         "exporter",
 		Desired:     stringValue("none"),
 		DefaultSafe: true,
+		Recommended: true,
 		Impact:      "Prevents telemetry export from the Codex process.",
 	},
 	{
@@ -512,6 +543,7 @@ var codexSettingDefinitions = []settingDefinition{
 		Key:         "trace_exporter",
 		Desired:     stringValue("none"),
 		DefaultSafe: true,
+		Recommended: true,
 		Impact:      "Prevents trace spans from leaving the machine.",
 	},
 	{
@@ -523,6 +555,7 @@ var codexSettingDefinitions = []settingDefinition{
 		Key:         "metrics_exporter",
 		Desired:     stringValue("none"),
 		DefaultSafe: false,
+		Recommended: true,
 		Impact:      "Prevents metrics export from the Codex process.",
 	},
 	{
@@ -534,6 +567,7 @@ var codexSettingDefinitions = []settingDefinition{
 		Key:         "log_user_prompt",
 		Desired:     boolValue(false),
 		DefaultSafe: true,
+		Recommended: true,
 		Impact:      "Avoids including prompt text in telemetry logs.",
 	},
 	{

@@ -56,6 +56,20 @@ func (a CodeBuddyAdapter) ApplyChanges(edits []model.PrivacyConfigEdit) (model.P
 	})
 }
 
+func (a CodeBuddyAdapter) ApplyProfile(profile string) (model.PrivacyConfigApplyResult, error) {
+	normalized, err := normalizePrivacyProfile(profile)
+	if err != nil {
+		return model.PrivacyConfigApplyResult{}, err
+	}
+	path, err := a.settingsPath()
+	if err != nil {
+		return model.PrivacyConfigApplyResult{}, err
+	}
+	return applyJSONSettingsMutation(path, a.now, buildCodeBuddyStatus, func(root map[string]any) ([]model.PrivacyConfigChange, []string, error) {
+		return applyJSONProfile(root, normalized, codeBuddySettingDefinitions), nil, nil
+	})
+}
+
 func (a CodeBuddyAdapter) now() time.Time {
 	if a.Now != nil {
 		return a.Now()
@@ -129,6 +143,7 @@ func buildCodeBuddyStatus(path string, exists bool, content []byte, warnings []s
 			Key:           definition.Key,
 			DesiredValue:  definition.Desired,
 			StrictValue:   strict,
+			ProfileValues: privacyProfileValues(definition.Recommended, strict, strict),
 			ValueType:     jsonValueType(definition.Desired),
 			Configured:    ok,
 			SupportsUnset: canApply,
@@ -146,6 +161,7 @@ func buildCodeBuddyStatus(path string, exists bool, content []byte, warnings []s
 		Name:       "CodeBuddy Code/IDE",
 		ConfigPath: path,
 		Exists:     exists,
+		Profiles:   privacyConfigProfiles(),
 		Summary:    summary,
 		Settings:   settings,
 		Warnings:   warnings,
@@ -161,6 +177,7 @@ var codeBuddySettingDefinitions = []jsonSettingDefinition{
 		Key:         "env.DISABLE_TELEMETRY",
 		Desired:     "1",
 		DefaultSafe: false,
+		Recommended: true,
 		Impact:      "Disables all CodeBuddy telemetry with the documented highest-priority opt-out.",
 	},
 	{
@@ -171,6 +188,7 @@ var codeBuddySettingDefinitions = []jsonSettingDefinition{
 		Key:         "env.CODEBUDDY_CODE_ENABLE_TELEMETRY",
 		Desired:     "0",
 		DefaultSafe: true,
+		Recommended: true,
 		Impact:      "Keeps user-level settings from explicitly opting into trace export.",
 	},
 	{
@@ -181,6 +199,7 @@ var codeBuddySettingDefinitions = []jsonSettingDefinition{
 		Key:         "env.CLAUDE_CODE_ENABLE_TELEMETRY",
 		Desired:     "0",
 		DefaultSafe: true,
+		Recommended: true,
 		Impact:      "Covers CodeBuddy's Claude Code telemetry compatibility environment variable.",
 	},
 	{
@@ -191,6 +210,7 @@ var codeBuddySettingDefinitions = []jsonSettingDefinition{
 		Key:         "env.OTEL_TRACES_EXPORTER",
 		Desired:     "none",
 		DefaultSafe: true,
+		Recommended: true,
 		Impact:      "Prevents user settings from sending CodeBuddy traces to an external collector.",
 	},
 	{
@@ -201,6 +221,7 @@ var codeBuddySettingDefinitions = []jsonSettingDefinition{
 		Key:         "env.OTEL_LOG_USER_PROMPTS",
 		Desired:     "0",
 		DefaultSafe: true,
+		Recommended: true,
 		Impact:      "Avoids recording full user prompts if telemetry is enabled elsewhere.",
 	},
 	{
@@ -211,6 +232,7 @@ var codeBuddySettingDefinitions = []jsonSettingDefinition{
 		Key:         "env.OTEL_LOG_TOOL_DETAILS",
 		Desired:     "0",
 		DefaultSafe: true,
+		Recommended: true,
 		Impact:      "Avoids recording file paths, commands, URLs, searches, and tool input attributes.",
 	},
 	{
@@ -221,6 +243,7 @@ var codeBuddySettingDefinitions = []jsonSettingDefinition{
 		Key:         "env.OTEL_LOG_TOOL_CONTENT",
 		Desired:     "0",
 		DefaultSafe: true,
+		Recommended: true,
 		Impact:      "Avoids recording tool inputs and results that can include source code or secrets.",
 	},
 	{
@@ -231,6 +254,7 @@ var codeBuddySettingDefinitions = []jsonSettingDefinition{
 		Key:         "env.OTEL_LOG_RAW_API_BODIES",
 		Desired:     "0",
 		DefaultSafe: true,
+		Recommended: true,
 		Impact:      "Avoids future full request/response body capture if the reserved switch becomes active.",
 	},
 	{
@@ -241,6 +265,7 @@ var codeBuddySettingDefinitions = []jsonSettingDefinition{
 		Key:         "env.DISABLE_ERROR_REPORTING",
 		Desired:     "1",
 		DefaultSafe: false,
+		Recommended: true,
 		Impact:      "Reduces diagnostic error payloads sent outside the machine.",
 	},
 	{
@@ -251,6 +276,7 @@ var codeBuddySettingDefinitions = []jsonSettingDefinition{
 		Key:         "env.DISABLE_FEEDBACK_COMMAND",
 		Desired:     "1",
 		DefaultSafe: false,
+		Recommended: true,
 		Impact:      "Prevents feedback command submissions from this environment.",
 	},
 	{

@@ -39,6 +39,25 @@ func TestCodexStatusMissingConfig(t *testing.T) {
 	if status.Summary.Total != len(codexSettingDefinitions) {
 		t.Fatalf("summary total = %d", status.Summary.Total)
 	}
+	if len(status.Profiles) != 3 {
+		t.Fatalf("profiles = %#v", status.Profiles)
+	}
+	history := findSetting(status.Settings, "history.persistence")
+	if history == nil {
+		t.Fatal("history.persistence setting missing")
+	}
+	recommended := findProfileValue(history.ProfileValues, "recommended")
+	if recommended == nil || recommended.Op != "unset" || recommended.Value != nil {
+		t.Fatalf("history recommended profile value = %#v", recommended)
+	}
+	analytics := findSetting(status.Settings, "analytics.enabled")
+	if analytics == nil {
+		t.Fatal("analytics.enabled setting missing")
+	}
+	recommended = findProfileValue(analytics.ProfileValues, "recommended")
+	if recommended == nil || recommended.Op != "set" || recommended.Value != false {
+		t.Fatalf("analytics recommended profile value = %#v", recommended)
+	}
 }
 
 func TestCodexStatusEvaluatesUnsafeExplicitValues(t *testing.T) {
@@ -113,6 +132,100 @@ func TestCodexApplyCreatesConfigInTempCodexHome(t *testing.T) {
 	}
 	if settingStatus(result.Status.Settings, "history.persistence") != statusHardened {
 		t.Fatalf("history should be hardened after apply")
+	}
+}
+
+func TestCodexApplyProfileDefaultUnsetsManagedSettings(t *testing.T) {
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+	configPath := filepath.Join(codexHome, "config.toml")
+	original := strings.Join([]string{
+		`model = "gpt-5"`,
+		`web_search = "disabled"`,
+		"",
+		"[analytics]",
+		"enabled = false",
+		"",
+		"[history]",
+		`persistence = "none"`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(configPath, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := NewCodexAdapter().ApplyProfile("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Changed) != 3 {
+		t.Fatalf("changed = %d, want 3: %#v", len(result.Changed), result.Changed)
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	for _, unwanted := range []string{"web_search", "enabled = false", "persistence"} {
+		if strings.Contains(text, unwanted) {
+			t.Fatalf("default profile should unset %q:\n%s", unwanted, text)
+		}
+	}
+	if !strings.Contains(text, `model = "gpt-5"`) {
+		t.Fatalf("default profile lost unrelated config:\n%s", text)
+	}
+}
+
+func TestCodexApplyProfileRecommendedSetsTelemetryAndUnsetsOtherManagedSettings(t *testing.T) {
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+	configPath := filepath.Join(codexHome, "config.toml")
+	original := strings.Join([]string{
+		`model = "gpt-5"`,
+		`web_search = "disabled"`,
+		"",
+		"[analytics]",
+		"enabled = true",
+		"",
+		"[otel]",
+		`exporter = "otlp"`,
+		"metrics_exporter = \"otlp\"",
+		"log_user_prompt = true",
+		"",
+		"[history]",
+		`persistence = "none"`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(configPath, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := NewCodexAdapter().ApplyProfile("recommended")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Changed) == 0 {
+		t.Fatal("recommended profile should change explicit telemetry/local settings")
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	for _, want := range []string{
+		"enabled = false",
+		`exporter = "none"`,
+		`metrics_exporter = "none"`,
+		"log_user_prompt = false",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("recommended profile missing %q:\n%s", want, text)
+		}
+	}
+	for _, unwanted := range []string{"web_search", "persistence"} {
+		if strings.Contains(text, unwanted) {
+			t.Fatalf("recommended profile should leave %q unset/default:\n%s", unwanted, text)
+		}
 	}
 }
 
@@ -318,6 +431,15 @@ func findSetting(settings []model.PrivacyConfigSetting, id string) *model.Privac
 	for index := range settings {
 		if settings[index].ID == id {
 			return &settings[index]
+		}
+	}
+	return nil
+}
+
+func findProfileValue(values []model.PrivacyConfigProfileValue, profile string) *model.PrivacyConfigProfileValue {
+	for index := range values {
+		if values[index].Profile == profile {
+			return &values[index]
 		}
 	}
 	return nil

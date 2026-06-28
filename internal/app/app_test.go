@@ -253,6 +253,55 @@ func TestPrivacyGeminiHTTPApplyEmptyBodyAppliesAll(t *testing.T) {
 	}
 }
 
+func TestPrivacyGeminiHTTPApplyRecommendedProfile(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), ".gemini", "settings.json")
+	t.Setenv("AGENTMETER_GEMINI_SETTINGS_PATH", configPath)
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(`{
+  "privacy": { "usageStatisticsEnabled": true },
+  "telemetry": { "enabled": true, "traces": true, "logPrompts": true },
+  "general": { "sessionRetention": { "maxAge": "7d" } }
+}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterHTTPHandlers(mux, &App{}, fstest.MapFS{})
+
+	recorder := httptest.NewRecorder()
+	body := strings.NewReader(`{"profile":"recommended"}`)
+	request := httptest.NewRequest(http.MethodPost, "/api/privacy/gemini/profile", body)
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var result model.PrivacyConfigApplyResult
+	if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Status.Target != "gemini" || len(result.Status.Profiles) != 3 {
+		t.Fatalf("status should include Gemini profile metadata: %#v", result.Status)
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved map[string]any
+	if err := json.Unmarshal(content, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved["privacy"].(map[string]any)["usageStatisticsEnabled"] != false {
+		t.Fatalf("recommended profile did not disable usage stats: %#v", saved)
+	}
+	retention := saved["general"].(map[string]any)["sessionRetention"].(map[string]any)
+	if _, ok := retention["maxAge"]; ok {
+		t.Fatalf("recommended profile should leave retention unset/default: %#v", saved)
+	}
+}
+
 func TestPrivacyClaudeHTTPApplyEmptyBodyAppliesAll(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), ".claude", "settings.json")
 	t.Setenv("AGENTMETER_CLAUDE_SETTINGS_PATH", configPath)

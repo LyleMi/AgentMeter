@@ -372,9 +372,16 @@ type PrivacyConfigStatus struct {
 	Name       string                 `json:"name"`
 	ConfigPath string                 `json:"configPath"`
 	Exists     bool                   `json:"exists"`
+	Profiles   []PrivacyConfigProfile `json:"profiles"`
 	Summary    PrivacyConfigSummary   `json:"summary"`
 	Settings   []PrivacyConfigSetting `json:"settings"`
 	Warnings   []string               `json:"warnings"`
+}
+
+type PrivacyConfigProfile struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
 }
 
 type PrivacyConfigSummary struct {
@@ -386,20 +393,27 @@ type PrivacyConfigSummary struct {
 }
 
 type PrivacyConfigSetting struct {
-	ID            string `json:"id"`
-	Group         string `json:"group"`
-	Title         string `json:"title"`
-	Description   string `json:"description"`
-	Key           string `json:"key"`
-	DesiredValue  any    `json:"desiredValue"`
-	StrictValue   any    `json:"strictValue"`
-	ValueType     string `json:"valueType"`
-	Configured    bool   `json:"configured"`
-	SupportsUnset bool   `json:"supportsUnset"`
-	CurrentValue  any    `json:"currentValue"`
-	Status        string `json:"status"`
-	Impact        string `json:"impact"`
-	CanApply      bool   `json:"canApply"`
+	ID            string                      `json:"id"`
+	Group         string                      `json:"group"`
+	Title         string                      `json:"title"`
+	Description   string                      `json:"description"`
+	Key           string                      `json:"key"`
+	DesiredValue  any                         `json:"desiredValue"`
+	StrictValue   any                         `json:"strictValue"`
+	ProfileValues []PrivacyConfigProfileValue `json:"profileValues"`
+	ValueType     string                      `json:"valueType"`
+	Configured    bool                        `json:"configured"`
+	SupportsUnset bool                        `json:"supportsUnset"`
+	CurrentValue  any                         `json:"currentValue"`
+	Status        string                      `json:"status"`
+	Impact        string                      `json:"impact"`
+	CanApply      bool                        `json:"canApply"`
+}
+
+type PrivacyConfigProfileValue struct {
+	Profile string `json:"profile"`
+	Op      string `json:"op"`
+	Value   any    `json:"value"`
 }
 
 type PrivacyConfigEdit struct {

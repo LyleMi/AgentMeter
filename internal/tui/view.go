@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -23,7 +24,7 @@ func (s *state) view() string {
 	}
 
 	lines := []string{
-		fit(bold("AgentMeter")+" "+dim(s.page.title()), width),
+		fit(s.headerLine(), width),
 		fit(s.navLine(), width),
 		separator(width),
 		fit(s.statusLine(), width),
@@ -43,6 +44,32 @@ func (s *state) view() string {
 
 	lines = append(lines, separator(width), fit(s.footerLine(), width))
 	return strings.Join(lines, "\n")
+}
+
+func (s *state) headerLine() string {
+	parts := []string{bold("AgentMeter"), dim(s.page.title())}
+	switch s.page {
+	case pageOverview:
+		parts = append(parts,
+			fmt.Sprintf("%s sessions", formatInt(int64(s.overview.TotalSessions))),
+			fmt.Sprintf("%s tokens", formatInt(s.overview.TotalTokens)),
+			formatCost(s.overview.EstimatedCostUSD),
+		)
+	case pageSessions:
+		parts = append(parts, fmt.Sprintf("%s sessions loaded", formatInt(int64(len(s.sessions)))))
+	case pageTools:
+		parts = append(parts, fmt.Sprintf("%s tools", formatInt(int64(len(s.tools)))))
+	case pagePrivacy:
+		parts = append(parts, fmt.Sprintf("%s targets", formatInt(int64(len(s.privacy)))))
+		if status := s.selectedPrivacyStatus(); status != nil {
+			parts = append(parts, "selected "+privacyDisplayName(*status))
+		}
+	case pageSettings:
+		if len(s.settings.SourceEntries) > 0 {
+			parts = append(parts, fmt.Sprintf("%s sources", formatInt(int64(len(s.settings.SourceEntries)))))
+		}
+	}
+	return strings.Join(parts, "  ")
 }
 
 func (s *state) navLine() string {
@@ -69,6 +96,12 @@ func (s *state) navLine() string {
 }
 
 func (s *state) statusLine() string {
+	if s.privacyApplying {
+		return accent(s.status)
+	}
+	if s.privacyPending != nil {
+		return accent(s.status)
+	}
 	if s.indexing {
 		return accent(s.status)
 	}
@@ -85,10 +118,21 @@ func (s *state) statusLine() string {
 }
 
 func (s *state) footerLine() string {
-	if s.page == pageSessionDetail {
+	switch s.page {
+	case pageSessionDetail:
 		return dim("Keys: b/esc back  up/down scroll  r refresh  i update index  I rebuild index  q quit")
+	case pageSessions:
+		return dim("Keys: enter detail  up/down select  tab cycle  r refresh  i update index  I rebuild index  q quit")
+	case pagePrivacy:
+		if s.privacyPending != nil {
+			return dim("Keys: enter apply profile  esc cancel  q quit")
+		}
+		return dim("Keys: [/] target  a recommended  A strict  u defaults  r refresh  q quit")
+	case pageSettings:
+		return dim("Keys: up/down scroll  tab cycle  r refresh  i update index  I rebuild index  q quit")
+	default:
+		return dim("Keys: 1-5 switch  tab cycle  up/down select/scroll  r refresh  i update index  I rebuild index  q quit")
 	}
-	return dim("Keys: 1-5 switch  tab cycle  up/down select/scroll  enter detail  r refresh  i update index  I rebuild index  q quit")
 }
 
 func (s *state) contentHeight() int {
@@ -129,20 +173,37 @@ func (s *state) overviewLines() []string {
 		fmt.Sprintf("Sessions: %-12s Tokens: %-14s Cost: %s", formatInt(int64(o.TotalSessions)), formatInt(o.TotalTokens), formatCost(o.EstimatedCostUSD)),
 		fmt.Sprintf("Input: %-15s Cached input: %-8s Output: %-12s Reasoning: %s",
 			formatInt(o.TotalInputTokens), formatInt(o.TotalCachedInputTokens), formatInt(o.TotalOutputTokens), formatInt(o.TotalReasoningTokens)),
-		fmt.Sprintf("Wall time: %-12s Active time: %-12s Tool calls: %-8s Unpriced sessions: %s",
-			formatDuration(o.TotalWallDurationMS), formatDuration(o.TotalActiveDurationMS), formatInt(int64(o.TotalToolCalls)), formatInt(int64(o.UnpricedSessions))),
+		fmt.Sprintf("Wall: %-15s Active: %-12s Model: %-12s Tools: %-12s Idle: %s",
+			formatDuration(o.TotalWallDurationMS), formatDuration(o.TotalActiveDurationMS), formatDuration(o.TotalModelDurationMS), formatDuration(o.TotalToolDurationMS), formatDuration(o.TotalIdleDurationMS)),
+		fmt.Sprintf("Tool calls: %-10s Network-suspect: %-10s Unpriced sessions: %s",
+			formatInt(int64(o.TotalToolCalls)), formatInt(int64(o.SuspectedNetworkToolCalls)), formatInt(int64(o.UnpricedSessions))),
 		"",
 		bold("Top Models"),
 	}
 	if len(o.ModelUsage) == 0 {
 		lines = append(lines, "No model usage yet.")
 	} else {
-		lines = append(lines, fmt.Sprintf("%-28s %8s %12s %12s", "Model", "Sessions", "Tokens", "Cost"))
+		lines = append(lines, fmt.Sprintf("%-26s %8s %11s %11s %11s %12s", "Model", "Sessions", "Input", "Output", "Tokens", "Cost"))
 		for _, item := range limitSlice(o.ModelUsage, 6) {
-			lines = append(lines, fmt.Sprintf("%-28s %8s %12s %12s",
-				truncate(empty(item.Model, "unknown"), 28),
+			lines = append(lines, fmt.Sprintf("%-26s %8s %11s %11s %11s %12s",
+				truncate(empty(item.Model, "unknown"), 26),
+				formatInt(int64(item.SessionCount)),
+				formatInt(item.InputTokens),
+				formatInt(item.OutputTokens),
+				formatInt(item.TotalTokens),
+				formatCost(item.EstimatedCostUSD),
+			))
+		}
+	}
+	if len(o.AgentUsage) > 0 {
+		lines = append(lines, "", bold("Top Agents"))
+		lines = append(lines, fmt.Sprintf("%-18s %8s %12s %8s %12s", "Agent", "Sessions", "Tokens", "Tools", "Cost"))
+		for _, item := range limitSlice(o.AgentUsage, 4) {
+			lines = append(lines, fmt.Sprintf("%-18s %8s %12s %8s %12s",
+				truncate(empty(item.AgentName, item.AgentKind), 18),
 				formatInt(int64(item.SessionCount)),
 				formatInt(item.TotalTokens),
+				formatInt(int64(item.ToolCalls)),
 				formatCost(item.EstimatedCostUSD),
 			))
 		}
@@ -257,7 +318,7 @@ func (s *state) settingsViewportLines() []string {
 }
 
 func (s *state) privacyViewportLines() []string {
-	lines := privacyLines(s.privacy, s.width)
+	lines := s.privacyLines()
 	height := s.contentHeight()
 	if s.scroll >= len(lines) {
 		s.scroll = len(lines) - 1
@@ -408,10 +469,31 @@ func settingsLines(settings agentmodel.Settings, width int) []string {
 	return lines
 }
 
-func privacyLines(statuses []agentmodel.PrivacyConfigStatus, width int) []string {
+func (s *state) privacyLines() []string {
+	return privacyLines(s.privacy, s.privacyTarget, s.privacyPending, s.width)
+}
+
+func privacyLines(statuses []agentmodel.PrivacyConfigStatus, selected int, pending *privacyProfileAction, width int) []string {
 	lines := []string{bold("Agent Privacy")}
 	if len(statuses) == 0 {
 		return append(lines, "No privacy targets loaded.")
+	}
+	if selected < 0 || selected >= len(statuses) {
+		selected = 0
+	}
+	selectedStatus := statuses[selected]
+	lines = append(lines,
+		fmt.Sprintf("Targets: %d  Selected: %s (%d/%d)  Profiles: %s",
+			len(statuses),
+			privacyDisplayName(selectedStatus),
+			selected+1,
+			len(statuses),
+			strings.Join(privacyProfileNames(selectedStatus), ", "),
+		),
+		"Keys: [ and ] target  a recommended  A strict  u defaults  Enter confirm  Esc cancel",
+	)
+	if pending != nil {
+		lines = append(lines, accent(fmt.Sprintf("Pending: apply %s profile to %s; press Enter to apply or Esc to cancel.", pending.profile, pending.targetName)))
 	}
 	for i, status := range statuses {
 		if i > 0 {
@@ -422,8 +504,12 @@ func privacyLines(statuses []agentmodel.PrivacyConfigStatus, width int) []string
 		if status.Exists {
 			exists = "exists"
 		}
+		prefix := "  "
+		if i == selected {
+			prefix = "> "
+		}
 		lines = append(lines,
-			bold(empty(status.Name, status.Target)),
+			bold(prefix+privacyDisplayName(status)),
 			fmt.Sprintf("Target: %s  Config: %s  Score: %d/%d (%d%%)  Hardened: %d  Implicit: %d  Attention: %d",
 				empty(status.Target, "unknown"),
 				exists,
@@ -447,6 +533,7 @@ func privacyLines(statuses []agentmodel.PrivacyConfigStatus, width int) []string
 			lines = append(lines, "  No settings reported.")
 			continue
 		}
+		profiles := privacyProfileNames(status)
 		for _, setting := range status.Settings {
 			lines = append(lines, fit(fmt.Sprintf("  [%s] %-28s %-14s %s",
 				empty(setting.Status, "unknown"),
@@ -454,10 +541,11 @@ func privacyLines(statuses []agentmodel.PrivacyConfigStatus, width int) []string
 				privacyConfigState(setting),
 				empty(setting.Key, setting.ID),
 			), width))
-			valueLine := fmt.Sprintf("      current=%s  strict=%s",
-				formatPrivacyValue(setting.CurrentValue),
-				formatPrivacyValue(privacyStrictValue(setting)),
-			)
+			profileParts := []string{"current=" + formatPrivacyValue(setting.CurrentValue)}
+			for _, profile := range profiles {
+				profileParts = append(profileParts, profile+"="+formatPrivacyValue(privacyProfileValue(setting, profile)))
+			}
+			valueLine := "      " + strings.Join(profileParts, "  ")
 			if setting.Impact != "" {
 				valueLine += "  impact=" + setting.Impact
 			}
@@ -485,6 +573,70 @@ func privacyStrictValue(setting agentmodel.PrivacyConfigSetting) any {
 		return setting.StrictValue
 	}
 	return setting.DesiredValue
+}
+
+func privacyProfileValue(setting agentmodel.PrivacyConfigSetting, profile string) any {
+	profile = strings.ToLower(strings.TrimSpace(profile))
+	for _, value := range setting.ProfileValues {
+		if strings.ToLower(strings.TrimSpace(value.Profile)) != profile {
+			continue
+		}
+		if strings.EqualFold(value.Op, "set") {
+			return value.Value
+		}
+		return nil
+	}
+	switch profile {
+	case "default":
+		return nil
+	case "recommended":
+		return setting.DesiredValue
+	case "strict":
+		return privacyStrictValue(setting)
+	default:
+		return nil
+	}
+}
+
+func privacyProfileNames(status agentmodel.PrivacyConfigStatus) []string {
+	names := make([]string, 0, len(status.Profiles))
+	for _, profile := range status.Profiles {
+		names = append(names, profile.ID)
+	}
+	if len(names) == 0 {
+		for _, setting := range status.Settings {
+			for _, value := range setting.ProfileValues {
+				names = append(names, value.Profile)
+			}
+		}
+	}
+	if len(names) == 0 {
+		names = []string{"default", "recommended", "strict"}
+	}
+	return orderProfileNames(names)
+}
+
+func orderProfileNames(names []string) []string {
+	seen := make(map[string]bool, len(names))
+	for _, name := range names {
+		name = strings.ToLower(strings.TrimSpace(name))
+		if name != "" {
+			seen[name] = true
+		}
+	}
+	ordered := make([]string, 0, len(seen))
+	for _, name := range []string{"default", "recommended", "strict"} {
+		if seen[name] {
+			ordered = append(ordered, name)
+			delete(seen, name)
+		}
+	}
+	extras := make([]string, 0, len(seen))
+	for name := range seen {
+		extras = append(extras, name)
+	}
+	sort.Strings(extras)
+	return append(ordered, extras...)
 }
 
 func separator(width int) string {

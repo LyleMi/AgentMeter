@@ -27,6 +27,8 @@ Recommended local command:
 
 ```sh
 go run . -start
+# or
+go run . start
 ```
 
 Current flags:
@@ -69,7 +71,8 @@ Implemented TUI actions:
 - trigger rebuild indexing;
 - open a selected session detail from the session list;
 - navigate back from detail to the session list;
-- inspect supported agent privacy configuration status read-only.
+- inspect supported agent privacy configuration status;
+- apply supported agent privacy profiles after an explicit confirmation step.
 
 The TUI may present data differently from the Web UI. For example, charts can be
 replaced by tables or compact sparklines. The underlying numbers, filters,
@@ -80,6 +83,10 @@ labels, parse-status meanings, and drill-down paths should remain aligned.
 The implemented interface selector is:
 
 ```text
+go run . web
+go run . start
+go run . tui
+go run . cli
 go run . -ui web
 go run . -ui tui
 ```
@@ -88,13 +95,20 @@ Examples:
 
 ```sh
 go run . -start
+go run . start
+go run . web
 go run . -ui web -http 127.0.0.1:34115
 go run . -ui web -static frontend/dist
+go run . tui
+go run . cli
 go run . -ui tui
 ```
 
 Flag behavior:
 
+- `web` is a shortcut for `-ui web`.
+- `start` is a shortcut for `-start`.
+- `tui` and `cli` are shortcuts for `-ui tui`.
 - `-ui web` starts the local HTTP server and browser-oriented UI.
 - `-ui tui` starts the terminal UI without opening a browser or HTTP listener.
 - Default remains `web` for compatibility with the current MVP.
@@ -113,16 +127,20 @@ Flag behavior:
 4 / g      Settings
 5 / p      Agent Privacy
 tab/right  next screen
-left       previous screen
+shift-tab/left previous screen
 up/down    select or scroll
 j / k      select or scroll
 pgup/pgdn  page through scrollable content
 home/end   jump within lists
-enter      open selected session detail
-b / esc    return from detail
+enter      open selected session detail, or confirm pending privacy profile
+b / esc    return from detail, or cancel pending privacy profile
 r          refresh current screen
 i          update index
 I          rebuild index
+[/]        previous/next privacy target
+a          queue recommended privacy profile for selected target
+A          queue strict privacy profile for selected target
+u          queue default privacy profile for selected target
 q / ctrl-c quit
 ```
 

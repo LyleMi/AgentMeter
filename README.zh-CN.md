@@ -55,6 +55,8 @@ AgentMeter 将这些数据整理成可以直接回答的问题：
 
 ```sh
 go run . -start
+# 等同于：
+go run . start
 ```
 
 打开：
@@ -74,6 +76,14 @@ agent 主目录，例如 `~/.codex` 和 `~/.claude`；你也可以在 **Settings
 
 如需手动启动、前端 HMR、TUI 模式、数据位置和开发检查，请参阅
 [Getting Started](docs/getting-started.md)。
+
+终端 UI 快捷启动方式：
+
+```sh
+go run . tui
+# 或：
+go run . cli
+```
 
 ## 隐私模型
 

@@ -218,6 +218,66 @@ func TestClaudeApplySelectedMergesDenyAndBacksUp(t *testing.T) {
 	}
 }
 
+func TestClaudeApplyProfileRecommendedSetsReportingAndUnsetsNetworkRetention(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), ".claude", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := []byte(`{
+  "env": {
+    "DISABLE_TELEMETRY": "0",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  },
+  "fileCheckpointingEnabled": false,
+  "autoMemoryEnabled": false,
+  "permissions": { "deny": ["WebFetch"] }
+}`)
+	if err := os.WriteFile(configPath, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	adapter := NewClaudeAdapter()
+	adapter.ConfigPath = configPath
+	result, err := adapter.ApplyProfile("recommended")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Changed) == 0 {
+		t.Fatal("recommended profile should change explicit reporting/network/local settings")
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved map[string]any
+	if err := json.Unmarshal(content, &saved); err != nil {
+		t.Fatal(err)
+	}
+	env := saved["env"].(map[string]any)
+	for _, key := range []string{
+		"DISABLE_TELEMETRY",
+		"DISABLE_ERROR_REPORTING",
+		"DISABLE_FEEDBACK_COMMAND",
+		"CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY",
+	} {
+		if env[key] != "1" {
+			t.Fatalf("recommended profile should set env.%s: %#v", key, saved)
+		}
+	}
+	if _, ok := env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"]; ok {
+		t.Fatalf("recommended profile should leave network controls unset/default: %#v", saved)
+	}
+	if _, ok := saved["fileCheckpointingEnabled"]; ok {
+		t.Fatalf("recommended profile should leave checkpointing unset/default: %#v", saved)
+	}
+	if _, ok := saved["autoMemoryEnabled"]; ok {
+		t.Fatalf("recommended profile should leave memory unset/default: %#v", saved)
+	}
+	if _, ok := saved["permissions"].(map[string]any)["deny"]; ok {
+		t.Fatalf("recommended profile should leave permissions unset/default: %#v", saved)
+	}
+}
+
 func TestClaudeApplyChangesSetsAndUnsetsValues(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), ".claude", "settings.json")
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {

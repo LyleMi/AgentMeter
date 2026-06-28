@@ -12,6 +12,7 @@ type registryFakeAdapter struct {
 	statusCalls  int
 	applyCalls   int
 	changesCalls int
+	profileCalls int
 }
 
 func (a *registryFakeAdapter) Status() (model.PrivacyConfigStatus, error) {
@@ -38,6 +39,17 @@ func (a *registryFakeAdapter) ApplyChanges(changes []model.PrivacyConfigEdit) (m
 	}, nil
 }
 
+func (a *registryFakeAdapter) ApplyProfile(profile string) (model.PrivacyConfigApplyResult, error) {
+	a.profileCalls++
+	return model.PrivacyConfigApplyResult{
+		Status: model.PrivacyConfigStatus{Target: a.target},
+		Changed: []model.PrivacyConfigChange{{
+			ID:    "profile",
+			After: profile,
+		}},
+	}, nil
+}
+
 func TestRegistryDispatchesByTarget(t *testing.T) {
 	gemini := &registryFakeAdapter{target: "gemini"}
 	claude := &registryFakeAdapter{target: "claude"}
@@ -60,6 +72,14 @@ func TestRegistryDispatchesByTarget(t *testing.T) {
 	}
 	if result.Status.Target != "gemini" || gemini.applyCalls != 1 || claude.applyCalls != 0 {
 		t.Fatalf("registry did not dispatch to gemini: result=%#v gemini=%d claude=%d", result, gemini.applyCalls, claude.applyCalls)
+	}
+
+	profileResult, err := registry.ApplyProfile("claude", "recommended")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if profileResult.Status.Target != "claude" || claude.profileCalls != 1 || gemini.profileCalls != 0 {
+		t.Fatalf("registry did not dispatch profile to claude: result=%#v gemini=%d claude=%d", profileResult, gemini.profileCalls, claude.profileCalls)
 	}
 }
 

@@ -29,7 +29,7 @@ func main() {
 	flag.BoolVar(&start, "start", false, "install/build frontend assets before starting web mode and open the browser")
 	flag.BoolVar(&skipBrowser, "skip-browser", false, "with -start, do not open the browser")
 	flag.BoolVar(&forceBuild, "force-build", false, "with -start, rebuild the frontend even when built assets look current")
-	flag.Parse()
+	flag.CommandLine.Parse(normalizeCommandArgs(os.Args[1:]))
 
 	uiMode = strings.ToLower(strings.TrimSpace(uiMode))
 	if uiMode == "" {
@@ -81,6 +81,29 @@ func main() {
 	default:
 		log.Fatalf("unknown -ui mode %q; expected web or tui", uiMode)
 	}
+}
+
+func normalizeCommandArgs(args []string) []string {
+	if len(args) == 0 {
+		return args
+	}
+	switch strings.ToLower(strings.TrimSpace(args[0])) {
+	case "tui", "cli":
+		return prependArgs([]string{"-ui", "tui"}, args[1:])
+	case "web":
+		return prependArgs([]string{"-ui", "web"}, args[1:])
+	case "start":
+		return prependArgs([]string{"-start"}, args[1:])
+	default:
+		return args
+	}
+}
+
+func prependArgs(prefix, rest []string) []string {
+	normalized := make([]string, 0, len(prefix)+len(rest))
+	normalized = append(normalized, prefix...)
+	normalized = append(normalized, rest...)
+	return normalized
 }
 
 func startWeb(service *app.App, httpAddr, staticDir string) {

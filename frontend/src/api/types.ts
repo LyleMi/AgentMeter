@@ -293,6 +293,20 @@ export interface PrivacyConfigSummary {
 }
 
 export type PrivacyConfigValueType = 'bool' | 'string' | 'stringArray' | 'number'
+export type PrivacyProfileId = 'default' | 'recommended' | 'strict'
+export type PrivacyConfigProfileValueOp = 'set' | 'unset' | 'none'
+
+export interface PrivacyConfigProfile {
+  id: PrivacyProfileId
+  title: string
+  description: string
+}
+
+export interface PrivacyConfigProfileValue {
+  profile: PrivacyProfileId
+  op: PrivacyConfigProfileValueOp
+  value?: unknown
+}
 
 export interface PrivacyConfigSetting {
   id: string
@@ -309,6 +323,7 @@ export interface PrivacyConfigSetting {
   status: string
   impact: string
   canApply: boolean
+  profileValues?: PrivacyConfigProfileValue[]
 }
 
 export interface PrivacyConfigStatus {
@@ -317,6 +332,7 @@ export interface PrivacyConfigStatus {
   configPath: string
   exists: boolean
   summary: PrivacyConfigSummary
+  profiles?: PrivacyConfigProfile[]
   settings: PrivacyConfigSetting[]
   warnings: string[]
 }

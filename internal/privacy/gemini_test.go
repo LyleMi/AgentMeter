@@ -130,6 +130,136 @@ func TestGeminiApplyCreatesSettingsAndMergesWebToolExcludes(t *testing.T) {
 	}
 }
 
+func TestGeminiApplyProfileDefaultUnsetsManagedSettings(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), ".gemini", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := []byte(`{
+  "privacy": { "usageStatisticsEnabled": false },
+  "general": {
+    "sessionRetention": { "enabled": true, "maxAge": "7d" },
+    "logRagSnippets": false
+  },
+  "tools": { "exclude": ["write_file", "google_web_search"] }
+}`)
+	if err := os.WriteFile(configPath, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	adapter := NewGeminiAdapter()
+	adapter.ConfigPath = configPath
+	result, err := adapter.ApplyProfile("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Changed) != 5 {
+		t.Fatalf("changed = %d, want 5: %#v", len(result.Changed), result.Changed)
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved map[string]any
+	if err := json.Unmarshal(content, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := saved["privacy"].(map[string]any)["usageStatisticsEnabled"]; ok {
+		t.Fatalf("default profile should unset usage statistics: %#v", saved)
+	}
+	general := saved["general"].(map[string]any)
+	if _, ok := general["logRagSnippets"]; ok {
+		t.Fatalf("default profile should unset local log snippets: %#v", saved)
+	}
+	retention := general["sessionRetention"].(map[string]any)
+	if _, ok := retention["maxAge"]; ok {
+		t.Fatalf("default profile should unset retention maxAge: %#v", saved)
+	}
+	if _, ok := saved["tools"].(map[string]any)["exclude"]; ok {
+		t.Fatalf("default profile should unset tools.exclude: %#v", saved)
+	}
+}
+
+func TestGeminiApplyProfileRecommendedSetsTelemetryAndUnsetsLocalRetention(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), ".gemini", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := []byte(`{
+  "privacy": { "usageStatisticsEnabled": true },
+  "telemetry": { "enabled": true, "traces": true, "logPrompts": true },
+  "general": {
+    "checkpointing": { "enabled": false },
+    "sessionRetention": { "enabled": true, "maxAge": "7d" },
+    "logRagSnippets": false
+  },
+  "tools": { "exclude": ["write_file", "google_web_search"] }
+}`)
+	if err := os.WriteFile(configPath, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	adapter := NewGeminiAdapter()
+	adapter.ConfigPath = configPath
+	result, err := adapter.ApplyProfile("recommended")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Changed) == 0 {
+		t.Fatal("recommended profile should change explicit telemetry/local settings")
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved map[string]any
+	if err := json.Unmarshal(content, &saved); err != nil {
+		t.Fatal(err)
+	}
+	privacy := saved["privacy"].(map[string]any)
+	if privacy["usageStatisticsEnabled"] != false {
+		t.Fatalf("usage statistics should be disabled: %#v", saved)
+	}
+	telemetry := saved["telemetry"].(map[string]any)
+	for _, key := range []string{"enabled", "traces", "logPrompts"} {
+		if telemetry[key] != false {
+			t.Fatalf("telemetry.%s should be false: %#v", key, saved)
+		}
+	}
+	general := saved["general"].(map[string]any)
+	if _, ok := general["logRagSnippets"]; ok {
+		t.Fatalf("recommended profile should leave log snippets unset/default: %#v", saved)
+	}
+	checkpointing := general["checkpointing"].(map[string]any)
+	if _, ok := checkpointing["enabled"]; ok {
+		t.Fatalf("recommended profile should leave checkpointing unset/default: %#v", saved)
+	}
+	retention := general["sessionRetention"].(map[string]any)
+	if _, ok := retention["maxAge"]; ok {
+		t.Fatalf("recommended profile should leave retention maxAge unset/default: %#v", saved)
+	}
+	if _, ok := saved["tools"].(map[string]any)["exclude"]; ok {
+		t.Fatalf("recommended profile should leave web tools unset/default: %#v", saved)
+	}
+}
+
+func TestGeminiApplyProfileStrictMatchesExistingStrictApply(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), ".gemini", "settings.json")
+	adapter := NewGeminiAdapter()
+	adapter.ConfigPath = configPath
+
+	result, err := adapter.ApplyProfile("strict")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Changed) != len(geminiSettingDefinitions) {
+		t.Fatalf("changed = %d, want %d", len(result.Changed), len(geminiSettingDefinitions))
+	}
+	if settingStatus(result.Status.Settings, "tools.exclude.web") != statusHardened {
+		t.Fatalf("strict profile should harden web tools")
+	}
+}
+
 func TestGeminiApplyChangesSetsCustomValue(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), ".gemini", "settings.json")
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {

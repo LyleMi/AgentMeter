@@ -28,6 +28,8 @@ defineProps<{
   title: string
   description: string
   impact: string
+  defaultBehavior: string
+  recommendedBehavior: string
   valueType: PrivacyConfigValueType
   strictValue: unknown
   changed: boolean
@@ -92,7 +94,15 @@ defineEmits<{
         </a-typography-text>
       </div>
       <div class="privacy-value-block">
-        <div class="metadata-label">{{ t('privacy.value.strict') }}</div>
+        <div class="metadata-label">{{ t('privacy.value.defaultProfile') }}</div>
+        <div class="privacy-profile-behavior">{{ defaultBehavior }}</div>
+      </div>
+      <div class="privacy-value-block">
+        <div class="metadata-label">{{ t('privacy.value.recommendedProfile') }}</div>
+        <div class="privacy-profile-behavior">{{ recommendedBehavior }}</div>
+      </div>
+      <div class="privacy-value-block">
+        <div class="metadata-label">{{ t('privacy.value.strictProfile') }}</div>
         <a-typography-text class="mono privacy-copy-block" :copyable="{ text: formatConfigValue(strictValue) }">
           {{ formatConfigValue(strictValue) }}
         </a-typography-text>

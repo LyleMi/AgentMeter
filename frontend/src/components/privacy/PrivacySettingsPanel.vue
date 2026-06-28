@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import PrivacySettingCard from './PrivacySettingCard.vue'
-import type { PrivacyConfigSetting, PrivacyConfigValueType } from '../../api/types'
+import type { PrivacyConfigSetting, PrivacyConfigValueType, PrivacyProfileId } from '../../api/types'
 import type { PrivacyConfigEdit } from '../../composables/useAgentPrivacyEditor'
 
 type Translate = (key: string, params?: Record<string, string>) => string
@@ -31,6 +31,7 @@ defineProps<{
   localizedSettingTitle: (setting: PrivacyConfigSetting) => string
   localizedSettingDescription: (setting: PrivacyConfigSetting) => string
   localizedSettingImpact: (setting: PrivacyConfigSetting) => string
+  profileBehavior: (setting: PrivacyConfigSetting, profile: PrivacyProfileId) => string
   valueType: (setting: PrivacyConfigSetting) => PrivacyConfigValueType
   strictValue: (setting: PrivacyConfigSetting) => unknown
   valueTypeLabel: (type: PrivacyConfigValueType) => string
@@ -78,6 +79,8 @@ defineEmits<{
               :title="localizedSettingTitle(setting)"
               :description="localizedSettingDescription(setting)"
               :impact="localizedSettingImpact(setting)"
+              :default-behavior="profileBehavior(setting, 'default')"
+              :recommended-behavior="profileBehavior(setting, 'recommended')"
               :value-type="valueType(setting)"
               :strict-value="strictValue(setting)"
               :changed="isEditChanged(setting)"

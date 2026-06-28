@@ -56,6 +56,8 @@ Recommended local start:
 
 ```sh
 go run . -start
+# same as:
+go run . start
 ```
 
 Open:
@@ -72,6 +74,14 @@ again.
 
 For manual startup, frontend HMR, TUI mode, data locations, and development
 checks, see [Getting Started](docs/getting-started.md).
+
+Terminal UI shortcut:
+
+```sh
+go run . tui
+# or:
+go run . cli
+```
 
 ## Privacy Model
 

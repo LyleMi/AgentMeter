@@ -5,7 +5,7 @@ import ASegmented from 'ant-design-vue/es/segmented'
 import ATag from 'ant-design-vue/es/tag'
 import Typography from 'ant-design-vue/es/typography'
 import { ReloadOutlined, SaveOutlined } from '@ant-design/icons-vue'
-import type { PrivacyConfigApplyResult, PrivacyConfigStatus, PrivacyTarget } from '../../api/types'
+import type { PrivacyConfigApplyResult, PrivacyConfigStatus, PrivacyProfileId, PrivacyTarget } from '../../api/types'
 
 const ATypographyText = Typography.Text
 
@@ -19,6 +19,12 @@ interface TargetOption {
 interface StatusState {
   color: string
   label: string
+}
+
+interface ProfileOption {
+  id: PrivacyProfileId
+  title: string
+  description: string
 }
 
 interface MetricCounts {
@@ -36,11 +42,13 @@ defineProps<{
   kickerText: string
   statusState: StatusState
   privacyStatus: PrivacyConfigStatus | null
+  profileOptions: ProfileOption[]
   lastApply: PrivacyConfigApplyResult | null
   metricCounts: MetricCounts
   changedCount: number
   savingAll: boolean
   savingId: string
+  applyingProfile: PrivacyProfileId | ''
   warningList: string[]
   targetLabel: string
   formatNumber: (value: number | undefined) => string
@@ -50,6 +58,7 @@ defineProps<{
 defineEmits<{
   refresh: []
   saveAll: []
+  applyProfile: [profile: PrivacyProfileId]
 }>()
 
 const selectedTarget = defineModel<PrivacyTarget>('selectedTarget', { required: true })
@@ -63,7 +72,7 @@ const selectedTarget = defineModel<PrivacyTarget>('selectedTarget', { required: 
         <div class="panel-kicker">{{ kickerText }}</div>
       </div>
       <div class="summary-actions">
-        <a-segmented v-model:value="selectedTarget" :options="targetOptions" />
+        <a-segmented v-model:value="selectedTarget" :options="targetOptions" :disabled="savingAll || Boolean(savingId)" />
         <a-tag :color="statusState.color" class="status-tag">{{ statusState.label }}</a-tag>
         <a-button @click="$emit('refresh')">
           <template #icon>
@@ -82,6 +91,31 @@ const selectedTarget = defineModel<PrivacyTarget>('selectedTarget', { required: 
           :message="t('privacy.boundary.title')"
           :description="t('privacy.boundary.description')"
         />
+
+        <div class="privacy-profile-panel">
+          <div class="privacy-profile-heading">
+            <div>
+              <div class="privacy-profile-title">{{ t('privacy.profile.title') }}</div>
+              <div class="privacy-profile-description">{{ t('privacy.profile.description') }}</div>
+            </div>
+            <a-tag color="warning" class="status-tag">{{ t('privacy.profile.writesConfig') }}</a-tag>
+          </div>
+          <div class="privacy-profile-grid">
+            <article v-for="profile in profileOptions" :key="profile.id" class="privacy-profile-card">
+              <div class="privacy-profile-card-copy">
+                <div class="privacy-profile-card-title">{{ profile.title }}</div>
+                <div class="privacy-profile-card-description">{{ profile.description }}</div>
+              </div>
+              <a-button
+                :loading="applyingProfile === profile.id"
+                :disabled="!privacyStatus || savingAll || Boolean(savingId)"
+                @click="$emit('applyProfile', profile.id)"
+              >
+                {{ t('privacy.profile.apply') }}
+              </a-button>
+            </article>
+          </div>
+        </div>
 
         <div class="metadata-grid privacy-config-meta">
           <div class="metadata-item">

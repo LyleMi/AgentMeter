@@ -3,7 +3,13 @@ import { computed, onMounted, ref, watch } from 'vue'
 import message from 'ant-design-vue/es/message'
 import ASpin from 'ant-design-vue/es/spin'
 import { api } from '../api/client'
-import type { PrivacyConfigApplyResult, PrivacyConfigSetting, PrivacyConfigStatus, PrivacyTarget } from '../api/types'
+import type {
+  PrivacyConfigApplyResult,
+  PrivacyConfigSetting,
+  PrivacyConfigStatus,
+  PrivacyProfileId,
+  PrivacyTarget
+} from '../api/types'
 import PrivacySettingsPanel from '../components/privacy/PrivacySettingsPanel.vue'
 import PrivacySummaryPanel from '../components/privacy/PrivacySummaryPanel.vue'
 import { useAgentPrivacyEditor } from '../composables/useAgentPrivacyEditor'
@@ -11,6 +17,7 @@ import { useMessages } from '../i18n'
 import { formatNumber } from '../presentation/formatters'
 import {
   formatPrivacyConfigValue,
+  privacyProfileValue,
   privacyValueType,
   privacyValueTypeLabel,
   privacyValuesEqual,
@@ -34,6 +41,19 @@ const { t, locale } = useMessages({
     'privacy.action.unset': 'Unset',
     'privacy.action.reset': 'Reset',
     'privacy.action.save': 'Save',
+    'privacy.profile.title': 'Privacy profiles',
+    'privacy.profile.description':
+      'Choose a profile for the selected agent. Applying a profile writes supported privacy keys to the user config file.',
+    'privacy.profile.writesConfig': 'Writes config',
+    'privacy.profile.apply': 'Apply to config',
+    'privacy.profile.default.title': 'Default',
+    'privacy.profile.default.description':
+      'Vendor defaults: unset managed keys and let the agent use its built-in behavior.',
+    'privacy.profile.recommended.title': 'Recommended',
+    'privacy.profile.recommended.description':
+      'Disable telemetry while leaving local logs, history, checkpoints, and retention at vendor defaults.',
+    'privacy.profile.strict.title': 'Strict',
+    'privacy.profile.strict.description': 'Disable or limit every managed privacy control exposed by this app.',
     'privacy.meta.target': 'Target',
     'privacy.meta.configPath': 'Config path',
     'privacy.meta.file': 'File',
@@ -63,13 +83,22 @@ const { t, locale } = useMessages({
     'privacy.value.current': 'Current',
     'privacy.value.editable': 'Editable',
     'privacy.value.strict': 'Strict',
+    'privacy.value.defaultProfile': 'Default',
+    'privacy.value.recommendedProfile': 'Recommended',
+    'privacy.value.strictProfile': 'Strict',
+    'privacy.value.profileUnset': 'vendor default / unset',
+    'privacy.value.profileNone': 'not changed by this profile',
+    'privacy.value.profileUnavailable': 'not returned',
     'privacy.value.unsaved': 'Unsaved',
     'privacy.message.loadFailed': 'Load privacy settings failed',
     'privacy.message.saveFailed': 'Save privacy settings failed',
     'privacy.message.targetMismatch': 'Privacy API returned a different target',
     'privacy.message.saved': 'Saved {count} changes',
     'privacy.message.noChanges': 'No unsaved changes',
-    'privacy.result.title': 'Last save result',
+    'privacy.message.profileApplied': 'Applied {profile}: {count} changes',
+    'privacy.message.profileNoChanges': '{profile} profile made no config changes',
+    'privacy.message.profileFailed': 'Apply privacy profile failed',
+    'privacy.result.title': 'Last config write',
     'privacy.result.changed': 'Changed',
     'privacy.result.noChanges': 'No config values changed',
     'privacy.warning.title': 'Warnings',
@@ -252,6 +281,18 @@ const { t, locale } = useMessages({
     'privacy.action.unset': '取消设置',
     'privacy.action.reset': '重置',
     'privacy.action.save': '保存',
+    'privacy.profile.title': '隐私档位',
+    'privacy.profile.description':
+      '为所选 Agent 选择档位。应用档位会把支持的隐私键写入用户配置文件。',
+    'privacy.profile.writesConfig': '会写入配置',
+    'privacy.profile.apply': '写入配置',
+    'privacy.profile.default.title': '默认',
+    'privacy.profile.default.description': '厂商默认：取消设置托管键，让 Agent 使用内置行为。',
+    'privacy.profile.recommended.title': '推荐',
+    'privacy.profile.recommended.description':
+      '禁用遥测，同时让本地日志、历史、检查点与保留策略保持厂商默认。',
+    'privacy.profile.strict.title': '严格',
+    'privacy.profile.strict.description': '禁用或限制此应用托管的全部隐私控制项。',
     'privacy.meta.target': '目标',
     'privacy.meta.configPath': '配置路径',
     'privacy.meta.file': '文件',
@@ -281,13 +322,22 @@ const { t, locale } = useMessages({
     'privacy.value.current': '当前',
     'privacy.value.editable': '编辑值',
     'privacy.value.strict': '严格值',
+    'privacy.value.defaultProfile': '默认',
+    'privacy.value.recommendedProfile': '推荐',
+    'privacy.value.strictProfile': '严格',
+    'privacy.value.profileUnset': '厂商默认 / 取消设置',
+    'privacy.value.profileNone': '此档位不更改',
+    'privacy.value.profileUnavailable': '后端未返回',
     'privacy.value.unsaved': '未保存',
     'privacy.message.loadFailed': '加载隐私设置失败',
     'privacy.message.saveFailed': '保存隐私设置失败',
     'privacy.message.targetMismatch': '隐私 API 返回了不同目标',
     'privacy.message.saved': '已保存 {count} 项变更',
     'privacy.message.noChanges': '没有未保存变更',
-    'privacy.result.title': '上次保存结果',
+    'privacy.message.profileApplied': '已应用 {profile}：{count} 项变更',
+    'privacy.message.profileNoChanges': '{profile} 档位未产生配置变更',
+    'privacy.message.profileFailed': '应用隐私档位失败',
+    'privacy.result.title': '上次配置写入',
     'privacy.result.changed': '已变更',
     'privacy.result.noChanges': '没有配置值变更',
     'privacy.warning.title': '警告',
@@ -437,9 +487,11 @@ const { t, locale } = useMessages({
 type PrivacyMessageKey = Parameters<typeof t>[0]
 type SettingTextField = 'title' | 'description' | 'impact'
 
+const profileIds: PrivacyProfileId[] = ['default', 'recommended', 'strict']
 const loading = ref(true)
 const savingAll = ref(false)
 const savingId = ref('')
+const applyingProfile = ref<PrivacyProfileId | ''>('')
 const selectedTarget = ref<PrivacyTarget>('codex')
 const privacyStatus = ref<PrivacyConfigStatus | null>(null)
 const lastApply = ref<PrivacyConfigApplyResult | null>(null)
@@ -523,6 +575,13 @@ const targetOptions = computed<{ label: string; value: PrivacyTarget }[]>(() => 
   { label: t('privacy.target.claude'), value: 'claude' },
   { label: t('privacy.target.codebuddy'), value: 'codebuddy' }
 ])
+const profileOptions = computed(() =>
+  profileIds.map((profile) => ({
+    id: profile,
+    title: profileTitle(profile),
+    description: t(`privacy.profile.${profile}.description` as PrivacyMessageKey)
+  }))
+)
 const targetLabel = computed(() => {
   if (privacyStatus.value?.name) return privacyStatus.value.name
   return targetOptions.value.find((option) => option.value === selectedTarget.value)?.label || selectedTarget.value
@@ -620,6 +679,22 @@ function formatConfigValue(value: unknown) {
   return formatPrivacyConfigValue(value, t('privacy.value.unset'))
 }
 
+function profileTitle(profile: PrivacyProfileId) {
+  return t(`privacy.profile.${profile}.title` as PrivacyMessageKey)
+}
+
+function profileBehaviorText(setting: PrivacyConfigSetting, profile: PrivacyProfileId) {
+  const profileValue = privacyProfileValue(setting, profile)
+  if (!profileValue) {
+    if (profile === 'default') return t('privacy.value.profileUnset')
+    if (profile === 'strict') return formatConfigValue(strictPrivacyValue(setting))
+    return t('privacy.value.profileUnavailable')
+  }
+  if (profileValue.op === 'set') return formatConfigValue(profileValue.value)
+  if (profileValue.op === 'unset') return t('privacy.value.profileUnset')
+  return t('privacy.value.profileNone')
+}
+
 function settingState(setting: PrivacyConfigSetting) {
   if (setting.configured && privacyValuesEqual(setting.currentValue, strictPrivacyValue(setting), privacyValueType(setting))) {
     return { color: 'success', label: t('privacy.status.hardened') }
@@ -654,6 +729,8 @@ async function load() {
 }
 
 async function saveSettings(records: PrivacyConfigSetting[], saveAll = false) {
+  if (applyingProfile.value) return
+
   const changes = records.filter((setting) => canEdit(setting) && isEditChanged(setting)).map(changeForSetting)
   if (!changes.length) {
     message.info(t('privacy.message.noChanges'))
@@ -691,11 +768,49 @@ async function saveSettings(records: PrivacyConfigSetting[], saveAll = false) {
   }
 }
 
+async function applyProfile(profile: PrivacyProfileId) {
+  if (savingAll.value || savingId.value) return
+
+  const requestId = ++saveRequestId
+  const target = selectedTarget.value
+  applyingProfile.value = profile
+  savingId.value = `profile:${profile}`
+
+  try {
+    const result = await api.applyAgentPrivacyProfile(target, profile)
+    if (requestId !== saveRequestId || selectedTarget.value !== target) return
+    if (result.status.target !== target) {
+      message.error(t('privacy.message.targetMismatch'))
+      return
+    }
+    privacyStatus.value = result.status
+    lastApply.value = result
+    syncEdits(result.status)
+    const title = profileTitle(profile)
+    if (result.changed?.length) {
+      message.success(
+        t('privacy.message.profileApplied', { profile: title, count: formatNumber(result.changed.length) })
+      )
+    } else {
+      message.info(t('privacy.message.profileNoChanges', { profile: title }))
+    }
+  } catch (error) {
+    if (requestId !== saveRequestId || selectedTarget.value !== target) return
+    message.error(error instanceof Error ? error.message : t('privacy.message.profileFailed'))
+  } finally {
+    if (requestId === saveRequestId) {
+      applyingProfile.value = ''
+      savingId.value = ''
+    }
+  }
+}
+
 onMounted(load)
 watch(selectedTarget, () => {
   saveRequestId++
   savingAll.value = false
   savingId.value = ''
+  applyingProfile.value = ''
   lastApply.value = null
   load()
 })
@@ -711,17 +826,20 @@ watch(selectedTarget, () => {
         :kicker-text="kickerText"
         :status-state="statusState"
         :privacy-status="privacyStatus"
+        :profile-options="profileOptions"
         :last-apply="lastApply"
         :metric-counts="metricCounts"
         :changed-count="changedSettings.length"
         :saving-all="savingAll"
         :saving-id="savingId"
+        :applying-profile="applyingProfile"
         :warning-list="warningList"
         :target-label="targetLabel"
         :format-number="formatNumber"
         :format-config-value="formatConfigValue"
         @refresh="load"
         @save-all="saveSettings(changedSettings, true)"
+        @apply-profile="applyProfile"
       />
 
       <PrivacySettingsPanel
@@ -740,6 +858,7 @@ watch(selectedTarget, () => {
         :localized-setting-title="localizedSettingTitle"
         :localized-setting-description="localizedSettingDescription"
         :localized-setting-impact="localizedSettingImpact"
+        :profile-behavior="profileBehaviorText"
         :value-type="privacyValueType"
         :strict-value="strictPrivacyValue"
         :value-type-label="privacyValueTypeLabel"

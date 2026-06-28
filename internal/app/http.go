@@ -58,6 +58,27 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		value, err := service.ApplyPrivacyConfig(target, body.SettingIDs)
 		writeJSON(w, value, err)
 	})
+	mux.HandleFunc("POST /api/privacy/{target}/profile", func(w http.ResponseWriter, r *http.Request) {
+		target := r.PathValue("target")
+		if !service.SupportsPrivacyTarget(target) {
+			writePrivacyTargetError(w, target)
+			return
+		}
+
+		var body struct {
+			Profile string `json:"profile"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+			writeJSON(w, nil, err)
+			return
+		}
+		if strings.TrimSpace(body.Profile) == "" {
+			writeJSON(w, nil, errors.New("privacy profile is required"))
+			return
+		}
+		value, err := service.ApplyPrivacyProfile(target, body.Profile)
+		writeJSON(w, value, err)
+	})
 	mux.HandleFunc("POST /api/privacy/{target}/changes", func(w http.ResponseWriter, r *http.Request) {
 		target := r.PathValue("target")
 		if !service.SupportsPrivacyTarget(target) {

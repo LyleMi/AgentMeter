@@ -18,7 +18,15 @@ type fakeService struct {
 	privacy  []agentmodel.PrivacyConfigStatus
 	index    agentmodel.IndexResult
 
-	indexCalls []bool
+	indexCalls       []bool
+	privacyApply     agentmodel.PrivacyConfigApplyResult
+	privacyApplyErr  error
+	privacyApplyCall []privacyApplyCall
+}
+
+type privacyApplyCall struct {
+	target  string
+	profile string
 }
 
 func (f *fakeService) GetOverview() (agentmodel.Overview, error) {
@@ -48,6 +56,23 @@ func (f *fakeService) GetPrivacyConfigs() ([]agentmodel.PrivacyConfigStatus, err
 func (f *fakeService) IndexNow(rebuild bool) (agentmodel.IndexResult, error) {
 	f.indexCalls = append(f.indexCalls, rebuild)
 	return f.index, nil
+}
+
+func (f *fakeService) ApplyPrivacyProfile(target, profile string) (agentmodel.PrivacyConfigApplyResult, error) {
+	f.privacyApplyCall = append(f.privacyApplyCall, privacyApplyCall{target: target, profile: profile})
+	if f.privacyApplyErr != nil {
+		return agentmodel.PrivacyConfigApplyResult{}, f.privacyApplyErr
+	}
+	if f.privacyApply.Status.Target == "" {
+		for _, status := range f.privacy {
+			if status.Target == target {
+				result := f.privacyApply
+				result.Status = status
+				return result, nil
+			}
+		}
+	}
+	return f.privacyApply, nil
 }
 
 func TestOverviewLoadsAndRenders(t *testing.T) {
@@ -128,7 +153,7 @@ func TestIndexNowRefreshesCurrentPage(t *testing.T) {
 
 func TestPrivacyPageLoadsAndRenders(t *testing.T) {
 	svc := sampleService()
-	st := newState(svc, 100, 40)
+	st := newState(svc, 100, 70)
 
 	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '5'})
 	if quit {
@@ -138,12 +163,16 @@ func TestPrivacyPageLoadsAndRenders(t *testing.T) {
 
 	view := st.view()
 	assertContains(t, view, "Agent Privacy")
+	assertContains(t, view, "Selected: Codex (1/4)")
+	assertContains(t, view, "Profiles: default, recommended, strict")
 	assertContains(t, view, "Codex")
 	assertContains(t, view, "Claude Code")
 	assertContains(t, view, "CodeBuddy")
 	assertContains(t, view, "Target: codex  Config: exists  Score: 2/3 (66%)")
 	assertContains(t, view, "[attention] Web search")
 	assertContains(t, view, "default-safe")
+	assertContains(t, view, "default=unset")
+	assertContains(t, view, "recommended=false")
 	assertContains(t, view, `strict=["web_search","web_fetch"]`)
 	assertContains(t, view, "Broken JSON")
 	assertContains(t, view, "read-only")
@@ -166,6 +195,123 @@ func TestPrivacyPageLoadsAndRenders(t *testing.T) {
 	if st.page != pagePrivacy {
 		t.Fatalf("page = %v, want privacy after tab from settings", st.page)
 	}
+}
+
+func TestPrivacyProfileRequiresConfirmationBeforeApply(t *testing.T) {
+	svc := sampleService()
+	svc.privacyApply = agentmodel.PrivacyConfigApplyResult{
+		Status: agentmodel.PrivacyConfigStatus{
+			Target: "gemini",
+			Name:   "Gemini CLI",
+			Exists: true,
+			Summary: agentmodel.PrivacyConfigSummary{
+				Score:    100,
+				Total:    1,
+				Hardened: 1,
+			},
+			Settings: []agentmodel.PrivacyConfigSetting{
+				{ID: "tools.exclude.web", Title: "Web tools", Key: "tools.exclude", CurrentValue: []string{"web_search", "web_fetch"}, DesiredValue: []string{"web_fetch"}, StrictValue: []string{"web_search", "web_fetch"}, Configured: true, CanApply: true, Status: "hardened"},
+			},
+		},
+		Changed: []agentmodel.PrivacyConfigChange{{
+			ID:     "tools.exclude.web",
+			Key:    "tools.exclude",
+			Before: []string{"web_fetch"},
+			After:  []string{"web_search", "web_fetch"},
+		}},
+		Warnings: []string{"restart Gemini CLI to pick up changes"},
+	}
+	st := newState(svc, 100, 60)
+
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '5'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: ']'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	if cmd != nil {
+		t.Fatal("target selection returned a command")
+	}
+	assertContains(t, st.view(), "Selected: Gemini CLI (2/4)")
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'a'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	if cmd != nil {
+		t.Fatal("profile selection should not apply immediately")
+	}
+	if len(svc.privacyApplyCall) != 0 {
+		t.Fatalf("profile apply calls = %v, want none before confirmation", svc.privacyApplyCall)
+	}
+	assertContains(t, st.view(), "Pending: apply recommended profile to Gemini CLI")
+
+	cmd, quit = st.update(keyMsg{typ: keyEsc})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	if cmd != nil {
+		t.Fatal("cancel returned a command")
+	}
+	if len(svc.privacyApplyCall) != 0 {
+		t.Fatalf("profile apply calls = %v, want none after cancel", svc.privacyApplyCall)
+	}
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'A'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	if cmd != nil {
+		t.Fatal("strict profile selection should not apply immediately")
+	}
+
+	cmd, quit = st.update(keyMsg{typ: keyEnter})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	if cmd == nil {
+		t.Fatal("confirm did not return apply command")
+	}
+	if !st.privacyApplying {
+		t.Fatal("expected applying state after confirmation")
+	}
+	secondCmd, secondQuit := st.update(keyMsg{typ: keyRune, ch: 'a'})
+	if secondQuit {
+		t.Fatal("unexpected quit while applying")
+	}
+	if secondCmd != nil {
+		t.Fatal("profile key returned a second command while apply was running")
+	}
+	if st.privacyPending != nil {
+		t.Fatal("profile key queued a second pending action while apply was running")
+	}
+	assertContains(t, st.status, "privacy profile already applying")
+	msg := runCommand(t, cmd)
+	cmd, quit = st.update(msg)
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	if cmd != nil {
+		t.Fatal("apply result returned unexpected command")
+	}
+	if len(svc.privacyApplyCall) != 1 {
+		t.Fatalf("profile apply calls = %v, want one", svc.privacyApplyCall)
+	}
+	if got := svc.privacyApplyCall[0]; got.target != "gemini" || got.profile != "strict" {
+		t.Fatalf("profile apply call = %+v, want gemini strict", got)
+	}
+	if st.privacyPending != nil {
+		t.Fatal("pending profile was not cleared")
+	}
+	assertContains(t, st.status, "applied strict profile to Gemini CLI")
+	assertContains(t, st.status, "1 change")
+	assertContains(t, st.status, "1 warning(s): restart Gemini CLI to pick up changes")
+	assertContains(t, st.view(), "Selected: Gemini CLI (2/4)")
+	assertContains(t, st.view(), "Score: 1/1 (100%)")
 }
 
 func runCommand(t *testing.T, cmd command) message {

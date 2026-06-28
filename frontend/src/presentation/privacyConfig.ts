@@ -1,4 +1,4 @@
-import type { PrivacyConfigSetting, PrivacyConfigValueType } from '../api/types'
+import type { PrivacyConfigSetting, PrivacyConfigValueType, PrivacyProfileId } from '../api/types'
 
 export function privacyValueType(setting: PrivacyConfigSetting): PrivacyConfigValueType {
   if (setting.valueType) return setting.valueType
@@ -10,7 +10,13 @@ export function privacyValueType(setting: PrivacyConfigSetting): PrivacyConfigVa
 }
 
 export function strictPrivacyValue(setting: PrivacyConfigSetting) {
+  const strictProfileValue = privacyProfileValue(setting, 'strict')
+  if (strictProfileValue?.op === 'set') return strictProfileValue.value
   return setting.strictValue !== undefined ? setting.strictValue : setting.desiredValue
+}
+
+export function privacyProfileValue(setting: PrivacyConfigSetting, profile: PrivacyProfileId) {
+  return setting.profileValues?.find((profileValue) => profileValue.profile === profile)
 }
 
 export function normalizePrivacyConfigValue(value: unknown, type: PrivacyConfigValueType): unknown {

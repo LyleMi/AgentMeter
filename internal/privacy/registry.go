@@ -11,6 +11,7 @@ type Adapter interface {
 	Status() (model.PrivacyConfigStatus, error)
 	Apply([]string) (model.PrivacyConfigApplyResult, error)
 	ApplyChanges([]model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error)
+	ApplyProfile(string) (model.PrivacyConfigApplyResult, error)
 }
 
 type AdapterFactory func() Adapter
@@ -116,6 +117,14 @@ func (r Registry) ApplyChanges(target string, changes []model.PrivacyConfigEdit)
 		return model.PrivacyConfigApplyResult{}, err
 	}
 	return adapter.ApplyChanges(changes)
+}
+
+func (r Registry) ApplyProfile(target, profile string) (model.PrivacyConfigApplyResult, error) {
+	adapter, err := r.Adapter(target)
+	if err != nil {
+		return model.PrivacyConfigApplyResult{}, err
+	}
+	return adapter.ApplyProfile(profile)
 }
 
 func IsUnsupportedTarget(err error) bool {

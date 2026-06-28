@@ -56,6 +56,20 @@ func (a ClaudeAdapter) ApplyChanges(edits []model.PrivacyConfigEdit) (model.Priv
 	})
 }
 
+func (a ClaudeAdapter) ApplyProfile(profile string) (model.PrivacyConfigApplyResult, error) {
+	normalized, err := normalizePrivacyProfile(profile)
+	if err != nil {
+		return model.PrivacyConfigApplyResult{}, err
+	}
+	path, err := a.settingsPath()
+	if err != nil {
+		return model.PrivacyConfigApplyResult{}, err
+	}
+	return applyJSONSettingsMutation(path, a.now, buildClaudeStatus, func(root map[string]any) ([]model.PrivacyConfigChange, []string, error) {
+		return applyJSONProfile(root, normalized, claudeSettingDefinitions), nil, nil
+	})
+}
+
 func (a ClaudeAdapter) now() time.Time {
 	if a.Now != nil {
 		return a.Now()
@@ -129,6 +143,7 @@ func buildClaudeStatus(path string, exists bool, content []byte, warnings []stri
 			Key:           definition.Key,
 			DesiredValue:  definition.Desired,
 			StrictValue:   strict,
+			ProfileValues: privacyProfileValues(definition.Recommended, strict, strict),
 			ValueType:     jsonValueType(definition.Desired),
 			Configured:    ok,
 			SupportsUnset: canApply,
@@ -146,6 +161,7 @@ func buildClaudeStatus(path string, exists bool, content []byte, warnings []stri
 		Name:       "Claude Code",
 		ConfigPath: path,
 		Exists:     exists,
+		Profiles:   privacyConfigProfiles(),
 		Summary:    summary,
 		Settings:   settings,
 		Warnings:   warnings,
@@ -161,6 +177,7 @@ var claudeSettingDefinitions = []jsonSettingDefinition{
 		Key:         "env.DISABLE_TELEMETRY",
 		Desired:     "1",
 		DefaultSafe: false,
+		Recommended: true,
 		Impact:      "Prevents Claude Code telemetry from being enabled through this user settings file.",
 	},
 	{
@@ -171,6 +188,7 @@ var claudeSettingDefinitions = []jsonSettingDefinition{
 		Key:         "env.DISABLE_ERROR_REPORTING",
 		Desired:     "1",
 		DefaultSafe: false,
+		Recommended: true,
 		Impact:      "Reduces diagnostic error payloads sent from Claude Code.",
 	},
 	{
@@ -181,6 +199,7 @@ var claudeSettingDefinitions = []jsonSettingDefinition{
 		Key:         "env.DISABLE_FEEDBACK_COMMAND",
 		Desired:     "1",
 		DefaultSafe: false,
+		Recommended: true,
 		Impact:      "Prevents feedback command submissions from this environment.",
 	},
 	{
@@ -191,6 +210,7 @@ var claudeSettingDefinitions = []jsonSettingDefinition{
 		Key:         "env.CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY",
 		Desired:     "1",
 		DefaultSafe: false,
+		Recommended: true,
 		Impact:      "Avoids survey flows that may send user feedback outside the machine.",
 	},
 	{

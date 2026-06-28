@@ -451,6 +451,10 @@ func (a *App) ApplyPrivacyConfigChanges(target string, changes []model.PrivacyCo
 	return privacy.DefaultRegistry().ApplyChanges(target, changes)
 }
 
+func (a *App) ApplyPrivacyProfile(target, profile string) (model.PrivacyConfigApplyResult, error) {
+	return privacy.DefaultRegistry().ApplyProfile(target, profile)
+}
+
 func (a *App) GetCodexPrivacyConfig() (model.PrivacyConfigStatus, error) {
 	return a.GetPrivacyConfig("codex")
 }
@@ -461,6 +465,10 @@ func (a *App) ApplyCodexPrivacyConfig(settingIDs []string) (model.PrivacyConfigA
 
 func (a *App) ApplyCodexPrivacyConfigChanges(changes []model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error) {
 	return a.ApplyPrivacyConfigChanges("codex", changes)
+}
+
+func (a *App) ApplyCodexPrivacyProfile(profile string) (model.PrivacyConfigApplyResult, error) {
+	return a.ApplyPrivacyProfile("codex", profile)
 }
 
 func (a *App) GetGeminiPrivacyConfig() (model.PrivacyConfigStatus, error) {
@@ -475,6 +483,10 @@ func (a *App) ApplyGeminiPrivacyConfigChanges(changes []model.PrivacyConfigEdit)
 	return a.ApplyPrivacyConfigChanges("gemini", changes)
 }
 
+func (a *App) ApplyGeminiPrivacyProfile(profile string) (model.PrivacyConfigApplyResult, error) {
+	return a.ApplyPrivacyProfile("gemini", profile)
+}
+
 func (a *App) GetClaudePrivacyConfig() (model.PrivacyConfigStatus, error) {
 	return a.GetPrivacyConfig("claude")
 }
@@ -487,6 +499,10 @@ func (a *App) ApplyClaudePrivacyConfigChanges(changes []model.PrivacyConfigEdit)
 	return a.ApplyPrivacyConfigChanges("claude", changes)
 }
 
+func (a *App) ApplyClaudePrivacyProfile(profile string) (model.PrivacyConfigApplyResult, error) {
+	return a.ApplyPrivacyProfile("claude", profile)
+}
+
 func (a *App) GetCodeBuddyPrivacyConfig() (model.PrivacyConfigStatus, error) {
 	return a.GetPrivacyConfig("codebuddy")
 }
@@ -497,6 +513,10 @@ func (a *App) ApplyCodeBuddyPrivacyConfig(settingIDs []string) (model.PrivacyCon
 
 func (a *App) ApplyCodeBuddyPrivacyConfigChanges(changes []model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error) {
 	return a.ApplyPrivacyConfigChanges("codebuddy", changes)
+}
+
+func (a *App) ApplyCodeBuddyPrivacyProfile(profile string) (model.PrivacyConfigApplyResult, error) {
+	return a.ApplyPrivacyProfile("codebuddy", profile)
 }
 
 func (a *App) ensureReady() error {
