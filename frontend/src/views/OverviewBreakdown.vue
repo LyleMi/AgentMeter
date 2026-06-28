@@ -89,6 +89,10 @@ function agentRow(record: AgentUsage) {
 function agentSource(record: AgentUsage) {
   return sourceDisplay(record, t('fallback.unknown'))
 }
+
+function agentRowKey(record: AgentUsage) {
+  return sourceInstanceKey(record, t('fallback.unknown'))
+}
 </script>
 
 <template>
@@ -156,7 +160,7 @@ function agentSource(record: AgentUsage) {
           :columns="agentColumns"
           :data-source="rankedAgentUsage"
           :pagination="false"
-          :row-key="sourceInstanceKey"
+          :row-key="agentRowKey"
           :custom-row="agentRow"
         >
           <template #bodyCell="{ column, record }">

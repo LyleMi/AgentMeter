@@ -1,5 +1,11 @@
-import { createDateTimeFormatter, createNumberFormatter, currentLocale } from '../i18n'
+import { createDateTimeFormatter, createNumberFormatter, currentLocale, numberDisplayMode } from '../i18n'
 import type { Session } from '../api/types'
+
+export interface DisplayNumber {
+  main: string
+  suffix: string
+  full: string
+}
 
 function localizedFallback(key: 'unknown' | 'unpriced') {
   if (currentLocale.value === 'zh-CN') return key === 'unknown' ? '未知' : '未定价'
@@ -13,6 +19,68 @@ export function formatNumber(value: number | undefined): string {
 export function formatCost(value?: number): string {
   if (value === undefined || value === null) return localizedFallback('unpriced')
   return createNumberFormatter({ style: 'currency', currency: 'USD', maximumFractionDigits: 4 }).format(value)
+}
+
+function shouldUseCompact(value: number) {
+  if (numberDisplayMode.value === 'full') return false
+  const threshold = numberDisplayMode.value === 'compact' ? 1_000 : 10_000
+  return Math.abs(value) >= threshold
+}
+
+function compactFractionDigits(value: number) {
+  const normalized = Math.abs(value)
+  if (normalized >= 100_000_000) return 0
+  if (normalized >= 10_000_000) return 1
+  if (normalized >= 1_000_000) return 2
+  return normalized >= 10_000 ? 1 : 0
+}
+
+function displayText(value: string): DisplayNumber {
+  return { main: value, suffix: '', full: value }
+}
+
+export function formatDisplayNumber(value: number | undefined): DisplayNumber {
+  const normalized = Number(value || 0)
+  const full = formatNumber(normalized)
+  if (!shouldUseCompact(normalized)) return { main: full, suffix: '', full }
+
+  return {
+    main: createNumberFormatter({
+      notation: 'compact',
+      compactDisplay: 'short',
+      maximumFractionDigits: compactFractionDigits(normalized)
+    }).format(normalized),
+    suffix: '',
+    full
+  }
+}
+
+export function formatDisplayCost(value?: number): DisplayNumber {
+  if (value === undefined || value === null) return displayText(localizedFallback('unpriced'))
+  const full = formatCost(value)
+  if (!shouldUseCompact(value)) {
+    return {
+      main: createNumberFormatter({
+        style: 'currency',
+        currency: 'USD',
+        maximumFractionDigits: value > 0 && value < 1 ? 4 : 2
+      }).format(value),
+      suffix: '',
+      full
+    }
+  }
+
+  return {
+    main: createNumberFormatter({
+      style: 'currency',
+      currency: 'USD',
+      notation: 'compact',
+      compactDisplay: 'short',
+      maximumFractionDigits: compactFractionDigits(value)
+    }).format(value),
+    suffix: '',
+    full
+  }
 }
 
 export function formatDuration(ms: number | undefined): string {

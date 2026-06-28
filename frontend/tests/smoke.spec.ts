@@ -17,7 +17,8 @@ const routes: SmokeRoute[] = [
   { path: '/#/audit/summary', hash: '#/audit/summary', title: /^(Audit|审计)$/ },
   { path: '/#/audit/findings', hash: '#/audit/findings', title: /^(Audit|审计)$/ },
   { path: '/#/agent-privacy', hash: '#/agent-privacy', title: /^(Agent Privacy|Agent 隐私)$/ },
-  { path: '/#/settings/source', hash: '#/settings/source', title: /^(Settings|设置)$/ }
+  { path: '/#/settings/source', hash: '#/settings/source', title: /^(Settings|设置)$/ },
+  { path: '/#/settings/display', hash: '#/settings/display', title: /^(Settings|设置)$/ }
 ]
 
 const ignoredConsoleErrorPatterns = [

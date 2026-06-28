@@ -456,13 +456,17 @@ function breakdownScope(record: UsageBreakdownBucket) {
   return source
 }
 
-function breakdownRowKey(record: UsageBreakdownBucket, index?: number) {
+function breakdownRowKey(record: UsageBreakdownBucket) {
   return [
+    breakdownGroup.value,
     record.date,
     record.model,
-    sourceInstanceKey(record),
-    String(index ?? 0)
+    sourceInstanceKey(record)
   ].filter(Boolean).join(':')
+}
+
+function agentRowKey(record: AgentUsage) {
+  return sourceInstanceKey(record, t('fallback.unknown'))
 }
 
 watch(
@@ -633,7 +637,7 @@ onMounted(load)
               :loading="loading"
               :locale="tableLocale"
               :pagination="{ pageSize: 10 }"
-              :row-key="sourceInstanceKey"
+              :row-key="agentRowKey"
               size="small"
               :custom-row="rowClass"
               :scroll="{ x: 760 }"

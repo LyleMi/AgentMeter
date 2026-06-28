@@ -4,6 +4,7 @@ import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import type { Locale as AntDesignLocale } from 'ant-design-vue/es/locale'
 
 export type AppLocale = 'en' | 'zh-CN'
+export type NumberDisplayMode = 'auto' | 'full' | 'compact'
 
 type MessageDictionary = Record<string, string>
 type LocaleMessageMap = Record<AppLocale, MessageDictionary>
@@ -11,20 +12,33 @@ type InterpolationValue = string | number | boolean | null | undefined
 type InterpolationParams = Record<string, InterpolationValue>
 
 const localeStorageKey = 'agentmeter.locale'
+const numberDisplayModeStorageKey = 'agentmeter.numberDisplayMode'
 const fallbackLocale: AppLocale = 'en'
 const supportedLocales = ['en', 'zh-CN'] as const
+const supportedNumberDisplayModes = ['auto', 'full', 'compact'] as const
 const antLocales: Record<AppLocale, AntDesignLocale> = {
   en: enUS,
   'zh-CN': zhCN
 }
 
 export const localeOptions = supportedLocales.map((value) => ({ value }))
+export const numberDisplayModeOptions = supportedNumberDisplayModes.map((value) => ({ value }))
 
 function readStoredLocale() {
   if (typeof window === 'undefined') return undefined
 
   try {
     return window.localStorage.getItem(localeStorageKey)
+  } catch {
+    return undefined
+  }
+}
+
+function readStoredNumberDisplayMode() {
+  if (typeof window === 'undefined') return undefined
+
+  try {
+    return window.localStorage.getItem(numberDisplayModeStorageKey)
   } catch {
     return undefined
   }
@@ -40,11 +54,28 @@ function writeStoredLocale(nextLocale: AppLocale) {
   }
 }
 
+function writeStoredNumberDisplayMode(nextMode: NumberDisplayMode) {
+  if (typeof window === 'undefined') return
+
+  try {
+    window.localStorage.setItem(numberDisplayModeStorageKey, nextMode)
+  } catch {
+    // Ignore unavailable storage; the in-memory display preference still updates.
+  }
+}
+
 export function normalizeLocale(value: string | null | undefined): AppLocale | undefined {
   const normalized = value?.trim().replace('_', '-').toLowerCase()
   if (!normalized) return undefined
   if (normalized === 'zh-cn' || normalized === 'zh-hans' || normalized.startsWith('zh-')) return 'zh-CN'
   if (normalized === 'en' || normalized.startsWith('en-')) return 'en'
+  return undefined
+}
+
+export function normalizeNumberDisplayMode(value: string | null | undefined): NumberDisplayMode | undefined {
+  const normalized = value?.trim().toLowerCase()
+  if (!normalized) return undefined
+  if (normalized === 'auto' || normalized === 'full' || normalized === 'compact') return normalized
   return undefined
 }
 
@@ -63,9 +94,15 @@ function detectLocale(): AppLocale {
   return fallbackLocale
 }
 
+function detectNumberDisplayMode(): NumberDisplayMode {
+  return normalizeNumberDisplayMode(readStoredNumberDisplayMode()) || 'auto'
+}
+
 const activeLocale = ref<AppLocale>(detectLocale())
+const activeNumberDisplayMode = ref<NumberDisplayMode>(detectNumberDisplayMode())
 
 export const currentLocale = readonly(activeLocale)
+export const numberDisplayMode = readonly(activeNumberDisplayMode)
 export const intlLocale = computed(() => (activeLocale.value === 'zh-CN' ? 'zh-CN' : 'en-US'))
 export const antDesignLocale = computed(() => antLocales[activeLocale.value])
 
@@ -73,6 +110,12 @@ export function setLocale(nextLocale: AppLocale | string) {
   const normalizedLocale = normalizeLocale(nextLocale)
   if (!normalizedLocale || normalizedLocale === activeLocale.value) return
   activeLocale.value = normalizedLocale
+}
+
+export function setNumberDisplayMode(nextMode: NumberDisplayMode | string) {
+  const normalizedMode = normalizeNumberDisplayMode(nextMode)
+  if (!normalizedMode || normalizedMode === activeNumberDisplayMode.value) return
+  activeNumberDisplayMode.value = normalizedMode
 }
 
 export function createNumberFormatter(options?: Intl.NumberFormatOptions) {
@@ -113,7 +156,9 @@ export function useMessages<const Messages extends LocaleMessageMap>(messages: M
     t,
     locale: currentLocale,
     intlLocale,
+    numberDisplayMode,
     setLocale,
+    setNumberDisplayMode,
     formatNumber,
     formatDateTime,
     createNumberFormatter,
@@ -128,6 +173,14 @@ watch(
     if (typeof document !== 'undefined') {
       document.documentElement.lang = nextLocale
     }
+  },
+  { immediate: true }
+)
+
+watch(
+  activeNumberDisplayMode,
+  (nextMode) => {
+    writeStoredNumberDisplayMode(nextMode)
   },
   { immediate: true }
 )

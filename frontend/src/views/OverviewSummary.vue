@@ -14,7 +14,7 @@ import {
   ToolOutlined,
   WarningOutlined
 } from '@ant-design/icons-vue'
-import { formatDuration, formatNumber } from '../api'
+import { formatDisplayCost, formatDisplayNumber, formatDuration, formatNumber, type DisplayNumber } from '../api'
 import { useMessages } from '../i18n'
 import { useOverviewContext } from './overviewContext'
 
@@ -126,13 +126,7 @@ const { t, createNumberFormatter } = useMessages({
   }
 })
 
-interface DisplayNumber {
-  main: string
-  suffix: string
-  full: string
-}
-
-const totalTokensDisplay = computed(() => compactNumber(overview.value?.totalTokens))
+const totalTokensDisplay = computed(() => formatDisplayNumber(overview.value?.totalTokens))
 
 const pricingStatus = computed(() => {
   const item = overview.value
@@ -158,7 +152,7 @@ const tokenBreakdown = computed(() => {
     const share = total > 0 ? current.value / total : 0
     return {
       ...current,
-      display: compactNumber(current.value),
+      display: formatDisplayNumber(current.value),
       exact: formatNumber(current.value),
       shareLabel: formatSharePercent(share),
       shareWidth: formatShareWidth(share)
@@ -169,14 +163,14 @@ const tokenBreakdown = computed(() => {
 const snapshotCards = computed(() => [
   {
     label: t('card.sessions'),
-    value: compactNumber(overview.value?.totalSessions),
+    value: formatDisplayNumber(overview.value?.totalSessions),
     note: t('card.sessionsNote', { duration: formatDuration(overview.value?.totalWallDurationMs) }),
     icon: ClockCircleOutlined,
     tone: 'metric-primary'
   },
   {
     label: t('card.estimatedCost'),
-    value: compactCurrency(overview.value?.estimatedCostUsd),
+    value: formatDisplayCost(overview.value?.estimatedCostUsd),
     note:
       (overview.value?.unpricedSessions || 0) > 0
         ? t('card.missingPricing', { count: formatNumber(overview.value?.unpricedSessions) })
@@ -187,14 +181,14 @@ const snapshotCards = computed(() => [
   },
   {
     label: t('card.toolCalls'),
-    value: compactNumber(overview.value?.totalToolCalls),
+    value: formatDisplayNumber(overview.value?.totalToolCalls),
     note: t('card.toolCallsNote'),
     icon: ToolOutlined,
     tone: 'metric-info'
   },
   {
     label: t('card.activeTime'),
-    value: textMetric(formatDuration(overview.value?.totalActiveDurationMs)),
+    value: displayText(formatDuration(overview.value?.totalActiveDurationMs)),
     note: t('card.activeTimeNote'),
     icon: ClockCircleOutlined,
     tone: 'metric-neutral'
@@ -279,55 +273,8 @@ function formatCostPerThousand(cost: number, tokens: number) {
   return formatUSD(value, 4)
 }
 
-function compactNumber(value: number | undefined): DisplayNumber {
-  const normalized = Math.max(0, Number(value || 0))
-  const full = formatNumber(normalized)
-  if (normalized < 10_000) return { main: full, suffix: '', full }
-
-  const tiers = [
-    { value: 1_000_000_000, suffix: 'B' },
-    { value: 1_000_000, suffix: 'M' },
-    { value: 1_000, suffix: 'K' }
-  ]
-  const tier = tiers.find((candidate) => normalized >= candidate.value)
-  if (!tier) return { main: full, suffix: '', full }
-
-  const scaled = normalized / tier.value
-  const maximumFractionDigits = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2
-  return {
-    main: createNumberFormatter({ maximumFractionDigits }).format(scaled),
-    suffix: tier.suffix,
-    full
-  }
-}
-
-function textMetric(value: string): DisplayNumber {
+function displayText(value: string): DisplayNumber {
   return { main: value, suffix: '', full: value }
-}
-
-function compactCurrency(value: number | undefined): DisplayNumber {
-  if (value === undefined || value === null) return textMetric(t('fallback.unpriced'))
-  const normalized = Math.max(0, Number(value || 0))
-  const full = formatUSD(normalized, 4)
-  if (normalized < 1_000) {
-    return { main: formatUSD(normalized, normalized < 1 ? 4 : 2), suffix: '', full }
-  }
-
-  const tiers = [
-    { value: 1_000_000_000, suffix: 'B' },
-    { value: 1_000_000, suffix: 'M' },
-    { value: 1_000, suffix: 'K' }
-  ]
-  const tier = tiers.find((candidate) => normalized >= candidate.value)
-  if (!tier) return { main: full, suffix: '', full }
-
-  const scaled = normalized / tier.value
-  const maximumFractionDigits = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2
-  return {
-    main: formatUSD(scaled, maximumFractionDigits),
-    suffix: tier.suffix,
-    full
-  }
 }
 
 function formatUSD(value: number, maximumFractionDigits: number) {
