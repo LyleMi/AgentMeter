@@ -96,14 +96,14 @@ cd ..
 ```
 
 - `frontend/dist/index.html` renders the Vue app under
-  `https://blog.lyle.ac.cn/AgentMeter/`;
+  `https://lylemi.github.io/AgentMeter/`;
 - built JS, CSS, favicon, and other Vite asset URLs are rooted at
   `/AgentMeter/`, not `/`;
 - hash-router navigation works for routes such as `/#/overview/summary`,
   `/#/sessions`, `/#/tools`, `/#/audit/summary`, and `/#/agent-privacy`;
 - desktop and mobile viewports have no page-level horizontal overflow;
 - `robots.txt`, `sitemap.xml`, `llms.txt`, canonical, and Open Graph metadata
-  remain aligned with `https://blog.lyle.ac.cn/AgentMeter/`;
+  remain aligned with `https://lylemi.github.io/AgentMeter/`;
 - no real prompts, file paths, session IDs, secrets, or audit evidence appear
   in public assets.
 

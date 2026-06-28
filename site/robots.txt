@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://blog.lyle.ac.cn/AgentMeter/sitemap.xml
+Sitemap: https://lylemi.github.io/AgentMeter/sitemap.xml

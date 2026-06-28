@@ -45,7 +45,7 @@ Use this wording consistently:
 - Name: `AgentMeter`
 - Summary: `Local-first dashboard for coding-agent session usage`
 - License: `Apache-2.0`
-- Website: `https://blog.lyle.ac.cn/AgentMeter/`
+- Website: `https://lylemi.github.io/AgentMeter/`
 - Source: `https://github.com/LyleMi/AgentMeter`
 - Data model: local SQLite database
 - Privacy: no proxy, no cloud service, no telemetry

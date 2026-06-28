@@ -15,11 +15,11 @@ Local-first dashboard for Codex, Claude Code, CodeBuddy, WorkBuddy, and JSONL co
 Recommended homepage:
 
 ```text
-https://blog.lyle.ac.cn/AgentMeter/
+https://lylemi.github.io/AgentMeter/
 ```
 
-This points to the mock-data GitHub Pages preview. Keep the URL aligned with
-the Pages workflow and README links.
+This points to the mock-data GitHub Pages preview on the default project site.
+Keep the URL aligned with the Pages workflow and README links.
 
 ## Topics
 

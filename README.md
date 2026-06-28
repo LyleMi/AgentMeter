@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://blog.lyle.ac.cn/AgentMeter/">Live demo</a>
+  <a href="https://lylemi.github.io/AgentMeter/">Live demo</a>
   | <a href="https://github.com/LyleMi/AgentMeter/releases">Downloads</a>
   | <a href="docs/assets/screenshots/overview.png">Screenshot</a>
   | <a href="docs/install.md">Install</a>
