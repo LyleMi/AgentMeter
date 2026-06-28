@@ -1679,6 +1679,10 @@ onMounted(load)
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .model-signals-tabs .ant-btn {
+    min-width: 112px;
+  }
+
   .model-signals-reason-strip {
     align-items: flex-start;
     flex-direction: column;
@@ -1686,6 +1690,15 @@ onMounted(load)
 }
 
 @media (max-width: 640px) {
+  .model-signals-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .model-signals-tabs .ant-btn {
+    flex: 0 0 auto;
+  }
+
   .model-signals-metric-strip {
     grid-template-columns: 1fr;
   }

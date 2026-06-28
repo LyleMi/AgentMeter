@@ -115,7 +115,7 @@ function projectName(call: ToolCall) {
 </script>
 
 <template>
-  <a-drawer class="tool-call-drawer" :open="props.open" :width="720" placement="right" @close="emit('close')">
+  <a-drawer class="tool-call-drawer" :open="props.open" :width="'min(720px, 100vw)'" placement="right" @close="emit('close')">
     <template #title>{{ drawerTitle }}</template>
 
     <template v-if="props.call">

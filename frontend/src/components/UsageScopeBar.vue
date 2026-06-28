@@ -257,6 +257,7 @@ function dateInputValue(value: string) {
 
 .usage-scope-actions {
   flex: 0 0 auto;
+  flex-wrap: wrap;
   justify-content: flex-end;
 }
 
@@ -283,15 +284,17 @@ function dateInputValue(value: string) {
 
 .usage-scope-range-control {
   max-width: 100%;
+  overflow-x: auto;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1040px) {
   .usage-scope-bar {
     align-items: stretch;
     flex-direction: column;
   }
 
   .usage-scope-actions {
+    width: 100%;
     justify-content: flex-start;
   }
 }
@@ -318,6 +321,10 @@ function dateInputValue(value: string) {
 
   .usage-scope-range-control {
     width: 100%;
+  }
+
+  .usage-scope-actions .ant-btn {
+    flex: 1 1 0;
   }
 }
 </style>

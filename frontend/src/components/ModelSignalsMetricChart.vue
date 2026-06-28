@@ -978,7 +978,10 @@ function escapeHtml(value: string | number | undefined) {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  flex-wrap: wrap;
   flex-shrink: 0;
+  justify-content: flex-end;
 }
 
 .model-signals-chart-count,
@@ -990,6 +993,7 @@ function escapeHtml(value: string | number | undefined) {
 .model-signals-chart-toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   min-width: 0;
   margin: 2px 0 12px;
@@ -997,6 +1001,8 @@ function escapeHtml(value: string | number | undefined) {
 
 .model-signals-chart-segmented {
   flex-shrink: 0;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .model-signals-baseline-toggle {
@@ -1120,7 +1126,7 @@ function escapeHtml(value: string | number | undefined) {
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 900px) {
   .model-signals-chart-header,
   .model-signals-chart-toolbar {
     align-items: stretch;
@@ -1128,13 +1134,15 @@ function escapeHtml(value: string | number | undefined) {
   }
 
   .model-signals-chart-actions {
-    justify-content: space-between;
+    justify-content: flex-start;
   }
 
   .model-signals-metric-picker {
     grid-template-columns: 1fr;
   }
+}
 
+@media (max-width: 720px) {
   .model-signals-metric-chart {
     height: 320px;
   }

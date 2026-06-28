@@ -44,4 +44,14 @@ defineProps<{
   font-size: 24px;
   line-height: 30px;
 }
+
+@media (max-width: 900px) {
+  .overview-time-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .overview-time-kpi-card:last-child {
+    grid-column: auto;
+  }
+}
 </style>

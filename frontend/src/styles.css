@@ -261,7 +261,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 54px;
+  gap: 12px;
+  height: 54px !important;
+  line-height: normal;
   padding: 0 20px;
   background: rgb(255 255 255 / 90%);
   border-bottom: 1px solid var(--am-border);
@@ -273,6 +275,7 @@ body {
 .source-line {
   display: flex;
   align-items: center;
+  flex: 1 1 320px;
   min-width: 0;
   max-width: min(70vw, 820px);
   gap: 9px;
@@ -351,7 +354,9 @@ body {
 
 .header-actions {
   display: flex;
+  align-items: center;
   flex: 0 0 auto;
+  min-width: 0;
   gap: 8px;
 }
 
@@ -377,6 +382,14 @@ body {
   margin-bottom: 14px;
 }
 
+.page-header > div:first-child {
+  min-width: 0;
+}
+
+.page-header > :last-child {
+  flex: 0 0 auto;
+}
+
 .page-title {
   margin: 0;
   color: var(--am-text);
@@ -390,6 +403,7 @@ body {
   color: var(--am-muted);
   font-size: 12px;
   line-height: 18px;
+  overflow-wrap: anywhere;
 }
 
 .section-stack {
@@ -632,12 +646,18 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
   min-height: 50px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--am-border-subtle);
   background:
     linear-gradient(180deg, rgb(255 255 255 / 98%) 0%, rgb(247 251 255 / 96%) 100%),
     repeating-linear-gradient(90deg, transparent 0 31px, rgb(37 99 235 / 5%) 31px 32px);
+}
+
+.panel-header > div:first-child {
+  min-width: 0;
 }
 
 .panel-title {
@@ -659,6 +679,7 @@ body {
   color: var(--am-muted);
   font-size: 12px;
   line-height: 18px;
+  overflow-wrap: anywhere;
 }
 
 .panel-header-icon {
@@ -676,6 +697,9 @@ body {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
   gap: 8px;
 }
 
@@ -813,6 +837,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -821,11 +846,19 @@ body {
 .toolbar-right {
   display: flex;
   align-items: center;
+  min-width: 0;
   gap: 8px;
 }
 
 .toolbar-left {
+  flex: 1 1 auto;
   flex-wrap: wrap;
+}
+
+.toolbar-right {
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .full-width {
@@ -845,6 +878,7 @@ body {
 .inline-field {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
   gap: 6px;
   height: 32px;
   color: var(--am-muted);
@@ -1779,6 +1813,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  min-width: 0;
   gap: 8px;
 }
 
@@ -1829,6 +1864,7 @@ body {
   min-width: 0;
   color: var(--am-text-soft);
   font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .split-row {
@@ -1862,6 +1898,8 @@ body {
 }
 
 .session-detail-tabs > .ant-tabs-nav {
+  overflow-x: auto;
+  overflow-y: hidden;
   margin-bottom: 12px;
 }
 
@@ -2038,7 +2076,7 @@ body {
 
 .source-entry-row {
   display: grid;
-  grid-template-columns: 164px minmax(160px, 0.36fr) minmax(0, 1fr) 34px;
+  grid-template-columns: minmax(132px, 0.28fr) minmax(128px, 0.32fr) minmax(0, 1fr) 34px;
   gap: 10px;
   align-items: center;
   min-height: 46px;
@@ -2062,6 +2100,11 @@ body {
 .source-entry-input,
 .source-entry-label {
   min-width: 0;
+  width: 100%;
+}
+
+.source-entry-row > .ant-btn {
+  justify-self: end;
 }
 
 .source-add-row {
@@ -2336,6 +2379,7 @@ body {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 5px;
+  min-width: 0;
   max-width: 240px;
 }
 
@@ -2499,6 +2543,10 @@ body {
   min-width: 0;
 }
 
+.tool-detail-summary .ant-btn {
+  flex: 0 0 auto;
+}
+
 .tool-detail-grid {
   margin-bottom: 14px;
 }
@@ -2584,6 +2632,7 @@ body {
 .raw-detail summary span {
   margin-left: 6px;
   font-weight: 500;
+  overflow-wrap: anywhere;
 }
 
 .raw-detail-summary {
@@ -2721,16 +2770,80 @@ body {
 
 @media (min-width: 980px) and (max-width: 1180px) {
   .privacy-setting-card {
-    grid-template-columns: minmax(220px, 0.95fr) minmax(260px, 1fr) minmax(150px, 0.42fr);
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.9fr);
   }
 
   .privacy-setting-actions {
-    justify-content: flex-end;
-    width: auto;
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    width: 100%;
   }
 
   .privacy-setting-actions .ant-btn {
+    width: auto;
+  }
+}
+
+@media (max-width: 1100px) {
+  .app-header {
+    height: auto !important;
+    min-height: 54px;
+    flex-wrap: wrap;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .source-bar {
+    max-width: 100%;
+  }
+
+  .header-actions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .toolbar {
+    align-items: stretch;
+  }
+
+  .toolbar-left,
+  .toolbar-right {
     width: 100%;
+  }
+
+  .toolbar-right {
+    justify-content: flex-start;
+  }
+
+  .source-entry-row {
+    grid-template-columns: minmax(0, 1fr) 34px;
+    align-items: start;
+  }
+
+  .source-entry-state {
+    grid-column: 1;
+  }
+
+  .source-entry-label,
+  .source-entry-input {
+    grid-column: 1 / -1;
+  }
+
+  .source-entry-row > .ant-btn {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
+
+@media (max-width: 900px) {
+  .page-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .page-header > :last-child {
+    flex: 0 1 auto;
   }
 }
 
@@ -2800,6 +2913,7 @@ body {
   .header-actions {
     width: 100%;
     min-width: 0;
+    flex-wrap: nowrap;
     overflow-x: auto;
     padding-bottom: 2px;
   }
@@ -2830,6 +2944,18 @@ body {
     line-height: 28px;
   }
 
+  .page-tabs,
+  .settings-subnav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .page-tabs .ant-btn,
+  .settings-subnav .ant-btn {
+    flex: 0 0 auto;
+  }
+
   .toolbar {
     align-items: stretch;
     flex-direction: column;
@@ -2857,6 +2983,33 @@ body {
 
   .source-entry-state {
     justify-content: space-between;
+  }
+
+  .privacy-setting-heading {
+    grid-template-columns: 1fr;
+  }
+
+  .privacy-setting-tags {
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .privacy-change-row,
+  .tool-input-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tool-detail-summary {
+    flex-direction: column;
+  }
+
+  .tool-detail-summary .ant-btn {
+    width: 100%;
+  }
+
+  .session-detail-tabs > .ant-tabs-nav .ant-tabs-tab {
+    min-width: auto;
+    padding: 7px 10px;
   }
 
   .metadata-grid,
