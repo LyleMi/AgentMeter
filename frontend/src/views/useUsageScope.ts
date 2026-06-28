@@ -5,12 +5,13 @@ import type { UsageScopeFilters } from '../api'
 export interface UsageScopeForm {
   agent?: string
   model?: string
+  project?: string
   range?: string
   from: string
   to: string
 }
 
-const scopeKeys = ['agent', 'model', 'range', 'from', 'to'] as const
+const scopeKeys = ['agent', 'model', 'project', 'range', 'from', 'to'] as const
 const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/
 const quickRangeDays: Record<string, number> = {
   day: 1,
@@ -32,6 +33,7 @@ export function normalizeUsageScope(filters: Partial<UsageScopeForm>): UsageScop
   return {
     agent: filters.agent?.trim() || undefined,
     model: filters.model?.trim() || undefined,
+    project: filters.project?.trim() || undefined,
     range: normalizeQuickRange(filters.range),
     from: filters.from?.trim() || '',
     to: filters.to?.trim() || ''
@@ -42,6 +44,7 @@ export function readUsageScopeQuery(query: LocationQuery): UsageScopeForm {
   return normalizeUsageScope({
     agent: cleanQueryValue(query.agent),
     model: cleanQueryValue(query.model),
+    project: cleanQueryValue(query.project),
     range: cleanQueryValue(query.range),
     from: cleanQueryValue(query.from) || '',
     to: cleanQueryValue(query.to) || ''
@@ -54,6 +57,7 @@ export function usageScopeToApiFilters(filters: UsageScopeForm): UsageScopeFilte
     return {
       agent: normalized.agent,
       model: normalized.model,
+      project: normalized.project,
       from: quickRangeFrom(normalized.range),
       to: undefined
     }
@@ -61,6 +65,7 @@ export function usageScopeToApiFilters(filters: UsageScopeForm): UsageScopeFilte
   return {
     agent: normalized.agent,
     model: normalized.model,
+    project: normalized.project,
     from: toApiDateBoundary(normalized.from, 'start'),
     to: toApiDateBoundary(normalized.to, 'end')
   }
@@ -115,7 +120,7 @@ export function useUsageScopeRoute(onRouteScopeChange?: () => void | Promise<voi
 
   const apiFilters = computed(() => usageScopeToApiFilters(filters.value))
   const hasActiveFilters = computed(() =>
-    Boolean(filters.value.agent || filters.value.model || filters.value.range || filters.value.from || filters.value.to)
+    Boolean(filters.value.agent || filters.value.model || filters.value.project || filters.value.range || filters.value.from || filters.value.to)
   )
 
   async function updateFilters(nextFilters: UsageScopeForm) {
@@ -136,7 +141,7 @@ export function useUsageScopeRoute(onRouteScopeChange?: () => void | Promise<voi
   }
 
   watch(
-    () => [route.query.agent, route.query.model, route.query.range, route.query.from, route.query.to],
+    () => [route.query.agent, route.query.model, route.query.project, route.query.range, route.query.from, route.query.to],
     () => {
       if (applyingRouteUpdate) return
       filters.value = readUsageScopeQuery(route.query)

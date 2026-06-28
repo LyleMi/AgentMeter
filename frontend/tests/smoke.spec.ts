@@ -4,13 +4,17 @@ interface SmokeRoute {
   path: string
   hash: string
   title: RegExp
+  panelTitle?: RegExp
 }
 
 const routes: SmokeRoute[] = [
   { path: '/#/overview/summary', hash: '#/overview/summary', title: /^(Overview|概览)$/ },
   { path: '/#/time', hash: '#/time', title: /^(Time|耗时)$/ },
   { path: '/#/sessions', hash: '#/sessions', title: /^(Sessions|会话)$/ },
-  { path: '/#/tokens', hash: '#/tokens', title: /^(Tokens|Token)$/ },
+  { path: '/#/tokens', hash: '#/tokens', title: /^(Tokens|Token)$/, panelTitle: /^(Token Mix|Token 构成)$/ },
+  { path: '/#/tokens/trends', hash: '#/tokens/trends', title: /^(Tokens|Token)$/, panelTitle: /^(Cache Hit Trend|缓存命中趋势)$/ },
+  { path: '/#/tokens/breakdown', hash: '#/tokens/breakdown', title: /^(Tokens|Token)$/, panelTitle: /^(Usage Breakdown|用量拆分)$/ },
+  { path: '/#/tokens/sessions', hash: '#/tokens/sessions', title: /^(Tokens|Token)$/, panelTitle: /^(High Token Sessions|高 Token 会话)$/ },
   { path: '/#/tools/overview', hash: '#/tools/overview', title: /^(Tools|工具)$/ },
   { path: '/#/tools/calls', hash: '#/tools/calls', title: /^(Tools|工具)$/ },
   { path: '/#/tools/shell', hash: '#/tools/shell', title: /^(Tools|工具)$/ },
@@ -36,6 +40,9 @@ test('key hash routes render without console errors or API 5xx responses', async
       await expect(page.locator('.app-shell')).toBeVisible()
       await expect(page.locator('.app-content')).toBeVisible()
       await expect(page.locator('h1.page-title, h2.panel-title').filter({ hasText: route.title }).first()).toBeVisible()
+      if (route.panelTitle) {
+        await expect(page.locator('h2.panel-title').filter({ hasText: route.panelTitle }).first()).toBeVisible()
+      }
 
       await settleRoute(page)
     })

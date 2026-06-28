@@ -8,7 +8,7 @@ import {
   DatabaseOutlined,
   HistoryOutlined
 } from '@ant-design/icons-vue'
-import { api, isStaticDemo, type Overview, type Settings } from '../api'
+import { api, isStaticDemo, type Overview, type Settings, type UsageBreakdownBucket } from '../api'
 import PageHeader from '../components/PageHeader.vue'
 import PageTabs from '../components/PageTabs.vue'
 import UsageScopeBar from '../components/UsageScopeBar.vue'
@@ -16,13 +16,14 @@ import { notifyAppDataChanged } from '../events'
 import { useMessages } from '../i18n'
 import { overviewContextKey, type OverviewContext } from './overviewContext'
 import { applyUsageScopeToQuery, useUsageScopeRoute, type UsageScopeForm } from './useUsageScope'
-import { buildUsageAgentOptions, buildUsageModelOptions } from './useUsageScopeOptions'
+import { buildUsageAgentOptions, buildUsageModelOptions, buildUsageProjectOptions } from './useUsageScopeOptions'
 
 const route = useRoute()
 const loading = ref(true)
 const startupIndexing = ref(false)
 const overview = ref<Overview | null>(null)
 const optionOverview = ref<Overview | null>(null)
+const projectOptionRows = ref<UsageBreakdownBucket[]>([])
 const settings = ref<Settings | null>(null)
 const scope = useUsageScopeRoute(() => load())
 const { t } = useMessages({
@@ -91,6 +92,20 @@ const modelOptions = computed(() =>
   })
 )
 
+const projectOptions = computed(() =>
+  buildUsageProjectOptions({
+    projects: [
+      projectOptionRows.value,
+      overview.value?.recentSessions,
+      optionOverview.value?.recentSessions,
+      overview.value?.slowSessions,
+      optionOverview.value?.slowSessions
+    ],
+    selected: scope.filters.value.project,
+    fallback: 'unknown'
+  })
+)
+
 const activeKey = computed(() => {
   if (route.path.startsWith('/overview/trends')) return 'trends'
   if (route.path.startsWith('/overview/breakdown')) return 'breakdown'
@@ -102,14 +117,17 @@ async function load() {
   loading.value = true
   try {
     const optionOverviewRequest = scope.hasActiveFilters.value ? api.getOverview() : Promise.resolve<Overview | null>(null)
-    const [settingsValue, overviewValue, optionOverviewValue] = await Promise.all([
+    const projectOptionsRequest = api.getUsageBreakdown({ groupBy: 'project' }).catch(() => null)
+    const [settingsValue, overviewValue, optionOverviewValue, projectBreakdownValue] = await Promise.all([
       api.getSettings(),
       api.getOverview(scope.apiFilters.value),
-      optionOverviewRequest
+      optionOverviewRequest,
+      projectOptionsRequest
     ])
     settings.value = settingsValue
     overview.value = overviewValue
     optionOverview.value = optionOverviewValue || overviewValue
+    projectOptionRows.value = projectBreakdownValue?.buckets || []
   } finally {
     loading.value = false
   }
@@ -180,6 +198,7 @@ onMounted(load)
       :filters="scope.filters.value"
       :agent-options="agentOptions"
       :model-options="modelOptions"
+      :project-options="projectOptions"
       :loading="loading"
       @update:filters="updateScopeFilters"
       @refresh="load"

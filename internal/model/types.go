@@ -180,6 +180,18 @@ type DailyUsage struct {
 	EstimatedCostUSD     *float64 `json:"estimatedCostUsd,omitempty"`
 }
 
+type CacheHitTrendPoint struct {
+	Date                        string  `json:"date"`
+	SessionCount                int     `json:"sessionCount"`
+	TotalTokens                 int64   `json:"totalTokens"`
+	InputTokens                 int64   `json:"inputTokens"`
+	CachedInputTokens           int64   `json:"cachedInputTokens"`
+	CacheUtilizationRate        float64 `json:"cacheUtilizationRate"`
+	RollingCacheUtilizationRate float64 `json:"rollingCacheUtilizationRate"`
+	LowInputVolume              bool    `json:"lowInputVolume"`
+	HasUsage                    bool    `json:"hasUsage"`
+}
+
 type ModelUsage struct {
 	Model                 string   `json:"model"`
 	SessionCount          int      `json:"sessionCount"`
@@ -254,51 +266,54 @@ type ModelTimeUsage struct {
 type AnalyticsFilters struct {
 	Agent       string `json:"agent"`
 	Model       string `json:"model"`
+	Project     string `json:"project"`
 	StartedFrom string `json:"startedFrom"`
 	StartedTo   string `json:"startedTo"`
 }
 
 type Overview struct {
-	TotalSessions                  int              `json:"totalSessions"`
-	TotalInputTokens               int64            `json:"totalInputTokens"`
-	TotalCachedInputTokens         int64            `json:"totalCachedInputTokens"`
-	TotalOutputTokens              int64            `json:"totalOutputTokens"`
-	TotalReasoningTokens           int64            `json:"totalReasoningTokens"`
-	TotalTokens                    int64            `json:"totalTokens"`
-	EstimatedCostUSD               *float64         `json:"estimatedCostUsd,omitempty"`
-	UnpricedSessions               int              `json:"unpricedSessions"`
-	TotalWallDurationMS            int64            `json:"totalWallDurationMs"`
-	TotalActiveDurationMS          int64            `json:"totalActiveDurationMs"`
-	TotalModelDurationMS           int64            `json:"totalModelDurationMs"`
-	TotalToolDurationMS            int64            `json:"totalToolDurationMs"`
-	TotalIdleDurationMS            int64            `json:"totalIdleDurationMs"`
-	TotalToolCalls                 int              `json:"totalToolCalls"`
-	SuspectedNetworkToolDurationMS int64            `json:"suspectedNetworkToolDurationMs"`
-	SuspectedNetworkToolCalls      int              `json:"suspectedNetworkToolCalls"`
-	DailyUsage                     []DailyUsage     `json:"dailyUsage"`
-	ModelUsage                     []ModelUsage     `json:"modelUsage"`
-	AgentUsage                     []AgentUsage     `json:"agentUsage"`
-	ToolTimeLeaders                []ToolTimeUsage  `json:"toolTimeLeaders"`
-	AgentTimeUsage                 []AgentTimeUsage `json:"agentTimeUsage"`
-	ModelTimeUsage                 []ModelTimeUsage `json:"modelTimeUsage"`
-	RecentSessions                 []Session        `json:"recentSessions"`
-	SlowSessions                   []Session        `json:"slowSessions"`
+	TotalSessions                  int                  `json:"totalSessions"`
+	TotalInputTokens               int64                `json:"totalInputTokens"`
+	TotalCachedInputTokens         int64                `json:"totalCachedInputTokens"`
+	TotalOutputTokens              int64                `json:"totalOutputTokens"`
+	TotalReasoningTokens           int64                `json:"totalReasoningTokens"`
+	TotalTokens                    int64                `json:"totalTokens"`
+	EstimatedCostUSD               *float64             `json:"estimatedCostUsd,omitempty"`
+	UnpricedSessions               int                  `json:"unpricedSessions"`
+	TotalWallDurationMS            int64                `json:"totalWallDurationMs"`
+	TotalActiveDurationMS          int64                `json:"totalActiveDurationMs"`
+	TotalModelDurationMS           int64                `json:"totalModelDurationMs"`
+	TotalToolDurationMS            int64                `json:"totalToolDurationMs"`
+	TotalIdleDurationMS            int64                `json:"totalIdleDurationMs"`
+	TotalToolCalls                 int                  `json:"totalToolCalls"`
+	SuspectedNetworkToolDurationMS int64                `json:"suspectedNetworkToolDurationMs"`
+	SuspectedNetworkToolCalls      int                  `json:"suspectedNetworkToolCalls"`
+	DailyUsage                     []DailyUsage         `json:"dailyUsage"`
+	CacheHitTrend                  []CacheHitTrendPoint `json:"cacheHitTrend"`
+	ModelUsage                     []ModelUsage         `json:"modelUsage"`
+	AgentUsage                     []AgentUsage         `json:"agentUsage"`
+	ToolTimeLeaders                []ToolTimeUsage      `json:"toolTimeLeaders"`
+	AgentTimeUsage                 []AgentTimeUsage     `json:"agentTimeUsage"`
+	ModelTimeUsage                 []ModelTimeUsage     `json:"modelTimeUsage"`
+	RecentSessions                 []Session            `json:"recentSessions"`
+	SlowSessions                   []Session            `json:"slowSessions"`
 }
 
 type TokenAnalytics struct {
-	TotalSessions          int          `json:"totalSessions"`
-	TotalInputTokens       int64        `json:"totalInputTokens"`
-	TotalCachedInputTokens int64        `json:"totalCachedInputTokens"`
-	TotalOutputTokens      int64        `json:"totalOutputTokens"`
-	TotalReasoningTokens   int64        `json:"totalReasoningTokens"`
-	TotalTokens            int64        `json:"totalTokens"`
-	CacheUtilizationRate   float64      `json:"cacheUtilizationRate"`
-	EstimatedCostUSD       *float64     `json:"estimatedCostUsd,omitempty"`
-	UnpricedCount          int          `json:"unpricedCount"`
-	ModelUsage             []ModelUsage `json:"modelUsage"`
-	AgentUsage             []AgentUsage `json:"agentUsage"`
-	RecentSessions         []Session    `json:"recentSessions"`
-	HighTokenSessions      []Session    `json:"highTokenSessions"`
+	TotalSessions          int                  `json:"totalSessions"`
+	TotalInputTokens       int64                `json:"totalInputTokens"`
+	TotalCachedInputTokens int64                `json:"totalCachedInputTokens"`
+	TotalOutputTokens      int64                `json:"totalOutputTokens"`
+	TotalReasoningTokens   int64                `json:"totalReasoningTokens"`
+	TotalTokens            int64                `json:"totalTokens"`
+	CacheUtilizationRate   float64              `json:"cacheUtilizationRate"`
+	EstimatedCostUSD       *float64             `json:"estimatedCostUsd,omitempty"`
+	UnpricedCount          int                  `json:"unpricedCount"`
+	CacheHitTrend          []CacheHitTrendPoint `json:"cacheHitTrend"`
+	ModelUsage             []ModelUsage         `json:"modelUsage"`
+	AgentUsage             []AgentUsage         `json:"agentUsage"`
+	RecentSessions         []Session            `json:"recentSessions"`
+	HighTokenSessions      []Session            `json:"highTokenSessions"`
 }
 
 type UsageBreakdown struct {

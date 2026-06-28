@@ -53,6 +53,13 @@ This smoke should remain read-only. It should verify API shape and availability
 without triggering indexing, rebuilds, settings writes, or privacy config
 changes.
 
+API smoke covers overview, token analytics, day/project usage breakdowns,
+sessions, tools, audit, pricing, settings, and privacy status. Cache-related
+shape checks include `totalInputTokens`, `totalCachedInputTokens`,
+`cacheUtilizationRate`, `cacheHitTrend`, `dailyUsage.cachedInputTokens`, and
+usage-breakdown bucket `projectPath`/`cachedInputTokens`/
+`cacheUtilizationRate`.
+
 ## Browser Smoke
 
 Start backend and frontend HMR in separate terminals when you own those
@@ -145,8 +152,9 @@ TUI expectations where relevant:
 
 - totals and filters;
 - shared cache fields, including `dailyUsage.cachedInputTokens`,
-  `dailyUsage.cacheUtilizationRate`, and usage-breakdown `projectPath` for
-  project grouping;
+  `dailyUsage.cacheUtilizationRate`, `cacheHitTrend`, and usage-breakdown
+  `projectPath` for project grouping;
+- project-scoped analytics filters using the `project` query parameter;
 - session identity and source path display;
 - source instance filters using `source:<id>` and family filters using values
   such as `codex` or `claude`;

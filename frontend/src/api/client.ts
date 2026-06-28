@@ -73,6 +73,7 @@ function usageScopeParamValues(filters: UsageScopeFilters = {}): QueryParamValue
   return {
     agent: filters.agent,
     model: filters.model,
+    project: filters.project,
     from: filters.from,
     to: filters.to
   }

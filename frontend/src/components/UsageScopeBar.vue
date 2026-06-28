@@ -15,6 +15,7 @@ export interface UsageScopeOption {
 export interface UsageScopeBarFilters {
   agent?: string
   model?: string
+  project?: string
   range?: string
   from: string
   to: string
@@ -25,11 +26,13 @@ const props = withDefaults(
     filters: UsageScopeBarFilters
     agentOptions?: UsageScopeOption[]
     modelOptions?: UsageScopeOption[]
+    projectOptions?: UsageScopeOption[]
     loading?: boolean
   }>(),
   {
     agentOptions: () => [],
     modelOptions: () => [],
+    projectOptions: () => [],
     loading: false
   }
 )
@@ -44,6 +47,7 @@ const { t } = useMessages({
   en: {
     'filter.agent': 'Source',
     'filter.model': 'Model',
+    'filter.project': 'Project',
     'filter.range': 'Range',
     'filter.from': 'From',
     'filter.to': 'To',
@@ -60,6 +64,7 @@ const { t } = useMessages({
   'zh-CN': {
     'filter.agent': '来源',
     'filter.model': '模型',
+    'filter.project': '项目',
     'filter.range': '范围',
     'filter.from': '从',
     'filter.to': '到',
@@ -84,7 +89,7 @@ const quickRangeDays: Record<string, number> = {
 const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/
 
 const hasActiveFilters = computed(() =>
-  Boolean(props.filters.agent || props.filters.model || props.filters.range || props.filters.from || props.filters.to)
+  Boolean(props.filters.agent || props.filters.model || props.filters.project || props.filters.range || props.filters.from || props.filters.to)
 )
 
 const rangeOptions = computed(() => [
@@ -109,6 +114,7 @@ function updateFilter(patch: Partial<UsageScopeBarFilters>) {
   emit('update:filters', {
     agent: props.filters.agent,
     model: props.filters.model,
+    project: props.filters.project,
     range: props.filters.range,
     from: props.filters.from,
     to: props.filters.to,
@@ -161,6 +167,16 @@ function dateInputValue(value: string) {
         :options="modelOptions"
         :value="filters.model"
         @change="(value) => updateFilter({ model: cleanSelectValue(value) })"
+      />
+      <a-select
+        class="usage-scope-select usage-scope-project"
+        allow-clear
+        show-search
+        :disabled="loading"
+        :placeholder="t('filter.project')"
+        :options="projectOptions"
+        :value="filters.project"
+        @change="(value) => updateFilter({ project: cleanSelectValue(value) })"
       />
       <label class="inline-field usage-scope-range">
         <span>{{ t('filter.range') }}</span>
@@ -253,6 +269,10 @@ function dateInputValue(value: string) {
   width: 210px;
 }
 
+.usage-scope-project {
+  width: 230px;
+}
+
 .usage-scope-date {
   width: 178px;
 }
@@ -284,6 +304,7 @@ function dateInputValue(value: string) {
 
   .usage-scope-select,
   .usage-scope-model,
+  .usage-scope-project,
   .usage-scope-range,
   .usage-scope-date {
     width: 100%;

@@ -59,6 +59,18 @@ export interface DailyUsage {
   estimatedCostUsd?: number
 }
 
+export interface CacheHitTrendPoint {
+  date: string
+  sessionCount: number
+  totalTokens: number
+  inputTokens: number
+  cachedInputTokens: number
+  cacheUtilizationRate: number
+  rollingCacheUtilizationRate: number
+  lowInputVolume: boolean
+  hasUsage: boolean
+}
+
 export interface ModelUsage {
   model: string
   sessionCount: number
@@ -74,6 +86,7 @@ export interface ModelUsage {
 export interface UsageScopeFilters {
   agent?: string
   model?: string
+  project?: string
   from?: string
   to?: string
 }
@@ -173,6 +186,7 @@ export interface Overview {
   suspectedNetworkToolCalls: number
   totalToolCalls: number
   dailyUsage: DailyUsage[]
+  cacheHitTrend: CacheHitTrendPoint[]
   modelUsage: ModelUsage[]
   agentUsage: AgentUsage[]
   toolTimeLeaders: ToolTimeUsage[]
@@ -192,6 +206,7 @@ export interface TokenAnalytics {
   cacheUtilizationRate: number
   estimatedCostUsd?: number
   unpricedCount: number
+  cacheHitTrend: CacheHitTrendPoint[]
   modelUsage: ModelUsage[]
   agentUsage: AgentUsage[]
   recentSessions: Session[]

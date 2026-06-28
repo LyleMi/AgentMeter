@@ -4,6 +4,7 @@ import type {
   AuditFinding,
   AuditFindingFilters,
   AuditSummary,
+  CacheHitTrendPoint,
   DailyUsage,
   EventItem,
   IndexResult,
@@ -437,11 +438,23 @@ function matchesDateRange(value: string, filters: UsageScopeFilters | ToolCallFi
   return true
 }
 
+function matchesProject(record: { projectPath?: string; rawSourcePath?: string }, project?: string): boolean {
+  const normalized = (project || '').trim()
+  if (!normalized) return true
+  const projectKey = projectPathKey(normalized)
+  return [record.projectPath, record.rawSourcePath]
+    .some((value) => {
+      const candidate = (value || '').trim()
+      return candidate === normalized || projectPathKey(candidate) === projectKey
+    })
+}
+
 function filteredSessions(filters: UsageScopeFilters & SessionFilters = {}): Session[] {
   const search = (filters.search || '').trim().toLowerCase()
   return sessions
     .filter((session) => matchesAgent(session, filters.agent))
     .filter((session) => !filters.model || session.model === filters.model)
+    .filter((session) => matchesProject(session, filters.project))
     .filter((session) => matchesDateRange(session.startedAt, filters))
     .filter((session) => {
       if (!search) return true
@@ -537,10 +550,31 @@ function dailyUsageFor(items: Session[]): DailyUsage[] {
   }).sort((left, right) => left.date.localeCompare(right.date))
 }
 
-function filteredToolCalls(filters: ToolCallFilters = {}): ToolCall[] {
+function cacheHitTrendFor(items: Session[]): CacheHitTrendPoint[] {
+  const days = dailyUsageFor(items)
+  return days.map((day, index) => {
+    const window = days.slice(Math.max(0, index - 6), index + 1)
+    const rollingInputTokens = window.reduce((total, item) => total + item.inputTokens, 0)
+    const rollingCachedInputTokens = window.reduce((total, item) => total + item.cachedInputTokens, 0)
+    return {
+      date: day.date,
+      sessionCount: day.sessionCount,
+      totalTokens: day.totalTokens,
+      inputTokens: day.inputTokens,
+      cachedInputTokens: day.cachedInputTokens,
+      cacheUtilizationRate: day.cacheUtilizationRate,
+      rollingCacheUtilizationRate: rollingInputTokens > 0 ? rollingCachedInputTokens / rollingInputTokens : 0,
+      lowInputVolume: day.inputTokens > 0 && day.inputTokens < 60_000,
+      hasUsage: day.sessionCount > 0
+    }
+  })
+}
+
+function filteredToolCalls(filters: ToolCallFilters & Pick<UsageScopeFilters, 'project'> = {}): ToolCall[] {
   return toolCalls
     .filter((call) => matchesAgent(call, filters.agent))
     .filter((call) => !filters.tool || call.toolName === filters.tool)
+    .filter((call) => matchesProject(call, filters.project))
     .filter((call) => matchesDateRange(call.startedAt, filters))
     .sort((left, right) => {
       const direction = filters.sort === 'duration' ? right.durationMs - left.durationMs : Date.parse(right.startedAt) - Date.parse(left.startedAt)
@@ -564,7 +598,7 @@ function toolStatsFor(calls: ToolCall[]): ToolStat[] {
 
 function overview(filters: UsageScopeFilters = {}): Overview {
   const scoped = filteredSessions(filters)
-  const scopedToolCalls = filteredToolCalls({ agent: filters.agent, from: filters.from, to: filters.to })
+  const scopedToolCalls = filteredToolCalls({ agent: filters.agent, project: filters.project, from: filters.from, to: filters.to })
   const modelUsage = modelUsageFor(scoped)
   const agentUsage = agentUsageFor(scoped)
   const toolTimeLeaders: ToolTimeUsage[] = toolStatsFor(scopedToolCalls).map((tool) => ({
@@ -627,6 +661,7 @@ function overview(filters: UsageScopeFilters = {}): Overview {
     suspectedNetworkToolCalls: scopedToolCalls.filter((call) => ['web_fetch', 'browser_screenshot'].includes(call.toolName)).length,
     totalToolCalls: scopedToolCalls.length,
     dailyUsage: dailyUsageFor(scoped),
+    cacheHitTrend: cacheHitTrendFor(scoped),
     modelUsage,
     agentUsage,
     toolTimeLeaders,
@@ -858,6 +893,7 @@ export const demoApi: DemoApi = {
       cacheUtilizationRate: inputTokens > 0 ? cachedInputTokens / inputTokens : 0,
       estimatedCostUsd: costSum(scoped),
       unpricedCount: scoped.filter((session) => session.unpriced).length,
+      cacheHitTrend: cacheHitTrendFor(scoped),
       modelUsage: modelUsageFor(scoped),
       agentUsage: agentUsageFor(scoped),
       recentSessions: scoped.slice(0, 5),

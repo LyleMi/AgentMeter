@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"AgentMeter/internal/model"
 	"AgentMeter/internal/pricing"
@@ -95,6 +96,10 @@ func (s *Service) TokenAnalyticsWithFilters(ctx context.Context, filters model.A
 	if err != nil {
 		return result, err
 	}
+	result.CacheHitTrend, err = s.cacheHitTrendWithFilters(ctx, filters)
+	if err != nil {
+		return result, err
+	}
 	result.ModelUsage, err = s.modelUsageWithFilters(ctx, filters)
 	if err != nil {
 		return result, err
@@ -152,6 +157,9 @@ func normalizeTokenAnalyticsSlices(result *model.TokenAnalytics) {
 	}
 	if result.HighTokenSessions == nil {
 		result.HighTokenSessions = []model.Session{}
+	}
+	if result.CacheHitTrend == nil {
+		result.CacheHitTrend = []model.CacheHitTrendPoint{}
 	}
 }
 
@@ -227,6 +235,113 @@ func (s *Service) dailyUsageWithFilters(ctx context.Context, filters model.Analy
 		}
 	}
 	return result, nil
+}
+
+func (s *Service) cacheHitTrendWithFilters(ctx context.Context, filters model.AnalyticsFilters) ([]model.CacheHitTrendPoint, error) {
+	daily, err := s.dailyUsageWithFilters(ctx, filters)
+	if err != nil {
+		return nil, err
+	}
+	return cacheHitTrendFromDailyUsage(daily), nil
+}
+
+func cacheHitTrendFromDailyUsage(daily []model.DailyUsage) []model.CacheHitTrendPoint {
+	daily = fillDailyUsageGaps(daily)
+	if len(daily) == 0 {
+		return []model.CacheHitTrendPoint{}
+	}
+	lowVolumeThreshold := cacheTrendLowInputThreshold(daily)
+	result := make([]model.CacheHitTrendPoint, 0, len(daily))
+	for index, item := range daily {
+		rollingInput, rollingCached := rollingCacheTrendWindow(daily, index)
+		point := model.CacheHitTrendPoint{
+			Date:              item.Date,
+			SessionCount:      item.SessionCount,
+			TotalTokens:       item.TotalTokens,
+			InputTokens:       item.InputTokens,
+			CachedInputTokens: item.CachedInputTokens,
+			HasUsage:          item.SessionCount > 0 || item.TotalTokens > 0 || item.InputTokens > 0 || item.CachedInputTokens > 0,
+			LowInputVolume:    item.InputTokens > 0 && lowVolumeThreshold > 0 && item.InputTokens < lowVolumeThreshold,
+		}
+		if item.InputTokens > 0 {
+			point.CacheUtilizationRate = float64(item.CachedInputTokens) / float64(item.InputTokens)
+		}
+		if rollingInput > 0 {
+			point.RollingCacheUtilizationRate = float64(rollingCached) / float64(rollingInput)
+		}
+		result = append(result, point)
+	}
+	return result
+}
+
+func rollingCacheTrendWindow(daily []model.DailyUsage, index int) (int64, int64) {
+	start := index - 6
+	if start < 0 {
+		start = 0
+	}
+	var inputTokens int64
+	var cachedInputTokens int64
+	for cursor := start; cursor <= index; cursor++ {
+		inputTokens += daily[cursor].InputTokens
+		cachedInputTokens += daily[cursor].CachedInputTokens
+	}
+	return inputTokens, cachedInputTokens
+}
+
+func cacheTrendLowInputThreshold(daily []model.DailyUsage) int64 {
+	var values []int64
+	for _, item := range daily {
+		if item.InputTokens > 0 {
+			values = append(values, item.InputTokens)
+		}
+	}
+	if len(values) == 0 {
+		return 0
+	}
+	sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
+	median := values[len(values)/2]
+	if len(values)%2 == 0 {
+		median = (values[len(values)/2-1] + values[len(values)/2]) / 2
+	}
+	threshold := median / 4
+	if threshold < 1_000 {
+		return 1_000
+	}
+	return threshold
+}
+
+func fillDailyUsageGaps(daily []model.DailyUsage) []model.DailyUsage {
+	if len(daily) <= 1 {
+		return daily
+	}
+	sorted := append([]model.DailyUsage(nil), daily...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Date < sorted[j].Date })
+	start, err := time.Parse(analyticsDateOnlyLayout, sorted[0].Date)
+	if err != nil {
+		return sorted
+	}
+	end, err := time.Parse(analyticsDateOnlyLayout, sorted[len(sorted)-1].Date)
+	if err != nil || end.Before(start) {
+		return sorted
+	}
+	spanDays := int(end.Sub(start).Hours()/24) + 1
+	if spanDays <= len(sorted) || spanDays > 62 {
+		return sorted
+	}
+	byDate := make(map[string]model.DailyUsage, len(sorted))
+	for _, item := range sorted {
+		byDate[item.Date] = item
+	}
+	filled := make([]model.DailyUsage, 0, spanDays)
+	for day := start; !day.After(end); day = day.AddDate(0, 0, 1) {
+		date := day.Format(analyticsDateOnlyLayout)
+		if item, ok := byDate[date]; ok {
+			filled = append(filled, item)
+		} else {
+			filled = append(filled, model.DailyUsage{Date: date})
+		}
+	}
+	return filled
 }
 
 func (s *Service) dailyCosts(ctx context.Context, calculator pricing.Calculator) (map[string]float64, error) {

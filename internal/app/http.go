@@ -52,6 +52,7 @@ func analyticsFilters(r *http.Request) model.AnalyticsFilters {
 	return model.AnalyticsFilters{
 		Agent:       query.Get("agent"),
 		Model:       query.Get("model"),
+		Project:     query.Get("project"),
 		StartedFrom: query.Get("from"),
 		StartedTo:   query.Get("to"),
 	}

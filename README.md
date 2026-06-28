@@ -59,14 +59,15 @@ inspect directly. AgentMeter turns that data into answers you can use:
 - How many tokens did they consume?
 - What did those tokens roughly cost?
 - Which models, days, projects, or sessions used the most?
-- Where are cached input tokens being reused by day or project?
+- How stable is cache hit behavior by day, model, or project?
 - Which tools were called most often?
 - How long did sessions and tool calls take?
 
 ## Features
 
 - Local Web dashboard for sessions, tokens, estimated cost, daily usage, model
-  usage, project usage, cache reuse by day/project, and tool-call analytics.
+  usage, project usage, cache-hit trends by day/model/project, and tool-call
+  analytics.
 - Offline audit view for command-risk and privacy/secret findings derived from
   indexed local session data.
 - Terminal UI mode over the same database, indexing pipeline, pricing rules, and

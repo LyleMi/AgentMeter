@@ -26,6 +26,7 @@ import {
   type DisplayNumber,
   type UsageBreakdownBucket
 } from '../api'
+import CacheHitTrendChart from '../components/CacheHitTrendChart.vue'
 import { useMessages } from '../i18n'
 import { useOverviewContext } from './overviewContext'
 import { readUsageScopeQuery, usageScopeToApiFilters } from './useUsageScope'
@@ -71,6 +72,8 @@ const { t, createNumberFormatter, createDateTimeFormatter } = useMessages({
     'efficiency.projectCacheNote': '{project} · {count} cached',
     'efficiency.outputInput': 'Output / input',
     'efficiency.outputInputNote': 'Response token density',
+    'cacheTrend.title': 'Cache Hit Trend',
+    'cacheTrend.kicker': 'Daily hit rate with input-weighted trend line',
     'timeCost.title': 'Time & Cost',
     'timeCost.kicker': 'Duration, active share, and spend density',
     'timeCost.avgWall': 'Avg wall / session',
@@ -126,6 +129,8 @@ const { t, createNumberFormatter, createDateTimeFormatter } = useMessages({
     'efficiency.projectCacheNote': '{project} · {count} 个缓存',
     'efficiency.outputInput': '输出 / 输入',
     'efficiency.outputInputNote': '响应 Token 密度',
+    'cacheTrend.title': '缓存命中趋势',
+    'cacheTrend.kicker': '每日命中率与按输入 Token 加权的趋势线',
     'timeCost.title': '时间与费用',
     'timeCost.kicker': '时长、活跃占比和花费密度',
     'timeCost.avgWall': '平均墙钟 / 会话',
@@ -362,7 +367,7 @@ async function loadProjectBreakdownRows() {
 }
 
 watch(
-  () => [route.query.agent, route.query.model, route.query.range, route.query.from, route.query.to, overview.value],
+  () => [route.query.agent, route.query.model, route.query.project, route.query.range, route.query.from, route.query.to, overview.value],
   () => {
     void loadProjectBreakdownRows()
   },
@@ -470,6 +475,15 @@ function formatShareWidth(value: number) {
         </div>
       </div>
     </section>
+
+    <CacheHitTrendChart
+      v-if="hasIndexedData"
+      :points="overview?.cacheHitTrend || []"
+      :title="t('cacheTrend.title')"
+      :kicker="t('cacheTrend.kicker')"
+      compact
+      :loading="loading"
+    />
 
     <section v-if="hasIndexedData" class="overview-signal-layout">
       <section class="panel overview-signal-panel">

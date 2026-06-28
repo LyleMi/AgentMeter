@@ -17,7 +17,17 @@ const router = createRouter({
       ]
     },
     { path: '/time', component: () => import('./views/OverviewTime.vue') },
-    { path: '/tokens', component: () => import('./views/Tokens.vue') },
+    {
+      path: '/tokens',
+      component: () => import('./views/Tokens.vue'),
+      children: [
+        { path: '', component: () => import('./views/tokens/TokensSummary.vue') },
+        { path: 'summary', component: () => import('./views/tokens/TokensSummary.vue') },
+        { path: 'trends', component: () => import('./views/tokens/TokensTrends.vue') },
+        { path: 'breakdown', component: () => import('./views/tokens/TokensBreakdown.vue') },
+        { path: 'sessions', component: () => import('./views/tokens/TokensSessions.vue') }
+      ]
+    },
     { path: '/sessions', component: () => import('./views/Sessions.vue') },
     { path: '/sessions/:id', component: () => import('./views/SessionDetail.vue'), props: true },
     {

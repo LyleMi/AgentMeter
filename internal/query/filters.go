@@ -1,11 +1,13 @@
 package query
 
 import (
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	"AgentMeter/internal/model"
+	"AgentMeter/internal/sourcepath"
 )
 
 const analyticsDateOnlyLayout = "2006-01-02"
@@ -35,6 +37,7 @@ func appendAnalyticsFilters(where []string, args []any, filters model.AnalyticsF
 		where = append(where, modelExpr+" = ?")
 		args = append(args, strings.TrimSpace(filters.Model))
 	}
+	where, args = appendProjectFilter(where, args, filters.Project, "s.project_path")
 	if strings.TrimSpace(filters.StartedFrom) != "" {
 		where = append(where, startedExpr+" >= ?")
 		args = append(args, normalizeAnalyticsDateBoundary(filters.StartedFrom, "start"))
@@ -49,6 +52,35 @@ func appendAnalyticsFilters(where []string, args []any, filters model.AnalyticsF
 		args = append(args, toValue)
 	}
 	return where, args
+}
+
+func appendProjectFilter(where []string, args []any, value, expr string) ([]string, []any) {
+	key := projectFilterKey(value)
+	if key == "" {
+		return where, args
+	}
+	return append(where, normalizedProjectPathSQL(expr)+" = ?"), append(args, key)
+}
+
+func normalizedProjectPathSQL(expr string) string {
+	normalized := "RTRIM(REPLACE(COALESCE(" + expr + ", ''), '\\', '/'), '/.')"
+	if runtime.GOOS == "windows" {
+		return "LOWER(" + normalized + ")"
+	}
+	return normalized
+}
+
+func projectFilterKey(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	normalized := strings.ReplaceAll(sourcepath.Normalize(value), "\\", "/")
+	normalized = strings.TrimRight(normalized, "/.")
+	if runtime.GOOS == "windows" {
+		normalized = strings.ToLower(normalized)
+	}
+	return normalized
 }
 
 func normalizeAnalyticsDateBoundary(value, boundary string) string {

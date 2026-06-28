@@ -184,6 +184,18 @@ function Assert-StringProperty {
     }
 }
 
+function Assert-OptionalStringProperty {
+    param([object]$Object, [string]$Name)
+
+    $property = $Object.PSObject.Properties.Item($Name)
+    if ($null -eq $property) {
+        return
+    }
+    if (-not ($property.Value -is [string])) {
+        throw "expected '$Name' to be a string when present"
+    }
+}
+
 function Assert-NumberProperty {
     param([object]$Object, [string]$Name)
 
@@ -299,6 +311,8 @@ function Assert-Overview {
 
     Assert-JsonObject -Value $Payload -Label "response"
     Assert-NumberProperty -Object $Payload -Name "totalSessions"
+    Assert-NumberProperty -Object $Payload -Name "totalInputTokens"
+    Assert-NumberProperty -Object $Payload -Name "totalCachedInputTokens"
     Assert-NumberProperty -Object $Payload -Name "totalTokens"
     Assert-NumberProperty -Object $Payload -Name "totalWallDurationMs"
     Assert-NumberProperty -Object $Payload -Name "totalActiveDurationMs"
@@ -309,6 +323,7 @@ function Assert-Overview {
     Assert-NumberProperty -Object $Payload -Name "suspectedNetworkToolDurationMs"
     Assert-NumberProperty -Object $Payload -Name "suspectedNetworkToolCalls"
     Assert-ArrayProperty -Object $Payload -Name "dailyUsage"
+    Assert-ArrayProperty -Object $Payload -Name "cacheHitTrend"
     Assert-ArrayProperty -Object $Payload -Name "modelUsage"
     Assert-ArrayProperty -Object $Payload -Name "agentUsage"
     Assert-ArrayProperty -Object $Payload -Name "toolTimeLeaders"
@@ -327,6 +342,83 @@ function Assert-Overview {
         Assert-NumberProperty -Object $leader -Name "avgDurationMs"
         Assert-NumberProperty -Object $leader -Name "maxDurationMs"
         Assert-BoolProperty -Object $leader -Name "suspectedNetwork"
+    }
+
+    $trend = @((Get-JsonProperty -Object $Payload -Name "cacheHitTrend").Value)
+    if ($trend.Count -gt 0) {
+        Assert-CacheHitTrendPoint -Point $trend[0]
+    }
+}
+
+function Assert-CacheHitTrendPoint {
+    param([Parameter(Mandatory = $true)][object]$Point)
+
+    Assert-JsonObject -Value $Point -Label "cache trend point"
+    Assert-StringProperty -Object $Point -Name "date"
+    Assert-NumberProperty -Object $Point -Name "sessionCount"
+    Assert-NumberProperty -Object $Point -Name "totalTokens"
+    Assert-NumberProperty -Object $Point -Name "inputTokens"
+    Assert-NumberProperty -Object $Point -Name "cachedInputTokens"
+    Assert-NumberProperty -Object $Point -Name "cacheUtilizationRate"
+    Assert-NumberProperty -Object $Point -Name "rollingCacheUtilizationRate"
+    Assert-BoolProperty -Object $Point -Name "lowInputVolume"
+    Assert-BoolProperty -Object $Point -Name "hasUsage"
+}
+
+function Assert-TokenAnalytics {
+    param([Parameter(Mandatory = $true)][object]$Payload)
+
+    Assert-JsonObject -Value $Payload -Label "response"
+    Assert-NumberProperty -Object $Payload -Name "totalSessions"
+    Assert-NumberProperty -Object $Payload -Name "totalInputTokens"
+    Assert-NumberProperty -Object $Payload -Name "totalCachedInputTokens"
+    Assert-NumberProperty -Object $Payload -Name "totalOutputTokens"
+    Assert-NumberProperty -Object $Payload -Name "totalReasoningTokens"
+    Assert-NumberProperty -Object $Payload -Name "totalTokens"
+    Assert-NumberProperty -Object $Payload -Name "cacheUtilizationRate"
+    Assert-NumberProperty -Object $Payload -Name "unpricedCount"
+    Assert-ArrayProperty -Object $Payload -Name "cacheHitTrend"
+    Assert-ArrayProperty -Object $Payload -Name "modelUsage"
+    Assert-ArrayProperty -Object $Payload -Name "agentUsage"
+    Assert-ArrayProperty -Object $Payload -Name "recentSessions"
+    Assert-ArrayProperty -Object $Payload -Name "highTokenSessions"
+
+    $trend = @((Get-JsonProperty -Object $Payload -Name "cacheHitTrend").Value)
+    if ($trend.Count -gt 0) {
+        Assert-CacheHitTrendPoint -Point $trend[0]
+    }
+}
+
+function Assert-UsageBreakdown {
+    param(
+        [Parameter(Mandatory = $true)][object]$Payload,
+        [Parameter(Mandatory = $true)][string]$ExpectedGroupBy
+    )
+
+    Assert-JsonObject -Value $Payload -Label "response"
+    Assert-StringProperty -Object $Payload -Name "groupBy"
+    Assert-ArrayProperty -Object $Payload -Name "buckets"
+
+    $groupBy = (Get-JsonProperty -Object $Payload -Name "groupBy").Value
+    if ($groupBy -ne $ExpectedGroupBy) {
+        throw "expected 'groupBy' to be '$ExpectedGroupBy'"
+    }
+
+    $buckets = @((Get-JsonProperty -Object $Payload -Name "buckets").Value)
+    if ($buckets.Count -gt 0) {
+        $bucket = $buckets[0]
+        Assert-JsonObject -Value $bucket -Label "usage breakdown bucket"
+        Assert-NumberProperty -Object $bucket -Name "sessionCount"
+        Assert-NumberProperty -Object $bucket -Name "totalTokens"
+        Assert-NumberProperty -Object $bucket -Name "inputTokens"
+        Assert-NumberProperty -Object $bucket -Name "cachedInputTokens"
+        Assert-NumberProperty -Object $bucket -Name "cacheUtilizationRate"
+        if ($ExpectedGroupBy -eq "day") {
+            Assert-OptionalStringProperty -Object $bucket -Name "date"
+        }
+        if ($ExpectedGroupBy -eq "project") {
+            Assert-OptionalStringProperty -Object $bucket -Name "projectPath"
+        }
     }
 }
 
@@ -433,6 +525,9 @@ $checks = @(
     [pscustomobject]@{ Path = "/api/privacy/claude"; Validate = { param($payload, $raw) Assert-PrivacyStatus -Payload $payload -ExpectedTarget "claude" } }
     [pscustomobject]@{ Path = "/api/privacy/codebuddy"; Validate = { param($payload, $raw) Assert-PrivacyStatus -Payload $payload -ExpectedTarget "codebuddy" } }
     [pscustomobject]@{ Path = "/api/overview"; Validate = { param($payload, $raw) Assert-Overview -Payload $payload } }
+    [pscustomobject]@{ Path = "/api/tokens"; Validate = { param($payload, $raw) Assert-TokenAnalytics -Payload $payload } }
+    [pscustomobject]@{ Path = "/api/usage/breakdown?groupBy=day"; Validate = { param($payload, $raw) Assert-UsageBreakdown -Payload $payload -ExpectedGroupBy "day" } }
+    [pscustomobject]@{ Path = "/api/usage/breakdown?groupBy=project"; Validate = { param($payload, $raw) Assert-UsageBreakdown -Payload $payload -ExpectedGroupBy "project" } }
     [pscustomobject]@{ Path = "/api/sessions?limit=5"; Validate = { param($payload, $raw) Assert-Sessions -Payload $payload -Raw $raw } }
     [pscustomobject]@{ Path = "/api/tools"; Validate = { param($payload, $raw) Assert-Tools -Payload $payload -Raw $raw } }
     [pscustomobject]@{ Path = "/api/tool-calls?limit=5"; Validate = { param($payload, $raw) Assert-ToolCalls -Payload $payload -Raw $raw } }
@@ -440,6 +535,29 @@ $checks = @(
     [pscustomobject]@{ Path = "/api/audit/findings?limit=5"; Validate = { param($payload, $raw) Assert-AuditFindings -Payload $payload -Raw $raw } }
     [pscustomobject]@{ Path = "/api/pricing"; Validate = { param($payload, $raw) Assert-Pricing -Payload $payload -Raw $raw } }
 )
+
+try {
+    $projectBody = Invoke-ApiGet -Path "/api/usage/breakdown?groupBy=project"
+    $projectPayload = Convert-ResponseJson -Path "/api/usage/breakdown?groupBy=project" -Body $projectBody
+    $projectBuckets = @((Get-JsonProperty -Object $projectPayload -Name "buckets").Value)
+    $projectBucket = $projectBuckets | Where-Object {
+        if ($null -eq $_) {
+            $false
+        } else {
+            $property = $_.PSObject.Properties.Item("projectPath")
+            $null -ne $property -and $property.Value -is [string] -and -not [string]::IsNullOrWhiteSpace($property.Value)
+        }
+    } | Select-Object -First 1
+    if ($null -ne $projectBucket) {
+        $projectPath = (Get-JsonProperty -Object $projectBucket -Name "projectPath").Value
+        $projectQuery = [System.Uri]::EscapeDataString($projectPath)
+        $checks += [pscustomobject]@{ Path = "/api/overview?project=$projectQuery"; Validate = { param($payload, $raw) Assert-Overview -Payload $payload } }
+        $checks += [pscustomobject]@{ Path = "/api/tokens?project=$projectQuery"; Validate = { param($payload, $raw) Assert-TokenAnalytics -Payload $payload } }
+    }
+} catch {
+    # The main smoke loop still reports endpoint failures. Dynamic project-scope
+    # checks are skipped when no project bucket can be discovered.
+}
 
 $passed = 0
 $failed = 0

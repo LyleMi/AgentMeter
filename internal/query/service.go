@@ -80,6 +80,7 @@ func (s *Service) OverviewWithFilters(ctx context.Context, filters model.Analyti
 	if err != nil {
 		return overview, err
 	}
+	overview.CacheHitTrend = cacheHitTrendFromDailyUsage(overview.DailyUsage)
 	overview.ModelUsage, err = s.modelUsageWithFilters(ctx, filters)
 	if err != nil {
 		return overview, err
@@ -112,6 +113,9 @@ func (s *Service) OverviewWithFilters(ctx context.Context, filters model.Analyti
 func normalizeOverviewSlices(overview *model.Overview) {
 	if overview.DailyUsage == nil {
 		overview.DailyUsage = []model.DailyUsage{}
+	}
+	if overview.CacheHitTrend == nil {
+		overview.CacheHitTrend = []model.CacheHitTrendPoint{}
 	}
 	if overview.ModelUsage == nil {
 		overview.ModelUsage = []model.ModelUsage{}

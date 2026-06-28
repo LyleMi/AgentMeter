@@ -1,228 +1,86 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch, type DefineComponent } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, onMounted, provide, ref, watch } from 'vue'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 import AAlert from 'ant-design-vue/es/alert'
-import AProgress from 'ant-design-vue/es/progress'
-import ASegmented from 'ant-design-vue/es/segmented'
-import ASpin from 'ant-design-vue/es/spin'
-import AntTable from 'ant-design-vue/es/table'
-import ATag from 'ant-design-vue/es/tag'
-import Typography from 'ant-design-vue/es/typography'
 import {
-  CheckCircleOutlined,
+  BarChartOutlined,
   DatabaseOutlined,
-  DollarCircleOutlined,
   HistoryOutlined,
-  TableOutlined,
-  WarningOutlined
+  LineChartOutlined
 } from '@ant-design/icons-vue'
 import {
   api,
-  formatCost,
-  formatDateTime,
-  formatDisplayCost,
-  formatDisplayNumber,
-  formatNumber,
-  projectDisplay,
-  sessionFullLabel,
-  sessionLabel,
-  type AgentUsage,
-  type ModelUsage,
   type Overview,
-  type Session,
   type TokenAnalytics,
   type UsageBreakdownBucket,
   type UsageBreakdownGroupBy,
   type UsageScopeFilters
 } from '../api'
 import PageHeader from '../components/PageHeader.vue'
+import PageTabs from '../components/PageTabs.vue'
 import UsageScopeBar from '../components/UsageScopeBar.vue'
 import { useAsyncResource } from '../composables/useAsyncResource'
 import { useMessages } from '../i18n'
-import { sourceDisplay, sourceInstanceKey } from '../presentation/sourceIdentity'
 import { applyUsageScopeToQuery, useUsageScopeRoute, type UsageScopeForm } from './useUsageScope'
-import { buildUsageAgentOptions, buildUsageModelOptions } from './useUsageScopeOptions'
+import { buildUsageAgentOptions, buildUsageModelOptions, buildUsageProjectOptions } from './useUsageScopeOptions'
+import {
+  DEFAULT_BREAKDOWN_GROUP,
+  tokensContextKey,
+  type TokenBreakdownGroup,
+  type TokensContext
+} from './tokens/tokensContext'
 
-const ATable = AntTable as unknown as DefineComponent
-const ATypographyText = Typography.Text
 const route = useRoute()
 const router = useRouter()
 const resource = useAsyncResource<TokenAnalytics | null>(null)
-const breakdownRows = ref<UsageBreakdownBucket[]>([])
-const optionOverview = ref<Overview | null>(null)
 const analytics = computed(() => resource.data.value)
 const loading = resource.loading
 const error = resource.error
+const breakdownRows = ref<UsageBreakdownBucket[]>([])
+const optionOverview = ref<Overview | null>(null)
+const projectOptionRows = ref<UsageBreakdownBucket[]>([])
 const scope = useUsageScopeRoute(() => {
   void load()
 })
-const DEFAULT_BREAKDOWN_GROUP = 'global'
-type TokenBreakdownGroup = typeof DEFAULT_BREAKDOWN_GROUP | UsageBreakdownGroupBy
 const breakdownGroup = ref<TokenBreakdownGroup>(routeBreakdownGroup())
 let applyingBreakdownRouteUpdate = false
+let loadRequestId = 0
 
 const { t } = useMessages({
   en: {
     'title': 'Tokens',
-    'subtitle': 'Standalone token usage, cache reuse, and estimated price consumption',
-    'action.refresh': 'Refresh',
-    'metric.totalTokens': 'Total Tokens',
-    'metric.totalTokensNote': '{count} indexed sessions',
-    'metric.cacheRate': 'Cache Utilization',
-    'metric.cacheRateNote': '{count} cached input tokens',
-    'metric.cost': 'Estimated Cost',
-    'metric.costNoteCovered': 'Pricing covered for indexed usage',
-    'metric.costNoteMissing': '{count} unpriced usage rows',
-    'metric.inputOutput': 'Input / Output',
-    'metric.inputOutputNote': 'Prompt and response volume',
-    'breakdown.title': 'Token Mix',
-    'breakdown.kicker': 'Input, cached input, output, and reasoning totals',
-    'usage.title': 'Usage Breakdown',
-    'usage.kicker': 'Grouped token usage for the current scope',
-    'group.global': 'Global',
-    'group.agent': 'Source',
-    'group.model': 'Model',
-    'group.agentModel': 'Source + Model',
-    'group.day': 'Day',
-    'group.project': 'Project',
-    'token.input': 'Input',
-    'token.cached': 'Cached',
-    'token.output': 'Output',
-    'token.reasoning': 'Reasoning',
-    'model.title': 'Model Breakdown',
-    'model.kicker': 'Token and cost distribution by model',
-    'agent.title': 'Source Breakdown',
-    'agent.kicker': 'Token and cost distribution by local source instance',
-    'sessions.title': 'High Token Sessions',
-    'sessions.kicker': 'Sessions ranked by total token volume',
-    'column.model': 'Model',
-    'column.agent': 'Source',
-    'column.session': 'Session',
-    'column.project': 'Project',
-    'column.started': 'Started',
-    'column.sessions': 'Sessions',
-    'column.tokens': 'Tokens',
-    'column.input': 'Input',
-    'column.cached': 'Cached',
-    'column.output': 'Output',
-    'column.reasoning': 'Reasoning',
-    'column.cacheRate': 'Cache',
-    'column.cost': 'Cost',
-    'column.tools': 'Tools',
+    'subtitle': 'Token usage, cache reuse, trend volatility, and estimated price consumption',
+    'tab.summary': 'Summary',
+    'tab.trends': 'Trends',
+    'tab.breakdown': 'Breakdown',
+    'tab.sessions': 'Sessions',
     'fallback.unknown': 'unknown',
-    'fallback.unpriced': 'unpriced',
-    'empty.loading': 'Loading token analytics...',
-    'empty.breakdownLoading': 'Loading usage breakdown...',
-    'empty.breakdownNone': 'No usage rows match the current scope',
-    'empty.none': 'No token usage indexed yet',
     'error.title': 'Token analytics failed to load'
   },
   'zh-CN': {
     'title': 'Token',
-    'subtitle': '独立查看 Token 用量、缓存复用和预估价格消耗',
-    'action.refresh': '刷新',
-    'metric.totalTokens': '总 Token',
-    'metric.totalTokensNote': '已索引 {count} 个会话',
-    'metric.cacheRate': '缓存利用率',
-    'metric.cacheRateNote': '{count} 个缓存输入 Token',
-    'metric.cost': '预估费用',
-    'metric.costNoteCovered': '已索引用量均有价格覆盖',
-    'metric.costNoteMissing': '{count} 条用量缺少价格',
-    'metric.inputOutput': '输入 / 输出',
-    'metric.inputOutputNote': '提示词和响应规模',
-    'breakdown.title': 'Token 构成',
-    'breakdown.kicker': '输入、缓存输入、输出和推理 Token 总数',
-    'usage.title': '用量拆分',
-    'usage.kicker': '按当前范围分组的 Token 用量',
-    'group.global': '全局',
-    'group.agent': '来源',
-    'group.model': '模型',
-    'group.agentModel': '来源 + 模型',
-    'group.day': '日期',
-    'group.project': '项目',
-    'token.input': '输入',
-    'token.cached': '缓存',
-    'token.output': '输出',
-    'token.reasoning': '推理',
-    'model.title': '模型拆分',
-    'model.kicker': '按模型展示 Token 和费用分布',
-    'agent.title': '来源拆分',
-    'agent.kicker': '按本地来源实例展示 Token 和费用分布',
-    'sessions.title': '高 Token 会话',
-    'sessions.kicker': '按总 Token 用量排序的会话',
-    'column.model': '模型',
-    'column.agent': '来源',
-    'column.session': '会话',
-    'column.project': '项目',
-    'column.started': '开始',
-    'column.sessions': '会话',
-    'column.tokens': 'Token',
-    'column.input': '输入',
-    'column.cached': '缓存',
-    'column.output': '输出',
-    'column.reasoning': '推理',
-    'column.cacheRate': '缓存',
-    'column.cost': '费用',
-    'column.tools': '工具',
+    'subtitle': '查看 Token 用量、缓存复用、趋势波动和预估价格消耗',
+    'tab.summary': '汇总',
+    'tab.trends': '趋势',
+    'tab.breakdown': '拆分',
+    'tab.sessions': '会话',
     'fallback.unknown': '未知',
-    'fallback.unpriced': '未定价',
-    'empty.loading': '正在加载 Token 分析...',
-    'empty.breakdownLoading': '正在加载用量拆分...',
-    'empty.breakdownNone': '没有用量行符合当前范围',
-    'empty.none': '暂无已索引 Token 用量',
     'error.title': 'Token 分析加载失败'
   }
 })
 
-const tokenMix = computed(() => {
-  const item = analytics.value
-  const values = [
-    { key: 'input', label: t('token.input'), value: item?.totalInputTokens || 0, tone: 'is-input' },
-    { key: 'cached', label: t('token.cached'), value: item?.totalCachedInputTokens || 0, tone: 'is-cached' },
-    { key: 'output', label: t('token.output'), value: item?.totalOutputTokens || 0, tone: 'is-output' },
-    { key: 'reasoning', label: t('token.reasoning'), value: item?.totalReasoningTokens || 0, tone: 'is-reasoning' }
-  ]
-  const total = values.reduce((sum, current) => sum + Math.max(current.value, 0), 0)
-  return values.map((current) => ({
-    ...current,
-    display: formatDisplayNumber(current.value),
-    share: total > 0 ? current.value / total : 0
-  }))
-})
+const tabs = computed(() => [
+  { key: 'summary', label: t('tab.summary'), path: tokenPath('/tokens'), icon: DatabaseOutlined },
+  { key: 'trends', label: t('tab.trends'), path: tokenPath('/tokens/trends'), icon: LineChartOutlined },
+  { key: 'breakdown', label: t('tab.breakdown'), path: tokenPath('/tokens/breakdown', true), icon: BarChartOutlined },
+  { key: 'sessions', label: t('tab.sessions'), path: tokenPath('/tokens/sessions'), icon: HistoryOutlined }
+])
 
-const cacheRatePercent = computed(() => Math.round(Math.max(0, analytics.value?.cacheUtilizationRate || 0) * 100))
-const metricCards = computed(() => {
-  const item = analytics.value
-  return [
-    {
-      label: t('metric.totalTokens'),
-      value: formatDisplayNumber(item?.totalTokens),
-      note: t('metric.totalTokensNote', { count: formatDisplayNumber(item?.totalSessions).main }),
-      icon: DatabaseOutlined,
-      tone: 'metric-primary'
-    },
-    {
-      label: t('metric.cacheRate'),
-      value: { main: `${cacheRatePercent.value}%`, full: `${cacheRatePercent.value}%`, suffix: '' },
-      note: t('metric.cacheRateNote', { count: formatDisplayNumber(item?.totalCachedInputTokens).main }),
-      icon: CheckCircleOutlined,
-      tone: 'metric-success'
-    },
-    {
-      label: t('metric.cost'),
-      value: formatDisplayCost(item?.estimatedCostUsd),
-      note: item?.unpricedCount ? t('metric.costNoteMissing', { count: formatDisplayNumber(item.unpricedCount).main }) : t('metric.costNoteCovered'),
-      icon: item?.unpricedCount ? WarningOutlined : DollarCircleOutlined,
-      tone: item?.unpricedCount ? 'metric-warning' : 'metric-info'
-    },
-    {
-      label: t('metric.inputOutput'),
-      value: displayPair(item?.totalInputTokens, item?.totalOutputTokens),
-      note: t('metric.inputOutputNote'),
-      icon: TableOutlined,
-      tone: 'metric-neutral'
-    }
-  ]
+const activeKey = computed(() => {
+  if (route.path.startsWith('/tokens/trends')) return 'trends'
+  if (route.path.startsWith('/tokens/breakdown')) return 'breakdown'
+  if (route.path.startsWith('/tokens/sessions')) return 'sessions'
+  return 'summary'
 })
 
 const agentOptions = computed(() =>
@@ -256,79 +114,50 @@ const modelOptions = computed(() =>
   })
 )
 
-const breakdownGroupOptions = computed(() => [
-  { value: 'global', label: t('group.global') },
-  { value: 'agent', label: t('group.agent') },
-  { value: 'model', label: t('group.model') },
-  { value: 'agent,model', label: t('group.agentModel') },
-  { value: 'project', label: t('group.project') },
-  { value: 'day', label: t('group.day') }
-])
+const projectOptions = computed(() =>
+  buildUsageProjectOptions({
+    projects: [
+      projectOptionRows.value,
+      analytics.value?.recentSessions,
+      optionOverview.value?.recentSessions,
+      analytics.value?.highTokenSessions,
+      optionOverview.value?.slowSessions
+    ],
+    selected: scope.filters.value.project,
+    fallback: t('fallback.unknown')
+  })
+)
 
-const breakdownColumns = computed(() => [
-  { title: breakdownScopeColumnTitle.value, dataIndex: 'sourceLabel', key: 'scope', width: 280 },
-  { title: t('column.sessions'), dataIndex: 'sessionCount', key: 'sessions', width: 90, align: 'right' },
-  { title: t('column.tokens'), dataIndex: 'totalTokens', key: 'tokens', width: 120, align: 'right' },
-  { title: t('column.input'), dataIndex: 'inputTokens', key: 'input', width: 110, align: 'right' },
-  { title: t('column.cached'), dataIndex: 'cachedInputTokens', key: 'cached', width: 110, align: 'right' },
-  { title: t('column.output'), dataIndex: 'outputTokens', key: 'output', width: 110, align: 'right' },
-  { title: t('column.reasoning'), dataIndex: 'reasoningOutputTokens', key: 'reasoning', width: 110, align: 'right' },
-  { title: t('column.cacheRate'), dataIndex: 'cacheUtilizationRate', key: 'cacheRate', width: 100, align: 'right' },
-  { title: t('column.cost'), dataIndex: 'estimatedCostUsd', key: 'cost', width: 110, align: 'right' }
-])
-
-const breakdownScopeColumnTitle = computed(() => {
-  if (breakdownGroup.value === 'agent') return t('column.agent')
-  if (breakdownGroup.value === 'model') return t('column.model')
-  if (breakdownGroup.value === 'day') return t('group.day')
-  if (breakdownGroup.value === 'project') return t('column.project')
-  if (breakdownGroup.value === 'agent,model') return t('group.agentModel')
-  return t('group.global')
-})
-
-const modelColumns = computed(() => [
-  { title: t('column.model'), dataIndex: 'model', key: 'model' },
-  { title: t('column.sessions'), dataIndex: 'sessionCount', key: 'sessions', width: 90, align: 'right' },
-  { title: t('column.tokens'), dataIndex: 'totalTokens', key: 'tokens', width: 120, align: 'right' },
-  { title: t('column.cached'), dataIndex: 'cachedInputTokens', key: 'cached', width: 110, align: 'right' },
-  { title: t('column.reasoning'), dataIndex: 'reasoningOutputTokens', key: 'reasoning', width: 110, align: 'right' },
-  { title: t('column.cost'), dataIndex: 'estimatedCostUsd', key: 'cost', width: 110, align: 'right' }
-])
-const agentColumns = computed(() => [
-  { title: t('column.agent'), dataIndex: 'sourceLabel', key: 'agent' },
-  { title: t('column.sessions'), dataIndex: 'sessionCount', key: 'sessions', width: 90, align: 'right' },
-  { title: t('column.tokens'), dataIndex: 'totalTokens', key: 'tokens', width: 120, align: 'right' },
-  { title: t('column.cached'), dataIndex: 'cachedInputTokens', key: 'cached', width: 110, align: 'right' },
-  { title: t('column.tools'), dataIndex: 'toolCalls', key: 'tools', width: 90, align: 'right' },
-  { title: t('column.cost'), dataIndex: 'estimatedCostUsd', key: 'cost', width: 110, align: 'right' }
-])
-const sessionColumns = computed(() => [
-  { title: t('column.session'), dataIndex: 'sessionKey', key: 'session', width: 220 },
-  { title: t('column.project'), dataIndex: 'projectPath', key: 'project' },
-  { title: t('column.started'), dataIndex: 'startedAt', key: 'started', width: 140 },
-  { title: t('column.tokens'), dataIndex: ['tokenUsage', 'totalTokens'], key: 'tokens', width: 120, align: 'right' },
-  { title: t('column.cost'), dataIndex: 'estimatedCostUsd', key: 'cost', width: 110, align: 'right' }
-])
-const tableLocale = computed(() => ({ emptyText: loading.value ? t('empty.loading') : t('empty.none') }))
-const breakdownTableLocale = computed(() => ({
-  emptyText: loading.value ? t('empty.breakdownLoading') : t('empty.breakdownNone')
-}))
+function tokenPath(path: string, keepBreakdownGroup = false) {
+  const query = applyUsageScopeToQuery(route.query, scope.filters.value, {
+    groupBy: keepBreakdownGroup && breakdownGroup.value !== DEFAULT_BREAKDOWN_GROUP ? breakdownGroup.value : undefined
+  })
+  const params = new URLSearchParams(query)
+  const encoded = params.toString()
+  return encoded ? `${path}?${encoded}` : path
+}
 
 function load() {
+  const requestId = ++loadRequestId
   return resource.run(async () => {
     const filters = scope.apiFilters.value
-    const [nextAnalytics, nextOptionOverview] = await Promise.all([
+    const [nextAnalytics, nextOptionOverview, projectBreakdown] = await Promise.all([
       api.getTokenAnalytics(filters),
-      api.getOverview()
+      api.getOverview(),
+      api.getUsageBreakdown({ groupBy: 'project' }).catch(() => null)
     ])
-    optionOverview.value = nextOptionOverview
-    breakdownRows.value = await loadBreakdownRows(nextAnalytics, filters)
+    const nextBreakdownRows = await loadBreakdownRows(nextAnalytics, filters)
+    if (requestId === loadRequestId) {
+      optionOverview.value = nextOptionOverview
+      projectOptionRows.value = projectBreakdown?.buckets || []
+      breakdownRows.value = nextBreakdownRows
+    }
     return nextAnalytics
   }, { onErrorData: null })
 }
 
 async function loadBreakdownRows(item: TokenAnalytics, filters: UsageScopeFilters) {
-  if (breakdownGroup.value === 'global') return [globalBreakdownRow(item)]
+  if (breakdownGroup.value === DEFAULT_BREAKDOWN_GROUP) return [globalBreakdownRow(item)]
   const breakdown = await api.getUsageBreakdown({
     ...filters,
     groupBy: breakdownGroup.value
@@ -383,104 +212,10 @@ function routeBreakdownGroup(): TokenBreakdownGroup {
 }
 
 function normalizeBreakdownGroup(value: unknown): TokenBreakdownGroup {
-  if (value === 'agent' || value === 'model' || value === 'agent,model' || value === 'day' || value === 'project') return value
+  if (value === 'agent' || value === 'model' || value === 'agent,model' || value === 'day' || value === 'project') {
+    return value as UsageBreakdownGroupBy
+  }
   return DEFAULT_BREAKDOWN_GROUP
-}
-
-function rowClass(record: ModelUsage | AgentUsage) {
-  return { class: record.unpriced ? 'is-unpriced-row' : '' }
-}
-
-function breakdownRowClass(record: UsageBreakdownBucket) {
-  return { class: record.unpriced ? 'is-unpriced-row' : '' }
-}
-
-function sessionRow(record: Session) {
-  return { class: 'is-clickable-row', onClick: () => router.push(`/sessions/${record.id}`) }
-}
-
-function mixWidth(share: number) {
-  if (!Number.isFinite(share) || share <= 0) return '0%'
-  return `${Math.max(2, Math.round(share * 100))}%`
-}
-
-function mixPercent(share: number) {
-  if (!Number.isFinite(share) || share <= 0) return '0%'
-  if (share < 0.01) return '<1%'
-  return `${Math.round(share * 100)}%`
-}
-
-function displayPair(left: number | undefined, right: number | undefined) {
-  const leftDisplay = formatDisplayNumber(left)
-  const rightDisplay = formatDisplayNumber(right)
-  return {
-    main: `${leftDisplay.main} / ${rightDisplay.main}`,
-    suffix: '',
-    full: `${leftDisplay.full} / ${rightDisplay.full}`
-  }
-}
-
-function formatRate(value: number | undefined) {
-  if (!Number.isFinite(value)) return '0%'
-  return `${Math.round(Math.max(0, value || 0) * 100)}%`
-}
-
-function modelName(record: ModelUsage) {
-  return record.model || t('fallback.unknown')
-}
-
-function sourceInfo(record: AgentUsage | Session) {
-  return sourceDisplay(record, t('fallback.unknown'))
-}
-
-function sessionProject(record: Session) {
-  return projectDisplay(record.projectPath || record.rawSourcePath)
-}
-
-function breakdownScope(record: UsageBreakdownBucket) {
-  if (breakdownGroup.value === 'global') {
-    return { label: t('group.global'), secondary: '', title: t('group.global') }
-  }
-  if (breakdownGroup.value === 'model') {
-    const label = record.model || t('fallback.unknown')
-    return { label, secondary: '', title: label }
-  }
-  if (breakdownGroup.value === 'day') {
-    const label = record.date || t('fallback.unknown')
-    return { label, secondary: '', title: label }
-  }
-  if (breakdownGroup.value === 'project') {
-    const project = projectDisplay(record.projectPath)
-    return {
-      label: project.main,
-      secondary: project.collapsed ? project.full : '',
-      title: project.full
-    }
-  }
-  const source = sourceDisplay(record, t('fallback.unknown'))
-  if (breakdownGroup.value === 'agent,model') {
-    const model = record.model || t('fallback.unknown')
-    return {
-      label: source.label,
-      secondary: [model, source.secondary].filter(Boolean).join(' · '),
-      title: [source.title, model].filter(Boolean).join('\n')
-    }
-  }
-  return source
-}
-
-function breakdownRowKey(record: UsageBreakdownBucket) {
-  return [
-    breakdownGroup.value,
-    record.date,
-    record.model,
-    record.projectPath,
-    sourceInstanceKey(record)
-  ].filter(Boolean).join(':')
-}
-
-function agentRowKey(record: AgentUsage) {
-  return sourceInstanceKey(record, t('fallback.unknown'))
 }
 
 watch(
@@ -491,6 +226,24 @@ watch(
     void load()
   }
 )
+
+const context: TokensContext = {
+  analytics,
+  optionOverview,
+  loading,
+  error,
+  breakdownRows,
+  breakdownGroup,
+  agentOptions,
+  modelOptions,
+  projectOptions,
+  load,
+  updateScopeFilters,
+  clearScopeFilters,
+  updateBreakdownGroup
+}
+
+provide(tokensContextKey, context)
 
 onMounted(load)
 </script>
@@ -503,11 +256,14 @@ onMounted(load)
       :filters="scope.filters.value"
       :agent-options="agentOptions"
       :model-options="modelOptions"
+      :project-options="projectOptions"
       :loading="loading"
       @update:filters="updateScopeFilters"
       @refresh="load"
       @clear="clearScopeFilters"
     />
+
+    <PageTabs class="tokens-subnav" :tabs="tabs" :active-key="activeKey" />
 
     <a-alert
       v-if="error"
@@ -518,199 +274,7 @@ onMounted(load)
       :description="error"
     />
 
-    <a-spin :spinning="loading">
-      <div class="section-stack">
-        <section class="metric-strip tokens-metric-strip">
-          <div v-for="item in metricCards" :key="item.label" class="metric-strip-item" :class="item.tone">
-            <div class="metric-strip-head">
-              <span class="metric-label">{{ item.label }}</span>
-              <span class="metric-strip-icon">
-                <component :is="item.icon" />
-              </span>
-            </div>
-            <div class="metric-strip-value" :title="item.value.full">{{ item.value.main }}</div>
-            <div class="metric-strip-note">{{ item.note }}</div>
-          </div>
-        </section>
-
-        <section class="panel tokens-mix-panel">
-          <div class="panel-header">
-            <div>
-              <h2 class="panel-title">{{ t('breakdown.title') }}</h2>
-              <div class="panel-kicker">{{ t('breakdown.kicker') }}</div>
-            </div>
-            <div class="tokens-cache-rate">
-              <span>{{ t('metric.cacheRate') }}</span>
-              <a-progress type="circle" :percent="cacheRatePercent" :size="58" />
-            </div>
-          </div>
-          <div class="tokens-mix-list">
-            <div v-for="item in tokenMix" :key="item.key" class="tokens-mix-item" :class="item.tone">
-              <div class="tokens-mix-row">
-                <span>{{ item.label }}</span>
-                <strong :title="item.display.full">{{ item.display.main }}</strong>
-              </div>
-              <div class="tokens-mix-meter">
-                <span :style="{ width: mixWidth(item.share) }"></span>
-              </div>
-              <div class="tokens-mix-share">{{ mixPercent(item.share) }}</div>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel tokens-usage-panel">
-          <div class="panel-header">
-            <div>
-              <h2 class="panel-title">{{ t('usage.title') }}</h2>
-              <div class="panel-kicker">{{ t('usage.kicker') }}</div>
-            </div>
-            <a-segmented
-              class="tokens-breakdown-segmented"
-              :value="breakdownGroup"
-              :options="breakdownGroupOptions"
-              @change="updateBreakdownGroup"
-            />
-          </div>
-          <a-table
-            class="dense-table"
-            :columns="breakdownColumns"
-            :data-source="breakdownRows"
-            :loading="loading"
-            :locale="breakdownTableLocale"
-            :pagination="{ pageSize: 12 }"
-            :row-key="breakdownRowKey"
-            size="small"
-            :custom-row="breakdownRowClass"
-            :scroll="{ x: 1160 }"
-          >
-            <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'scope'">
-                <span class="source-identity-name" :title="breakdownScope(record).title">{{ breakdownScope(record).label }}</span>
-                <div class="source-identity-meta" :title="breakdownScope(record).title">{{ breakdownScope(record).secondary || '-' }}</div>
-              </template>
-              <template v-else-if="column.key === 'sessions'"><span class="number-cell">{{ formatNumber(record.sessionCount) }}</span></template>
-              <template v-else-if="column.key === 'tokens'"><span class="number-cell">{{ formatNumber(record.totalTokens) }}</span></template>
-              <template v-else-if="column.key === 'input'"><span class="number-cell">{{ formatNumber(record.inputTokens) }}</span></template>
-              <template v-else-if="column.key === 'cached'"><span class="number-cell">{{ formatNumber(record.cachedInputTokens) }}</span></template>
-              <template v-else-if="column.key === 'output'"><span class="number-cell">{{ formatNumber(record.outputTokens) }}</span></template>
-              <template v-else-if="column.key === 'reasoning'"><span class="number-cell">{{ formatNumber(record.reasoningOutputTokens) }}</span></template>
-              <template v-else-if="column.key === 'cacheRate'"><span class="number-cell">{{ formatRate(record.cacheUtilizationRate) }}</span></template>
-              <template v-else-if="column.key === 'cost'">
-                <span class="number-cell">{{ formatCost(record.estimatedCostUsd) }}</span>
-                <a-tag v-if="record.unpriced" color="warning" class="model-status-tag">{{ t('fallback.unpriced') }}</a-tag>
-              </template>
-            </template>
-          </a-table>
-        </section>
-
-        <div class="tokens-breakdown-grid">
-          <section class="panel">
-            <div class="panel-header">
-              <div>
-                <h2 class="panel-title">{{ t('model.title') }}</h2>
-                <div class="panel-kicker">{{ t('model.kicker') }}</div>
-              </div>
-            </div>
-            <a-table
-              class="dense-table"
-              :columns="modelColumns"
-              :data-source="analytics?.modelUsage || []"
-              :loading="loading"
-              :locale="tableLocale"
-              :pagination="{ pageSize: 10 }"
-              row-key="model"
-              size="small"
-              :custom-row="rowClass"
-              :scroll="{ x: 760 }"
-            >
-              <template #bodyCell="{ column, record }">
-                <template v-if="column.key === 'model'">
-                  <span class="model-name">{{ modelName(record) }}</span>
-                  <a-tag v-if="record.unpriced" color="warning" class="model-status-tag">{{ t('fallback.unpriced') }}</a-tag>
-                </template>
-                <template v-else-if="column.key === 'sessions'"><span class="number-cell">{{ formatNumber(record.sessionCount) }}</span></template>
-                <template v-else-if="column.key === 'tokens'"><span class="number-cell">{{ formatNumber(record.totalTokens) }}</span></template>
-                <template v-else-if="column.key === 'cached'"><span class="number-cell">{{ formatNumber(record.cachedInputTokens) }}</span></template>
-                <template v-else-if="column.key === 'reasoning'"><span class="number-cell">{{ formatNumber(record.reasoningOutputTokens) }}</span></template>
-                <template v-else-if="column.key === 'cost'"><span class="number-cell">{{ formatCost(record.estimatedCostUsd) }}</span></template>
-              </template>
-            </a-table>
-          </section>
-
-          <section class="panel">
-            <div class="panel-header">
-              <div>
-                <h2 class="panel-title">{{ t('agent.title') }}</h2>
-                <div class="panel-kicker">{{ t('agent.kicker') }}</div>
-              </div>
-            </div>
-            <a-table
-              class="dense-table"
-              :columns="agentColumns"
-              :data-source="analytics?.agentUsage || []"
-              :loading="loading"
-              :locale="tableLocale"
-              :pagination="{ pageSize: 10 }"
-              :row-key="agentRowKey"
-              size="small"
-              :custom-row="rowClass"
-              :scroll="{ x: 760 }"
-            >
-              <template #bodyCell="{ column, record }">
-                <template v-if="column.key === 'agent'">
-                  <span class="source-identity-name">{{ sourceInfo(record).label }}</span>
-                  <div class="source-identity-meta">{{ sourceInfo(record).secondary || '-' }}</div>
-                </template>
-                <template v-else-if="column.key === 'sessions'"><span class="number-cell">{{ formatNumber(record.sessionCount) }}</span></template>
-                <template v-else-if="column.key === 'tokens'"><span class="number-cell">{{ formatNumber(record.totalTokens) }}</span></template>
-                <template v-else-if="column.key === 'cached'"><span class="number-cell">{{ formatNumber(record.cachedInputTokens) }}</span></template>
-                <template v-else-if="column.key === 'tools'"><span class="number-cell">{{ formatNumber(record.toolCalls) }}</span></template>
-                <template v-else-if="column.key === 'cost'"><span class="number-cell">{{ formatCost(record.estimatedCostUsd) }}</span></template>
-              </template>
-            </a-table>
-          </section>
-        </div>
-
-        <section class="panel">
-          <div class="panel-header">
-            <div>
-              <h2 class="panel-title">{{ t('sessions.title') }}</h2>
-              <div class="panel-kicker">{{ t('sessions.kicker') }}</div>
-            </div>
-            <HistoryOutlined class="panel-header-icon" />
-          </div>
-          <a-table
-            class="dense-table"
-            :columns="sessionColumns"
-            :data-source="analytics?.highTokenSessions || []"
-            :loading="loading"
-            :locale="tableLocale"
-            :pagination="{ pageSize: 10 }"
-            row-key="id"
-            size="small"
-            :custom-row="sessionRow"
-            :scroll="{ x: 900 }"
-          >
-            <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'session'">
-                <a-typography-text class="mono" :ellipsis="{ tooltip: sessionFullLabel(record) }">
-                  {{ sessionLabel(record) }}
-                </a-typography-text>
-                <div class="source-identity-meta">{{ sourceInfo(record).label }}</div>
-              </template>
-              <template v-else-if="column.key === 'project'">
-                <a-typography-text :ellipsis="{ tooltip: sessionProject(record).full }">
-                  {{ sessionProject(record).main }}
-                </a-typography-text>
-              </template>
-              <template v-else-if="column.key === 'started'">{{ formatDateTime(record.startedAt) }}</template>
-              <template v-else-if="column.key === 'tokens'"><span class="number-cell">{{ formatNumber(record.tokenUsage.totalTokens) }}</span></template>
-              <template v-else-if="column.key === 'cost'"><span class="number-cell">{{ formatCost(record.estimatedCostUsd) }}</span></template>
-            </template>
-          </a-table>
-        </section>
-      </div>
-    </a-spin>
+    <RouterView />
   </div>
 </template>
 
@@ -723,115 +287,7 @@ onMounted(load)
   margin-bottom: var(--am-section-gap);
 }
 
-.tokens-metric-strip {
-  grid-template-columns: repeat(4, minmax(160px, 1fr));
-}
-
-.tokens-cache-rate {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--am-muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.tokens-mix-list {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.tokens-mix-item {
-  --token-accent: var(--am-primary);
-  padding: 12px;
-  background: var(--am-surface-subtle);
-  border: 1px solid var(--am-border-subtle);
-  border-radius: var(--am-radius-sm);
-}
-
-.tokens-mix-item.is-input {
-  --token-accent: var(--am-success);
-}
-
-.tokens-mix-item.is-cached {
-  --token-accent: var(--am-primary);
-}
-
-.tokens-mix-item.is-output {
-  --token-accent: var(--am-info);
-}
-
-.tokens-mix-item.is-reasoning {
-  --token-accent: var(--am-warning);
-}
-
-.tokens-mix-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.tokens-mix-row span,
-.tokens-mix-share {
-  color: var(--am-muted);
-  font-size: 12px;
-}
-
-.tokens-mix-row strong {
-  color: var(--am-text);
-  font-size: 16px;
-  font-variant-numeric: tabular-nums;
-}
-
-.tokens-mix-meter {
-  height: 8px;
-  margin-top: 10px;
-  overflow: hidden;
-  background: var(--am-border-subtle);
-  border-radius: 999px;
-}
-
-.tokens-mix-meter span {
-  display: block;
-  height: 100%;
-  background: var(--token-accent);
-}
-
-.tokens-mix-share {
-  margin-top: 6px;
-}
-
-.tokens-usage-panel .panel-header {
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.tokens-breakdown-segmented {
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-.tokens-breakdown-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--am-section-gap);
-}
-
-@media (max-width: 1200px) {
-  .tokens-metric-strip,
-  .tokens-mix-list,
-  .tokens-breakdown-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 760px) {
-  .tokens-metric-strip,
-  .tokens-mix-list,
-  .tokens-breakdown-grid {
-    grid-template-columns: 1fr;
-  }
+.tokens-subnav {
+  margin-bottom: var(--am-section-gap);
 }
 </style>

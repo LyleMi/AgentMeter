@@ -603,6 +603,60 @@ func TestOverviewDailyUsageIncludesCachedInputAndCacheRate(t *testing.T) {
 	}
 }
 
+func TestCacheHitTrendScopesProjectFillsGapsAndWeightsByInput(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 25, 1, 2, 3, 0, time.UTC)
+	sourceID := insertTimeSource(t, conn, "codex", "Codex", now)
+	apiFirst := insertTokenAnalyticsSession(t, conn, sourceID, now, "api-first", "gpt-5", "gpt-5", "actual", 10_000, 1_000, 2_000, 0, 12_000)
+	apiTiny := insertTokenAnalyticsSession(t, conn, sourceID, now.Add(48*time.Hour), "api-tiny", "gpt-5", "gpt-5", "actual", 100, 100, 20, 0, 120)
+	webSession := insertTokenAnalyticsSession(t, conn, sourceID, now.Add(48*time.Hour), "web", "gpt-5", "gpt-5", "actual", 50_000, 10_000, 3_000, 0, 53_000)
+	setSessionProjectPath(t, conn, apiFirst, "/workspace/api")
+	setSessionProjectPath(t, conn, apiTiny, "/workspace/api/.")
+	setSessionProjectPath(t, conn, webSession, "/workspace/web")
+
+	service := New(conn)
+	analytics, err := service.TokenAnalyticsWithFilters(ctx, model.AnalyticsFilters{Project: "/workspace/api"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if analytics.TotalSessions != 2 || analytics.TotalInputTokens != 10_100 || analytics.TotalCachedInputTokens != 1_100 {
+		t.Fatalf("project-scoped token analytics = %+v", analytics)
+	}
+	if len(analytics.CacheHitTrend) != 3 {
+		t.Fatalf("cache hit trend = %+v", analytics.CacheHitTrend)
+	}
+	firstDay := analytics.CacheHitTrend[0]
+	if firstDay.Date != "2026-06-25" || !firstDay.HasUsage || firstDay.LowInputVolume || math.Abs(firstDay.CacheUtilizationRate-0.1) > 0.000001 {
+		t.Fatalf("first trend point = %+v", firstDay)
+	}
+	gapDay := analytics.CacheHitTrend[1]
+	if gapDay.Date != "2026-06-26" || gapDay.HasUsage || gapDay.InputTokens != 0 || math.Abs(gapDay.RollingCacheUtilizationRate-0.1) > 0.000001 {
+		t.Fatalf("gap trend point = %+v", gapDay)
+	}
+	tinyDay := analytics.CacheHitTrend[2]
+	if tinyDay.Date != "2026-06-27" || !tinyDay.HasUsage || !tinyDay.LowInputVolume || math.Abs(tinyDay.CacheUtilizationRate-1) > 0.000001 {
+		t.Fatalf("tiny trend point = %+v", tinyDay)
+	}
+	weighted := float64(1_100) / float64(10_100)
+	if math.Abs(tinyDay.RollingCacheUtilizationRate-weighted) > 0.000001 {
+		t.Fatalf("weighted rolling cache utilization = %f, want %f", tinyDay.RollingCacheUtilizationRate, weighted)
+	}
+
+	overview, err := service.OverviewWithFilters(ctx, model.AnalyticsFilters{Project: "/workspace/api"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if overview.TotalSessions != 2 || len(overview.CacheHitTrend) != 3 {
+		t.Fatalf("project-scoped overview trend = %+v", overview)
+	}
+}
+
 func TestOverviewPricingIgnoresZeroTokenUnknownUsage(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
@@ -911,8 +965,9 @@ func TestUsageBreakdownGroupsByProject(t *testing.T) {
 	assertCostUSD(t, cliBucket.EstimatedCostUSD, 0.6025)
 
 	filtered, err := New(conn).UsageBreakdown(ctx, "project", model.AnalyticsFilters{
-		Agent: sourceInstanceKey(codexSourceID),
-		Model: "gpt-5",
+		Agent:   sourceInstanceKey(codexSourceID),
+		Model:   "gpt-5",
+		Project: "/workspace/api",
 	})
 	if err != nil {
 		t.Fatal(err)
