@@ -196,11 +196,26 @@ onBeforeUnmount(() => {
     :locale="antDesignLocale"
     :theme="{
       token: {
-        colorPrimary: '#285957',
-        colorInfo: '#5b5f97',
-        colorSuccess: '#2f7d51',
-        colorWarning: '#a96619',
-        colorError: '#b42318',
+        colorPrimary: '#2563eb',
+        colorPrimaryHover: '#1d4ed8',
+        colorPrimaryActive: '#1e40af',
+        colorInfo: '#0891b2',
+        colorSuccess: '#0f766e',
+        colorWarning: '#b45309',
+        colorError: '#dc2626',
+        colorLink: '#2563eb',
+        colorText: '#0f172a',
+        colorTextSecondary: '#64748b',
+        colorTextTertiary: '#94a3b8',
+        colorBgBase: '#f8fbff',
+        colorBgLayout: '#f3f8ff',
+        colorBgContainer: '#ffffff',
+        colorBgElevated: '#ffffff',
+        colorBorder: '#cfe0f5',
+        colorBorderSecondary: '#e5eef9',
+        colorFillSecondary: '#eef6ff',
+        colorFillTertiary: '#f6faff',
+        colorSplit: '#dbeafe',
         borderRadius: 8,
         fontFamily:
           'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif'

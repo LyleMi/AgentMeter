@@ -769,7 +769,7 @@ onMounted(load)
   height: 8px;
   margin-top: 10px;
   overflow: hidden;
-  background: #e5e7eb;
+  background: var(--am-border-subtle);
   border-radius: 999px;
 }
 

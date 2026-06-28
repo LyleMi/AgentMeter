@@ -439,7 +439,7 @@ onMounted(load)
   line-height: 18px;
   white-space: pre-wrap;
   word-break: break-word;
-  background: #ffffff;
+  background: var(--am-surface);
   border: 1px solid var(--am-border-subtle);
   border-radius: var(--am-radius-sm);
 }

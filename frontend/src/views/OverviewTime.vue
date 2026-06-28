@@ -704,7 +704,7 @@ onMounted(load)
 }
 
 .overview-time-bar-segment + .overview-time-bar-segment {
-  border-left: 1px solid rgb(255 255 255 / 76%);
+  border-left: 1px solid var(--am-surface);
 }
 
 .overview-time-segments {

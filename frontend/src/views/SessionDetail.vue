@@ -1095,19 +1095,19 @@ onMounted(load)
 .timing-dot-model,
 .timing-composition-model,
 .timing-row-bar-model {
-  background: #1677ff;
+  background: var(--am-primary);
 }
 
 .timing-dot-tool,
 .timing-composition-tool,
 .timing-row-bar-tool {
-  background: #722ed1;
+  background: var(--am-info);
 }
 
 .timing-dot-idle,
 .timing-composition-idle,
 .timing-row-bar-gap {
-  background: #d9d9d9;
+  background: var(--am-border-subtle);
 }
 
 .timing-composition-track {

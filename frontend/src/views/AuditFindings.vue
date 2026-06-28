@@ -563,8 +563,8 @@ onMounted(load)
 }
 
 .audit-command {
-  color: #1e293b;
-  background: #ffffff;
+  color: var(--am-text);
+  background: var(--am-surface);
 }
 
 .audit-session-link {
