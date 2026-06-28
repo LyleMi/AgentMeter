@@ -9,9 +9,12 @@ import ATag from 'ant-design-vue/es/tag'
 import ATooltip from 'ant-design-vue/es/tooltip'
 import Typography from 'ant-design-vue/es/typography'
 import { ArrowRightOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
-import { api, formatCost, formatDateTime, formatDuration, formatNumber, sessionLabel, shortPath, type Session } from '../api'
+import { api } from '../api/client'
+import type { Session } from '../api/types'
 import PageHeader from '../components/PageHeader.vue'
+import { useAsyncResource } from '../composables/useAsyncResource'
 import { useMessages } from '../i18n'
+import { formatCost, formatDateTime, formatDuration, formatNumber, sessionLabel, shortPath } from '../presentation/formatters'
 import { statusClass, statusColor } from '../presentation/status'
 
 const ATable = AntTable as unknown as DefineComponent
@@ -78,9 +81,13 @@ const { t } = useMessages({
     'tooltip.openSession': '打开会话'
   }
 })
-const loading = ref(false)
-const sessions = ref<Session[]>([])
-const catalogSessions = ref<Session[]>([])
+const sessionRows = useAsyncResource<{ sessions: Session[]; catalogSessions: Session[] }>({
+  sessions: [],
+  catalogSessions: []
+})
+const loading = sessionRows.loading
+const sessions = computed(() => sessionRows.data.value.sessions)
+const catalogSessions = computed(() => sessionRows.data.value.catalogSessions)
 const search = ref('')
 const model = ref<string | undefined>()
 const agent = ref<string | undefined>()
@@ -129,17 +136,13 @@ const emptyText = computed(() => {
 })
 
 async function load() {
-  loading.value = true
-  try {
+  await sessionRows.run(async () => {
     const filters = { search: search.value.trim() || undefined, model: model.value, agent: agent.value, limit: 300 }
     const filtered = api.listSessions(filters)
     const catalog = hasActiveFilters.value ? api.listSessions({ limit: 300 }) : filtered
     const [nextSessions, nextCatalog] = await Promise.all([filtered, catalog])
-    sessions.value = nextSessions || []
-    catalogSessions.value = nextCatalog || []
-  } finally {
-    loading.value = false
-  }
+    return { sessions: nextSessions || [], catalogSessions: nextCatalog || [] }
+  })
 }
 
 function resetFilters() {

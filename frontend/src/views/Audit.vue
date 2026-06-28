@@ -18,9 +18,12 @@ import {
   SearchOutlined,
   WarningOutlined
 } from '@ant-design/icons-vue'
-import { api, formatDateTime, formatNumber, shortPath, type AuditFinding, type AuditSummary } from '../api'
+import { api } from '../api/client'
+import type { AuditFinding, AuditSummary } from '../api/types'
 import PageHeader from '../components/PageHeader.vue'
+import { useAsyncResource } from '../composables/useAsyncResource'
 import { useMessages } from '../i18n'
+import { formatDateTime, formatNumber, shortPath } from '../presentation/formatters'
 
 const ATable = AntTable as unknown as DefineComponent
 const ATypographyText = Typography.Text
@@ -145,10 +148,14 @@ const { t } = useMessages({
   }
 })
 
-const loading = ref(false)
-const summary = ref<AuditSummary | null>(null)
-const findings = ref<AuditFinding[]>([])
-const error = ref('')
+const auditRows = useAsyncResource<{ summary: AuditSummary | null; findings: AuditFinding[] }>({
+  summary: null,
+  findings: []
+})
+const loading = auditRows.loading
+const summary = computed(() => auditRows.data.value.summary)
+const findings = computed(() => auditRows.data.value.findings)
+const error = auditRows.error
 const categoryFilter = ref<string | undefined>()
 const severityFilter = ref<string | undefined>()
 const shellFilter = ref<string | undefined>()
@@ -256,34 +263,26 @@ function currentFindingFilters() {
 }
 
 async function load() {
-  loading.value = true
-  error.value = ''
-  try {
-    const [nextSummary, nextFindings] = await Promise.all([
-      api.getAuditSummary(),
-      api.listAuditFindings(currentFindingFilters())
-    ])
-    summary.value = nextSummary
-    findings.value = nextFindings || []
-  } catch (loadError) {
-    error.value = loadError instanceof Error ? loadError.message : String(loadError)
-    findings.value = []
-  } finally {
-    loading.value = false
-  }
+  await auditRows.run(
+    async () => {
+      const [nextSummary, nextFindings] = await Promise.all([
+        api.getAuditSummary(),
+        api.listAuditFindings(currentFindingFilters())
+      ])
+      return { summary: nextSummary, findings: nextFindings || [] }
+    },
+    { onErrorData: { summary: null, findings: [] } }
+  )
 }
 
 async function loadFindings() {
-  loading.value = true
-  error.value = ''
-  try {
-    findings.value = (await api.listAuditFindings(currentFindingFilters())) || []
-  } catch (loadError) {
-    error.value = loadError instanceof Error ? loadError.message : String(loadError)
-    findings.value = []
-  } finally {
-    loading.value = false
-  }
+  await auditRows.run(
+    async () => ({
+      summary: summary.value,
+      findings: (await api.listAuditFindings(currentFindingFilters())) || []
+    }),
+    { onErrorData: () => ({ summary: summary.value, findings: [] }) }
+  )
 }
 
 function resetFilters() {
