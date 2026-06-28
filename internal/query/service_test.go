@@ -280,6 +280,63 @@ func TestTokenAnalyticsAggregatesUsageCostsAndSessions(t *testing.T) {
 	}
 }
 
+func TestTokenAnalyticsWithFiltersScopesTotalsAndSlices(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	codexSourceID := insertTimeSource(t, conn, "codex", "Codex", now)
+	claudeSourceID := insertTimeSource(t, conn, "claude", "Claude Code", now)
+
+	sessionA := insertTokenAnalyticsSession(t, conn, codexSourceID, now, "codex-a", "gpt-5", "gpt-5", "actual", 1_000, 200, 500, 50, 1_550)
+	insertTokenAnalyticsSession(t, conn, codexSourceID, now.Add(time.Hour), "codex-b", "unknown-model", "unknown-model", "actual", 100, 20, 30, 0, 130)
+	insertTokenAnalyticsSession(t, conn, claudeSourceID, now.Add(2*time.Hour), "claude-c", "gpt-5-mini", "gpt-5-mini", "actual", 500, 100, 250, 25, 775)
+
+	analytics, err := New(conn).TokenAnalyticsWithFilters(ctx, model.AnalyticsFilters{
+		Agent:       sourceInstanceKey(codexSourceID),
+		Model:       "gpt-5",
+		StartedFrom: db.FormatTime(now.Add(-time.Minute)),
+		StartedTo:   db.FormatTime(now.Add(30 * time.Minute)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if analytics.TotalSessions != 1 || analytics.TotalInputTokens != 1_000 || analytics.TotalCachedInputTokens != 200 ||
+		analytics.TotalOutputTokens != 500 || analytics.TotalReasoningTokens != 50 || analytics.TotalTokens != 1_550 {
+		t.Fatalf("filtered token analytics totals = %+v", analytics)
+	}
+	if math.Abs(analytics.CacheUtilizationRate-0.2) > 0.000001 {
+		t.Fatalf("filtered cache utilization = %f", analytics.CacheUtilizationRate)
+	}
+	if analytics.UnpricedCount != 0 || analytics.EstimatedCostUSD == nil {
+		t.Fatalf("filtered pricing = cost %v unpriced %d", analytics.EstimatedCostUSD, analytics.UnpricedCount)
+	}
+	if len(analytics.ModelUsage) != 1 || analytics.ModelUsage[0].Model != "gpt-5" {
+		t.Fatalf("filtered model usage = %+v", analytics.ModelUsage)
+	}
+	if len(analytics.AgentUsage) != 1 || analytics.AgentUsage[0].SourceID != codexSourceID {
+		t.Fatalf("filtered agent usage = %+v", analytics.AgentUsage)
+	}
+	if len(analytics.RecentSessions) != 1 || analytics.RecentSessions[0].ID != sessionA {
+		t.Fatalf("filtered recent sessions = %+v", analytics.RecentSessions)
+	}
+	if len(analytics.HighTokenSessions) != 1 || analytics.HighTokenSessions[0].ID != sessionA {
+		t.Fatalf("filtered high token sessions = %+v", analytics.HighTokenSessions)
+	}
+
+	empty, err := New(conn).TokenAnalyticsWithFilters(ctx, model.AnalyticsFilters{Agent: "source:not-a-number"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty.TotalSessions != 0 || empty.TotalTokens != 0 || len(empty.RecentSessions) != 0 {
+		t.Fatalf("invalid source filter should be empty, got %+v", empty)
+	}
+}
+
 func TestSourceInstanceAggregationAndFilters(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
@@ -339,6 +396,57 @@ func TestSourceInstanceAggregationAndFilters(t *testing.T) {
 	}
 }
 
+func TestOverviewWithFiltersScopesTotalsAndLists(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	codexSourceID := insertTimeSource(t, conn, "codex", "Codex", now)
+	claudeSourceID := insertTimeSource(t, conn, "claude", "Claude Code", now)
+
+	sessionA := insertOverviewTimeSession(t, conn, codexSourceID, now, "session-a", "gpt-5", 10_000, 7_000, 4_000, 2_000, 3_000, 1_000)
+	sessionB := insertOverviewTimeSession(t, conn, codexSourceID, now.Add(time.Minute), "session-b", "gpt-5", 20_000, 15_000, 10_000, 4_000, 5_000, 2_000)
+	sessionC := insertOverviewTimeSession(t, conn, claudeSourceID, now.Add(2*time.Minute), "session-c", "claude-sonnet", 15_000, 10_000, 8_000, 1_000, 5_000, 300)
+	insertOverviewToolCall(t, conn, sessionA, now, 1_200, "shell_command", "completed", "curl https://example.com")
+	insertOverviewToolCall(t, conn, sessionB, now.Add(time.Minute), 2_500, "web.run", "completed", "search latest docs")
+	insertOverviewToolCall(t, conn, sessionC, now.Add(2*time.Minute), 900, "Bash", "failed", "npm ci")
+
+	overview, err := New(conn).OverviewWithFilters(ctx, model.AnalyticsFilters{Agent: sourceInstanceKey(codexSourceID)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if overview.TotalSessions != 2 || overview.TotalTokens != 3_000 || overview.TotalWallDurationMS != 30_000 || overview.TotalToolCalls != 2 {
+		t.Fatalf("source filtered overview totals = %+v", overview)
+	}
+	if overview.SuspectedNetworkToolDurationMS != 3_700 || overview.SuspectedNetworkToolCalls != 2 {
+		t.Fatalf("source filtered network totals = duration %d calls %d", overview.SuspectedNetworkToolDurationMS, overview.SuspectedNetworkToolCalls)
+	}
+	if len(overview.RecentSessions) != 2 || overview.RecentSessions[0].ID != sessionB || overview.RecentSessions[1].ID != sessionA {
+		t.Fatalf("source filtered recent sessions = %+v", overview.RecentSessions)
+	}
+	if len(overview.SlowSessions) != 2 || overview.SlowSessions[0].ID != sessionB || overview.SlowSessions[1].ID != sessionA {
+		t.Fatalf("source filtered slow sessions = %+v", overview.SlowSessions)
+	}
+	if len(overview.DailyUsage) != 1 || overview.DailyUsage[0].SessionCount != 2 || overview.DailyUsage[0].TotalTokens != 3_000 {
+		t.Fatalf("source filtered daily usage = %+v", overview.DailyUsage)
+	}
+	if len(overview.AgentUsage) != 1 || overview.AgentUsage[0].SourceID != codexSourceID {
+		t.Fatalf("source filtered agent usage = %+v", overview.AgentUsage)
+	}
+
+	overview, err = New(conn).OverviewWithFilters(ctx, model.AnalyticsFilters{StartedFrom: db.FormatTime(now.Add(90 * time.Second))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if overview.TotalSessions != 1 || overview.TotalTokens != 300 || len(overview.RecentSessions) != 1 || overview.RecentSessions[0].ID != sessionC {
+		t.Fatalf("time filtered overview = %+v", overview)
+	}
+}
+
 func TestOverviewPricingIgnoresZeroTokenUnknownUsage(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
@@ -378,6 +486,73 @@ func TestOverviewPricingIgnoresZeroTokenUnknownUsage(t *testing.T) {
 	}
 	if !foundGPT {
 		t.Fatalf("gpt model usage missing: %+v", overview.ModelUsage)
+	}
+}
+
+func TestUsageBreakdownGroupsByAgentModelAndDay(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	codexSourceID := insertTimeSource(t, conn, "codex", "Codex", now)
+	claudeSourceID := insertTimeSource(t, conn, "claude", "Claude Code", now)
+	insertTokenAnalyticsSession(t, conn, codexSourceID, now, "codex-a", "gpt-5", "gpt-5", "actual", 1_000, 200, 500, 50, 1_550)
+	insertTokenAnalyticsSession(t, conn, codexSourceID, now.Add(time.Hour), "codex-b", "unknown-model", "unknown-model", "actual", 100, 20, 30, 0, 130)
+	insertTokenAnalyticsSession(t, conn, claudeSourceID, now.Add(24*time.Hour), "claude-c", "gpt-5-mini", "gpt-5-mini", "actual", 500, 100, 250, 25, 775)
+
+	service := New(conn)
+	agentBreakdown, err := service.UsageBreakdown(ctx, "agent", model.AnalyticsFilters{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if agentBreakdown.GroupBy != "agent" || len(agentBreakdown.Buckets) != 2 {
+		t.Fatalf("agent breakdown shape = %+v", agentBreakdown)
+	}
+	codexAgent := findUsageBreakdownBucket(t, agentBreakdown.Buckets, codexSourceID, "", "")
+	if codexAgent.SessionCount != 2 || codexAgent.TotalTokens != 1_680 || codexAgent.InputTokens != 1_100 ||
+		codexAgent.CachedInputTokens != 220 || !codexAgent.Unpriced || math.Abs(codexAgent.CacheUtilizationRate-0.2) > 0.000001 {
+		t.Fatalf("codex agent bucket = %+v", codexAgent)
+	}
+
+	modelBreakdown, err := service.UsageBreakdown(ctx, "model", model.AnalyticsFilters{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gptBucket := findUsageBreakdownBucket(t, modelBreakdown.Buckets, 0, "gpt-5", "")
+	if gptBucket.SessionCount != 1 || gptBucket.TotalTokens != 1_550 || gptBucket.Unpriced || gptBucket.EstimatedCostUSD == nil {
+		t.Fatalf("gpt model bucket = %+v", gptBucket)
+	}
+	unknownBucket := findUsageBreakdownBucket(t, modelBreakdown.Buckets, 0, "unknown-model", "")
+	if !unknownBucket.Unpriced || unknownBucket.EstimatedCostUSD != nil {
+		t.Fatalf("unknown model bucket = %+v", unknownBucket)
+	}
+
+	agentModelBreakdown, err := service.UsageBreakdown(ctx, "agent,model", model.AnalyticsFilters{Agent: sourceInstanceKey(codexSourceID)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(agentModelBreakdown.Buckets) != 2 {
+		t.Fatalf("agent model filtered buckets = %+v", agentModelBreakdown.Buckets)
+	}
+	agentModelBucket := findUsageBreakdownBucket(t, agentModelBreakdown.Buckets, codexSourceID, "gpt-5", "")
+	if agentModelBucket.SessionCount != 1 || agentModelBucket.TotalTokens != 1_550 {
+		t.Fatalf("agent model bucket = %+v", agentModelBucket)
+	}
+
+	dayBreakdown, err := service.UsageBreakdown(ctx, "day", model.AnalyticsFilters{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dayBreakdown.Buckets) != 2 {
+		t.Fatalf("day buckets = %+v", dayBreakdown.Buckets)
+	}
+	firstDay := findUsageBreakdownBucket(t, dayBreakdown.Buckets, 0, "", "2026-06-27")
+	if firstDay.SessionCount != 2 || firstDay.TotalTokens != 1_680 || !firstDay.Unpriced {
+		t.Fatalf("first day bucket = %+v", firstDay)
 	}
 }
 
@@ -592,6 +767,24 @@ func findModelTimeUsage(t *testing.T, items []model.ModelTimeUsage, modelName st
 	}
 	t.Fatalf("model time usage for %s missing: %+v", modelName, items)
 	return model.ModelTimeUsage{}
+}
+
+func findUsageBreakdownBucket(t *testing.T, items []model.UsageBreakdownBucket, sourceID int64, modelName, date string) model.UsageBreakdownBucket {
+	t.Helper()
+	for _, item := range items {
+		if sourceID > 0 && item.SourceID != sourceID {
+			continue
+		}
+		if modelName != "" && item.Model != modelName {
+			continue
+		}
+		if date != "" && item.Date != date {
+			continue
+		}
+		return item
+	}
+	t.Fatalf("usage breakdown bucket source=%d model=%q date=%q missing: %+v", sourceID, modelName, date, items)
+	return model.UsageBreakdownBucket{}
 }
 
 func findModelUsage(t *testing.T, items []model.ModelUsage, modelName string) model.ModelUsage {

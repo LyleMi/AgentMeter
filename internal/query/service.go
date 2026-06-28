@@ -28,15 +28,23 @@ func clampLimitOffset(limit, offset, defaultLimit, maxLimit int) (int, int) {
 }
 
 func (s *Service) Overview(ctx context.Context) (model.Overview, error) {
+	return s.OverviewWithFilters(ctx, model.AnalyticsFilters{})
+}
+
+func (s *Service) OverviewWithFilters(ctx context.Context, filters model.AnalyticsFilters) (model.Overview, error) {
 	var overview model.Overview
+	where, args := analyticsSessionWhere(filters)
 	err := s.conn.QueryRowContext(ctx, `SELECT
 		COUNT(*),
-		COALESCE(SUM(wall_duration_ms), 0),
-		COALESCE(SUM(active_duration_ms), 0),
-		COALESCE(SUM(model_duration_ms), 0),
-		COALESCE(SUM(tool_duration_ms), 0),
-		COALESCE(SUM(idle_duration_ms), 0)
-		FROM sessions`).Scan(
+		COALESCE(SUM(s.wall_duration_ms), 0),
+		COALESCE(SUM(s.active_duration_ms), 0),
+		COALESCE(SUM(s.model_duration_ms), 0),
+		COALESCE(SUM(s.tool_duration_ms), 0),
+		COALESCE(SUM(s.idle_duration_ms), 0)
+		FROM sessions s
+		JOIN sources src ON src.id = s.source_id
+		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
+		WHERE `+strings.Join(where, " AND "), args...).Scan(
 		&overview.TotalSessions,
 		&overview.TotalWallDurationMS,
 		&overview.TotalActiveDurationMS,
@@ -47,57 +55,56 @@ func (s *Service) Overview(ctx context.Context) (model.Overview, error) {
 	if err != nil {
 		return overview, err
 	}
-	err = s.conn.QueryRowContext(ctx, `SELECT
-		COALESCE(SUM(input_tokens), 0),
-		COALESCE(SUM(cached_input_tokens), 0),
-		COALESCE(SUM(output_tokens), 0),
-		COALESCE(SUM(reasoning_output_tokens), 0),
-		COALESCE(SUM(total_tokens), 0)
-		FROM token_usage WHERE owner_kind = 'session'`).
-		Scan(&overview.TotalInputTokens, &overview.TotalCachedInputTokens, &overview.TotalOutputTokens, &overview.TotalReasoningTokens, &overview.TotalTokens)
+	usage, err := s.usageTotals(ctx, filters)
 	if err != nil {
 		return overview, err
 	}
-	if err := s.conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM tool_calls`).Scan(&overview.TotalToolCalls); err != nil {
-		return overview, err
-	}
-	overview.SuspectedNetworkToolDurationMS, overview.SuspectedNetworkToolCalls, err = s.suspectedNetworkToolTotals(ctx, overview.TotalToolDurationMS)
+	overview.TotalInputTokens = usage.InputTokens
+	overview.TotalCachedInputTokens = usage.CachedInputTokens
+	overview.TotalOutputTokens = usage.OutputTokens
+	overview.TotalReasoningTokens = usage.ReasoningOutputTokens
+	overview.TotalTokens = usage.TotalTokens
+	overview.TotalToolCalls, err = s.toolCallCount(ctx, filters)
 	if err != nil {
 		return overview, err
 	}
-	overview.EstimatedCostUSD, overview.UnpricedSessions, err = s.totalCost(ctx)
+	overview.SuspectedNetworkToolDurationMS, overview.SuspectedNetworkToolCalls, err = s.suspectedNetworkToolTotalsWithFilters(ctx, overview.TotalToolDurationMS, filters)
 	if err != nil {
 		return overview, err
 	}
-	overview.DailyUsage, err = s.dailyUsage(ctx)
+	overview.EstimatedCostUSD, overview.UnpricedSessions, err = s.totalCostWithFilters(ctx, filters)
 	if err != nil {
 		return overview, err
 	}
-	overview.ModelUsage, err = s.modelUsage(ctx)
+	overview.DailyUsage, err = s.dailyUsageWithFilters(ctx, filters)
 	if err != nil {
 		return overview, err
 	}
-	overview.AgentUsage, err = s.agentUsage(ctx)
+	overview.ModelUsage, err = s.modelUsageWithFilters(ctx, filters)
 	if err != nil {
 		return overview, err
 	}
-	overview.ToolTimeLeaders, err = s.toolTimeLeaders(ctx)
+	overview.AgentUsage, err = s.agentUsageWithFilters(ctx, filters)
 	if err != nil {
 		return overview, err
 	}
-	overview.AgentTimeUsage, err = s.agentTimeUsage(ctx)
+	overview.ToolTimeLeaders, err = s.toolTimeLeadersWithFilters(ctx, filters)
 	if err != nil {
 		return overview, err
 	}
-	overview.ModelTimeUsage, err = s.modelTimeUsage(ctx)
+	overview.AgentTimeUsage, err = s.agentTimeUsageWithFilters(ctx, filters)
 	if err != nil {
 		return overview, err
 	}
-	overview.RecentSessions, err = s.Sessions(ctx, model.SessionFilters{Limit: 6})
+	overview.ModelTimeUsage, err = s.modelTimeUsageWithFilters(ctx, filters)
 	if err != nil {
 		return overview, err
 	}
-	overview.SlowSessions, err = s.slowSessions(ctx)
+	overview.RecentSessions, err = s.analyticsSessions(ctx, filters, 6, "s.started_at DESC, s.id DESC", false)
+	if err != nil {
+		return overview, err
+	}
+	overview.SlowSessions, err = s.slowSessionsWithFilters(ctx, filters)
 	normalizeOverviewSlices(&overview)
 	return overview, err
 }
@@ -169,15 +176,36 @@ func suspectedNetworkToolCondition(alias string) string {
 	return "(" + strings.Join(parts, " OR ") + ")"
 }
 
+func (s *Service) toolCallCount(ctx context.Context, filters model.AnalyticsFilters) (int, error) {
+	where, args := analyticsSessionWhere(filters)
+	var count int
+	err := s.conn.QueryRowContext(ctx, `SELECT COUNT(*)
+		FROM tool_calls tc
+		JOIN sessions s ON s.id = tc.session_id
+		JOIN sources src ON src.id = s.source_id
+		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
+		WHERE `+strings.Join(where, " AND "), args...).Scan(&count)
+	return count, err
+}
+
 func (s *Service) suspectedNetworkToolTotals(ctx context.Context, totalToolDurationMS int64) (int64, int, error) {
+	return s.suspectedNetworkToolTotalsWithFilters(ctx, totalToolDurationMS, model.AnalyticsFilters{})
+}
+
+func (s *Service) suspectedNetworkToolTotalsWithFilters(ctx context.Context, totalToolDurationMS int64, filters model.AnalyticsFilters) (int64, int, error) {
 	var duration int64
 	var calls int
+	where, args := analyticsSessionWhere(filters)
+	where = append(where, suspectedNetworkToolCondition("tc"))
 	query := fmt.Sprintf(`SELECT
 		COALESCE(SUM(CASE WHEN tc.duration_ms > 0 THEN tc.duration_ms ELSE 0 END), 0),
 		COUNT(*)
 		FROM tool_calls tc
-		WHERE %s`, suspectedNetworkToolCondition("tc"))
-	if err := s.conn.QueryRowContext(ctx, query).Scan(&duration, &calls); err != nil {
+		JOIN sessions s ON s.id = tc.session_id
+		JOIN sources src ON src.id = s.source_id
+		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
+		WHERE %s`, strings.Join(where, " AND "))
+	if err := s.conn.QueryRowContext(ctx, query, args...).Scan(&duration, &calls); err != nil {
 		return 0, 0, err
 	}
 	if duration < 0 {
@@ -192,7 +220,12 @@ func (s *Service) suspectedNetworkToolTotals(ctx context.Context, totalToolDurat
 }
 
 func (s *Service) toolTimeLeaders(ctx context.Context) ([]model.ToolTimeUsage, error) {
+	return s.toolTimeLeadersWithFilters(ctx, model.AnalyticsFilters{})
+}
+
+func (s *Service) toolTimeLeadersWithFilters(ctx context.Context, filters model.AnalyticsFilters) ([]model.ToolTimeUsage, error) {
 	networkCondition := suspectedNetworkToolCondition("tc")
+	where, args := analyticsSessionWhere(filters)
 	rows, err := s.conn.QueryContext(ctx, fmt.Sprintf(`SELECT
 		tc.tool_name,
 		COUNT(*),
@@ -203,9 +236,13 @@ func (s *Service) toolTimeLeaders(ctx context.Context) ([]model.ToolTimeUsage, e
 		COALESCE(MAX(tc.duration_ms), 0),
 		MAX(CASE WHEN %s THEN 1 ELSE 0 END)
 		FROM tool_calls tc
+		JOIN sessions s ON s.id = tc.session_id
+		JOIN sources src ON src.id = s.source_id
+		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
+		WHERE %s
 		GROUP BY tc.tool_name
 		ORDER BY SUM(tc.duration_ms) DESC, tc.tool_name ASC
-		LIMIT 8`, networkCondition))
+		LIMIT 8`, networkCondition, strings.Join(where, " AND ")), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -233,7 +270,12 @@ func (s *Service) toolTimeLeaders(ctx context.Context) ([]model.ToolTimeUsage, e
 }
 
 func (s *Service) agentTimeUsage(ctx context.Context) ([]model.AgentTimeUsage, error) {
+	return s.agentTimeUsageWithFilters(ctx, model.AnalyticsFilters{})
+}
+
+func (s *Service) agentTimeUsageWithFilters(ctx context.Context, filters model.AnalyticsFilters) ([]model.AgentTimeUsage, error) {
 	networkCondition := suspectedNetworkToolCondition("tc")
+	where, args := analyticsSessionWhere(filters)
 	rows, err := s.conn.QueryContext(ctx, fmt.Sprintf(`SELECT
 		src.id,
 		src.root_path,
@@ -254,8 +296,10 @@ func (s *Service) agentTimeUsage(ctx context.Context) ([]model.AgentTimeUsage, e
 		)), 0)
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
+		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
+		WHERE %s
 		GROUP BY src.id
-		ORDER BY SUM(s.wall_duration_ms) DESC, src.name ASC`, networkCondition))
+		ORDER BY SUM(s.wall_duration_ms) DESC, src.name ASC`, networkCondition, strings.Join(where, " AND ")), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -293,6 +337,11 @@ func (s *Service) agentTimeUsage(ctx context.Context) ([]model.AgentTimeUsage, e
 }
 
 func (s *Service) modelTimeUsage(ctx context.Context) ([]model.ModelTimeUsage, error) {
+	return s.modelTimeUsageWithFilters(ctx, model.AnalyticsFilters{})
+}
+
+func (s *Service) modelTimeUsageWithFilters(ctx context.Context, filters model.AnalyticsFilters) ([]model.ModelTimeUsage, error) {
+	where, args := analyticsSessionWhere(filters)
 	rows, err := s.conn.QueryContext(ctx, `SELECT
 		s.model,
 		COUNT(*),
@@ -303,9 +352,11 @@ func (s *Service) modelTimeUsage(ctx context.Context) ([]model.ModelTimeUsage, e
 		COALESCE(SUM(s.tool_duration_ms), 0),
 		COALESCE(SUM(s.idle_duration_ms), 0)
 		FROM sessions s
+		JOIN sources src ON src.id = s.source_id
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
+		WHERE `+strings.Join(where, " AND ")+`
 		GROUP BY s.model
-		ORDER BY SUM(s.wall_duration_ms) DESC, s.model ASC`)
+		ORDER BY SUM(s.wall_duration_ms) DESC, s.model ASC`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -331,7 +382,11 @@ func (s *Service) modelTimeUsage(ctx context.Context) ([]model.ModelTimeUsage, e
 }
 
 func (s *Service) slowSessions(ctx context.Context) ([]model.Session, error) {
-	return s.scanSessions(ctx, sessionSelect+` ORDER BY s.wall_duration_ms DESC, s.started_at DESC, s.id DESC LIMIT 8`)
+	return s.slowSessionsWithFilters(ctx, model.AnalyticsFilters{})
+}
+
+func (s *Service) slowSessionsWithFilters(ctx context.Context, filters model.AnalyticsFilters) ([]model.Session, error) {
+	return s.analyticsSessions(ctx, filters, 8, "s.wall_duration_ms DESC, s.started_at DESC, s.id DESC", false)
 }
 
 func (s *Service) Sessions(ctx context.Context, filters model.SessionFilters) ([]model.Session, error) {

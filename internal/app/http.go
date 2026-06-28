@@ -27,6 +27,15 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		}
 		_ = json.NewEncoder(w).Encode(value)
 	}
+	analyticsFilters := func(r *http.Request) model.AnalyticsFilters {
+		query := r.URL.Query()
+		return model.AnalyticsFilters{
+			Agent:       query.Get("agent"),
+			Model:       query.Get("model"),
+			StartedFrom: query.Get("from"),
+			StartedTo:   query.Get("to"),
+		}
+	}
 
 	mux.HandleFunc("GET /api/settings", func(w http.ResponseWriter, r *http.Request) {
 		value, err := service.GetSettings()
@@ -121,11 +130,19 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		writeJSON(w, value, err)
 	})
 	mux.HandleFunc("GET /api/overview", func(w http.ResponseWriter, r *http.Request) {
-		value, err := service.GetOverview()
+		value, err := service.GetOverviewWithFilters(analyticsFilters(r))
 		writeJSON(w, value, err)
 	})
 	mux.HandleFunc("GET /api/tokens", func(w http.ResponseWriter, r *http.Request) {
-		value, err := service.GetTokenAnalytics()
+		value, err := service.GetTokenAnalyticsWithFilters(analyticsFilters(r))
+		writeJSON(w, value, err)
+	})
+	mux.HandleFunc("GET /api/usage/breakdown", func(w http.ResponseWriter, r *http.Request) {
+		groupBy := strings.TrimSpace(r.URL.Query().Get("groupBy"))
+		if groupBy == "" {
+			groupBy = "model"
+		}
+		value, err := service.GetUsageBreakdown(groupBy, analyticsFilters(r))
 		writeJSON(w, value, err)
 	})
 	mux.HandleFunc("GET /api/sessions", func(w http.ResponseWriter, r *http.Request) {

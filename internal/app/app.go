@@ -387,17 +387,32 @@ func comparableSourcePathKey(path string) string {
 }
 
 func (a *App) GetOverview() (model.Overview, error) {
+	return a.GetOverviewWithFilters(model.AnalyticsFilters{})
+}
+
+func (a *App) GetOverviewWithFilters(filters model.AnalyticsFilters) (model.Overview, error) {
 	if err := a.ensureReady(); err != nil {
 		return model.Overview{}, err
 	}
-	return a.query.Overview(a.ctx)
+	return a.query.OverviewWithFilters(a.ctx, filters)
 }
 
 func (a *App) GetTokenAnalytics() (model.TokenAnalytics, error) {
+	return a.GetTokenAnalyticsWithFilters(model.AnalyticsFilters{})
+}
+
+func (a *App) GetTokenAnalyticsWithFilters(filters model.AnalyticsFilters) (model.TokenAnalytics, error) {
 	if err := a.ensureReady(); err != nil {
 		return model.TokenAnalytics{}, err
 	}
-	return a.query.TokenAnalytics(a.ctx)
+	return a.query.TokenAnalyticsWithFilters(a.ctx, filters)
+}
+
+func (a *App) GetUsageBreakdown(groupBy string, filters model.AnalyticsFilters) (model.UsageBreakdown, error) {
+	if err := a.ensureReady(); err != nil {
+		return model.UsageBreakdown{}, err
+	}
+	return a.query.UsageBreakdown(a.ctx, groupBy, filters)
 }
 
 func (a *App) ListSessions(filters model.SessionFilters) ([]model.Session, error) {

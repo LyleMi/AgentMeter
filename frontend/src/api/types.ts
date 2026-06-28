@@ -69,6 +69,40 @@ export interface ModelUsage {
   unpriced: boolean
 }
 
+export interface UsageScopeFilters {
+  agent?: string
+  model?: string
+  from?: string
+  to?: string
+}
+
+export type UsageBreakdownGroupBy = 'agent' | 'model' | 'agent,model' | 'day'
+
+export interface UsageBreakdownFilters extends UsageScopeFilters {
+  groupBy: UsageBreakdownGroupBy
+}
+
+export interface UsageBreakdown {
+  groupBy: UsageBreakdownGroupBy
+  buckets: UsageBreakdownBucket[]
+}
+
+export interface UsageBreakdownBucket extends SourceIdentity {
+  agentKind?: string
+  agentName?: string
+  model?: string
+  date?: string
+  sessionCount: number
+  totalTokens: number
+  inputTokens: number
+  cachedInputTokens: number
+  outputTokens: number
+  reasoningOutputTokens: number
+  cacheUtilizationRate: number
+  estimatedCostUsd?: number
+  unpriced: boolean
+}
+
 export interface AgentUsage extends SourceIdentity {
   agentKind: string
   agentName: string

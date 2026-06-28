@@ -19,7 +19,10 @@ import type {
   ToolCall,
   ToolCallFilters,
   ToolFilters,
-  ToolStat
+  ToolStat,
+  UsageBreakdown,
+  UsageBreakdownFilters,
+  UsageScopeFilters
 } from './types'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -44,6 +47,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return payload as T
 }
 
+function usageScopeParams(filters: UsageScopeFilters = {}) {
+  const params = new URLSearchParams()
+  if (filters.agent) params.set('agent', filters.agent)
+  if (filters.model) params.set('model', filters.model)
+  if (filters.from) params.set('from', filters.from)
+  if (filters.to) params.set('to', filters.to)
+  return params
+}
+
+function queryPath(path: string, params: URLSearchParams) {
+  const query = params.toString()
+  return query ? `${path}?${query}` : path
+}
+
 export const api = {
   getSettings: () => request<Settings>('/api/settings'),
   saveSourceSettings: (sourceEntries: SourceEntry[]) =>
@@ -61,8 +78,15 @@ export const api = {
     }),
   indexNow: (rebuild = false) =>
     request<IndexResult>('/api/index', { method: 'POST', body: JSON.stringify({ rebuild }) }),
-  getOverview: () => request<Overview>('/api/overview'),
-  getTokenAnalytics: () => request<TokenAnalytics>('/api/tokens'),
+  getOverview: (filters: UsageScopeFilters = {}) =>
+    request<Overview>(queryPath('/api/overview', usageScopeParams(filters))),
+  getTokenAnalytics: (filters: UsageScopeFilters = {}) =>
+    request<TokenAnalytics>(queryPath('/api/tokens', usageScopeParams(filters))),
+  getUsageBreakdown: (filters: UsageBreakdownFilters) => {
+    const params = usageScopeParams(filters)
+    params.set('groupBy', filters.groupBy)
+    return request<UsageBreakdown>(queryPath('/api/usage/breakdown', params))
+  },
   listSessions: (filters: SessionFilters = {}) => {
     const params = new URLSearchParams()
     if (filters.search) params.set('search', filters.search)

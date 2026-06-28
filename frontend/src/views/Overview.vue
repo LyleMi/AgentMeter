@@ -1,32 +1,34 @@
 <script setup lang="ts">
 import { computed, onMounted, provide, ref } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
-import AButton from 'ant-design-vue/es/button'
 import message from 'ant-design-vue/es/message'
 import {
   BarChartOutlined,
   ClockCircleOutlined,
   DatabaseOutlined,
-  HistoryOutlined,
-  ReloadOutlined
+  HistoryOutlined
 } from '@ant-design/icons-vue'
 import { api, type Overview, type Settings } from '../api'
 import PageHeader from '../components/PageHeader.vue'
 import PageTabs from '../components/PageTabs.vue'
+import UsageScopeBar from '../components/UsageScopeBar.vue'
 import { notifyAppDataChanged } from '../events'
 import { useMessages } from '../i18n'
+import { sourceFilterOptions } from '../presentation/sourceIdentity'
 import { overviewContextKey, type OverviewContext } from './overviewContext'
+import { applyUsageScopeToQuery, useUsageScopeRoute, type UsageScopeForm } from './useUsageScope'
 
 const route = useRoute()
 const loading = ref(true)
 const startupIndexing = ref(false)
 const overview = ref<Overview | null>(null)
+const optionOverview = ref<Overview | null>(null)
 const settings = ref<Settings | null>(null)
+const scope = useUsageScopeRoute(() => load())
 const { t } = useMessages({
   en: {
     'title': 'Overview',
     'subtitle': 'Indexed coding-agent usage across local JSONL sessions',
-    'action.refresh': 'Refresh',
     'tab.summary': 'Summary',
     'tab.trends': 'Trends',
     'tab.breakdown': 'Breakdown',
@@ -37,7 +39,6 @@ const { t } = useMessages({
   'zh-CN': {
     'title': '概览',
     'subtitle': '基于本地 JSONL 会话索引的编码代理用量',
-    'action.refresh': '刷新',
     'tab.summary': '汇总',
     'tab.trends': '趋势',
     'tab.breakdown': '拆分',
@@ -51,11 +52,54 @@ const hasIndexedData = computed(() => (overview.value?.totalSessions || 0) > 0)
 const sourcePathDisplay = computed(() => settings.value?.sourcePath || settings.value?.defaultSourcePath || '')
 
 const tabs = computed(() => [
-  { key: 'summary', label: t('tab.summary'), path: '/overview/summary', icon: BarChartOutlined },
-  { key: 'trends', label: t('tab.trends'), path: '/overview/trends', icon: ClockCircleOutlined },
-  { key: 'breakdown', label: t('tab.breakdown'), path: '/overview/breakdown', icon: DatabaseOutlined },
-  { key: 'recent', label: t('tab.recent'), path: '/overview/recent', icon: HistoryOutlined }
+  { key: 'summary', label: t('tab.summary'), path: overviewPath('/overview/summary'), icon: BarChartOutlined },
+  { key: 'trends', label: t('tab.trends'), path: overviewPath('/overview/trends'), icon: ClockCircleOutlined },
+  { key: 'breakdown', label: t('tab.breakdown'), path: overviewPath('/overview/breakdown'), icon: DatabaseOutlined },
+  { key: 'recent', label: t('tab.recent'), path: overviewPath('/overview/recent'), icon: HistoryOutlined }
 ])
+
+const agentOptions = computed(() =>
+  ensureSelectedOption(
+    sourceFilterOptions(
+      [
+        ...(overview.value?.agentUsage || []),
+        ...(optionOverview.value?.agentUsage || []),
+        ...(overview.value?.recentSessions || []),
+        ...(optionOverview.value?.recentSessions || []),
+        ...(overview.value?.slowSessions || []),
+        ...(optionOverview.value?.slowSessions || [])
+      ],
+      'unknown'
+    ),
+    scope.filters.value.agent
+  )
+)
+
+const modelOptions = computed(() => {
+  const values = new Set<string>()
+  for (const item of overview.value?.modelUsage || []) {
+    if (item.model) values.add(item.model)
+  }
+  for (const item of optionOverview.value?.modelUsage || []) {
+    if (item.model) values.add(item.model)
+  }
+  for (const item of overview.value?.recentSessions || []) {
+    if (item.model) values.add(item.model)
+  }
+  for (const item of optionOverview.value?.recentSessions || []) {
+    if (item.model) values.add(item.model)
+  }
+  for (const item of overview.value?.slowSessions || []) {
+    if (item.model) values.add(item.model)
+  }
+  for (const item of optionOverview.value?.slowSessions || []) {
+    if (item.model) values.add(item.model)
+  }
+  return ensureSelectedOption(
+    [...values].sort().map((value) => ({ value, label: value, title: value })),
+    scope.filters.value.model
+  )
+})
 
 const activeKey = computed(() => {
   if (route.path.startsWith('/overview/trends')) return 'trends'
@@ -67,9 +111,15 @@ const activeKey = computed(() => {
 async function load() {
   loading.value = true
   try {
-    const [settingsValue, overviewValue] = await Promise.all([api.getSettings(), api.getOverview()])
+    const optionOverviewRequest = scope.hasActiveFilters.value ? api.getOverview() : Promise.resolve<Overview | null>(null)
+    const [settingsValue, overviewValue, optionOverviewValue] = await Promise.all([
+      api.getSettings(),
+      api.getOverview(scope.apiFilters.value),
+      optionOverviewRequest
+    ])
     settings.value = settingsValue
     overview.value = overviewValue
+    optionOverview.value = optionOverviewValue || overviewValue
   } finally {
     loading.value = false
   }
@@ -95,6 +145,28 @@ async function indexFromOverview() {
   }
 }
 
+async function updateScopeFilters(nextFilters: UsageScopeForm) {
+  await scope.updateFilters(nextFilters)
+  await load()
+}
+
+async function clearScopeFilters() {
+  await scope.clearFilters()
+  await load()
+}
+
+function overviewPath(path: string) {
+  const query = applyUsageScopeToQuery(route.query, scope.filters.value)
+  const params = new URLSearchParams(query)
+  const encoded = params.toString()
+  return encoded ? `${path}?${encoded}` : path
+}
+
+function ensureSelectedOption<T extends { value: string; label: string; title?: string }>(options: T[], selected?: string): T[] {
+  if (!selected || options.some((item) => item.value === selected)) return options
+  return [{ value: selected, label: selected, title: selected } as T, ...options]
+}
+
 const context: OverviewContext = {
   overview,
   settings,
@@ -113,16 +185,17 @@ onMounted(load)
 
 <template>
   <div class="page">
-    <PageHeader :title="t('title')" :subtitle="t('subtitle')">
-      <template #actions>
-        <a-button :loading="loading" @click="load">
-          <template #icon>
-            <ReloadOutlined />
-          </template>
-          {{ t('action.refresh') }}
-        </a-button>
-      </template>
-    </PageHeader>
+    <PageHeader :title="t('title')" :subtitle="t('subtitle')" />
+
+    <UsageScopeBar
+      :filters="scope.filters.value"
+      :agent-options="agentOptions"
+      :model-options="modelOptions"
+      :loading="loading"
+      @update:filters="updateScopeFilters"
+      @refresh="load"
+      @clear="clearScopeFilters"
+    />
 
     <PageTabs class="overview-subnav" :tabs="tabs" :active-key="activeKey" />
 

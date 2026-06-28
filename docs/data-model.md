@@ -339,7 +339,14 @@ Current read models:
 
 - Overview: session totals, token totals, estimated cost, unpriced session
   count, wall/active duration totals, tool-call total, daily usage, model usage,
-  source-aware agent usage, and recent sessions.
+  source-aware agent usage, time attribution, slow sessions, and recent
+  sessions. Overview can be scoped by agent/source, model, and started-at range.
+- Token Analytics: token totals, cache utilization, estimated cost, model usage,
+  source-aware agent usage, recent sessions, and high-token sessions. Token
+  analytics can be scoped by agent/source, model, and started-at range.
+- Usage Breakdown: token, cache utilization, session count, pricing, and
+  source identity buckets grouped by source, model, source plus model, or day,
+  with the same agent/source, model, and started-at range filters.
 - Sessions: filtered list by search, model, agent/source, limit, and offset,
   ordered by newest `started_at` first.
 - Session Detail: one session with normalized events, model calls, and tool
@@ -361,6 +368,9 @@ Contract rules:
   Family filters use the family kind, such as `codex`, when the intent is every
   source in that parser family. Existing API fields named `agent` may carry
   either value until the API surface is renamed.
+- Analytics APIs use `from` and `to` query parameters as inclusive
+  `started_at` bounds. They should be passed as the same timestamp string format
+  used elsewhere in API filters.
 - UI-specific presentation may differ, but token, cost, duration, parse-status,
   pricing-status, and audit-status definitions must remain shared.
 - `internal/model/types.go` defines the JSON/API field shape. Documentation
