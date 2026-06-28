@@ -27,15 +27,35 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		value, err := service.GetSettings()
 		writeJSON(w, value, err)
 	})
-	mux.HandleFunc("GET /api/privacy/codex", func(w http.ResponseWriter, r *http.Request) {
-		value, err := service.GetCodexPrivacyConfig()
-		writeJSON(w, value, err)
+	writePrivacyTargetError := func(w http.ResponseWriter, target string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "unsupported privacy target: " + target})
+	}
+	mux.HandleFunc("GET /api/privacy/{target}", func(w http.ResponseWriter, r *http.Request) {
+		switch target := r.PathValue("target"); target {
+		case "codex":
+			value, err := service.GetCodexPrivacyConfig()
+			writeJSON(w, value, err)
+		case "gemini":
+			value, err := service.GetGeminiPrivacyConfig()
+			writeJSON(w, value, err)
+		default:
+			writePrivacyTargetError(w, target)
+		}
 	})
-	mux.HandleFunc("GET /api/privacy/gemini", func(w http.ResponseWriter, r *http.Request) {
-		value, err := service.GetGeminiPrivacyConfig()
-		writeJSON(w, value, err)
-	})
-	mux.HandleFunc("POST /api/privacy/codex/apply", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/privacy/{target}/apply", func(w http.ResponseWriter, r *http.Request) {
+		var apply func([]string) (model.PrivacyConfigApplyResult, error)
+		switch target := r.PathValue("target"); target {
+		case "codex":
+			apply = service.ApplyCodexPrivacyConfig
+		case "gemini":
+			apply = service.ApplyGeminiPrivacyConfig
+		default:
+			writePrivacyTargetError(w, target)
+			return
+		}
+
 		var body struct {
 			SettingIDs []string `json:"settingIds"`
 		}
@@ -43,10 +63,21 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 			writeJSON(w, nil, err)
 			return
 		}
-		value, err := service.ApplyCodexPrivacyConfig(body.SettingIDs)
+		value, err := apply(body.SettingIDs)
 		writeJSON(w, value, err)
 	})
-	mux.HandleFunc("POST /api/privacy/codex/changes", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/privacy/{target}/changes", func(w http.ResponseWriter, r *http.Request) {
+		var applyChanges func([]model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error)
+		switch target := r.PathValue("target"); target {
+		case "codex":
+			applyChanges = service.ApplyCodexPrivacyConfigChanges
+		case "gemini":
+			applyChanges = service.ApplyGeminiPrivacyConfigChanges
+		default:
+			writePrivacyTargetError(w, target)
+			return
+		}
+
 		var body struct {
 			Changes []model.PrivacyConfigEdit `json:"changes"`
 		}
@@ -54,29 +85,7 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 			writeJSON(w, nil, err)
 			return
 		}
-		value, err := service.ApplyCodexPrivacyConfigChanges(body.Changes)
-		writeJSON(w, value, err)
-	})
-	mux.HandleFunc("POST /api/privacy/gemini/apply", func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			SettingIDs []string `json:"settingIds"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
-			writeJSON(w, nil, err)
-			return
-		}
-		value, err := service.ApplyGeminiPrivacyConfig(body.SettingIDs)
-		writeJSON(w, value, err)
-	})
-	mux.HandleFunc("POST /api/privacy/gemini/changes", func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Changes []model.PrivacyConfigEdit `json:"changes"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
-			writeJSON(w, nil, err)
-			return
-		}
-		value, err := service.ApplyGeminiPrivacyConfigChanges(body.Changes)
+		value, err := applyChanges(body.Changes)
 		writeJSON(w, value, err)
 	})
 	mux.HandleFunc("POST /api/settings", func(w http.ResponseWriter, r *http.Request) {

@@ -290,6 +290,65 @@ func TestPrivacyCodexHTTPChangesAppliesEditableChanges(t *testing.T) {
 	}
 }
 
+func TestPrivacyGeminiHTTPChangesAppliesEditableChanges(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), ".gemini", "settings.json")
+	t.Setenv("AGENTMETER_GEMINI_SETTINGS_PATH", configPath)
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(`{"privacy":{"usageStatisticsEnabled":true}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterHTTPHandlers(mux, &App{}, fstest.MapFS{})
+
+	recorder := httptest.NewRecorder()
+	body := strings.NewReader(`{"changes":[{"id":"privacy.usageStatisticsEnabled","op":"set","value":false}]}`)
+	request := httptest.NewRequest(http.MethodPost, "/api/privacy/gemini/changes", body)
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var result model.PrivacyConfigApplyResult
+	if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Changed) != 1 {
+		t.Fatalf("changed = %d, want 1: %#v", len(result.Changed), result.Changed)
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved map[string]any
+	if err := json.Unmarshal(content, &saved); err != nil {
+		t.Fatal(err)
+	}
+	privacy := saved["privacy"].(map[string]any)
+	if privacy["usageStatisticsEnabled"] != false {
+		t.Fatalf("config was not updated: %#v", saved)
+	}
+}
+
+func TestPrivacyHTTPUnsupportedTargetReturnsNotFound(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterHTTPHandlers(mux, &App{}, fstest.MapFS{})
+
+	recorder := httptest.NewRecorder()
+	body := strings.NewReader(`{`)
+	request := httptest.NewRequest(http.MethodPost, "/api/privacy/claude/changes", body)
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "unsupported privacy target: claude") {
+		t.Fatalf("body should explain unsupported target: %s", recorder.Body.String())
+	}
+}
+
 func containsExactSourcePath(paths []string, path string) bool {
 	key := sourcePathKey(filepath.Clean(path))
 	for _, candidate := range normalizeSourcePaths(paths) {
