@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"sort"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 )
 
 const usageSessionModelExpr = "COALESCE(NULLIF(tu.model, ''), s.model)"
+const usageCostColumns = usageSessionModelExpr + `, tu.input_tokens, tu.cached_input_tokens, tu.output_tokens, tu.reasoning_output_tokens, tu.total_tokens, tu.source`
 
 func (s *Service) pricingCalculator(ctx context.Context) pricing.Calculator {
 	calculator, err := pricing.LoadCalculator(ctx, s.conn)
@@ -44,7 +46,7 @@ func (s *Service) totalCost(ctx context.Context) (*float64, int, error) {
 func (s *Service) totalCostWithFilters(ctx context.Context, filters model.AnalyticsFilters) (*float64, int, error) {
 	calculator := s.pricingCalculator(ctx)
 	where, args := analyticsUsageWhere(filters)
-	rows, err := s.conn.QueryContext(ctx, `SELECT `+usageSessionModelExpr+`, tu.input_tokens, tu.cached_input_tokens, tu.output_tokens, tu.reasoning_output_tokens, tu.total_tokens, tu.source
+	rows, err := s.conn.QueryContext(ctx, `SELECT `+usageCostColumns+`
 		FROM token_usage tu
 		JOIN sessions s ON s.id = tu.owner_id
 		JOIN sources src ON src.id = s.source_id
@@ -52,32 +54,16 @@ func (s *Service) totalCostWithFilters(ctx context.Context, filters model.Analyt
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
-	var total float64
-	var hasCost bool
-	var unpriced int
-	for rows.Next() {
+
+	accumulator, err := scanUsageCosts(rows, calculator, func(rows *sql.Rows) (struct{}, model.Usage, error) {
 		var usage model.Usage
-		if err := rows.Scan(&usage.Model, &usage.InputTokens, &usage.CachedInputTokens, &usage.OutputTokens, &usage.ReasoningOutputTokens, &usage.TotalTokens, &usage.Source); err != nil {
-			return nil, 0, err
-		}
-		cost, isUnpriced := calculator.Compute(usage)
-		if isUnpriced {
-			unpriced++
-			continue
-		}
-		if cost != nil {
-			total += *cost
-			hasCost = true
-		}
-	}
-	if err := rows.Err(); err != nil {
+		err := scanUsageCostColumns(rows, &usage)
+		return struct{}{}, usage, err
+	})
+	if err != nil {
 		return nil, 0, err
 	}
-	if !hasCost {
-		return nil, unpriced, nil
-	}
-	return &total, unpriced, nil
+	return accumulator.totalCost(), accumulator.unpricedCount, nil
 }
 
 func (s *Service) TokenAnalytics(ctx context.Context) (model.TokenAnalytics, error) {
@@ -244,8 +230,7 @@ func (s *Service) dailyCosts(ctx context.Context, calculator pricing.Calculator)
 
 func (s *Service) dailyCostsWithFilters(ctx context.Context, calculator pricing.Calculator, filters model.AnalyticsFilters) (map[string]float64, error) {
 	where, args := analyticsUsageWhere(filters)
-	rows, err := s.conn.QueryContext(ctx, `SELECT substr(s.started_at, 1, 10) AS day, `+usageSessionModelExpr+`,
-		tu.input_tokens, tu.cached_input_tokens, tu.output_tokens, tu.reasoning_output_tokens, tu.total_tokens, tu.source
+	rows, err := s.conn.QueryContext(ctx, `SELECT substr(s.started_at, 1, 10) AS day, `+usageCostColumns+`
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
 		JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
@@ -253,19 +238,17 @@ func (s *Service) dailyCostsWithFilters(ctx context.Context, calculator pricing.
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	result := map[string]float64{}
-	for rows.Next() {
+
+	accumulator, err := scanUsageCosts(rows, calculator, func(rows *sql.Rows) (string, model.Usage, error) {
 		var day string
 		var usage model.Usage
-		if err := rows.Scan(&day, &usage.Model, &usage.InputTokens, &usage.CachedInputTokens, &usage.OutputTokens, &usage.ReasoningOutputTokens, &usage.TotalTokens, &usage.Source); err != nil {
-			return nil, err
-		}
-		if cost, unpriced := calculator.Compute(usage); !unpriced && cost != nil {
-			result[day] += *cost
-		}
+		err := rows.Scan(&day, &usage.Model, &usage.InputTokens, &usage.CachedInputTokens, &usage.OutputTokens, &usage.ReasoningOutputTokens, &usage.TotalTokens, &usage.Source)
+		return day, usage, err
+	})
+	if err != nil {
+		return nil, err
 	}
-	return result, rows.Err()
+	return accumulator.costs, nil
 }
 
 func (s *Service) modelUsage(ctx context.Context) ([]model.ModelUsage, error) {
@@ -319,8 +302,7 @@ func (s *Service) modelUsageWithFilters(ctx context.Context, filters model.Analy
 func (s *Service) modelCostsWithFilters(ctx context.Context, calculator pricing.Calculator, filters model.AnalyticsFilters) (map[string]float64, map[string]bool, error) {
 	where, args := analyticsUsageWhere(filters)
 	where = appendBillableUsageFilter(where)
-	rows, err := s.conn.QueryContext(ctx, `SELECT `+usageSessionModelExpr+`,
-		tu.input_tokens, tu.cached_input_tokens, tu.output_tokens, tu.reasoning_output_tokens, tu.total_tokens, tu.source
+	rows, err := s.conn.QueryContext(ctx, `SELECT `+usageCostColumns+`
 		FROM token_usage tu
 		JOIN sessions s ON s.id = tu.owner_id
 		JOIN sources src ON src.id = s.source_id
@@ -328,21 +310,16 @@ func (s *Service) modelCostsWithFilters(ctx context.Context, calculator pricing.
 	if err != nil {
 		return nil, nil, err
 	}
-	defer rows.Close()
-	costs := map[string]float64{}
-	unpriced := map[string]bool{}
-	for rows.Next() {
+
+	accumulator, err := scanUsageCosts(rows, calculator, func(rows *sql.Rows) (string, model.Usage, error) {
 		var usage model.Usage
-		if err := rows.Scan(&usage.Model, &usage.InputTokens, &usage.CachedInputTokens, &usage.OutputTokens, &usage.ReasoningOutputTokens, &usage.TotalTokens, &usage.Source); err != nil {
-			return nil, nil, err
-		}
-		if cost, isUnpriced := calculator.Compute(usage); isUnpriced {
-			unpriced[usage.Model] = true
-		} else if cost != nil {
-			costs[usage.Model] += *cost
-		}
+		err := scanUsageCostColumns(rows, &usage)
+		return usage.Model, usage, err
+	})
+	if err != nil {
+		return nil, nil, err
 	}
-	return costs, unpriced, rows.Err()
+	return accumulator.costs, accumulator.unpriced, nil
 }
 
 func (s *Service) agentUsage(ctx context.Context) ([]model.AgentUsage, error) {
@@ -412,8 +389,7 @@ func (s *Service) agentCosts(ctx context.Context, calculator pricing.Calculator)
 
 func (s *Service) agentCostsWithFilters(ctx context.Context, calculator pricing.Calculator, filters model.AnalyticsFilters) (map[int64]float64, map[int64]bool, error) {
 	where, args := analyticsUsageWhere(filters)
-	rows, err := s.conn.QueryContext(ctx, `SELECT src.id, `+usageSessionModelExpr+`,
-		tu.input_tokens, tu.cached_input_tokens, tu.output_tokens, tu.reasoning_output_tokens, tu.total_tokens, tu.source
+	rows, err := s.conn.QueryContext(ctx, `SELECT src.id, `+usageCostColumns+`
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
 		JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
@@ -421,22 +397,17 @@ func (s *Service) agentCostsWithFilters(ctx context.Context, calculator pricing.
 	if err != nil {
 		return nil, nil, err
 	}
-	defer rows.Close()
-	costs := map[int64]float64{}
-	unpriced := map[int64]bool{}
-	for rows.Next() {
+
+	accumulator, err := scanUsageCosts(rows, calculator, func(rows *sql.Rows) (int64, model.Usage, error) {
 		var sourceID int64
 		var usage model.Usage
-		if err := rows.Scan(&sourceID, &usage.Model, &usage.InputTokens, &usage.CachedInputTokens, &usage.OutputTokens, &usage.ReasoningOutputTokens, &usage.TotalTokens, &usage.Source); err != nil {
-			return nil, nil, err
-		}
-		if cost, isUnpriced := calculator.Compute(usage); isUnpriced {
-			unpriced[sourceID] = true
-		} else if cost != nil {
-			costs[sourceID] += *cost
-		}
+		err := rows.Scan(&sourceID, &usage.Model, &usage.InputTokens, &usage.CachedInputTokens, &usage.OutputTokens, &usage.ReasoningOutputTokens, &usage.TotalTokens, &usage.Source)
+		return sourceID, usage, err
+	})
+	if err != nil {
+		return nil, nil, err
 	}
-	return costs, unpriced, rows.Err()
+	return accumulator.costs, accumulator.unpriced, nil
 }
 
 type usageBreakdownShape struct {
@@ -472,7 +443,7 @@ func (s *Service) UsageBreakdown(ctx context.Context, groupBy string, filters mo
 	}
 	defer rows.Close()
 
-	calculator := s.pricingCalculator(ctx)
+	costs := newCostAccumulator[string](s.pricingCalculator(ctx))
 	bucketsByKey := map[string]*model.UsageBreakdownBucket{}
 	for rows.Next() {
 		var bucket model.UsageBreakdownBucket
@@ -528,7 +499,7 @@ func (s *Service) UsageBreakdown(ctx context.Context, groupBy string, filters mo
 			TotalTokens:           bucket.TotalTokens,
 			Source:                usageSource,
 		}
-		if cost, unpriced := calculator.Compute(usage); unpriced {
+		if cost, unpriced := costs.add(key, usage); unpriced {
 			target.Unpriced = true
 		} else if cost != nil {
 			addCost(&target.EstimatedCostUSD, *cost)
@@ -617,6 +588,77 @@ func addCost(target **float64, cost float64) {
 		*target = &value
 	}
 	**target += cost
+}
+
+type costAccumulator[K comparable] struct {
+	calculator    pricing.Calculator
+	costs         map[K]float64
+	unpriced      map[K]bool
+	total         float64
+	hasCost       bool
+	unpricedCount int
+}
+
+func newCostAccumulator[K comparable](calculator pricing.Calculator) *costAccumulator[K] {
+	return &costAccumulator[K]{
+		calculator: calculator,
+		costs:      map[K]float64{},
+		unpriced:   map[K]bool{},
+	}
+}
+
+func (a *costAccumulator[K]) add(key K, usage model.Usage) (*float64, bool) {
+	cost, unpriced := a.calculator.Compute(usage)
+	if unpriced {
+		a.unpriced[key] = true
+		a.unpricedCount++
+		return nil, true
+	}
+	if cost != nil {
+		a.costs[key] += *cost
+		a.total += *cost
+		a.hasCost = true
+	}
+	return cost, false
+}
+
+func (a *costAccumulator[K]) totalCost() *float64 {
+	if !a.hasCost {
+		return nil
+	}
+	return &a.total
+}
+
+func scanUsageCosts[K comparable](
+	rows *sql.Rows,
+	calculator pricing.Calculator,
+	scan func(*sql.Rows) (K, model.Usage, error),
+) (*costAccumulator[K], error) {
+	defer rows.Close()
+	accumulator := newCostAccumulator[K](calculator)
+	for rows.Next() {
+		key, usage, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		accumulator.add(key, usage)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return accumulator, nil
+}
+
+func scanUsageCostColumns(rows *sql.Rows, usage *model.Usage) error {
+	return rows.Scan(
+		&usage.Model,
+		&usage.InputTokens,
+		&usage.CachedInputTokens,
+		&usage.OutputTokens,
+		&usage.ReasoningOutputTokens,
+		&usage.TotalTokens,
+		&usage.Source,
+	)
 }
 
 func sortUsageBreakdownBuckets(buckets []model.UsageBreakdownBucket, groupBy string) {

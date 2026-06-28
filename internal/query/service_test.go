@@ -610,6 +610,70 @@ func TestOverviewPricingIgnoresZeroTokenUnknownUsage(t *testing.T) {
 	}
 }
 
+func TestCostAggregationCharacterizesPricingStates(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	sourceID := insertTimeSource(t, conn, "codex", "Codex", now)
+	insertTokenAnalyticsSession(t, conn, sourceID, now, "priced", "gpt-5", "gpt-5", "actual", 1_000_000, 200_000, 500_000, 0, 1_500_000)
+	insertTokenAnalyticsSession(t, conn, sourceID, now.Add(time.Minute), "unpriced", "unknown-model", "unknown-model", "actual", 100_000, 0, 50_000, 0, 150_000)
+	insertTokenAnalyticsSession(t, conn, sourceID, now.Add(24*time.Hour), "zero-unknown", "empty-unknown", "empty-unknown", "unknown", 0, 0, 0, 0, 0)
+
+	const wantCost = 6.025
+	service := New(conn)
+	calculator := service.pricingCalculator(ctx)
+
+	totalCost, unpricedCount, err := service.totalCost(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCostUSD(t, totalCost, wantCost)
+	if unpricedCount != 1 {
+		t.Fatalf("total unpriced count = %d", unpricedCount)
+	}
+
+	dailyCosts, err := service.dailyCosts(ctx, calculator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(dailyCosts["2026-06-27"]-wantCost) > 0.000001 {
+		t.Fatalf("daily cost = %+v, want %.6f", dailyCosts, wantCost)
+	}
+	if _, ok := dailyCosts["2026-06-28"]; ok {
+		t.Fatalf("zero-token unknown usage should not create a daily cost bucket: %+v", dailyCosts)
+	}
+
+	modelCosts, unpricedModels, err := service.modelCostsWithFilters(ctx, calculator, model.AnalyticsFilters{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(modelCosts["gpt-5"]-wantCost) > 0.000001 {
+		t.Fatalf("model costs = %+v, want gpt-5 %.6f", modelCosts, wantCost)
+	}
+	if !unpricedModels["unknown-model"] {
+		t.Fatalf("billable unknown model should be marked unpriced: %+v", unpricedModels)
+	}
+	if unpricedModels["empty-unknown"] || modelCosts["empty-unknown"] != 0 {
+		t.Fatalf("zero-token unknown model should be ignored: costs=%+v unpriced=%+v", modelCosts, unpricedModels)
+	}
+
+	agentCosts, unpricedAgents, err := service.agentCosts(ctx, calculator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(agentCosts[sourceID]-wantCost) > 0.000001 {
+		t.Fatalf("agent costs = %+v, want source %d %.6f", agentCosts, sourceID, wantCost)
+	}
+	if !unpricedAgents[sourceID] {
+		t.Fatalf("agent should retain unpriced marker: %+v", unpricedAgents)
+	}
+}
+
 func TestEstimatedCostsUseRowPricingAcrossBreakdowns(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))

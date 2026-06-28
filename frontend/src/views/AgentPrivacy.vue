@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import message from 'ant-design-vue/es/message'
 import ASpin from 'ant-design-vue/es/spin'
 import { api, isStaticDemo } from '../api'
@@ -15,14 +15,9 @@ import PrivacySummaryPanel from '../components/privacy/PrivacySummaryPanel.vue'
 import { useAgentPrivacyEditor } from '../composables/useAgentPrivacyEditor'
 import { useMessages } from '../i18n'
 import { formatNumber } from '../presentation/formatters'
-import {
-  formatPrivacyConfigValue,
-  privacyProfileValue,
-  privacyValueType,
-  privacyValueTypeLabel,
-  privacyValuesEqual,
-  strictPrivacyValue
-} from '../presentation/privacyConfig'
+import { privacyValueType, privacyValueTypeLabel, strictPrivacyValue } from '../presentation/privacyConfig'
+import { useAgentPrivacyDisplay } from './agent-privacy/privacyDisplay'
+import { useAgentPrivacyViewModel } from './agent-privacy/privacyViewModel'
 
 const { t, locale } = useMessages({
   en: {
@@ -486,10 +481,6 @@ const { t, locale } = useMessages({
   }
 })
 
-type PrivacyMessageKey = Parameters<typeof t>[0]
-type SettingTextField = 'title' | 'description' | 'impact'
-
-const profileIds: PrivacyProfileId[] = ['default', 'recommended', 'strict']
 const loading = ref(true)
 const savingAll = ref(false)
 const savingId = ref('')
@@ -512,203 +503,52 @@ const {
 let loadRequestId = 0
 let saveRequestId = 0
 
-const groupMessageKeys: Record<string, PrivacyMessageKey> = {
-  Telemetry: 'privacy.settingGroup.telemetry',
-  Network: 'privacy.settingGroup.network',
-  'Local history': 'privacy.settingGroup.localHistory',
-  Memory: 'privacy.settingGroup.memory',
-  Environment: 'privacy.settingGroup.environment',
-  Usage: 'privacy.settingGroup.usage',
-  'Local retention': 'privacy.settingGroup.localRetention',
-  Approval: 'privacy.settingGroup.approval',
-  Extensions: 'privacy.settingGroup.extensions',
-  Browser: 'privacy.settingGroup.browser',
-  Voice: 'privacy.settingGroup.voice'
-}
-const settingMessageBases: Partial<Record<PrivacyTarget, Record<string, string>>> = {
-  codex: {
-    'analytics.enabled': 'privacy.setting.codex.analytics.enabled',
-    'otel.exporter': 'privacy.setting.codex.otel.exporter',
-    'otel.trace_exporter': 'privacy.setting.codex.otel.trace_exporter',
-    'otel.metrics_exporter': 'privacy.setting.codex.otel.metrics_exporter',
-    'otel.log_user_prompt': 'privacy.setting.codex.otel.log_user_prompt',
-    web_search: 'privacy.setting.codex.web_search',
-    'history.persistence': 'privacy.setting.codex.history.persistence',
-    'features.memories': 'privacy.setting.codex.features.memories',
-    'memories.generate_memories': 'privacy.setting.codex.memories.generate_memories',
-    'memories.use_memories': 'privacy.setting.codex.memories.use_memories',
-    'memories.disable_on_external_context': 'privacy.setting.codex.memories.disable_on_external_context',
-    'sandbox_workspace_write.network_access': 'privacy.setting.codex.sandbox_workspace_write.network_access',
-    'shell_environment_policy.inherit': 'privacy.setting.codex.shell_environment_policy.inherit',
-    'shell_environment_policy.ignore_default_excludes': 'privacy.setting.codex.shell_environment_policy.ignore_default_excludes'
-  },
-  gemini: {
-    'privacy.usageStatisticsEnabled': 'privacy.setting.gemini.privacy.usageStatisticsEnabled',
-    'telemetry.enabled': 'privacy.setting.gemini.telemetry.enabled',
-    'telemetry.traces': 'privacy.setting.gemini.telemetry.traces',
-    'telemetry.logPrompts': 'privacy.setting.gemini.telemetry.logPrompts',
-    'general.logRagSnippets': 'privacy.setting.gemini.general.logRagSnippets',
-    'general.checkpointing.enabled': 'privacy.setting.gemini.general.checkpointing.enabled',
-    'general.sessionRetention.enabled': 'privacy.setting.gemini.general.sessionRetention.enabled',
-    'general.sessionRetention.maxAge': 'privacy.setting.gemini.general.sessionRetention.maxAge',
-    'tools.sandboxNetworkAccess': 'privacy.setting.gemini.tools.sandboxNetworkAccess',
-    'tools.exclude.web': 'privacy.setting.gemini.tools.exclude.web',
-    'experimental.directWebFetch': 'privacy.setting.gemini.experimental.directWebFetch',
-    'advanced.ignoreLocalEnv': 'privacy.setting.gemini.advanced.ignoreLocalEnv',
-    'security.environmentVariableRedaction.enabled':
-      'privacy.setting.gemini.security.environmentVariableRedaction.enabled',
-    'security.disableYoloMode': 'privacy.setting.gemini.security.disableYoloMode',
-    'security.disableAlwaysAllow': 'privacy.setting.gemini.security.disableAlwaysAllow',
-    'security.enablePermanentToolApproval': 'privacy.setting.gemini.security.enablePermanentToolApproval',
-    'security.blockGitExtensions': 'privacy.setting.gemini.security.blockGitExtensions',
-    'agents.browser.confirmSensitiveActions': 'privacy.setting.gemini.agents.browser.confirmSensitiveActions',
-    'agents.browser.blockFileUploads': 'privacy.setting.gemini.agents.browser.blockFileUploads',
-    'experimental.voiceMode': 'privacy.setting.gemini.experimental.voiceMode',
-    'experimental.autoMemory': 'privacy.setting.gemini.experimental.autoMemory',
-    'context.loadMemoryFromIncludeDirectories':
-      'privacy.setting.gemini.context.loadMemoryFromIncludeDirectories',
-    'skills.enabled': 'privacy.setting.gemini.skills.enabled'
-  }
-}
-
-const targetOptions = computed<{ label: string; value: PrivacyTarget }[]>(() => [
-  { label: t('privacy.target.codex'), value: 'codex' },
-  { label: t('privacy.target.gemini'), value: 'gemini' },
-  { label: t('privacy.target.claude'), value: 'claude' },
-  { label: t('privacy.target.codebuddy'), value: 'codebuddy' }
-])
-const profileOptions = computed(() =>
-  profileIds.map((profile) => ({
-    id: profile,
-    title: profileTitle(profile),
-    description: t(`privacy.profile.${profile}.description` as PrivacyMessageKey)
-  }))
-)
-const targetLabel = computed(() => {
-  if (privacyStatus.value?.name) return privacyStatus.value.name
-  return targetOptions.value.find((option) => option.value === selectedTarget.value)?.label || selectedTarget.value
-})
-const targetFile = computed(() => (selectedTarget.value === 'codex' ? 'config.toml' : 'settings.json'))
-const summary = computed(
-  () =>
-    privacyStatus.value?.summary || {
-      score: 0,
-      total: 0,
-      hardened: 0,
-      attention: 0,
-      implicit: 0
-    }
-)
-const settings = computed(() => privacyStatus.value?.settings || [])
-const changedSettings = computed(() => settings.value.filter((setting) => canEdit(setting) && isEditChanged(setting)))
-const kickerText = computed(() => t('privacy.kicker', { target: targetLabel.value, file: targetFile.value }))
-const statusState = computed(() => {
-  if (!privacyStatus.value) return { color: 'default', label: t('privacy.status.noStatus') }
-  if (metricCounts.value.missingRequired > 0) {
-    return { color: 'warning', label: t('privacy.status.needsChange') }
-  }
-  return { color: 'success', label: t('privacy.status.ready') }
-})
-const warningList = computed(() => {
-  const values = [...(privacyStatus.value?.warnings || []), ...(lastApply.value?.warnings || [])]
-  return [...new Set(values.filter(Boolean))]
-})
-const metricCounts = computed(() => {
-  const total = settings.value.length || summary.value.total
-  const strictConfigured = settings.value.filter(
-    (setting) =>
-      setting.configured && privacyValuesEqual(setting.currentValue, strictPrivacyValue(setting), privacyValueType(setting))
-  ).length
-  const defaultSafe = settings.value.filter((setting) => !setting.configured && setting.status === 'implicit').length
-  const customConfigured = settings.value.filter(
-    (setting) =>
-      setting.configured && !privacyValuesEqual(setting.currentValue, strictPrivacyValue(setting), privacyValueType(setting))
-  ).length
-  const missingRequired = settings.value.filter((setting) => !setting.configured && setting.status === 'attention').length
-  const unsavedChanges = changedSettings.value.length
-  return { total, strictConfigured, defaultSafe, customConfigured, missingRequired, unsavedChanges }
-})
-const groupedSettings = computed(() => {
-  const groups = new Map<string, PrivacyConfigSetting[]>()
-  for (const setting of settings.value) {
-    const group = localizedSettingGroup(setting)
-    groups.set(group, [...(groups.get(group) || []), setting])
-  }
-  return [...groups.entries()].map(([name, items]) => ({ name, items }))
-})
-
 function activeSettingTarget(): PrivacyTarget | undefined {
   const target = privacyStatus.value?.target || selectedTarget.value
   if (target === 'codex' || target === 'gemini') return target
   return undefined
 }
 
-function localizedMessage(key: PrivacyMessageKey | undefined, fallback: string) {
-  if (!key || locale.value === 'en') return fallback
-  const localized = t(key)
-  return localized === key ? fallback : localized
-}
-
-function localizedSettingGroup(setting: PrivacyConfigSetting) {
-  if (!setting.group) return t('privacy.group.default')
-  return localizedMessage(groupMessageKeys[setting.group], setting.group)
-}
-
-function settingMessageKey(setting: PrivacyConfigSetting, field: SettingTextField): PrivacyMessageKey | undefined {
-  const target = activeSettingTarget()
-  const base = target ? settingMessageBases[target]?.[setting.id] : undefined
-  if (!base) return undefined
-  return `${base}.${field}` as PrivacyMessageKey
-}
-
-function localizedSettingText(setting: PrivacyConfigSetting, field: SettingTextField, fallback: string) {
-  return localizedMessage(settingMessageKey(setting, field), fallback)
-}
-
-function localizedSettingTitle(setting: PrivacyConfigSetting) {
-  return localizedSettingText(setting, 'title', setting.title)
-}
-
-function localizedSettingDescription(setting: PrivacyConfigSetting) {
-  return localizedSettingText(setting, 'description', setting.description)
-}
-
-function localizedSettingImpact(setting: PrivacyConfigSetting) {
-  return localizedSettingText(setting, 'impact', setting.impact)
-}
-
 function canEdit(setting: PrivacyConfigSetting) {
   return !isStaticDemo && baseCanEdit(setting)
 }
 
-function formatConfigValue(value: unknown) {
-  return formatPrivacyConfigValue(value, t('privacy.value.unset'))
-}
+const {
+  formatConfigValue,
+  profileTitle,
+  profileBehaviorText,
+  settingState,
+  localizedSettingGroup,
+  localizedSettingTitle,
+  localizedSettingDescription,
+  localizedSettingImpact
+} = useAgentPrivacyDisplay({
+  t: translate,
+  locale,
+  activeTarget: activeSettingTarget
+})
 
-function profileTitle(profile: PrivacyProfileId) {
-  return t(`privacy.profile.${profile}.title` as PrivacyMessageKey)
-}
-
-function profileBehaviorText(setting: PrivacyConfigSetting, profile: PrivacyProfileId) {
-  const profileValue = privacyProfileValue(setting, profile)
-  if (!profileValue) {
-    if (profile === 'default') return t('privacy.value.profileUnset')
-    if (profile === 'strict') return formatConfigValue(strictPrivacyValue(setting))
-    return t('privacy.value.profileUnavailable')
-  }
-  if (profileValue.op === 'set') return formatConfigValue(profileValue.value)
-  if (profileValue.op === 'unset') return t('privacy.value.profileUnset')
-  return t('privacy.value.profileNone')
-}
-
-function settingState(setting: PrivacyConfigSetting) {
-  if (setting.configured && privacyValuesEqual(setting.currentValue, strictPrivacyValue(setting), privacyValueType(setting))) {
-    return { color: 'success', label: t('privacy.status.hardened') }
-  }
-  if (setting.configured) return { color: 'processing', label: t('privacy.meta.customConfigured') }
-  if (setting.status === 'implicit') return { color: 'default', label: t('privacy.status.implicit') }
-  return { color: 'warning', label: t('privacy.value.notConfigured') }
-}
+const {
+  targetOptions,
+  profileOptions,
+  targetLabel,
+  settings,
+  changedSettings,
+  kickerText,
+  statusState,
+  warningList,
+  metricCounts,
+  groupedSettings
+} = useAgentPrivacyViewModel({
+  t: translate,
+  selectedTarget,
+  privacyStatus,
+  lastApply,
+  canEdit,
+  isEditChanged,
+  localizedSettingGroup,
+  profileTitle
+})
 
 function settingCardClass(setting: PrivacyConfigSetting) {
   return {
