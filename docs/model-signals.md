@@ -3,19 +3,23 @@
 Model Signals summarizes operational behavior that can be inferred from local
 coding-agent sessions. These signals are operational measurements, not a model
 capability leaderboard, and they do not assign a universal grade. They describe
-how a provider/model behaved in real local usage for the selected agent/source
-and project scope, using the available local token, timing, model-call, cost,
-and tool-call data.
+how a provider/model behaved in real local usage for the selected agent/source,
+project, and day scope, using the available local token, timing, model-call,
+cost, cache, retry, failure, and tool-call data.
 
 Use Model Signals to find patterns worth investigating, such as models that
 produce unusually long outputs, show slower observed throughput, miss cache more
-often, or start failing calls in a specific project. Do not use a single signal
-as proof that one model is better or worse than another.
+often, burn more cost per session or active hour, or start failing calls in a
+specific project. Do not use a single signal as proof that one model is better
+or worse than another.
 
-The feature has two layers:
+The feature has three related views:
 
 - **Raw operational signals** stay close to the observed data: tokens, duration,
   throughput, cache shape, tool calls, model calls, and anomaly sessions.
+- **Daily and project efficiency metrics** summarize cost, cache savings,
+  latency, throughput, failure pressure, retry pressure, sample confidence, and
+  drift at day and project granularity.
 - **Model Health** compares current behavior with the same cohort's own recent
   baseline and surfaces service-health, behavior-drift, and operational
   symptoms that deserve review.
@@ -49,6 +53,12 @@ Health interpretation should:
 - Preserve raw signal values so users can inspect the numerator, denominator,
   and source scope behind a health label.
 
+Daily metrics use day-level rows and compare each day against the preceding
+7 calendar days when enough history exists. Project metrics compare the current
+project behavior against available baseline behavior for the same filtered
+scope. In both cases, drift is a local operational change indicator, not a
+general model capability score.
+
 ## Signals
 
 Stronger service-health signals:
@@ -61,6 +71,25 @@ Stronger service-health signals:
   when the source exposes it.
 - **Token and cost shape:** shifts in input, cached input, output, reasoning,
   and cost mix for the same cohort.
+
+Operational efficiency metrics:
+
+- **Cost burn:** total observed estimated cost for a day or project.
+- **Cost per session:** estimated cost divided by sessions in the same row.
+- **Cost per active hour:** estimated cost divided by measured active model and
+  tool time when active duration is available.
+- **Cache savings:** estimated avoided cost from cached input tokens when both
+  cached-token data and pricing are available.
+- **Latency percentiles:** p50 and p90 latency from observed model-call
+  token/duration rows when available, with session-level fallbacks when the
+  source does not expose per-call token counts.
+- **Throughput percentiles:** p50 and p10 observed throughput using the same
+  model-call-first, session-fallback sample rule, so slow-tail throughput
+  remains visible.
+- **Failure pressure:** failed or errored model-call and tool-call pressure,
+  depending on what the source exposes.
+- **Retry pressure:** repeated model-call pressure, including model calls per
+  session as a proxy for repair loops or larger tasks.
 
 Weaker operational symptoms:
 
@@ -108,6 +137,11 @@ duration markers can lower confidence in the derived signal. AgentMeter keeps
 these as operational signals because they are still useful for spotting local
 workflow changes and outliers.
 
+Missing pricing is a confidence and completeness limitation, not an indexing or
+model failure. Cost and cache-savings metrics should clearly show unavailable or
+partial pricing rather than silently treating unknown prices as zero. Low sample
+rows should also be explained as risk or low confidence, not as failed behavior.
+
 ## Recommended Interpretation
 
 Read the signals together:
@@ -123,8 +157,19 @@ Read the signals together:
 The `/api/model-signals` endpoint supports the same analytics filters as
 overview and token analytics: `agent`, `model`, `project`, `from`, and `to`.
 Existing collection fields such as `trend`, `modelBreakdown`, and
-`anomalySessions` remain raw operational signal views. The Model Health layer
-adds:
+`anomalySessions` remain raw operational signal views. The endpoint also
+returns day-level and project-level efficiency views:
+
+- `dailyMetrics`: day rows for operational efficiency, including cost, cost per
+  session, cost per active hour, cache savings, p50/p90 latency, p50/p10
+  throughput, failure pressure, retry pressure or model calls per session, low
+  sample flags, and drift against the preceding 7 calendar days.
+- `projectMetrics`: project rows for operational efficiency, including project
+  cost burn, cache savings, cost per session, cost per active hour, dominant
+  model, model mix, retry pressure, failure pressure, confidence, and
+  current-versus-baseline drift.
+
+The Model Health layer adds:
 
 - `healthSummary`: scope-level current window, baseline availability, sample,
   confidence, and strongest observed health/drift indicators.
@@ -136,4 +181,6 @@ adds:
 
 Collection fields should return empty arrays (`[]`) when no rows match. Object
 fields such as `healthSummary` should still be present and should report
-missing baseline or low confidence explicitly when data is sparse.
+missing baseline or low confidence explicitly when data is sparse. Missing
+pricing, missing cache-token fields, or low samples should be represented as
+confidence and completeness limits rather than as failures.

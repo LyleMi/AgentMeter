@@ -28,9 +28,9 @@
 AgentMeter is an open-source Go + Vue dashboard for understanding local
 coding-agent session usage. It reads local agent JSONL session files, indexes
 them into SQLite, and shows tokens, estimated cost, timing, session history,
-models, projects, cache reuse, tool-call behavior, and model health/drift
-signals in the private local Web dashboard, with terminal summaries over the
-same local data.
+models, projects, cache reuse, daily/project efficiency metrics, tool-call
+behavior, and model health/drift signals in the private local Web dashboard,
+with terminal summaries over the same local data.
 
 No proxy, no cloud service, no telemetry.
 
@@ -61,6 +61,8 @@ inspect directly. AgentMeter turns that data into answers you can use:
 - What did those tokens roughly cost?
 - Which models, days, projects, or sessions used the most?
 - How stable is cache hit behavior by day, model, or project?
+- Where are cost per session, cost per active hour, cache savings, retry
+  pressure, or failure pressure changing by day or project?
 - Where did model health, service drift, throughput, cache, or tool-use
   symptoms change in real usage?
 - Which tools were called most often?
@@ -71,10 +73,12 @@ inspect directly. AgentMeter turns that data into answers you can use:
 - Local Web dashboard for sessions, tokens, estimated cost, daily usage, model
   usage, project usage, cache-hit trends by day/model/project, and tool-call
   analytics.
-- Model Signals for raw operational signals and health/drift monitoring,
-  including output expansion, reasoning share, cache miss, throughput, model
-  call status when available, token/cost shape, tool dependency, tool failures,
-  low-confidence cohorts, and anomaly sessions.
+- Model Signals for raw operational signals, daily/project operational
+  efficiency, and health/drift monitoring, including output expansion,
+  reasoning share, cache miss, throughput, model call status when available,
+  token/cost shape, cost per session, cost per active hour, cache savings,
+  retry/failure pressure, low-confidence cohorts, and anomaly sessions. These
+  are local operational proxies, not universal model benchmark scores.
 - Offline audit view for command-risk and privacy/secret findings derived from
   indexed local session data.
 - Terminal UI mode over the same database, indexing pipeline, pricing rules, and

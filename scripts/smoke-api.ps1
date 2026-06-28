@@ -471,6 +471,8 @@ function Assert-ModelSignals {
     Assert-ArrayProperty -Object $Payload -Name "cohorts"
     Assert-ArrayProperty -Object $Payload -Name "matrix"
     Assert-ArrayProperty -Object $Payload -Name "projectHotspots"
+    Assert-ArrayProperty -Object $Payload -Name "dailyMetrics"
+    Assert-ArrayProperty -Object $Payload -Name "projectMetrics"
 
     $trend = @((Get-JsonProperty -Object $Payload -Name "trend").Value)
     if ($trend.Count -gt 0) {
@@ -500,6 +502,27 @@ function Assert-ModelSignals {
     $hotspots = @((Get-JsonProperty -Object $Payload -Name "projectHotspots").Value)
     if ($hotspots.Count -gt 0) {
         Assert-ModelHealthRow -Row $hotspots[0] -Label "model health project hotspot"
+    }
+
+    $dailyMetrics = @((Get-JsonProperty -Object $Payload -Name "dailyMetrics").Value)
+    if ($dailyMetrics.Count -gt 0) {
+        Assert-ModelSignalMetricRow -Row $dailyMetrics[0] -Label "model signal daily metric"
+        Assert-StringProperty -Object $dailyMetrics[0] -Name "date"
+        Assert-BoolProperty -Object $dailyMetrics[0] -Name "lowSample"
+        Assert-ObjectProperty -Object $dailyMetrics[0] -Name "drift"
+    }
+
+    $projectMetrics = @((Get-JsonProperty -Object $Payload -Name "projectMetrics").Value)
+    if ($projectMetrics.Count -gt 0) {
+        Assert-ModelSignalMetricRow -Row $projectMetrics[0] -Label "model signal project metric"
+        Assert-ModelHealthRow -Row $projectMetrics[0] -Label "model signal project metric"
+        Assert-OptionalStringProperty -Object $projectMetrics[0] -Name "projectPath"
+        Assert-NumberProperty -Object $projectMetrics[0] -Name "modelCount"
+        Assert-NumberProperty -Object $projectMetrics[0] -Name "sourceCount"
+        Assert-NumberProperty -Object $projectMetrics[0] -Name "dominantModelShare"
+        Assert-ObjectProperty -Object $projectMetrics[0] -Name "current"
+        Assert-ObjectProperty -Object $projectMetrics[0] -Name "baseline"
+        Assert-ObjectProperty -Object $projectMetrics[0] -Name "drift"
     }
 }
 

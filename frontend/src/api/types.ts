@@ -226,6 +226,7 @@ export interface ModelSignalRates {
 export interface ModelSignalMetricSet extends ModelSignalRates {
   sessionCount: number
   modelCalls: number
+  failedModelCalls?: number
   toolCalls: number
   failedToolCalls: number
   totalTokens: number
@@ -234,8 +235,22 @@ export interface ModelSignalMetricSet extends ModelSignalRates {
   outputTokens: number
   reasoningOutputTokens: number
   modelDurationMs: number
+  wallDurationMs?: number
+  activeDurationMs?: number
+  toolDurationMs?: number
+  idleDurationMs?: number
+  estimatedCostUsd?: number
+  unpricedSessionCount?: number
+  cacheSavingsUsd?: number
+  costPerSession?: number
+  costPerActiveHour?: number
+  failurePressure?: number
   avgModelCallsPerSession: number
   modelLatencyMsPer1kOutputTokens: number
+  p50ModelLatencyMsPer1kOutputTokens?: number
+  p90ModelLatencyMsPer1kOutputTokens?: number
+  p50ModelThroughputTokensPerSecond?: number
+  p10ModelThroughputTokensPerSecond?: number
 }
 
 export interface ModelSignalsWindow {
@@ -354,6 +369,25 @@ export interface ModelSignalProjectHotspot {
   drift: ModelSignalDrift
 }
 
+export interface ModelSignalsDailyMetric extends ModelSignalMetricSet {
+  date: string
+  lowSample: boolean
+  drift: ModelSignalDrift
+  keyReason?: string
+}
+
+export interface ModelSignalsProjectMetric extends ModelSignalMetricSet {
+  projectPath: string
+  modelCount: number
+  sourceCount: number
+  dominantModelProvider?: string
+  dominantModel?: string
+  dominantModelShare: number
+  current: ModelSignalMetricSet
+  baseline: ModelSignalMetricSet
+  drift: ModelSignalDrift
+}
+
 export interface ModelSignalAnomalySession {
   id?: number
   sessionId?: number
@@ -413,6 +447,8 @@ export interface ModelSignals {
   cohorts?: ModelSignalCohort[]
   matrix?: ModelSignalMatrixRow[]
   projectHotspots?: ModelSignalProjectHotspot[]
+  dailyMetrics?: ModelSignalsDailyMetric[]
+  projectMetrics?: ModelSignalsProjectMetric[]
 }
 
 export interface EventItem {

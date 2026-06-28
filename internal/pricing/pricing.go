@@ -228,6 +228,25 @@ func (c Calculator) Compute(usage model.Usage) (*float64, bool) {
 	return computeWithRate(usage, rate, ok)
 }
 
+func (c Calculator) CacheSavings(usage model.Usage) *float64 {
+	if !hasBillableUsage(usage) || usage.CachedInputTokens <= 0 {
+		return nil
+	}
+	normalized := NormalizeModel(usage.Model)
+	if usage.Model == "" || normalized == "unknown" {
+		return nil
+	}
+	rate, ok := c.rates[normalized]
+	if !ok || rate.InputPer1M <= rate.CachedInputPer1M {
+		return nil
+	}
+	savings := float64(usage.CachedInputTokens) * (rate.InputPer1M - rate.CachedInputPer1M) / 1_000_000
+	if savings <= 0 {
+		return nil
+	}
+	return &savings
+}
+
 func rateForUsage(conn *sql.DB, usage model.Usage) (Rate, bool) {
 	if !hasBillableUsage(usage) {
 		return Rate{}, false

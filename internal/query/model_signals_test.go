@@ -121,7 +121,7 @@ func TestModelSignalsEmptyAndZeroDenominatorResponses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if empty.TotalSessions != 0 || empty.Trend == nil || empty.ModelBreakdown == nil || empty.AnomalySessions == nil || empty.Cohorts == nil || empty.Matrix == nil || empty.ProjectHotspots == nil || empty.HealthSummary.TopReasons == nil {
+	if empty.TotalSessions != 0 || empty.Trend == nil || empty.ModelBreakdown == nil || empty.AnomalySessions == nil || empty.Cohorts == nil || empty.Matrix == nil || empty.ProjectHotspots == nil || empty.DailyMetrics == nil || empty.ProjectMetrics == nil || empty.HealthSummary.TopReasons == nil {
 		t.Fatalf("empty model signals = %+v", empty)
 	}
 	if empty.HealthSummary.Severity != "unknown" {
@@ -147,6 +147,113 @@ func TestModelSignalsEmptyAndZeroDenominatorResponses(t *testing.T) {
 	}
 	if _, err := json.Marshal(signals); err != nil {
 		t.Fatalf("model signals should marshal without NaN/Inf: %v", err)
+	}
+}
+
+func TestModelSignalsDailyAndProjectEfficiencyMetrics(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	anchor := time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC)
+	sourceID := insertTimeSource(t, conn, "codex", "Codex", anchor)
+
+	baselineA := insertModelSignalSession(t, conn, sourceID, anchor.AddDate(0, 0, -8), "baseline-a", "/workspace/api", "gpt-5", "gpt-5", 1_000, 200, 500, 0, 1_500, 1_000)
+	setModelSignalSessionDurations(t, conn, baselineA, 4_000, 3_000, 700, 300)
+	insertModelSignalCall(t, conn, baselineA, anchor.AddDate(0, 0, -8), 1_000, "gpt-5", "completed")
+	insertModelSignalToolCall(t, conn, baselineA, anchor.AddDate(0, 0, -8), "shell_command", "completed")
+
+	baselineB := insertModelSignalSession(t, conn, sourceID, anchor.AddDate(0, 0, -7), "baseline-b", "/workspace/api", "gpt-5", "gpt-5", 1_000, 0, 500, 0, 1_500, 2_000)
+	setModelSignalSessionDurations(t, conn, baselineB, 5_000, 4_000, 800, 200)
+	insertModelSignalCall(t, conn, baselineB, anchor.AddDate(0, 0, -7), 2_000, "gpt-5", "completed")
+
+	currentA := insertModelSignalSession(t, conn, sourceID, anchor.Add(-2*time.Hour), "current-a", "/workspace/api/.", "gpt-5", "gpt-5", 2_000, 1_000, 1_000, 0, 3_000, 4_000)
+	setModelSignalSessionDurations(t, conn, currentA, 12_000, 10_000, 1_500, 500)
+	currentACallA := insertModelSignalCall(t, conn, currentA, anchor.Add(-2*time.Hour), 2_500, "gpt-5", "completed")
+	setModelSignalCallUsage(t, conn, currentACallA, 800, 400, 400, 0, 1_200)
+	currentACallB := insertModelSignalCall(t, conn, currentA, anchor.Add(-2*time.Hour+time.Second), 1_500, "gpt-5", "completed")
+	setModelSignalCallUsage(t, conn, currentACallB, 1_200, 600, 600, 0, 1_800)
+	insertModelSignalToolCall(t, conn, currentA, anchor.Add(-2*time.Hour), "shell_command", "failed")
+
+	currentB := insertModelSignalSession(t, conn, sourceID, anchor.Add(-time.Hour), "current-b", "/workspace/api", "gpt-5", "gpt-5", 1_000, 0, 500, 0, 1_500, 1_000)
+	setModelSignalSessionDurations(t, conn, currentB, 6_000, 5_000, 600, 400)
+	currentBCall := insertModelSignalCall(t, conn, currentB, anchor.Add(-time.Hour), 1_000, "gpt-5", "completed")
+	setModelSignalCallUsage(t, conn, currentBCall, 1_000, 0, 500, 0, 1_500)
+
+	currentUnknown := insertModelSignalSession(t, conn, sourceID, anchor, "current-unknown", "/workspace/api", "unknown-model", "unknown-model", 500, 0, 250, 0, 750, 500)
+	setModelSignalSessionDurations(t, conn, currentUnknown, 3_000, 2_000, 300, 200)
+	currentUnknownCall := insertModelSignalCall(t, conn, currentUnknown, anchor, 500, "unknown-model", "error")
+	setModelSignalCallUsage(t, conn, currentUnknownCall, 500, 0, 250, 0, 750)
+	insertModelSignalToolCall(t, conn, currentUnknown, anchor, "shell_command", "error")
+
+	signals, err := New(conn).ModelSignals(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(signals.DailyMetrics) != 3 {
+		t.Fatalf("daily metrics = %+v", signals.DailyMetrics)
+	}
+	firstDay := findModelSignalsDailyMetric(t, signals.DailyMetrics, "2026-06-20")
+	if !firstDay.LowSample || firstDay.Drift.Confidence != "low" || firstDay.Drift.SampleNote != "missing baseline window" {
+		t.Fatalf("first daily drift = %+v", firstDay)
+	}
+	if firstDay.CostPerSession == nil || firstDay.CostPerActiveHour == nil {
+		t.Fatalf("priced first day should expose cost rates: %+v", firstDay)
+	}
+
+	currentDay := findModelSignalsDailyMetric(t, signals.DailyMetrics, "2026-06-28")
+	if currentDay.SessionCount != 3 || currentDay.ModelCalls != 4 || currentDay.FailedModelCalls != 1 || currentDay.FailedToolCalls != 2 || currentDay.UnpricedSessionCount != 1 {
+		t.Fatalf("current daily metrics = %+v", currentDay)
+	}
+	assertCostUSD(t, currentDay.EstimatedCostUSD, 0.017625)
+	assertCostUSD(t, currentDay.CacheSavingsUSD, 0.001125)
+	assertFloat(t, currentDay.FailurePressure, 1)
+	assertFloat(t, currentDay.AvgModelCallsPerSession, float64(4)/3)
+	if currentDay.WallDurationMS != 21_000 || currentDay.ActiveDurationMS != 17_000 || currentDay.ToolDurationMS != 2_400 || currentDay.IdleDurationMS != 1_100 {
+		t.Fatalf("current daily durations = %+v", currentDay)
+	}
+	if currentDay.CostPerSession != nil || currentDay.CostPerActiveHour != nil {
+		t.Fatalf("mixed-priced daily cost rates should be omitted: %+v", currentDay)
+	}
+	if currentDay.P50ModelLatencyMsPer1kOutputTokens <= 0 || currentDay.P90ModelLatencyMsPer1kOutputTokens < currentDay.P50ModelLatencyMsPer1kOutputTokens {
+		t.Fatalf("current daily latency percentiles = %+v", currentDay)
+	}
+	assertFloat(t, currentDay.P90ModelLatencyMsPer1kOutputTokens, 6250)
+	if currentDay.P10ModelThroughputTokensPerSecond <= 0 || currentDay.P50ModelThroughputTokensPerSecond <= 0 {
+		t.Fatalf("current daily throughput percentiles = %+v", currentDay)
+	}
+
+	if len(signals.ProjectMetrics) != 1 {
+		t.Fatalf("project metrics = %+v", signals.ProjectMetrics)
+	}
+	projectMetric := signals.ProjectMetrics[0]
+	if projectMetric.ProjectPath != "/workspace/api" || projectMetric.ModelCount != 2 || projectMetric.SourceCount != 1 {
+		t.Fatalf("project identity = %+v", projectMetric)
+	}
+	if projectMetric.DominantModelProvider != "openai" || projectMetric.DominantModel != "gpt-5" {
+		t.Fatalf("dominant model = %+v", projectMetric)
+	}
+	assertFloat(t, projectMetric.DominantModelShare, 0.8)
+	if projectMetric.SessionCount != 5 || projectMetric.UnpricedSessionCount != 1 || projectMetric.Current.SessionCount != 3 || projectMetric.Baseline.SessionCount != 2 {
+		t.Fatalf("project windows = %+v", projectMetric)
+	}
+	assertCostUSD(t, projectMetric.EstimatedCostUSD, 0.0299)
+	assertCostUSD(t, projectMetric.CacheSavingsUSD, 0.00135)
+	if projectMetric.CostPerSession != nil || projectMetric.CostPerActiveHour != nil {
+		t.Fatalf("mixed-priced project cost rates should be omitted: %+v", projectMetric)
+	}
+	if projectMetric.FailurePressure <= 0 || projectMetric.AvgModelCallsPerSession <= 1 || projectMetric.P90ModelLatencyMsPer1kOutputTokens <= 0 || projectMetric.P10ModelThroughputTokensPerSecond <= 0 {
+		t.Fatalf("project efficiency metrics = %+v", projectMetric)
+	}
+	if len(signals.ProjectHotspots) != 1 {
+		t.Fatalf("project hotspots should remain populated: %+v", signals.ProjectHotspots)
+	}
+	if _, err := json.Marshal(signals); err != nil {
+		t.Fatalf("model signals efficiency metrics should marshal without NaN/Inf: %v", err)
 	}
 }
 
@@ -292,12 +399,32 @@ func insertModelSignalCall(t *testing.T, conn *sql.DB, sessionID int64, started 
 		sessionID, db.FormatTime(started), db.FormatTime(started.Add(time.Duration(durationMS)*time.Millisecond)), durationMS, modelName, "openai", status, 0, 0, 0, 0, 0, nil)
 }
 
+func setModelSignalCallUsage(t *testing.T, conn *sql.DB, callID int64, inputTokens, cachedInputTokens, outputTokens, reasoningTokens, totalTokens int64) {
+	t.Helper()
+	_, err := conn.Exec(`UPDATE model_calls
+		SET input_tokens = ?, cached_input_tokens = ?, output_tokens = ?, reasoning_output_tokens = ?, total_tokens = ?
+		WHERE id = ?`, inputTokens, cachedInputTokens, outputTokens, reasoningTokens, totalTokens, callID)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func insertModelSignalToolCall(t *testing.T, conn *sql.DB, sessionID int64, started time.Time, toolName, status string) int64 {
 	t.Helper()
 	return insertRow(t, conn, `INSERT INTO tool_calls
 		(session_id, started_at, ended_at, duration_ms, tool_name, status, input_summary, output_summary, error, raw_event_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		sessionID, db.FormatTime(started), db.FormatTime(started.Add(time.Second)), 1_000, toolName, status, "input", "output", "", 0)
+}
+
+func setModelSignalSessionDurations(t *testing.T, conn *sql.DB, sessionID int64, wallDurationMS, activeDurationMS, toolDurationMS, idleDurationMS int64) {
+	t.Helper()
+	_, err := conn.Exec(`UPDATE sessions
+		SET wall_duration_ms = ?, active_duration_ms = ?, tool_duration_ms = ?, idle_duration_ms = ?
+		WHERE id = ?`, wallDurationMS, activeDurationMS, toolDurationMS, idleDurationMS, sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func assertFloat(t *testing.T, got, want float64) {
@@ -314,6 +441,17 @@ func containsModelSignalLabel(values []string, value string) bool {
 		}
 	}
 	return false
+}
+
+func findModelSignalsDailyMetric(t *testing.T, values []model.ModelSignalsDailyMetric, date string) model.ModelSignalsDailyMetric {
+	t.Helper()
+	for _, value := range values {
+		if value.Date == date {
+			return value
+		}
+	}
+	t.Fatalf("daily metric %q not found in %+v", date, values)
+	return model.ModelSignalsDailyMetric{}
 }
 
 func containsModelSignalDriftMetric(values []model.ModelSignalsDriftMetric, key string) bool {

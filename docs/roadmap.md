@@ -23,7 +23,9 @@ Implemented today:
 - Model Signals in Web mode for raw operational signals and Model Health,
   including service health, behavior drift, low-confidence cohorts, project
   hotspots, output expansion, reasoning share, cache miss, throughput, tool
-  dependency, tool failures, and anomaly sessions.
+  dependency, tool failures, daily/project operational efficiency, cost per
+  session, cost per active hour, cache savings, retry/failure pressure, and
+  anomaly sessions.
 - Overview, Sessions, Session Detail, Tools, Agent Privacy status/profile apply,
   and Settings in TUI mode.
 - Offline audit findings for indexed local session data, exposed through Web UI

@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,10 +34,20 @@ type modelSignalSessionMetric struct {
 	OutputTokens          int64
 	ReasoningOutputTokens int64
 	TotalTokens           int64
+	WallDurationMS        int64
+	ActiveDurationMS      int64
 	ModelDurationMS       int64
+	ToolDurationMS        int64
+	IdleDurationMS        int64
+	EstimatedCostUSD      *float64
+	Unpriced              bool
+	CacheSavingsUSD       *float64
 	ModelCalls            int
+	FailedModelCalls      int
 	ToolCalls             int
 	FailedToolCalls       int
+	LatencySamples        []float64
+	ThroughputSamples     []float64
 }
 
 func (s *Service) ModelSignals(ctx context.Context) (model.ModelSignals, error) {
@@ -55,6 +66,7 @@ func (s *Service) ModelSignalsWithFilters(ctx context.Context, filters model.Ana
 
 func (s *Service) modelSignalSessionMetrics(ctx context.Context, filters model.AnalyticsFilters) ([]modelSignalSessionMetric, error) {
 	where, args := analyticsSessionWhere(filters)
+	calculator := s.pricingCalculator(ctx)
 	rows, err := s.conn.QueryContext(ctx, `SELECT
 		s.id,
 		s.source_id,
@@ -75,13 +87,20 @@ func (s *Service) modelSignalSessionMetrics(ctx context.Context, filters model.A
 		COALESCE(tu.output_tokens, 0),
 		COALESCE(tu.reasoning_output_tokens, 0),
 		COALESCE(tu.total_tokens, 0),
+		COALESCE(s.wall_duration_ms, 0),
+		COALESCE(s.active_duration_ms, 0),
 		CASE
 			WHEN COALESCE((SELECT COUNT(*) FROM model_calls mc WHERE mc.session_id = s.id), 0) > 0
 				THEN COALESCE((SELECT SUM(CASE WHEN mc.duration_ms > 0 THEN mc.duration_ms ELSE 0 END) FROM model_calls mc WHERE mc.session_id = s.id), 0)
 			WHEN s.model_duration_ms > 0 THEN s.model_duration_ms
 			ELSE 0
 		END,
+		COALESCE(s.tool_duration_ms, 0),
+		COALESCE(s.idle_duration_ms, 0),
 		COALESCE((SELECT COUNT(*) FROM model_calls mc WHERE mc.session_id = s.id), 0),
+		COALESCE((SELECT COUNT(*) FROM model_calls mc WHERE mc.session_id = s.id AND mc.status NOT IN ('completed', 'success')), 0),
+		COALESCE((SELECT GROUP_CONCAT(CASE WHEN mc.duration_ms > 0 AND mc.output_tokens > 0 THEN (CAST(mc.duration_ms AS REAL) * 1000.0 / CAST(mc.output_tokens AS REAL)) END) FROM model_calls mc WHERE mc.session_id = s.id), ''),
+		COALESCE((SELECT GROUP_CONCAT(CASE WHEN mc.duration_ms > 0 AND mc.total_tokens > 0 THEN (CAST(mc.total_tokens AS REAL) / (CAST(mc.duration_ms AS REAL) / 1000.0)) END) FROM model_calls mc WHERE mc.session_id = s.id), ''),
 		COALESCE((SELECT COUNT(*) FROM tool_calls tc WHERE tc.session_id = s.id), 0),
 		COALESCE((SELECT COUNT(*) FROM tool_calls tc WHERE tc.session_id = s.id AND tc.status NOT IN ('completed', 'success')), 0)
 		FROM sessions s
@@ -98,6 +117,8 @@ func (s *Service) modelSignalSessionMetrics(ctx context.Context, filters model.A
 	var result []modelSignalSessionMetric
 	for rows.Next() {
 		var item modelSignalSessionMetric
+		var latencySamples string
+		var throughputSamples string
 		if err := rows.Scan(
 			&item.SessionID,
 			&item.SourceID,
@@ -118,8 +139,15 @@ func (s *Service) modelSignalSessionMetrics(ctx context.Context, filters model.A
 			&item.OutputTokens,
 			&item.ReasoningOutputTokens,
 			&item.TotalTokens,
+			&item.WallDurationMS,
+			&item.ActiveDurationMS,
 			&item.ModelDurationMS,
+			&item.ToolDurationMS,
+			&item.IdleDurationMS,
 			&item.ModelCalls,
+			&item.FailedModelCalls,
+			&latencySamples,
+			&throughputSamples,
 			&item.ToolCalls,
 			&item.FailedToolCalls,
 		); err != nil {
@@ -127,6 +155,28 @@ func (s *Service) modelSignalSessionMetrics(ctx context.Context, filters model.A
 		}
 		if item.AgentName == "" {
 			item.AgentName = item.AgentKind
+		}
+		usage := model.Usage{
+			Model:                 item.Model,
+			InputTokens:           item.InputTokens,
+			CachedInputTokens:     item.CachedInputTokens,
+			OutputTokens:          item.OutputTokens,
+			ReasoningOutputTokens: item.ReasoningOutputTokens,
+			TotalTokens:           item.TotalTokens,
+		}
+		item.EstimatedCostUSD, item.Unpriced = calculator.Compute(usage)
+		item.CacheSavingsUSD = calculator.CacheSavings(usage)
+		item.LatencySamples = parseModelSignalSamples(latencySamples)
+		item.ThroughputSamples = parseModelSignalSamples(throughputSamples)
+		if len(item.LatencySamples) == 0 {
+			if latency := modelLatencyMSPer1kOutputTokens(item.OutputTokens, item.ModelDurationMS); latency > 0 {
+				item.LatencySamples = append(item.LatencySamples, latency)
+			}
+		}
+		if len(item.ThroughputSamples) == 0 {
+			if throughput := throughputPerSecond(item.TotalTokens, item.ModelDurationMS); throughput > 0 {
+				item.ThroughputSamples = append(item.ThroughputSamples, throughput)
+			}
 		}
 		result = append(result, item)
 	}
@@ -238,7 +288,8 @@ func buildModelSignals(metrics []modelSignalSessionMetric) model.ModelSignals {
 	applyModelSignalsRollingRates(result.Trend)
 
 	result.AnomalySessions = rankModelSignalAnomalies(metrics, 8)
-	result.HealthSummary, result.Cohorts, result.Matrix, result.ProjectHotspots = buildModelSignalHealthReadModels(metrics)
+	result.DailyMetrics = buildModelSignalDailyMetrics(metrics)
+	result.HealthSummary, result.Cohorts, result.Matrix, result.ProjectHotspots, result.ProjectMetrics = buildModelSignalHealthReadModels(metrics)
 	return result
 }
 
@@ -266,6 +317,8 @@ const (
 type modelSignalMetricAccumulator struct {
 	set               model.ModelSignalsMetricSet
 	sessionsWithTools int
+	latencySamples    []float64
+	throughputSamples []float64
 }
 
 type modelSignalCohortAggregate struct {
@@ -302,15 +355,22 @@ type modelSignalMatrixCellAggregate struct {
 }
 
 type modelSignalProjectAggregate struct {
-	ProjectPath string
-	modelKeys   map[string]struct{}
-	sourceIDs   map[int64]struct{}
-	total       modelSignalMetricAccumulator
-	current     modelSignalMetricAccumulator
-	baseline    modelSignalMetricAccumulator
+	ProjectPath        string
+	modelKeys          map[string]struct{}
+	modelIdentities    map[string]modelSignalModelIdentity
+	modelSessionCounts map[string]int
+	sourceIDs          map[int64]struct{}
+	total              modelSignalMetricAccumulator
+	current            modelSignalMetricAccumulator
+	baseline           modelSignalMetricAccumulator
 }
 
-func buildModelSignalHealthReadModels(metrics []modelSignalSessionMetric) (model.ModelSignalsHealthSummary, []model.ModelSignalsCohort, []model.ModelSignalsMatrixRow, []model.ModelSignalsProjectHotspot) {
+type modelSignalModelIdentity struct {
+	Provider string
+	Model    string
+}
+
+func buildModelSignalHealthReadModels(metrics []modelSignalSessionMetric) (model.ModelSignalsHealthSummary, []model.ModelSignalsCohort, []model.ModelSignalsMatrixRow, []model.ModelSignalsProjectHotspot, []model.ModelSignalsProjectMetric) {
 	health := model.ModelSignalsHealthSummary{
 		Severity:   modelSignalSeverityUnknown,
 		TopReasons: []string{},
@@ -318,10 +378,11 @@ func buildModelSignalHealthReadModels(metrics []modelSignalSessionMetric) (model
 	cohorts := []model.ModelSignalsCohort{}
 	matrix := []model.ModelSignalsMatrixRow{}
 	hotspots := []model.ModelSignalsProjectHotspot{}
+	projectMetrics := []model.ModelSignalsProjectMetric{}
 
 	anchor := latestModelSignalMetricStart(metrics)
 	if anchor.IsZero() {
-		return health, cohorts, matrix, hotspots
+		return health, cohorts, matrix, hotspots, projectMetrics
 	}
 
 	currentFrom := anchor.Add(-modelSignalCurrentWindowDuration)
@@ -423,8 +484,9 @@ func buildModelSignalHealthReadModels(metrics []modelSignalSessionMetric) (model
 
 	matrix = buildModelSignalMatrixRows(matrixAggregates)
 	hotspots = buildModelSignalProjectHotspots(projectAggregates)
+	projectMetrics = buildModelSignalProjectMetrics(projectAggregates)
 	health.TopReasons = topModelSignalReasons(reasonCounts, 5)
-	return health, cohorts, matrix, hotspots
+	return health, cohorts, matrix, hotspots, projectMetrics
 }
 
 func latestModelSignalMetricStart(metrics []modelSignalSessionMetric) time.Time {
@@ -509,13 +571,20 @@ func modelSignalProjectAggregateFor(aggregates map[string]*modelSignalProjectAgg
 	aggregate := aggregates[key]
 	if aggregate == nil {
 		aggregate = &modelSignalProjectAggregate{
-			ProjectPath: projectPath,
-			modelKeys:   map[string]struct{}{},
-			sourceIDs:   map[int64]struct{}{},
+			ProjectPath:        projectPath,
+			modelKeys:          map[string]struct{}{},
+			modelIdentities:    map[string]modelSignalModelIdentity{},
+			modelSessionCounts: map[string]int{},
+			sourceIDs:          map[int64]struct{}{},
 		}
 		aggregates[key] = aggregate
 	}
-	aggregate.modelKeys[modelSignalProvider(metric.ModelProvider)+"\x00"+modelSignalModelName(metric.Model)] = struct{}{}
+	provider := modelSignalProvider(metric.ModelProvider)
+	modelName := modelSignalModelName(metric.Model)
+	modelKey := provider + "\x00" + modelName
+	aggregate.modelKeys[modelKey] = struct{}{}
+	aggregate.modelIdentities[modelKey] = modelSignalModelIdentity{Provider: provider, Model: modelName}
+	aggregate.modelSessionCounts[modelKey]++
 	aggregate.sourceIDs[metric.SourceID] = struct{}{}
 	return aggregate
 }
@@ -548,6 +617,7 @@ func modelSignalProjectPath(value string) string {
 func (a *modelSignalMetricAccumulator) add(metric modelSignalSessionMetric) {
 	a.set.SessionCount++
 	a.set.ModelCalls += metric.ModelCalls
+	a.set.FailedModelCalls += metric.FailedModelCalls
 	a.set.ToolCalls += metric.ToolCalls
 	a.set.FailedToolCalls += metric.FailedToolCalls
 	a.set.TotalTokens += metric.TotalTokens
@@ -555,7 +625,30 @@ func (a *modelSignalMetricAccumulator) add(metric modelSignalSessionMetric) {
 	a.set.CachedInputTokens += metric.CachedInputTokens
 	a.set.OutputTokens += metric.OutputTokens
 	a.set.ReasoningOutputTokens += metric.ReasoningOutputTokens
+	a.set.WallDurationMS += metric.WallDurationMS
+	a.set.ActiveDurationMS += metric.ActiveDurationMS
 	a.set.ModelDurationMS += metric.ModelDurationMS
+	a.set.ToolDurationMS += metric.ToolDurationMS
+	a.set.IdleDurationMS += metric.IdleDurationMS
+	if metric.EstimatedCostUSD != nil {
+		addCost(&a.set.EstimatedCostUSD, *metric.EstimatedCostUSD)
+	}
+	if metric.Unpriced {
+		a.set.UnpricedSessionCount++
+	}
+	if metric.CacheSavingsUSD != nil {
+		addCost(&a.set.CacheSavingsUSD, *metric.CacheSavingsUSD)
+	}
+	for _, latency := range metric.LatencySamples {
+		if latency > 0 {
+			a.latencySamples = append(a.latencySamples, latency)
+		}
+	}
+	for _, throughput := range metric.ThroughputSamples {
+		if throughput > 0 {
+			a.throughputSamples = append(a.throughputSamples, throughput)
+		}
+	}
 	if metric.ToolCalls > 0 {
 		a.sessionsWithTools++
 	}
@@ -569,9 +662,22 @@ func (a modelSignalMetricAccumulator) metricSet() model.ModelSignalsMetricSet {
 	item.OutputExpansionRate = safeRate(item.OutputTokens, item.InputTokens)
 	item.ReasoningTokenShare = clamp01(safeRate(item.ReasoningOutputTokens, item.OutputTokens))
 	item.CacheMissRate = cacheMissRate(item.InputTokens, item.CachedInputTokens)
+	item.FailurePressure = safeRateInt(item.FailedModelCalls+item.FailedToolCalls, item.SessionCount)
 	item.ModelThroughputTokensPerSecond = throughputPerSecond(item.TotalTokens, item.ModelDurationMS)
 	item.ModelThroughputOutputTokensPerSecond = throughputPerSecond(item.OutputTokens, item.ModelDurationMS)
 	item.ModelLatencyMsPer1kOutputTokens = modelLatencyMSPer1kOutputTokens(item.OutputTokens, item.ModelDurationMS)
+	if item.EstimatedCostUSD != nil && item.UnpricedSessionCount == 0 && item.SessionCount > 0 {
+		value := *item.EstimatedCostUSD / float64(item.SessionCount)
+		item.CostPerSession = &value
+	}
+	if item.EstimatedCostUSD != nil && item.UnpricedSessionCount == 0 && item.ActiveDurationMS > 0 {
+		value := *item.EstimatedCostUSD / (float64(item.ActiveDurationMS) / 3_600_000)
+		item.CostPerActiveHour = &value
+	}
+	item.P50ModelLatencyMsPer1kOutputTokens = percentileNearest(a.latencySamples, 0.50)
+	item.P90ModelLatencyMsPer1kOutputTokens = percentileNearest(a.latencySamples, 0.90)
+	item.P50ModelThroughputTokensPerSecond = percentileNearest(a.throughputSamples, 0.50)
+	item.P10ModelThroughputTokensPerSecond = percentileNearest(a.throughputSamples, 0.10)
 	return item
 }
 
@@ -593,6 +699,7 @@ func compareModelSignalDrift(current, baseline model.ModelSignalsMetricSet) mode
 	addRelativeIncreaseDriftMetric(&drift, "modelLatencyMsPer1kOutputTokens", "model latency per 1k output tokens", "higher_worse", "model latency increased", current.ModelLatencyMsPer1kOutputTokens, baseline.ModelLatencyMsPer1kOutputTokens, 0.5, 1.0, 250)
 	addRelativeDecreaseDriftMetric(&drift, "modelThroughputOutputTokensPerSecond", "model output throughput", "lower_worse", "output throughput dropped", current.ModelThroughputOutputTokensPerSecond, baseline.ModelThroughputOutputTokensPerSecond, 0.25, 0.5, 25)
 	addAbsoluteIncreaseDriftMetric(&drift, "toolFailureRate", "tool failure rate", "higher_downstream_symptom", "tool failure rate increased", current.ToolFailureRate, baseline.ToolFailureRate, 0.10, 0.25, 0.10)
+	addAbsoluteIncreaseDriftMetric(&drift, "failurePressure", "failure pressure", "higher_worse", "failure pressure increased", current.FailurePressure, baseline.FailurePressure, 0.10, 0.25, 0.10)
 	addAbsoluteIncreaseDriftMetric(&drift, "cacheMissRate", "cache miss rate", "higher_symptom", "cache miss rate increased", current.CacheMissRate, baseline.CacheMissRate, 0.20, 0.40, 0.50)
 	addRelativeIncreaseDriftMetric(&drift, "avgModelCallsPerSession", "model calls per session", "higher_retry_loop_symptom", "model calls per session increased", current.AvgModelCallsPerSession, baseline.AvgModelCallsPerSession, 0.5, 1.0, 0.5)
 	addRelativeIncreaseDriftMetric(&drift, "outputExpansionRate", "output expansion rate", "behavior_higher", "output expansion increased", current.OutputExpansionRate, baseline.OutputExpansionRate, 1.0, 2.0, 1.0)
@@ -807,6 +914,114 @@ func buildModelSignalProjectHotspots(aggregates map[string]*modelSignalProjectAg
 	return hotspots
 }
 
+func buildModelSignalDailyMetrics(metrics []modelSignalSessionMetric) []model.ModelSignalsDailyMetric {
+	metricsByDay := map[string][]modelSignalSessionMetric{}
+	for _, metric := range metrics {
+		if metric.Day == "" {
+			continue
+		}
+		metricsByDay[metric.Day] = append(metricsByDay[metric.Day], metric)
+	}
+	if len(metricsByDay) == 0 {
+		return []model.ModelSignalsDailyMetric{}
+	}
+
+	dates := make([]string, 0, len(metricsByDay))
+	for date := range metricsByDay {
+		dates = append(dates, date)
+	}
+	sort.Strings(dates)
+
+	result := make([]model.ModelSignalsDailyMetric, 0, len(dates))
+	for _, date := range dates {
+		var current modelSignalMetricAccumulator
+		for _, metric := range metricsByDay[date] {
+			current.add(metric)
+		}
+
+		var baseline modelSignalMetricAccumulator
+		observedDays := 0
+		day, err := time.Parse(analyticsDateOnlyLayout, date)
+		for offset := 1; err == nil && offset <= 7; offset++ {
+			previous := metricsByDay[day.AddDate(0, 0, -offset).Format(analyticsDateOnlyLayout)]
+			if len(previous) == 0 {
+				continue
+			}
+			for _, metric := range previous {
+				baseline.add(metric)
+			}
+			observedDays++
+		}
+
+		currentSet := current.metricSet()
+		drift := compareModelSignalDrift(currentSet, baseline.metricSet())
+		if observedDays < 7 && drift.Confidence != modelSignalConfidenceLow {
+			drift.Confidence = modelSignalConfidenceLow
+			drift.SampleNote = "insufficient baseline days"
+			drift.Reasons = appendUniqueString(drift.Reasons, drift.SampleNote)
+			if drift.Severity == modelSignalSeverityWarning || drift.Severity == modelSignalSeverityCritical {
+				drift.Severity = modelSignalSeverityUnknown
+			}
+		}
+		result = append(result, model.ModelSignalsDailyMetric{
+			Date:                  date,
+			ModelSignalsMetricSet: currentSet,
+			LowSample:             drift.Confidence == modelSignalConfidenceLow || modelSignalMetricSetLowSample(currentSet),
+			Drift:                 drift,
+			KeyReason:             firstModelSignalReason(drift.Reasons),
+		})
+	}
+	return result
+}
+
+func buildModelSignalProjectMetrics(aggregates map[string]*modelSignalProjectAggregate) []model.ModelSignalsProjectMetric {
+	projectMetrics := make([]model.ModelSignalsProjectMetric, 0, len(aggregates))
+	for _, aggregate := range aggregates {
+		totalSet := aggregate.total.metricSet()
+		currentSet := aggregate.current.metricSet()
+		baselineSet := aggregate.baseline.metricSet()
+		dominantProvider, dominantModel, dominantShare := modelSignalProjectDominantModel(aggregate, totalSet.SessionCount)
+		projectMetrics = append(projectMetrics, model.ModelSignalsProjectMetric{
+			ProjectPath:           aggregate.ProjectPath,
+			ModelCount:            len(aggregate.modelKeys),
+			SourceCount:           len(aggregate.sourceIDs),
+			DominantModelProvider: dominantProvider,
+			DominantModel:         dominantModel,
+			DominantModelShare:    dominantShare,
+			ModelSignalsMetricSet: totalSet,
+			Current:               currentSet,
+			Baseline:              baselineSet,
+			Drift:                 compareModelSignalDrift(currentSet, baselineSet),
+		})
+	}
+	sortModelSignalProjectMetrics(projectMetrics)
+	return projectMetrics
+}
+
+func modelSignalProjectDominantModel(aggregate *modelSignalProjectAggregate, sessionCount int) (string, string, float64) {
+	if aggregate == nil || sessionCount <= 0 || len(aggregate.modelSessionCounts) == 0 {
+		return "", "", 0
+	}
+	bestCount := 0
+	bestProvider := ""
+	bestModel := ""
+	for key, count := range aggregate.modelSessionCounts {
+		identity := aggregate.modelIdentities[key]
+		if count > bestCount ||
+			(count == bestCount && (identity.Provider < bestProvider || (identity.Provider == bestProvider && identity.Model < bestModel))) ||
+			bestProvider == "" {
+			bestCount = count
+			bestProvider = identity.Provider
+			bestModel = identity.Model
+		}
+	}
+	return bestProvider, bestModel, safeRateInt(bestCount, sessionCount)
+}
+
+func modelSignalMetricSetLowSample(item model.ModelSignalsMetricSet) bool {
+	return item.SessionCount > 0 && (item.SessionCount < 3 || item.ModelCalls < 3 || item.ModelDurationMS <= 0)
+}
+
 func sortModelSignalCohorts(cohorts []model.ModelSignalsCohort) {
 	sort.Slice(cohorts, func(i, j int) bool {
 		left := cohorts[i]
@@ -851,6 +1066,20 @@ func sortModelSignalProjectHotspots(hotspots []model.ModelSignalsProjectHotspot)
 	sort.Slice(hotspots, func(i, j int) bool {
 		left := hotspots[i]
 		right := hotspots[j]
+		if modelSignalSeverityRank(left.Drift.Severity) != modelSignalSeverityRank(right.Drift.Severity) {
+			return modelSignalSeverityRank(left.Drift.Severity) < modelSignalSeverityRank(right.Drift.Severity)
+		}
+		if left.TotalTokens != right.TotalTokens {
+			return left.TotalTokens > right.TotalTokens
+		}
+		return left.ProjectPath < right.ProjectPath
+	})
+}
+
+func sortModelSignalProjectMetrics(projectMetrics []model.ModelSignalsProjectMetric) {
+	sort.Slice(projectMetrics, func(i, j int) bool {
+		left := projectMetrics[i]
+		right := projectMetrics[j]
 		if modelSignalSeverityRank(left.Drift.Severity) != modelSignalSeverityRank(right.Drift.Severity) {
 			return modelSignalSeverityRank(left.Drift.Severity) < modelSignalSeverityRank(right.Drift.Severity)
 		}
@@ -1134,6 +1363,18 @@ func normalizeModelSignalsSlices(result *model.ModelSignals) {
 	for index := range result.ProjectHotspots {
 		normalizeModelSignalsDrift(&result.ProjectHotspots[index].Drift)
 	}
+	if result.DailyMetrics == nil {
+		result.DailyMetrics = []model.ModelSignalsDailyMetric{}
+	}
+	for index := range result.DailyMetrics {
+		normalizeModelSignalsDrift(&result.DailyMetrics[index].Drift)
+	}
+	if result.ProjectMetrics == nil {
+		result.ProjectMetrics = []model.ModelSignalsProjectMetric{}
+	}
+	for index := range result.ProjectMetrics {
+		normalizeModelSignalsDrift(&result.ProjectMetrics[index].Drift)
+	}
 }
 
 func normalizeModelSignalsDrift(drift *model.ModelSignalsDrift) {
@@ -1184,6 +1425,52 @@ func modelLatencyMSPer1kOutputTokens(outputTokens, durationMS int64) float64 {
 		return 0
 	}
 	return float64(durationMS) / float64(outputTokens) * 1000
+}
+
+func parseModelSignalSamples(value string) []float64 {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	samples := make([]float64, 0, len(parts))
+	for _, part := range parts {
+		sample, err := strconv.ParseFloat(strings.TrimSpace(part), 64)
+		if err != nil || sample <= 0 || math.IsNaN(sample) || math.IsInf(sample, 0) {
+			continue
+		}
+		samples = append(samples, sample)
+	}
+	return samples
+}
+
+func percentileNearest(values []float64, percentile float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	sorted := make([]float64, 0, len(values))
+	for _, value := range values {
+		if value > 0 && !math.IsNaN(value) && !math.IsInf(value, 0) {
+			sorted = append(sorted, value)
+		}
+	}
+	if len(sorted) == 0 {
+		return 0
+	}
+	sort.Float64s(sorted)
+	if percentile <= 0 {
+		return sorted[0]
+	}
+	if percentile >= 1 {
+		return sorted[len(sorted)-1]
+	}
+	index := int(math.Ceil(percentile*float64(len(sorted)))) - 1
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(sorted) {
+		index = len(sorted) - 1
+	}
+	return sorted[index]
 }
 
 func safeDeltaPct(current, baseline float64) float64 {

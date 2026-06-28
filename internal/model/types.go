@@ -336,6 +336,8 @@ type ModelSignals struct {
 	Cohorts                              []ModelSignalsCohort         `json:"cohorts"`
 	Matrix                               []ModelSignalsMatrixRow      `json:"matrix"`
 	ProjectHotspots                      []ModelSignalsProjectHotspot `json:"projectHotspots"`
+	DailyMetrics                         []ModelSignalsDailyMetric    `json:"dailyMetrics"`
+	ProjectMetrics                       []ModelSignalsProjectMetric  `json:"projectMetrics"`
 }
 
 type ModelSignalsWindow struct {
@@ -346,25 +348,40 @@ type ModelSignalsWindow struct {
 }
 
 type ModelSignalsMetricSet struct {
-	SessionCount                         int     `json:"sessionCount"`
-	ModelCalls                           int     `json:"modelCalls"`
-	ToolCalls                            int     `json:"toolCalls"`
-	FailedToolCalls                      int     `json:"failedToolCalls"`
-	TotalTokens                          int64   `json:"totalTokens"`
-	InputTokens                          int64   `json:"inputTokens"`
-	CachedInputTokens                    int64   `json:"cachedInputTokens"`
-	OutputTokens                         int64   `json:"outputTokens"`
-	ReasoningOutputTokens                int64   `json:"reasoningOutputTokens"`
-	ModelDurationMS                      int64   `json:"modelDurationMs"`
-	AvgModelCallsPerSession              float64 `json:"avgModelCallsPerSession"`
-	OutputExpansionRate                  float64 `json:"outputExpansionRate"`
-	ReasoningTokenShare                  float64 `json:"reasoningTokenShare"`
-	CacheMissRate                        float64 `json:"cacheMissRate"`
-	ModelThroughputTokensPerSecond       float64 `json:"modelThroughputTokensPerSecond"`
-	ModelThroughputOutputTokensPerSecond float64 `json:"modelThroughputOutputTokensPerSecond"`
-	ModelLatencyMsPer1kOutputTokens      float64 `json:"modelLatencyMsPer1kOutputTokens"`
-	ToolFailureRate                      float64 `json:"toolFailureRate"`
-	ToolDependencyRate                   float64 `json:"toolDependencyRate"`
+	SessionCount                         int      `json:"sessionCount"`
+	ModelCalls                           int      `json:"modelCalls"`
+	FailedModelCalls                     int      `json:"failedModelCalls"`
+	ToolCalls                            int      `json:"toolCalls"`
+	FailedToolCalls                      int      `json:"failedToolCalls"`
+	TotalTokens                          int64    `json:"totalTokens"`
+	InputTokens                          int64    `json:"inputTokens"`
+	CachedInputTokens                    int64    `json:"cachedInputTokens"`
+	OutputTokens                         int64    `json:"outputTokens"`
+	ReasoningOutputTokens                int64    `json:"reasoningOutputTokens"`
+	WallDurationMS                       int64    `json:"wallDurationMs"`
+	ActiveDurationMS                     int64    `json:"activeDurationMs"`
+	ModelDurationMS                      int64    `json:"modelDurationMs"`
+	ToolDurationMS                       int64    `json:"toolDurationMs"`
+	IdleDurationMS                       int64    `json:"idleDurationMs"`
+	EstimatedCostUSD                     *float64 `json:"estimatedCostUsd,omitempty"`
+	UnpricedSessionCount                 int      `json:"unpricedSessionCount"`
+	CacheSavingsUSD                      *float64 `json:"cacheSavingsUsd,omitempty"`
+	AvgModelCallsPerSession              float64  `json:"avgModelCallsPerSession"`
+	OutputExpansionRate                  float64  `json:"outputExpansionRate"`
+	ReasoningTokenShare                  float64  `json:"reasoningTokenShare"`
+	CacheMissRate                        float64  `json:"cacheMissRate"`
+	CostPerSession                       *float64 `json:"costPerSession,omitempty"`
+	CostPerActiveHour                    *float64 `json:"costPerActiveHour,omitempty"`
+	FailurePressure                      float64  `json:"failurePressure"`
+	ModelThroughputTokensPerSecond       float64  `json:"modelThroughputTokensPerSecond"`
+	ModelThroughputOutputTokensPerSecond float64  `json:"modelThroughputOutputTokensPerSecond"`
+	ModelLatencyMsPer1kOutputTokens      float64  `json:"modelLatencyMsPer1kOutputTokens"`
+	ToolFailureRate                      float64  `json:"toolFailureRate"`
+	ToolDependencyRate                   float64  `json:"toolDependencyRate"`
+	P50ModelLatencyMsPer1kOutputTokens   float64  `json:"p50ModelLatencyMsPer1kOutputTokens"`
+	P90ModelLatencyMsPer1kOutputTokens   float64  `json:"p90ModelLatencyMsPer1kOutputTokens"`
+	P50ModelThroughputTokensPerSecond    float64  `json:"p50ModelThroughputTokensPerSecond"`
+	P10ModelThroughputTokensPerSecond    float64  `json:"p10ModelThroughputTokensPerSecond"`
 }
 
 type ModelSignalsDriftMetric struct {
@@ -444,6 +461,27 @@ type ModelSignalsProjectHotspot struct {
 	ProjectPath string `json:"projectPath"`
 	ModelCount  int    `json:"modelCount"`
 	SourceCount int    `json:"sourceCount"`
+	ModelSignalsMetricSet
+	Current  ModelSignalsMetricSet `json:"current"`
+	Baseline ModelSignalsMetricSet `json:"baseline"`
+	Drift    ModelSignalsDrift     `json:"drift"`
+}
+
+type ModelSignalsDailyMetric struct {
+	Date string `json:"date"`
+	ModelSignalsMetricSet
+	LowSample bool              `json:"lowSample"`
+	Drift     ModelSignalsDrift `json:"drift"`
+	KeyReason string            `json:"keyReason"`
+}
+
+type ModelSignalsProjectMetric struct {
+	ProjectPath           string  `json:"projectPath"`
+	ModelCount            int     `json:"modelCount"`
+	SourceCount           int     `json:"sourceCount"`
+	DominantModelProvider string  `json:"dominantModelProvider"`
+	DominantModel         string  `json:"dominantModel"`
+	DominantModelShare    float64 `json:"dominantModelShare"`
 	ModelSignalsMetricSet
 	Current  ModelSignalsMetricSet `json:"current"`
 	Baseline ModelSignalsMetricSet `json:"baseline"`

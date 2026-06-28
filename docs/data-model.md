@@ -353,9 +353,10 @@ Current read models:
 - Model Signals: operational signals and health/drift read models for observed
   provider/model behavior, including model call density, output expansion,
   reasoning-token share, cache-miss rate, model throughput, tool dependency,
-  tool failures, per-model breakdown, trend rows, anomaly sessions, health
-  summary, cohort health rows, matrix rows, and project hotspots. Model Signals
-  can be scoped by agent/source, model, project, and started-at range.
+  tool failures, per-model breakdown, trend rows, anomaly sessions, daily
+  operational efficiency metrics, project operational efficiency metrics,
+  health summary, cohort health rows, matrix rows, and project hotspots. Model
+  Signals can be scoped by agent/source, model, project, and started-at range.
 - Sessions: filtered list by search, model, agent/source, limit, and offset,
   ordered by newest `started_at` first.
 - Session Detail: one session with normalized events, model calls, and tool
@@ -406,13 +407,27 @@ Read-model shape notes:
   `modelThroughputTokensPerSecond`,
   `modelThroughputOutputTokensPerSecond`, `trend`, `modelBreakdown`, and
   `anomalySessions`.
-- `/api/model-signals` also includes the Model Health layer: `healthSummary`,
-  `cohorts`, `matrix`, and `projectHotspots`. The core grouping is
-  provider/model + agent/source + project. The current health window is the
-  latest observed 24 hours in the filtered scope; the baseline is the preceding
-  30 days when enough matching history is available. Missing baseline and low
-  sample data should be surfaced as low confidence or unavailable history, not
-  as regression.
+- `/api/model-signals` keeps the raw signal fields and Model Health layer:
+  `healthSummary`, `cohorts`, `matrix`, and `projectHotspots`. The core
+  grouping is provider/model + agent/source + project. The current health
+  window is the latest observed 24 hours in the filtered scope; the baseline is
+  the preceding 30 days when enough matching history is available. Missing
+  baseline and low sample data should be surfaced as low confidence or
+  unavailable history, not as regression.
+- `/api/model-signals` also includes `dailyMetrics` for day-level operational
+  efficiency. Rows should expose enough date, sample, cost, cost-per-session,
+  cost-per-active-hour, cache-savings, latency percentile, throughput
+  percentile, failure-pressure, retry-pressure/model-calls-per-session,
+  low-sample, and rolling 7-calendar-day drift metadata for Web and TUI clients
+  to explain the metric without recomputing it. Latency and throughput
+  percentiles should use model-call token/duration samples when available and
+  fall back to session-level samples when per-call token counts are missing.
+- `/api/model-signals` also includes `projectMetrics` for project-level
+  operational efficiency. Rows should expose enough project identity, sample,
+  project cost burn, cache-savings, cost-per-session, cost-per-active-hour,
+  dominant-model, model-mix, retry-pressure, failure-pressure, confidence, and
+  current-versus-baseline drift metadata for clients to present the same
+  semantics.
 - Model Signals `trend` and `modelBreakdown` rows expose count, token, duration,
   and rate fields so Web and TUI clients can present the same numerator and
   denominator semantics. Empty collection fields must be JSON arrays (`[]`),
@@ -423,6 +438,11 @@ Read-model shape notes:
   data when available, and token/cost shape. Tool failure, model calls per
   session, output expansion, cache miss, and reasoning share are weaker
   symptoms that require session context.
+- Model Signals efficiency fields are operational proxies for local behavior,
+  not universal model capability scores. Missing pricing, unavailable
+  cache-token data, missing baseline history, and low sample sizes should be
+  documented and surfaced as confidence or completeness risk rather than
+  treated as model failures.
 - `/api/usage/breakdown` returns usage buckets selected by `groupBy`. Project
   buckets use `groupBy=project` and carry `projectPath`; project bucket keys use
   the same path normalization and platform case semantics as source paths. All

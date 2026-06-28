@@ -107,6 +107,34 @@ func TestCalculatorReusesLoadedRates(t *testing.T) {
 	}
 }
 
+func TestCalculatorCacheSavings(t *testing.T) {
+	conn := openSeededPricingDB(t)
+	defer conn.Close()
+
+	calculator, err := LoadCalculator(context.Background(), conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	savings := calculator.CacheSavings(model.Usage{
+		Model:             "openai/gpt5.5",
+		InputTokens:       1_000_000,
+		CachedInputTokens: 200_000,
+		OutputTokens:      500_000,
+	})
+	if savings == nil {
+		t.Fatal("savings is nil")
+	}
+	if math.Abs(*savings-0.9) > 0.000001 {
+		t.Fatalf("savings = %f, want %f", *savings, 0.9)
+	}
+	if got := calculator.CacheSavings(model.Usage{Model: "unknown-model", CachedInputTokens: 200_000, TotalTokens: 200_000}); got != nil {
+		t.Fatalf("unknown model savings = %v", got)
+	}
+	if got := calculator.CacheSavings(model.Usage{Model: "command", CachedInputTokens: 200_000, TotalTokens: 200_000}); got != nil {
+		t.Fatalf("non-discounted cache savings = %v", got)
+	}
+}
+
 func openSeededPricingDB(t *testing.T) *sql.DB {
 	t.Helper()
 	conn, err := sql.Open("sqlite", ":memory:")

@@ -10,6 +10,7 @@ import ATooltip from 'ant-design-vue/es/tooltip'
 import {
   ArrowRightOutlined,
   BranchesOutlined,
+  CalendarOutlined,
   DashboardOutlined,
   ExperimentOutlined,
   LineChartOutlined,
@@ -18,6 +19,7 @@ import {
 } from '@ant-design/icons-vue'
 import {
   api,
+  formatCost,
   formatDateTime,
   formatDisplayNumber,
   formatDuration,
@@ -28,7 +30,10 @@ import {
   type ModelSignalCohort,
   type ModelSignalMatrixCell,
   type ModelSignalMatrixRow,
+  type ModelSignalMetricSet,
   type ModelSignalProjectHotspot,
+  type ModelSignalsDailyMetric,
+  type ModelSignalsProjectMetric,
   type ModelSignalsWindow,
   type ModelSignals,
   type ModelSignalsHealthSummary,
@@ -47,6 +52,8 @@ import { buildUsageAgentOptions, buildUsageModelOptions, buildUsageProjectOption
 
 const ATable = AntTable as unknown as DefineComponent
 
+type ProjectMetricRow = ModelSignalsProjectMetric | ModelSignalProjectHotspot
+
 const router = useRouter()
 const resource = useAsyncResource<ModelSignals | null>(null)
 const signals = computed(() => resource.data.value)
@@ -64,6 +71,7 @@ const { t } = useMessages({
     'title': 'Model Signals',
     'subtitle': 'Service health and behavior drift across model cohorts, agents, and projects',
     'tab.overview': 'Health Overview',
+    'tab.daily': 'Daily Metrics',
     'tab.cohorts': 'Cohorts',
     'tab.matrix': 'Matrix',
     'tab.projects': 'Project Hotspots',
@@ -83,6 +91,8 @@ const { t } = useMessages({
     'topReasons.label': 'Top reasons',
     'overview.title': 'Top Drift Cohorts',
     'overview.kicker': 'Highest-severity cohort drift in the current scope',
+    'daily.title': 'Daily Efficiency',
+    'daily.kicker': 'Daily model service cost, latency, throughput, and confidence signals',
     'cohorts.title': 'Cohort Drift',
     'cohorts.kicker': 'Provider, model, source, and project cohorts compared with baseline behavior',
     'matrix.title': 'Source Model Matrix',
@@ -95,16 +105,28 @@ const { t } = useMessages({
     'column.model': 'Model',
     'column.models': 'Models',
     'column.project': 'Project',
+    'column.date': 'Date',
     'column.samples': 'Samples',
     'column.sessions': 'Sessions',
     'column.modelCalls': 'Model calls',
     'column.toolCalls': 'Tools',
     'column.failedTools': 'Failed',
     'column.tokens': 'Tokens',
+    'column.cost': 'Cost',
+    'column.costBurn': 'Cost burn',
+    'column.costPerSession': 'Cost/session',
+    'column.costPerActiveHour': 'Cost/active-hour',
+    'column.cacheSavings': 'Cache savings',
     'column.latency': 'Latency',
+    'column.p90Latency': 'P90 latency',
     'column.throughput': 'Throughput',
+    'column.p10Throughput': 'P10 throughput',
     'column.outputThroughput': 'Out tok/s',
     'column.toolFailure': 'Tool fail',
+    'column.retryPressure': 'Retry pressure',
+    'column.failurePressure': 'Failure pressure',
+    'column.mix': 'Mix',
+    'column.health': 'Health',
     'column.severity': 'Severity',
     'column.confidence': 'Confidence',
     'column.reasons': 'Reasons',
@@ -118,8 +140,11 @@ const { t } = useMessages({
     'column.wall': 'Model time',
     'metric.current': 'current',
     'metric.baseline': 'base',
+    'label.lowSample': 'low sample',
+    'label.unpriced': 'unpriced',
     'empty.loading': 'Loading model signals...',
     'empty.overview': 'No drift cohorts match the current scope',
+    'empty.daily': 'No daily metrics match the current scope',
     'empty.cohorts': 'No cohort rows match the current scope',
     'empty.matrix': 'No matrix rows match the current scope',
     'empty.projects': 'No project hotspots match the current scope',
@@ -142,6 +167,7 @@ const { t } = useMessages({
     'title': '模型信号',
     'subtitle': '按模型分组、来源和项目监控服务健康与行为漂移',
     'tab.overview': '健康概览',
+    'tab.daily': '每日指标',
     'tab.cohorts': '分组',
     'tab.matrix': '矩阵',
     'tab.projects': '项目热点',
@@ -161,6 +187,8 @@ const { t } = useMessages({
     'topReasons.label': '主要原因',
     'overview.title': '主要漂移分组',
     'overview.kicker': '当前范围内严重程度最高的分组漂移',
+    'daily.title': '每日效率',
+    'daily.kicker': '按天展示模型服务费用、延迟、吞吐与置信信号',
     'cohorts.title': '分组漂移',
     'cohorts.kicker': '按供应商、模型、来源和项目对比基线行为',
     'matrix.title': '来源模型矩阵',
@@ -173,16 +201,28 @@ const { t } = useMessages({
     'column.model': '模型',
     'column.models': '模型',
     'column.project': '项目',
+    'column.date': '日期',
     'column.samples': '样本',
     'column.sessions': '会话',
     'column.modelCalls': '模型调用',
     'column.toolCalls': '工具',
     'column.failedTools': '失败',
     'column.tokens': 'Token',
+    'column.cost': '费用',
+    'column.costBurn': '费用消耗',
+    'column.costPerSession': '每会话费用',
+    'column.costPerActiveHour': '每活跃小时',
+    'column.cacheSavings': '缓存节省',
     'column.latency': '延迟',
+    'column.p90Latency': 'P90 延迟',
     'column.throughput': '吞吐',
+    'column.p10Throughput': 'P10 吞吐',
     'column.outputThroughput': '输出/秒',
     'column.toolFailure': '工具失败',
+    'column.retryPressure': '重试压力',
+    'column.failurePressure': '失败压力',
+    'column.mix': '模型占比',
+    'column.health': '健康',
     'column.severity': '严重度',
     'column.confidence': '置信度',
     'column.reasons': '原因',
@@ -196,8 +236,11 @@ const { t } = useMessages({
     'column.wall': '模型耗时',
     'metric.current': '当前',
     'metric.baseline': '基线',
+    'label.lowSample': '低样本',
+    'label.unpriced': '未定价',
     'empty.loading': '正在加载模型信号...',
     'empty.overview': '当前范围内没有漂移分组',
+    'empty.daily': '当前范围内没有每日指标',
     'empty.cohorts': '当前范围内没有分组行',
     'empty.matrix': '当前范围内没有矩阵行',
     'empty.projects': '当前范围内没有项目热点',
@@ -223,8 +266,12 @@ const cohortRows = computed(() => signals.value?.cohorts || [])
 const matrixRows = computed(() => signals.value?.matrix || [])
 const matrixCells = computed(() => matrixRows.value.flatMap((row) => row.cells || []))
 const projectHotspotRows = computed(() => signals.value?.projectHotspots || [])
+const dailyMetricRows = computed(() => signals.value?.dailyMetrics || [])
+const projectMetricRows = computed(() => signals.value?.projectMetrics || [])
+const hasProjectMetrics = computed(() => projectMetricRows.value.length > 0)
+const projectRows = computed<ProjectMetricRow[]>(() => hasProjectMetrics.value ? projectMetricRows.value : projectHotspotRows.value)
 const normalizedAnomalies = computed(() => (signals.value?.anomalySessions || []).map(normalizeAnomaly))
-const hasData = computed(() => Boolean(signals.value?.totalSessions || healthSummary.value.cohortCount))
+const hasData = computed(() => Boolean(signals.value?.totalSessions || healthSummary.value.cohortCount || dailyMetricRows.value.length))
 
 const agentOptions = computed(() =>
   buildUsageAgentOptions({
@@ -262,7 +309,7 @@ const projectOptions = computed(() =>
   buildUsageProjectOptions({
     projects: [
       cohortRows.value,
-      projectHotspotRows.value,
+      projectRows.value,
       projectOptionRows.value,
       normalizedAnomalies.value,
       optionOverview.value?.recentSessions,
@@ -357,6 +404,20 @@ const overviewColumns = computed(() => [
   { title: t('column.reasons'), key: 'reasons', width: 280 }
 ])
 
+const dailyColumns = computed(() => [
+  { title: t('column.date'), dataIndex: 'date', key: 'date', width: 112 },
+  { title: t('column.sessions'), dataIndex: 'sessionCount', key: 'sessions', width: 88, align: 'right' },
+  { title: t('column.cost'), dataIndex: 'estimatedCostUsd', key: 'cost', width: 108, align: 'right' },
+  { title: t('column.costPerSession'), dataIndex: 'costPerSession', key: 'costPerSession', width: 124, align: 'right' },
+  { title: t('column.costPerActiveHour'), dataIndex: 'costPerActiveHour', key: 'costPerActiveHour', width: 138, align: 'right' },
+  { title: t('column.cacheSavings'), dataIndex: 'cacheSavingsUsd', key: 'cacheSavings', width: 124, align: 'right' },
+  { title: t('column.p90Latency'), key: 'p90Latency', width: 124, align: 'right' },
+  { title: t('column.p10Throughput'), key: 'p10Throughput', width: 128, align: 'right' },
+  { title: t('column.retryPressure'), key: 'retryPressure', width: 130, align: 'right' },
+  { title: t('column.failurePressure'), key: 'failurePressure', width: 132, align: 'right' },
+  { title: t('column.confidence'), key: 'confidence', width: 220 }
+])
+
 const cohortColumns = computed(() => [
   { title: t('column.source'), dataIndex: 'sourceLabel', key: 'source', width: 180 },
   { title: t('column.project'), dataIndex: 'projectPath', key: 'project', width: 220 },
@@ -376,18 +437,35 @@ const matrixColumns = computed(() => [
   { title: t('column.models'), dataIndex: 'cells', key: 'models' }
 ])
 
-const projectColumns = computed(() => [
-  { title: t('column.project'), dataIndex: 'projectPath', key: 'project', width: 260 },
-  { title: t('column.sessions'), dataIndex: 'sessionCount', key: 'sessions', width: 92, align: 'right' },
-  { title: t('column.sources'), dataIndex: 'sourceCount', key: 'sources', width: 88, align: 'right' },
-  { title: t('column.models'), dataIndex: 'modelCount', key: 'models', width: 88, align: 'right' },
-  { title: t('column.tokens'), dataIndex: 'totalTokens', key: 'tokens', width: 118, align: 'right' },
-  { title: t('column.latency'), key: 'latency', width: 136, align: 'right' },
-  { title: t('column.throughput'), key: 'throughput', width: 136, align: 'right' },
-  { title: t('column.severity'), key: 'severity', width: 104 },
-  { title: t('column.confidence'), key: 'confidence', width: 104, align: 'right' },
-  { title: t('column.reasons'), key: 'reasons', width: 280 }
-])
+const projectColumns = computed(() => {
+  if (!hasProjectMetrics.value) {
+    return [
+      { title: t('column.project'), dataIndex: 'projectPath', key: 'project', width: 260 },
+      { title: t('column.sessions'), dataIndex: 'sessionCount', key: 'sessions', width: 92, align: 'right' },
+      { title: t('column.sources'), dataIndex: 'sourceCount', key: 'sources', width: 88, align: 'right' },
+      { title: t('column.models'), dataIndex: 'modelCount', key: 'models', width: 88, align: 'right' },
+      { title: t('column.tokens'), dataIndex: 'totalTokens', key: 'tokens', width: 118, align: 'right' },
+      { title: t('column.latency'), key: 'latency', width: 136, align: 'right' },
+      { title: t('column.throughput'), key: 'throughput', width: 136, align: 'right' },
+      { title: t('column.severity'), key: 'severity', width: 104 },
+      { title: t('column.confidence'), key: 'confidence', width: 104, align: 'right' },
+      { title: t('column.reasons'), key: 'reasons', width: 280 }
+    ]
+  }
+
+  return [
+    { title: t('column.project'), dataIndex: 'projectPath', key: 'project', width: 260 },
+    { title: t('column.sessions'), dataIndex: 'sessionCount', key: 'sessions', width: 92, align: 'right' },
+    { title: t('column.mix'), key: 'mix', width: 210 },
+    { title: t('column.costBurn'), key: 'costBurn', width: 132, align: 'right' },
+    { title: t('column.cacheSavings'), key: 'cacheSavings', width: 124, align: 'right' },
+    { title: t('column.health'), key: 'health', width: 142 },
+    { title: t('column.p90Latency'), key: 'latency', width: 136, align: 'right' },
+    { title: t('column.p10Throughput'), key: 'throughput', width: 136, align: 'right' },
+    { title: t('column.failurePressure'), key: 'pressure', width: 136, align: 'right' },
+    { title: t('column.reasons'), key: 'reasons', width: 280 }
+  ]
+})
 
 const anomalyColumns = computed(() => [
   { title: t('column.session'), dataIndex: 'sessionKey', key: 'session', width: 170 },
@@ -406,6 +484,7 @@ const anomalyColumns = computed(() => [
 ])
 
 const overviewTableLocale = computed(() => ({ emptyText: loading.value ? t('empty.loading') : t('empty.overview') }))
+const dailyTableLocale = computed(() => ({ emptyText: loading.value ? t('empty.loading') : t('empty.daily') }))
 const cohortTableLocale = computed(() => ({ emptyText: loading.value ? t('empty.loading') : t('empty.cohorts') }))
 const matrixTableLocale = computed(() => ({ emptyText: loading.value ? t('empty.loading') : t('empty.matrix') }))
 const projectTableLocale = computed(() => ({ emptyText: loading.value ? t('empty.loading') : t('empty.projects') }))
@@ -488,6 +567,44 @@ function formatLatency(value?: number) {
   return `${formatRate(value, 0)} ms/1k`
 }
 
+function formatOptionalCost(value?: number) {
+  if (value === undefined || value === null) return '-'
+  return formatCost(value)
+}
+
+function formatThroughput(value?: number) {
+  return `${formatRate(value, 1)} tok/s`
+}
+
+function formatPressure(value?: number) {
+  return `${formatRate(value, 2)}/session`
+}
+
+function p90Latency(metric?: ModelSignalMetricSet) {
+  return metric?.p90ModelLatencyMsPer1kOutputTokens ?? metric?.modelLatencyMsPer1kOutputTokens
+}
+
+function p10Throughput(metric?: ModelSignalMetricSet) {
+  return metric?.p10ModelThroughputTokensPerSecond ?? metric?.modelThroughputTokensPerSecond
+}
+
+function failurePressure(metric?: ModelSignalMetricSet) {
+  return metric?.failurePressure ?? safeMetricRate(metric?.failedToolCalls, metric?.sessionCount)
+}
+
+function safeMetricRate(numerator?: number, denominator?: number) {
+  return denominator && denominator > 0 ? (numerator || 0) / denominator : 0
+}
+
+function unpricedNote(metric?: ModelSignalMetricSet) {
+  const count = metric?.unpricedSessionCount || 0
+  return count > 0 ? `${formatNumber(count)} ${t('label.unpriced')}` : ''
+}
+
+function confidenceReason(record: Pick<ModelSignalsDailyMetric, 'keyReason' | 'drift' | 'lowSample'>) {
+  return record.keyReason || record.drift?.reasons?.[0] || record.drift?.sampleNote || (record.lowSample ? t('label.lowSample') : t('fallback.noReason'))
+}
+
 function formatConfidence(value?: string | number) {
   if (typeof value === 'number') return formatPercent(value)
   const normalized = (value || '').trim().toLowerCase()
@@ -568,7 +685,7 @@ function severityClass(value?: string) {
   return 'severity-ok'
 }
 
-function driftRowClass(record: ModelSignalCohort | ModelSignalProjectHotspot) {
+function driftRowClass(record: { drift?: { severity?: string } }) {
   const rank = severityRank(record.drift?.severity)
   return { class: rank >= 3 ? 'model-signals-critical-row' : rank === 2 ? 'model-signals-warning-row' : '' }
 }
@@ -597,6 +714,33 @@ function projectInfo(record: { projectPath?: string; rawSourcePath?: string }) {
   return projectDisplay(record.projectPath || record.rawSourcePath)
 }
 
+function projectMixInfo(record: ProjectMetricRow) {
+  const projectMetric = record as Partial<ModelSignalsProjectMetric>
+  const model = projectMetric.dominantModel || t('fallback.unknown')
+  const provider = projectMetric.dominantModelProvider || ''
+  const share = projectMetric.dominantModelShare !== undefined ? formatPercent(projectMetric.dominantModelShare) : ''
+  const summary = [
+    share,
+    `${formatNumber(record.modelCount)} ${t('column.models')}`,
+    `${formatNumber(record.sourceCount)} ${t('column.sources')}`
+  ].filter(Boolean).join(' · ')
+  return {
+    model,
+    provider,
+    summary,
+    full: [provider, model, summary].filter(Boolean).join(' / ')
+  }
+}
+
+function projectHealthTitle(record: ProjectMetricRow) {
+  return [
+    `${t('column.health')}: ${severityLabel(record.drift?.severity)} (${formatConfidence(record.drift?.confidence)})`,
+    `${t('column.p90Latency')}: ${formatLatency(p90Latency(record.current))} / ${t('metric.baseline')} ${formatLatency(p90Latency(record.baseline))}`,
+    `${t('column.p10Throughput')}: ${formatThroughput(p10Throughput(record.current))} / ${t('metric.baseline')} ${formatThroughput(p10Throughput(record.baseline))}`,
+    `${t('column.failurePressure')}: ${formatPressure(failurePressure(record.current))} / ${t('metric.baseline')} ${formatPressure(failurePressure(record.baseline))}`
+  ].join('\n')
+}
+
 function cohortRowKey(record: ModelSignalCohort) {
   return record.cohortKey || `${record.modelProvider}:${record.model}:${record.projectPath}`
 }
@@ -618,7 +762,11 @@ function matrixCellTitle(cell: ModelSignalMatrixCell) {
   ].join('\n')
 }
 
-function projectRowKey(record: ModelSignalProjectHotspot) {
+function dailyRowKey(record: ModelSignalsDailyMetric) {
+  return record.date
+}
+
+function projectRowKey(record: ProjectMetricRow) {
   return record.projectPath || `${record.modelCount}:${record.sourceCount}:${record.totalTokens}`
 }
 
@@ -753,6 +901,10 @@ onMounted(load)
             <template #icon><DashboardOutlined /></template>
             {{ t('tab.overview') }}
           </a-button>
+          <a-button :type="activeTab === 'daily' ? 'primary' : 'default'" role="tab" :aria-selected="activeTab === 'daily'" @click="activeTab = 'daily'">
+            <template #icon><CalendarOutlined /></template>
+            {{ t('tab.daily') }}
+          </a-button>
           <a-button :type="activeTab === 'cohorts' ? 'primary' : 'default'" role="tab" :aria-selected="activeTab === 'cohorts'" @click="activeTab = 'cohorts'">
             <template #icon><BranchesOutlined /></template>
             {{ t('tab.cohorts') }}
@@ -868,6 +1020,92 @@ onMounted(load)
               </a-table>
             </section>
           </div>
+        </div>
+
+        <div v-else-if="activeTab === 'daily'">
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2 class="panel-title">{{ t('daily.title') }}</h2>
+                <div class="panel-kicker">{{ t('daily.kicker') }}</div>
+              </div>
+              <CalendarOutlined class="panel-header-icon" />
+            </div>
+            <a-table
+              class="dense-table model-signals-daily-table"
+              :columns="dailyColumns"
+              :data-source="dailyMetricRows"
+              :loading="loading"
+              :locale="dailyTableLocale"
+              :pagination="{ pageSize: 10 }"
+              :row-key="dailyRowKey"
+              size="small"
+              :custom-row="driftRowClass"
+              :scroll="{ x: 1540 }"
+            >
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.key === 'date'">
+                  <span class="mono model-signals-date">{{ record.date }}</span>
+                </template>
+                <template v-else-if="column.key === 'sessions'">
+                  <div class="metric-comparison">
+                    <span>{{ formatNumber(record.sessionCount) }}</span>
+                    <span>{{ formatNumber(record.modelCalls) }} {{ t('column.modelCalls') }}</span>
+                  </div>
+                </template>
+                <template v-else-if="column.key === 'cost'">
+                  <div class="metric-comparison">
+                    <span>{{ formatCost(record.estimatedCostUsd) }}</span>
+                    <span>{{ unpricedNote(record) || formatDuration(record.activeDurationMs) }}</span>
+                  </div>
+                </template>
+                <template v-else-if="column.key === 'costPerSession'">
+                  <span class="number-cell">{{ formatOptionalCost(record.costPerSession) }}</span>
+                </template>
+                <template v-else-if="column.key === 'costPerActiveHour'">
+                  <span class="number-cell">{{ formatOptionalCost(record.costPerActiveHour) }}</span>
+                </template>
+                <template v-else-if="column.key === 'cacheSavings'">
+                  <span class="number-cell status-ok">{{ formatOptionalCost(record.cacheSavingsUsd) }}</span>
+                </template>
+                <template v-else-if="column.key === 'p90Latency'">
+                  <div class="metric-comparison">
+                    <span>{{ formatLatency(p90Latency(record)) }}</span>
+                    <span>p50 {{ formatLatency(record.p50ModelLatencyMsPer1kOutputTokens) }}</span>
+                  </div>
+                </template>
+                <template v-else-if="column.key === 'p10Throughput'">
+                  <div class="metric-comparison">
+                    <span>{{ formatThroughput(p10Throughput(record)) }}</span>
+                    <span>p50 {{ formatThroughput(record.p50ModelThroughputTokensPerSecond) }}</span>
+                  </div>
+                </template>
+                <template v-else-if="column.key === 'retryPressure'">
+                  <div class="metric-comparison" :class="{ 'status-error': record.avgModelCallsPerSession > 1.5 }">
+                    <span>{{ formatRate(record.avgModelCallsPerSession, 2) }}/session</span>
+                    <span>{{ formatNumber(record.modelCalls) }} {{ t('column.modelCalls') }}</span>
+                  </div>
+                </template>
+                <template v-else-if="column.key === 'failurePressure'">
+                  <div class="metric-comparison" :class="{ 'status-error': failurePressure(record) > 0 }">
+                    <span>{{ formatPressure(failurePressure(record)) }}</span>
+                    <span>{{ formatPercent(record.toolFailureRate) }} {{ t('column.toolFailure') }}</span>
+                  </div>
+                </template>
+                <template v-else-if="column.key === 'confidence'">
+                  <div class="model-signals-confidence-cell">
+                    <a-tag v-if="record.lowSample" class="status-tag" color="processing">{{ t('label.lowSample') }}</a-tag>
+                    <a-tag class="status-tag" :color="severityTagColor(record.drift?.severity)">
+                      {{ severityLabel(record.drift?.severity) }}
+                    </a-tag>
+                    <a-tooltip :title="confidenceReason(record)" placement="topLeft">
+                      <span class="model-signals-reason-text">{{ confidenceReason(record) }}</span>
+                    </a-tooltip>
+                  </div>
+                </template>
+              </template>
+            </a-table>
+          </section>
         </div>
 
         <div v-else-if="activeTab === 'cohorts'">
@@ -1025,14 +1263,14 @@ onMounted(load)
             <a-table
               class="dense-table model-signals-project-table"
               :columns="projectColumns"
-              :data-source="projectHotspotRows"
+              :data-source="projectRows"
               :loading="loading"
               :locale="projectTableLocale"
               :pagination="{ pageSize: 10 }"
               :row-key="projectRowKey"
               size="small"
               :custom-row="driftRowClass"
-              :scroll="{ x: 1460 }"
+              :scroll="{ x: 1580 }"
             >
               <template #bodyCell="{ column, record }">
                 <template v-if="column.key === 'project'">
@@ -1041,20 +1279,59 @@ onMounted(load)
                   </a-tooltip>
                   <div class="source-identity-meta">{{ projectInfo(record).full }}</div>
                 </template>
-                <template v-else-if="column.key === 'sessions'"><span class="number-cell">{{ formatNumber(record.sessionCount) }}</span></template>
+                <template v-else-if="column.key === 'sessions'">
+                  <span v-if="!hasProjectMetrics" class="number-cell">{{ formatNumber(record.sessionCount) }}</span>
+                  <div v-else class="metric-comparison">
+                    <span>{{ formatNumber(record.sessionCount) }}</span>
+                    <span>{{ formatNumber(record.totalTokens) }} {{ t('column.tokens') }}</span>
+                  </div>
+                </template>
                 <template v-else-if="column.key === 'sources'"><span class="number-cell">{{ formatNumber(record.sourceCount) }}</span></template>
                 <template v-else-if="column.key === 'models'"><span class="number-cell">{{ formatNumber(record.modelCount) }}</span></template>
                 <template v-else-if="column.key === 'tokens'"><span class="number-cell">{{ formatNumber(record.totalTokens) }}</span></template>
+                <template v-else-if="column.key === 'mix'">
+                  <a-tooltip :title="projectMixInfo(record).full" placement="topLeft">
+                    <div class="model-signals-mix-cell">
+                      <span class="model-name">{{ projectMixInfo(record).model }}</span>
+                      <span class="source-identity-meta">{{ projectMixInfo(record).summary || projectMixInfo(record).provider || '-' }}</span>
+                    </div>
+                  </a-tooltip>
+                </template>
+                <template v-else-if="column.key === 'costBurn'">
+                  <div class="metric-comparison">
+                    <span>{{ formatCost(record.current?.estimatedCostUsd) }}</span>
+                    <span>{{ unpricedNote(record.current) || formatOptionalCost(record.current?.costPerActiveHour) }}</span>
+                  </div>
+                </template>
+                <template v-else-if="column.key === 'cacheSavings'">
+                  <span class="number-cell status-ok">{{ formatOptionalCost(record.current?.cacheSavingsUsd) }}</span>
+                </template>
+                <template v-else-if="column.key === 'health'">
+                  <a-tooltip :title="projectHealthTitle(record)" placement="topLeft">
+                    <div class="model-signals-health-cell">
+                      <a-tag class="status-tag" :color="severityTagColor(record.drift?.severity)">
+                        {{ severityLabel(record.drift?.severity) }}
+                      </a-tag>
+                      <span class="source-identity-meta">{{ formatConfidence(record.drift?.confidence) }}</span>
+                    </div>
+                  </a-tooltip>
+                </template>
                 <template v-else-if="column.key === 'latency'">
-                  <div class="metric-comparison" :class="metricClass(record.current?.modelLatencyMsPer1kOutputTokens, record.baseline?.modelLatencyMsPer1kOutputTokens, true)">
-                    <span>{{ formatLatency(record.current?.modelLatencyMsPer1kOutputTokens) }}</span>
-                    <span>{{ t('metric.baseline') }} {{ formatLatency(record.baseline?.modelLatencyMsPer1kOutputTokens) }}</span>
+                  <div class="metric-comparison" :class="metricClass(p90Latency(record.current), p90Latency(record.baseline), true)">
+                    <span>{{ formatLatency(p90Latency(record.current)) }}</span>
+                    <span>{{ t('metric.baseline') }} {{ formatLatency(p90Latency(record.baseline)) }}</span>
                   </div>
                 </template>
                 <template v-else-if="column.key === 'throughput'">
-                  <div class="metric-comparison" :class="metricClass(record.current?.modelThroughputTokensPerSecond, record.baseline?.modelThroughputTokensPerSecond)">
-                    <span>{{ formatRate(record.current?.modelThroughputTokensPerSecond, 1) }} tok/s</span>
-                    <span>{{ t('metric.baseline') }} {{ formatRate(record.baseline?.modelThroughputTokensPerSecond, 1) }}</span>
+                  <div class="metric-comparison" :class="metricClass(p10Throughput(record.current), p10Throughput(record.baseline))">
+                    <span>{{ formatThroughput(p10Throughput(record.current)) }}</span>
+                    <span>{{ t('metric.baseline') }} {{ formatThroughput(p10Throughput(record.baseline)) }}</span>
+                  </div>
+                </template>
+                <template v-else-if="column.key === 'pressure'">
+                  <div class="metric-comparison" :class="metricClass(failurePressure(record.current), failurePressure(record.baseline), true)">
+                    <span>{{ formatPressure(failurePressure(record.current)) }}</span>
+                    <span>{{ formatRate(record.current?.avgModelCallsPerSession, 2) }}/session</span>
                   </div>
                 </template>
                 <template v-else-if="column.key === 'severity'">
@@ -1198,6 +1475,7 @@ onMounted(load)
 }
 
 .model-signals-session,
+.model-signals-date,
 .model-signals-project {
   display: inline-block;
   max-width: 100%;
@@ -1208,7 +1486,47 @@ onMounted(load)
   white-space: nowrap;
 }
 
+.model-signals-date {
+  color: var(--am-text);
+  font-variant-numeric: tabular-nums;
+}
+
 .model-signals-project + .source-identity-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-signals-confidence-cell,
+.model-signals-health-cell,
+.model-signals-mix-cell {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.model-signals-confidence-cell {
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.model-signals-health-cell {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.model-signals-mix-cell .model-name,
+.model-signals-reason-text {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-signals-mix-cell .source-identity-meta,
+.model-signals-health-cell .source-identity-meta {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

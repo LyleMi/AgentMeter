@@ -16,6 +16,8 @@ import type {
   ModelSignalMatrixCell,
   ModelSignalMatrixRow,
   ModelSignalMetricSet,
+  ModelSignalsDailyMetric,
+  ModelSignalsProjectMetric,
   ModelSignalProjectHotspot,
   ModelSignalRates,
   ModelSignalsWindow,
@@ -548,6 +550,22 @@ function costSum(items: Session[]): number | undefined {
   return Number(priced.reduce((total, session) => total + (session.estimatedCostUsd || 0), 0).toFixed(4))
 }
 
+function cacheSavingsUsdFor(items: Session[]): number | undefined {
+  let total = 0
+  let hasSavings = false
+  for (const session of items) {
+    const pricing = pricingModels.find((item) => item.normalizedModel === session.model)
+    if (!pricing) continue
+    const cachedInputTokens = session.tokenUsage.cachedInputTokens || 0
+    const savings = (cachedInputTokens * Math.max(0, pricing.inputPer1m - pricing.cachedInputPer1m)) / 1_000_000
+    if (savings > 0) {
+      total += savings
+      hasSavings = true
+    }
+  }
+  return hasSavings ? Number(total.toFixed(4)) : undefined
+}
+
 function dailyUsageFor(items: Session[]): DailyUsage[] {
   return [...groupedBy(items, (session) => session.startedAt.slice(0, 10))].map(([date, group]) => {
     const inputTokens = sum(group, (session) => session.tokenUsage.inputTokens)
@@ -600,6 +618,21 @@ function clampRate(value: number): number {
   return value
 }
 
+function percentile(values: number[], percentileRank: number): number | undefined {
+  const sorted = values.filter((value) => Number.isFinite(value)).sort((left, right) => left - right)
+  if (!sorted.length) return undefined
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * percentileRank) - 1))
+  return sorted[index]
+}
+
+function sessionLatencyMsPer1kOutputTokens(session: Session): number {
+  return safeRate(session.modelDurationMs, session.tokenUsage.outputTokens / 1000)
+}
+
+function sessionThroughputTokensPerSecond(session: Session): number {
+  return safeRate(session.tokenUsage.totalTokens, session.modelDurationMs / 1000)
+}
+
 function isSuccessfulToolStatus(status: string): boolean {
   return status === 'completed' || status === 'success'
 }
@@ -627,6 +660,7 @@ function signalRatesFor(group: Session[], groupToolCalls: ToolCall[]): ModelSign
 interface MetricTotals {
   sessionCount: number
   modelCalls: number
+  failedModelCalls?: number
   toolCalls: number
   failedToolCalls: number
   totalTokens: number
@@ -635,14 +669,36 @@ interface MetricTotals {
   outputTokens: number
   reasoningOutputTokens: number
   modelDurationMs: number
+  wallDurationMs?: number
+  activeDurationMs?: number
+  toolDurationMs?: number
+  idleDurationMs?: number
+  estimatedCostUsd?: number
+  unpricedSessionCount?: number
+  cacheSavingsUsd?: number
+  latencySamples?: number[]
+  throughputSamples?: number[]
   toolDependencyRate?: number
 }
 
 function metricSetFromTotals(totals: MetricTotals): ModelSignalMetricSet {
+  const wallDurationMs = totals.wallDurationMs ?? totals.modelDurationMs
+  const toolDurationMs = totals.toolDurationMs ?? 0
+  const activeDurationMs = totals.activeDurationMs ?? totals.modelDurationMs + toolDurationMs
+  const idleDurationMs = totals.idleDurationMs ?? Math.max(0, wallDurationMs - activeDurationMs)
   const modelDurationSeconds = totals.modelDurationMs / 1000
+  const activeDurationHours = activeDurationMs / 3_600_000
+  const modelLatencyMsPer1kOutputTokens = safeRate(totals.modelDurationMs, totals.outputTokens / 1000)
+  const modelThroughputTokensPerSecond = safeRate(totals.totalTokens, modelDurationSeconds)
+  const unpricedSessionCount = totals.unpricedSessionCount || 0
+  const estimatedCostUsd = totals.estimatedCostUsd
+  const hasCompletePricing = estimatedCostUsd !== undefined && unpricedSessionCount === 0
+  const costPerSession = hasCompletePricing ? safeRate(estimatedCostUsd, totals.sessionCount) : undefined
+  const costPerActiveHour = hasCompletePricing ? safeRate(estimatedCostUsd, activeDurationHours) : undefined
   return {
     sessionCount: totals.sessionCount,
     modelCalls: totals.modelCalls,
+    failedModelCalls: totals.failedModelCalls || 0,
     toolCalls: totals.toolCalls,
     failedToolCalls: totals.failedToolCalls,
     totalTokens: totals.totalTokens,
@@ -651,13 +707,27 @@ function metricSetFromTotals(totals: MetricTotals): ModelSignalMetricSet {
     outputTokens: totals.outputTokens,
     reasoningOutputTokens: totals.reasoningOutputTokens,
     modelDurationMs: totals.modelDurationMs,
+    wallDurationMs,
+    activeDurationMs,
+    toolDurationMs,
+    idleDurationMs,
+    estimatedCostUsd: totals.estimatedCostUsd,
+    unpricedSessionCount,
+    cacheSavingsUsd: totals.cacheSavingsUsd,
+    costPerSession,
+    costPerActiveHour,
+    failurePressure: safeRate((totals.failedModelCalls || 0) + totals.failedToolCalls, totals.sessionCount),
     avgModelCallsPerSession: safeRate(totals.modelCalls, totals.sessionCount),
     outputExpansionRate: safeRate(totals.outputTokens, totals.inputTokens),
     reasoningTokenShare: safeRate(totals.reasoningOutputTokens, totals.outputTokens),
     cacheMissRate: clampRate(safeRate(totals.inputTokens - totals.cachedInputTokens, totals.inputTokens)),
-    modelThroughputTokensPerSecond: safeRate(totals.totalTokens, modelDurationSeconds),
+    modelThroughputTokensPerSecond,
     modelThroughputOutputTokensPerSecond: safeRate(totals.outputTokens, modelDurationSeconds),
-    modelLatencyMsPer1kOutputTokens: safeRate(totals.modelDurationMs, totals.outputTokens / 1000),
+    modelLatencyMsPer1kOutputTokens,
+    p50ModelLatencyMsPer1kOutputTokens: percentile(totals.latencySamples || [], 0.5) ?? modelLatencyMsPer1kOutputTokens,
+    p90ModelLatencyMsPer1kOutputTokens: percentile(totals.latencySamples || [], 0.9) ?? modelLatencyMsPer1kOutputTokens,
+    p50ModelThroughputTokensPerSecond: percentile(totals.throughputSamples || [], 0.5) ?? modelThroughputTokensPerSecond,
+    p10ModelThroughputTokensPerSecond: percentile(totals.throughputSamples || [], 0.1) ?? modelThroughputTokensPerSecond,
     toolFailureRate: safeRate(totals.failedToolCalls, totals.toolCalls),
     toolDependencyRate: totals.toolDependencyRate ?? safeRate(totals.toolCalls, totals.sessionCount)
   }
@@ -676,6 +746,15 @@ function metricSetFor(group: Session[], groupToolCalls: ToolCall[]): ModelSignal
     outputTokens: sum(group, (session) => session.tokenUsage.outputTokens),
     reasoningOutputTokens: sum(group, (session) => session.tokenUsage.reasoningOutputTokens),
     modelDurationMs: sum(group, (session) => session.modelDurationMs),
+    wallDurationMs: sum(group, (session) => session.wallDurationMs),
+    activeDurationMs: sum(group, (session) => session.activeDurationMs),
+    toolDurationMs: sum(group, (session) => session.toolDurationMs),
+    idleDurationMs: sum(group, (session) => session.idleDurationMs),
+    estimatedCostUsd: costSum(group),
+    unpricedSessionCount: group.filter((session) => session.unpriced).length,
+    cacheSavingsUsd: cacheSavingsUsdFor(group),
+    latencySamples: group.map(sessionLatencyMsPer1kOutputTokens),
+    throughputSamples: group.map(sessionThroughputTokensPerSecond),
     toolDependencyRate: safeRate(toolSessions, group.length)
   })
 }
@@ -703,11 +782,22 @@ function syntheticBaselineFor(current: ModelSignalMetricSet, key: string): Model
     Math.min(inputTokens, Math.round((current.cachedInputTokens * 0.95) + (inputTokens * cacheLift[profile])))
   )
   const modelDurationMs = Math.max(1, Math.round(current.modelDurationMs * durationFactors[profile]))
+  const wallDurationMs = Math.max(1, Math.round((current.wallDurationMs || current.modelDurationMs) * durationFactors[profile]))
+  const toolDurationMs = Math.max(0, Math.round((current.toolDurationMs || 0) * (profile === 0 ? 0.78 : profile === 1 ? 0.86 : 0.96)))
+  const activeDurationMs = Math.max(1, modelDurationMs + toolDurationMs)
+  const idleDurationMs = Math.max(0, wallDurationMs - activeDurationMs)
   const failedToolCalls = current.failedToolCalls > 0 ? Math.max(0, current.failedToolCalls - 1) : 0
+  const estimatedCostUsd = current.estimatedCostUsd === undefined
+    ? undefined
+    : Number((current.estimatedCostUsd * [0.88, 0.94, 0.99, 1.03, 0.96][profile]).toFixed(4))
+  const cacheSavingsUsd = current.cacheSavingsUsd === undefined
+    ? undefined
+    : Number((current.cacheSavingsUsd * [1.18, 1.12, 1.04, 1, 0.96][profile]).toFixed(4))
 
   return metricSetFromTotals({
     sessionCount: current.sessionCount + (profile === 3 ? 1 : 0),
     modelCalls: current.modelCalls + (profile === 3 ? 1 : 0),
+    failedModelCalls: current.failedModelCalls || 0,
     toolCalls: current.toolCalls,
     failedToolCalls,
     totalTokens: inputTokens + outputTokens,
@@ -716,6 +806,21 @@ function syntheticBaselineFor(current: ModelSignalMetricSet, key: string): Model
     outputTokens,
     reasoningOutputTokens,
     modelDurationMs,
+    wallDurationMs,
+    activeDurationMs,
+    toolDurationMs,
+    idleDurationMs,
+    estimatedCostUsd,
+    unpricedSessionCount: current.unpricedSessionCount,
+    cacheSavingsUsd,
+    latencySamples: [
+      current.p50ModelLatencyMsPer1kOutputTokens || current.modelLatencyMsPer1kOutputTokens,
+      current.p90ModelLatencyMsPer1kOutputTokens || current.modelLatencyMsPer1kOutputTokens
+    ].map((value) => value * durationFactors[profile]),
+    throughputSamples: [
+      current.p10ModelThroughputTokensPerSecond || current.modelThroughputTokensPerSecond,
+      current.p50ModelThroughputTokensPerSecond || current.modelThroughputTokensPerSecond
+    ].map((value) => safeRate(value, durationFactors[profile])),
     toolDependencyRate: current.toolDependencyRate
   })
 }
@@ -850,6 +955,18 @@ function modelSignalCohortsFor(items: Session[], scopedToolCalls: ToolCall[]): M
 function combineMetricSets(items: ModelSignalMetricSet[]): ModelSignalMetricSet {
   const sessionCount = items.reduce((total, item) => total + item.sessionCount, 0)
   const modelCalls = items.reduce((total, item) => total + item.modelCalls, 0)
+  const allPriced = items.every((item) => item.estimatedCostUsd !== undefined)
+  const allSavingsPriced = items.every((item) => item.cacheSavingsUsd !== undefined)
+  const latencySamples = items.flatMap((item) => [
+    item.p50ModelLatencyMsPer1kOutputTokens,
+    item.p90ModelLatencyMsPer1kOutputTokens,
+    item.modelLatencyMsPer1kOutputTokens
+  ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value)))
+  const throughputSamples = items.flatMap((item) => [
+    item.p10ModelThroughputTokensPerSecond,
+    item.p50ModelThroughputTokensPerSecond,
+    item.modelThroughputTokensPerSecond
+  ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value)))
   const toolDependencyRate = safeRate(
     items.reduce((total, item) => total + item.toolDependencyRate * item.sessionCount, 0),
     sessionCount
@@ -857,6 +974,7 @@ function combineMetricSets(items: ModelSignalMetricSet[]): ModelSignalMetricSet 
   return metricSetFromTotals({
     sessionCount,
     modelCalls,
+    failedModelCalls: items.reduce((total, item) => total + (item.failedModelCalls || 0), 0),
     toolCalls: items.reduce((total, item) => total + item.toolCalls, 0),
     failedToolCalls: items.reduce((total, item) => total + item.failedToolCalls, 0),
     totalTokens: items.reduce((total, item) => total + item.totalTokens, 0),
@@ -865,6 +983,15 @@ function combineMetricSets(items: ModelSignalMetricSet[]): ModelSignalMetricSet 
     outputTokens: items.reduce((total, item) => total + item.outputTokens, 0),
     reasoningOutputTokens: items.reduce((total, item) => total + item.reasoningOutputTokens, 0),
     modelDurationMs: items.reduce((total, item) => total + item.modelDurationMs, 0),
+    wallDurationMs: items.reduce((total, item) => total + (item.wallDurationMs || item.modelDurationMs), 0),
+    activeDurationMs: items.reduce((total, item) => total + (item.activeDurationMs || item.modelDurationMs), 0),
+    toolDurationMs: items.reduce((total, item) => total + (item.toolDurationMs || 0), 0),
+    idleDurationMs: items.reduce((total, item) => total + (item.idleDurationMs || 0), 0),
+    estimatedCostUsd: allPriced ? Number(items.reduce((total, item) => total + (item.estimatedCostUsd || 0), 0).toFixed(4)) : undefined,
+    unpricedSessionCount: items.reduce((total, item) => total + (item.unpricedSessionCount || 0), 0),
+    cacheSavingsUsd: allSavingsPriced ? Number(items.reduce((total, item) => total + (item.cacheSavingsUsd || 0), 0).toFixed(4)) : undefined,
+    latencySamples,
+    throughputSamples,
     toolDependencyRate
   })
 }
@@ -930,6 +1057,63 @@ function modelSignalProjectHotspotsFor(cohorts: ModelSignalCohort[]): ModelSigna
     severityRank(right.drift.severity) - severityRank(left.drift.severity) ||
     right.totalTokens - left.totalTokens
   )
+}
+
+function modelSignalsDailyMetricsFor(items: Session[], scopedToolCalls: ToolCall[]): ModelSignalsDailyMetric[] {
+  return [...groupedBy(items, (session) => session.startedAt.slice(0, 10))]
+    .map(([date, group]) => {
+      const sessionIds = new Set(group.map((session) => session.id))
+      const groupToolCalls = scopedToolCalls.filter((call) => sessionIds.has(call.sessionId))
+      const current = metricSetFor(group, groupToolCalls)
+      const baseline = syntheticBaselineFor(current, `daily:${date}`)
+      const drift = modelSignalDriftFor(current, baseline)
+      return {
+        date,
+        ...current,
+        lowSample: group.length < 2 || current.modelCalls < 3 || current.totalTokens < 60_000,
+        drift,
+        keyReason: drift.reasons[0] || drift.sampleNote
+      }
+    })
+    .sort((left, right) => right.date.localeCompare(left.date))
+}
+
+function modelSignalsProjectMetricsFor(items: Session[], scopedToolCalls: ToolCall[]): ModelSignalsProjectMetric[] {
+  return [...groupedBy(items, (session) => projectPathKey(session.projectPath || session.rawSourcePath))]
+    .map(([, group]) => {
+      const first = group[0]
+      const sessionIds = new Set(group.map((session) => session.id))
+      const groupToolCalls = scopedToolCalls.filter((call) => sessionIds.has(call.sessionId))
+      const current = metricSetFor(group, groupToolCalls)
+      const baseline = syntheticBaselineFor(current, `project:${first.projectPath || first.rawSourcePath}`)
+      const drift = modelSignalDriftFor(current, baseline)
+      const dominantModelGroup = [...groupedBy(group, (session) => `${session.modelProvider}:${session.model}`)]
+        .map(([, modelGroup]) => ({
+          modelProvider: modelGroup[0].modelProvider,
+          model: modelGroup[0].model,
+          sessionCount: modelGroup.length,
+          totalTokens: sum(modelGroup, (session) => session.tokenUsage.totalTokens)
+        }))
+        .sort((left, right) => right.sessionCount - left.sessionCount || right.totalTokens - left.totalTokens)[0]
+
+      return {
+        ...current,
+        projectPath: first.projectPath || first.rawSourcePath || 'unknown',
+        modelCount: new Set(group.map((session) => `${session.modelProvider}:${session.model}`)).size,
+        sourceCount: new Set(group.map((session) => sourceIdentityKey(session) || session.agentKind || session.agentName)).size,
+        dominantModelProvider: dominantModelGroup?.modelProvider,
+        dominantModel: dominantModelGroup?.model,
+        dominantModelShare: safeRate(dominantModelGroup?.sessionCount || 0, group.length),
+        current,
+        baseline,
+        drift
+      }
+    })
+    .sort((left, right) =>
+      severityRank(right.drift.severity) - severityRank(left.drift.severity) ||
+      (right.estimatedCostUsd || 0) - (left.estimatedCostUsd || 0) ||
+      right.totalTokens - left.totalTokens
+    )
 }
 
 function modelSignalsHealthSummaryFor(items: Session[], cohorts: ModelSignalCohort[]): ModelSignalsHealthSummary {
@@ -1132,7 +1316,9 @@ function modelSignals(filters: UsageScopeFilters = {}): ModelSignals {
     healthSummary: modelSignalsHealthSummaryFor(scoped, cohorts),
     cohorts,
     matrix: modelSignalMatrixFor(cohorts),
-    projectHotspots: modelSignalProjectHotspotsFor(cohorts)
+    projectHotspots: modelSignalProjectHotspotsFor(cohorts),
+    dailyMetrics: modelSignalsDailyMetricsFor(scoped, scopedToolCalls),
+    projectMetrics: modelSignalsProjectMetricsFor(scoped, scopedToolCalls)
   }
 }
 

@@ -60,8 +60,9 @@ Cache-related shape checks include `totalInputTokens`, `totalCachedInputTokens`,
 usage-breakdown bucket `projectPath`/`cachedInputTokens`/
 `cacheUtilizationRate`. Model Signals checks include the top-level raw
 operational metrics, `trend`, `modelBreakdown`, and `anomalySessions` arrays,
-plus the Model Health `healthSummary` object and `cohorts`, `matrix`, and
-`projectHotspots` arrays. Health arrays are compatible with empty data and only
+the operational efficiency `dailyMetrics` and `projectMetrics` arrays, plus the
+Model Health `healthSummary` object and `cohorts`, `matrix`, and
+`projectHotspots` arrays. These arrays are compatible with empty data and only
 lightly validate row shape when rows exist.
 
 ## Browser Smoke
@@ -159,12 +160,19 @@ TUI expectations where relevant:
   `dailyUsage.cacheUtilizationRate`, `cacheHitTrend`, and usage-breakdown
   `projectPath` for project grouping;
 - Model Signals fields and filters, including raw signal fields, `trend`,
-  `modelBreakdown`, `anomalySessions`, `healthSummary`, `cohorts`, `matrix`,
-  `projectHotspots`, and empty arrays returned as `[]` rather than `null`;
+  `modelBreakdown`, `anomalySessions`, `dailyMetrics`, `projectMetrics`,
+  `healthSummary`, `cohorts`, `matrix`, `projectHotspots`, and empty arrays
+  returned as `[]` rather than `null`;
 - Model Signals health/drift interpretation, including current window as the
   latest observed 24h in scope, baseline as the preceding 30d when available,
   low-sample confidence states, and missing baseline not being labeled as
   regression;
+- Model Signals daily/project efficiency interpretation, including cost,
+  cost-per-session, cost-per-active-hour, cache savings, p50/p90 latency,
+  p50/p10 throughput, retry pressure, failure pressure, preceding
+  7-calendar-day daily drift, project current-versus-baseline drift, and
+  missing pricing or low sample being labeled as confidence/completeness risk
+  rather than failure;
 - project-scoped analytics filters using the `project` query parameter;
 - session identity and source path display;
 - source instance filters using `source:<id>` and family filters using values
@@ -178,6 +186,11 @@ TUI expectations where relevant:
 - [UI Modes](ui-modes.md);
 - [Architecture](architecture.md);
 - [Roadmap](roadmap.md).
+
+For backend read-model changes, run `go test ./...`. If visible Web UI changed,
+also run the frontend build (`cd frontend; npm ci; npm run build`) and browser
+smoke (`cd frontend; npm run test:smoke`) against the appropriate local
+backend/frontend services.
 
 ## Documentation-only Changes
 
