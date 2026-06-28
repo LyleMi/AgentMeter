@@ -695,6 +695,7 @@ function metricSetFromTotals(totals: MetricTotals): ModelSignalMetricSet {
   const hasCompletePricing = estimatedCostUsd !== undefined && unpricedSessionCount === 0
   const costPerSession = hasCompletePricing ? safeRate(estimatedCostUsd, totals.sessionCount) : undefined
   const costPerActiveHour = hasCompletePricing ? safeRate(estimatedCostUsd, activeDurationHours) : undefined
+  const costPer1kTokens = hasCompletePricing ? safeRate(estimatedCostUsd, totals.totalTokens / 1000) : undefined
   return {
     sessionCount: totals.sessionCount,
     modelCalls: totals.modelCalls,
@@ -716,6 +717,7 @@ function metricSetFromTotals(totals: MetricTotals): ModelSignalMetricSet {
     cacheSavingsUsd: totals.cacheSavingsUsd,
     costPerSession,
     costPerActiveHour,
+    costPer1kTokens,
     failurePressure: safeRate((totals.failedModelCalls || 0) + totals.failedToolCalls, totals.sessionCount),
     avgModelCallsPerSession: safeRate(totals.modelCalls, totals.sessionCount),
     outputExpansionRate: safeRate(totals.outputTokens, totals.inputTokens),
@@ -1044,11 +1046,10 @@ function modelSignalProjectHotspotsFor(cohorts: ModelSignalCohort[]): ModelSigna
     const baseline = combineMetricSets(group.map((cohort) => cohort.baseline))
     const drift = modelSignalDriftFor(current, baseline)
     return {
+      ...current,
       projectPath: group[0].projectPath || 'unknown',
-      sessionCount: current.sessionCount,
       modelCount: new Set(group.map((cohort) => `${cohort.modelProvider}:${cohort.model}`)).size,
       sourceCount: new Set(group.map((cohort) => sourceIdentityKey(cohort) || cohort.agentKind || cohort.agentName)).size,
-      totalTokens: current.totalTokens,
       current,
       baseline,
       drift

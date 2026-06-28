@@ -201,9 +201,10 @@ func TestModelSignalsDailyAndProjectEfficiencyMetrics(t *testing.T) {
 	if !firstDay.LowSample || firstDay.Drift.Confidence != "low" || firstDay.Drift.SampleNote != "missing baseline window" {
 		t.Fatalf("first daily drift = %+v", firstDay)
 	}
-	if firstDay.CostPerSession == nil || firstDay.CostPerActiveHour == nil {
+	if firstDay.CostPerSession == nil || firstDay.CostPerActiveHour == nil || firstDay.CostPer1kTokens == nil {
 		t.Fatalf("priced first day should expose cost rates: %+v", firstDay)
 	}
+	assertCostUSD(t, firstDay.CostPer1kTokens, 0.004016666667)
 
 	currentDay := findModelSignalsDailyMetric(t, signals.DailyMetrics, "2026-06-28")
 	if currentDay.SessionCount != 3 || currentDay.ModelCalls != 4 || currentDay.FailedModelCalls != 1 || currentDay.FailedToolCalls != 2 || currentDay.UnpricedSessionCount != 1 {
@@ -216,7 +217,7 @@ func TestModelSignalsDailyAndProjectEfficiencyMetrics(t *testing.T) {
 	if currentDay.WallDurationMS != 21_000 || currentDay.ActiveDurationMS != 17_000 || currentDay.ToolDurationMS != 2_400 || currentDay.IdleDurationMS != 1_100 {
 		t.Fatalf("current daily durations = %+v", currentDay)
 	}
-	if currentDay.CostPerSession != nil || currentDay.CostPerActiveHour != nil {
+	if currentDay.CostPerSession != nil || currentDay.CostPerActiveHour != nil || currentDay.CostPer1kTokens != nil {
 		t.Fatalf("mixed-priced daily cost rates should be omitted: %+v", currentDay)
 	}
 	if currentDay.P50ModelLatencyMsPer1kOutputTokens <= 0 || currentDay.P90ModelLatencyMsPer1kOutputTokens < currentDay.P50ModelLatencyMsPer1kOutputTokens {
@@ -243,7 +244,7 @@ func TestModelSignalsDailyAndProjectEfficiencyMetrics(t *testing.T) {
 	}
 	assertCostUSD(t, projectMetric.EstimatedCostUSD, 0.0299)
 	assertCostUSD(t, projectMetric.CacheSavingsUSD, 0.00135)
-	if projectMetric.CostPerSession != nil || projectMetric.CostPerActiveHour != nil {
+	if projectMetric.CostPerSession != nil || projectMetric.CostPerActiveHour != nil || projectMetric.CostPer1kTokens != nil {
 		t.Fatalf("mixed-priced project cost rates should be omitted: %+v", projectMetric)
 	}
 	if projectMetric.FailurePressure <= 0 || projectMetric.AvgModelCallsPerSession <= 1 || projectMetric.P90ModelLatencyMsPer1kOutputTokens <= 0 || projectMetric.P10ModelThroughputTokensPerSecond <= 0 {

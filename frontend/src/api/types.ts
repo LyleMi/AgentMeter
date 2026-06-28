@@ -244,6 +244,7 @@ export interface ModelSignalMetricSet extends ModelSignalRates {
   cacheSavingsUsd?: number
   costPerSession?: number
   costPerActiveHour?: number
+  costPer1kTokens?: number
   failurePressure?: number
   avgModelCallsPerSession: number
   modelLatencyMsPer1kOutputTokens: number
@@ -358,12 +359,10 @@ export interface ModelSignalMatrixRow extends SourceIdentity {
   cells: ModelSignalMatrixCell[]
 }
 
-export interface ModelSignalProjectHotspot {
+export interface ModelSignalProjectHotspot extends ModelSignalMetricSet {
   projectPath: string
-  sessionCount: number
   modelCount: number
   sourceCount: number
-  totalTokens: number
   current: ModelSignalMetricSet
   baseline: ModelSignalMetricSet
   drift: ModelSignalDrift

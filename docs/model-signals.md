@@ -59,6 +59,19 @@ project behavior against available baseline behavior for the same filtered
 scope. In both cases, drift is a local operational change indicator, not a
 general model capability score.
 
+## Presentation Standard
+
+Model Signals should lead with configurable dynamic charts, not raw numeric
+tables. The primary view should let users switch between operational lenses
+such as P90 latency, P10 throughput, cost burn, cost per active hour, cost per
+1k tokens, cache savings, failure pressure, retry pressure, cache miss rate,
+reasoning share, and output expansion.
+
+Tables remain useful as inspectable detail, but they should sit after the chart
+for traceability. Chart controls should preserve the active agent/source, model,
+project, and date filters, show current versus baseline values where available,
+and label low-sample or unavailable-price states directly.
+
 ## Signals
 
 Stronger service-health signals:
@@ -78,6 +91,9 @@ Operational efficiency metrics:
 - **Cost per session:** estimated cost divided by sessions in the same row.
 - **Cost per active hour:** estimated cost divided by measured active model and
   tool time when active duration is available.
+- **Cost per 1k tokens:** estimated cost divided by total token volume. This is
+  the preferred normalized cost lens when comparing days or projects with very
+  different session counts.
 - **Cache savings:** estimated avoided cost from cached input tokens when both
   cached-token data and pricing are available.
 - **Latency percentiles:** p50 and p90 latency from observed model-call
@@ -161,13 +177,14 @@ Existing collection fields such as `trend`, `modelBreakdown`, and
 returns day-level and project-level efficiency views:
 
 - `dailyMetrics`: day rows for operational efficiency, including cost, cost per
-  session, cost per active hour, cache savings, p50/p90 latency, p50/p10
-  throughput, failure pressure, retry pressure or model calls per session, low
-  sample flags, and drift against the preceding 7 calendar days.
+  session, cost per active hour, cost per 1k tokens, cache savings, p50/p90
+  latency, p50/p10 throughput, failure pressure, retry pressure or model calls
+  per session, low sample flags, and drift against the preceding 7 calendar
+  days.
 - `projectMetrics`: project rows for operational efficiency, including project
-  cost burn, cache savings, cost per session, cost per active hour, dominant
-  model, model mix, retry pressure, failure pressure, confidence, and
-  current-versus-baseline drift.
+  cost burn, cache savings, cost per session, cost per active hour, cost per 1k
+  tokens, dominant model, model mix, retry pressure, failure pressure,
+  confidence, and current-versus-baseline drift.
 
 The Model Health layer adds:
 

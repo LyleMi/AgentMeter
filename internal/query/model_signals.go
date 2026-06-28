@@ -674,6 +674,10 @@ func (a modelSignalMetricAccumulator) metricSet() model.ModelSignalsMetricSet {
 		value := *item.EstimatedCostUSD / (float64(item.ActiveDurationMS) / 3_600_000)
 		item.CostPerActiveHour = &value
 	}
+	if item.EstimatedCostUSD != nil && item.UnpricedSessionCount == 0 && item.TotalTokens > 0 {
+		value := *item.EstimatedCostUSD / (float64(item.TotalTokens) / 1_000)
+		item.CostPer1kTokens = &value
+	}
 	item.P50ModelLatencyMsPer1kOutputTokens = percentileNearest(a.latencySamples, 0.50)
 	item.P90ModelLatencyMsPer1kOutputTokens = percentileNearest(a.latencySamples, 0.90)
 	item.P50ModelThroughputTokensPerSecond = percentileNearest(a.throughputSamples, 0.50)
@@ -696,7 +700,9 @@ func compareModelSignalDrift(current, baseline model.ModelSignalsMetricSet) mode
 		return drift
 	}
 
+	addRelativeIncreaseDriftMetric(&drift, "p90ModelLatencyMsPer1kOutputTokens", "p90 model latency per 1k output tokens", "higher_worse", "model latency increased", current.P90ModelLatencyMsPer1kOutputTokens, baseline.P90ModelLatencyMsPer1kOutputTokens, 0.5, 1.0, 250)
 	addRelativeIncreaseDriftMetric(&drift, "modelLatencyMsPer1kOutputTokens", "model latency per 1k output tokens", "higher_worse", "model latency increased", current.ModelLatencyMsPer1kOutputTokens, baseline.ModelLatencyMsPer1kOutputTokens, 0.5, 1.0, 250)
+	addRelativeDecreaseDriftMetric(&drift, "p10ModelThroughputTokensPerSecond", "p10 model throughput", "lower_worse", "output throughput dropped", current.P10ModelThroughputTokensPerSecond, baseline.P10ModelThroughputTokensPerSecond, 0.25, 0.5, 25)
 	addRelativeDecreaseDriftMetric(&drift, "modelThroughputOutputTokensPerSecond", "model output throughput", "lower_worse", "output throughput dropped", current.ModelThroughputOutputTokensPerSecond, baseline.ModelThroughputOutputTokensPerSecond, 0.25, 0.5, 25)
 	addAbsoluteIncreaseDriftMetric(&drift, "toolFailureRate", "tool failure rate", "higher_downstream_symptom", "tool failure rate increased", current.ToolFailureRate, baseline.ToolFailureRate, 0.10, 0.25, 0.10)
 	addAbsoluteIncreaseDriftMetric(&drift, "failurePressure", "failure pressure", "higher_worse", "failure pressure increased", current.FailurePressure, baseline.FailurePressure, 0.10, 0.25, 0.10)

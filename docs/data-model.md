@@ -416,8 +416,8 @@ Read-model shape notes:
   unavailable history, not as regression.
 - `/api/model-signals` also includes `dailyMetrics` for day-level operational
   efficiency. Rows should expose enough date, sample, cost, cost-per-session,
-  cost-per-active-hour, cache-savings, latency percentile, throughput
-  percentile, failure-pressure, retry-pressure/model-calls-per-session,
+  cost-per-active-hour, cost-per-1k-tokens, cache-savings, latency percentile,
+  throughput percentile, failure-pressure, retry-pressure/model-calls-per-session,
   low-sample, and rolling 7-calendar-day drift metadata for Web and TUI clients
   to explain the metric without recomputing it. Latency and throughput
   percentiles should use model-call token/duration samples when available and
@@ -425,9 +425,9 @@ Read-model shape notes:
 - `/api/model-signals` also includes `projectMetrics` for project-level
   operational efficiency. Rows should expose enough project identity, sample,
   project cost burn, cache-savings, cost-per-session, cost-per-active-hour,
-  dominant-model, model-mix, retry-pressure, failure-pressure, confidence, and
-  current-versus-baseline drift metadata for clients to present the same
-  semantics.
+  cost-per-1k-tokens, dominant-model, model-mix, retry-pressure,
+  failure-pressure, confidence, and current-versus-baseline drift metadata for
+  clients to present the same semantics.
 - Model Signals `trend` and `modelBreakdown` rows expose count, token, duration,
   and rate fields so Web and TUI clients can present the same numerator and
   denominator semantics. Empty collection fields must be JSON arrays (`[]`),

@@ -76,10 +76,25 @@ friction.
 - New interactive components should define normal, hover, focus, selected,
   disabled, loading, empty, and error behavior when those states apply.
 
+## Analytical Signals And Charts
+
+- Derived signal screens should lead with configurable dynamic charts. Model
+  Signals, trend, health, and efficiency views should let users switch metric
+  lenses instead of forcing them to compare numeric table columns first.
+- Chart controls should stay close to the chart and preserve page filters. When
+  relevant, expose metric, dimension, time/project grouping, and current versus
+  baseline comparison as explicit controls.
+- Charts should label low sample, missing price, missing baseline, and
+  unavailable denominator states directly. Do not draw missing values as zero.
+- Tables remain the drill-down and traceability layer after the chart. They are
+  appropriate for source identity, exact timestamps, exact counts, and links to
+  sessions or files.
+
 ## Dense Data Tables
 
-- Tables are the default for dense session, tool, model, project, and pricing
-  data. Use charts to reveal shape or trend, not to replace inspectable rows.
+- Tables are the default for dense inspectable records such as sessions, tool
+  calls, raw model rows, project rows, and pricing data. Aggregated signal
+  pages should lead with charts and keep tables as inspectable rows.
 - Keep important columns visible: identity, time range, agent or model, usage,
   cost, duration, status, and drill-down action where relevant.
 - Right-align numeric columns and keep units consistent. Do not mix raw token
