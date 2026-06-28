@@ -10,9 +10,12 @@ const routes: SmokeRoute[] = [
   { path: '/#/overview/summary', hash: '#/overview/summary', title: /^(Overview|概览)$/ },
   { path: '/#/time', hash: '#/time', title: /^(Time|耗时)$/ },
   { path: '/#/sessions', hash: '#/sessions', title: /^(Sessions|会话)$/ },
+  { path: '/#/tokens', hash: '#/tokens', title: /^(Tokens|Token)$/ },
   { path: '/#/tools/overview', hash: '#/tools/overview', title: /^(Tools|工具)$/ },
   { path: '/#/tools/calls', hash: '#/tools/calls', title: /^(Tools|工具)$/ },
-  { path: '/#/audit', hash: '#/audit', title: /^(Audit|审计)$/ },
+  { path: '/#/tools/shell', hash: '#/tools/shell', title: /^(Tools|工具)$/ },
+  { path: '/#/audit/summary', hash: '#/audit/summary', title: /^(Audit|审计)$/ },
+  { path: '/#/audit/findings', hash: '#/audit/findings', title: /^(Audit|审计)$/ },
   { path: '/#/agent-privacy', hash: '#/agent-privacy', title: /^(Agent Privacy|Agent 隐私)$/ },
   { path: '/#/settings/source', hash: '#/settings/source', title: /^(Settings|设置)$/ }
 ]

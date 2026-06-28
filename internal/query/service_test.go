@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"database/sql"
+	"math"
 	"path/filepath"
 	"testing"
 	"time"
@@ -152,6 +153,130 @@ func TestToolsFiltersByAgent(t *testing.T) {
 		if stat.Calls != 1 {
 			t.Fatalf("tool calls for %s = %d, want 1", stat.ToolName, stat.Calls)
 		}
+	}
+}
+
+func TestAuditFindingsFiltersByAgentAndReturnsDetail(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	codexSessionID, codexFileID := insertAuditSession(t, conn, "codex", "Codex", now, "codex-session")
+	claudeSessionID, claudeFileID := insertAuditSession(t, conn, "claude", "Claude Code", now.Add(time.Minute), "claude-session")
+
+	codexFindingID := insertAuditFinding(t, conn, codexSessionID, codexFileID, now, "command", "high", "shell-risk", "rm -rf /tmp/example")
+	insertAuditFinding(t, conn, codexSessionID, codexFileID, now.Add(time.Second), "privacy", "medium", "privacy-risk", "")
+	insertAuditFinding(t, conn, claudeSessionID, claudeFileID, now.Add(2*time.Second), "command", "critical", "claude-risk", "curl https://example.com")
+
+	service := New(conn)
+	summary, err := service.AuditSummaryWithFilters(ctx, model.AuditFindingFilters{Agent: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.TotalFindings != 2 || summary.HighFindings != 1 || summary.MediumFindings != 1 || summary.CriticalFindings != 0 {
+		t.Fatalf("codex summary severities = %+v", summary)
+	}
+	if summary.CommandFindings != 1 || summary.PrivacyFindings != 1 || summary.SessionsWithFindings != 1 {
+		t.Fatalf("codex summary categories/sessions = %+v", summary)
+	}
+	if len(summary.RecentFindings) != 2 {
+		t.Fatalf("codex recent findings = %+v", summary.RecentFindings)
+	}
+	for _, finding := range summary.RecentFindings {
+		if finding.AgentKind != "codex" {
+			t.Fatalf("summary recent finding ignored agent filter: %+v", finding)
+		}
+	}
+
+	findings, err := service.AuditFindings(ctx, model.AuditFindingFilters{Agent: "codex", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 2 {
+		t.Fatalf("codex findings = %+v", findings)
+	}
+	for _, finding := range findings {
+		if finding.AgentKind != "codex" {
+			t.Fatalf("agent filtered findings included other agent: %+v", findings)
+		}
+	}
+
+	detail, err := service.AuditFinding(ctx, codexFindingID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.ID != codexFindingID || detail.SessionID != codexSessionID || detail.SessionKey != "codex-session" {
+		t.Fatalf("audit detail session association = %+v", detail)
+	}
+	if detail.AgentKind != "codex" || detail.AgentName != "Codex" || detail.RawSourcePath == "" {
+		t.Fatalf("audit detail source context = %+v", detail)
+	}
+}
+
+func TestTokenAnalyticsAggregatesUsageCostsAndSessions(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	codexSourceID := insertTimeSource(t, conn, "codex", "Codex", now)
+	claudeSourceID := insertTimeSource(t, conn, "claude", "Claude Code", now)
+
+	sessionA := insertTokenAnalyticsSession(t, conn, codexSourceID, now, "codex-a", "gpt-5", "gpt-5", "actual", 1_000_000, 200_000, 500_000, 50_000, 1_550_000)
+	sessionB := insertTokenAnalyticsSession(t, conn, codexSourceID, now.Add(time.Hour), "codex-b", "unknown-model", "unknown-model", "actual", 100, 20, 30, 0, 130)
+	sessionC := insertTokenAnalyticsSession(t, conn, claudeSourceID, now.Add(2*time.Hour), "claude-c", "gpt-5-mini", "gpt-5-mini", "actual", 500_000, 100_000, 250_000, 25_000, 775_000)
+
+	analytics, err := New(conn).TokenAnalytics(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if analytics.TotalSessions != 3 || analytics.TotalInputTokens != 1_500_100 || analytics.TotalCachedInputTokens != 300_020 ||
+		analytics.TotalOutputTokens != 750_030 || analytics.TotalReasoningTokens != 75_000 || analytics.TotalTokens != 2_325_130 {
+		t.Fatalf("token analytics totals = %+v", analytics)
+	}
+	wantCacheRate := float64(300_020) / float64(1_500_100)
+	if math.Abs(analytics.CacheUtilizationRate-wantCacheRate) > 0.000001 {
+		t.Fatalf("cache utilization = %f, want %f", analytics.CacheUtilizationRate, wantCacheRate)
+	}
+	if analytics.UnpricedCount != 1 {
+		t.Fatalf("unpriced count = %d", analytics.UnpricedCount)
+	}
+	if analytics.EstimatedCostUSD == nil || math.Abs(*analytics.EstimatedCostUSD-6.6275) > 0.000001 {
+		t.Fatalf("estimated cost = %v", analytics.EstimatedCostUSD)
+	}
+
+	gptUsage := findModelUsage(t, analytics.ModelUsage, "gpt-5")
+	if gptUsage.SessionCount != 1 || gptUsage.TotalTokens != 1_550_000 || gptUsage.CachedInputTokens != 200_000 ||
+		gptUsage.ReasoningOutputTokens != 50_000 || gptUsage.Unpriced || gptUsage.EstimatedCostUSD == nil {
+		t.Fatalf("gpt model usage = %+v", gptUsage)
+	}
+	unknownUsage := findModelUsage(t, analytics.ModelUsage, "unknown-model")
+	if !unknownUsage.Unpriced || unknownUsage.EstimatedCostUSD != nil {
+		t.Fatalf("unknown model usage pricing = %+v", unknownUsage)
+	}
+
+	codexUsage := findAgentUsage(t, analytics.AgentUsage, "codex", "Codex")
+	if codexUsage.SessionCount != 2 || codexUsage.TotalTokens != 1_550_130 || codexUsage.CachedInputTokens != 200_020 ||
+		codexUsage.ReasoningOutputTokens != 50_000 || !codexUsage.Unpriced {
+		t.Fatalf("codex agent usage = %+v", codexUsage)
+	}
+	claudeUsage := findAgentUsage(t, analytics.AgentUsage, "claude", "Claude Code")
+	if claudeUsage.SessionCount != 1 || claudeUsage.TotalTokens != 775_000 || claudeUsage.Unpriced {
+		t.Fatalf("claude agent usage = %+v", claudeUsage)
+	}
+
+	if len(analytics.RecentSessions) != 3 || analytics.RecentSessions[0].ID != sessionC || analytics.RecentSessions[1].ID != sessionB || analytics.RecentSessions[2].ID != sessionA {
+		t.Fatalf("recent sessions = %+v", analytics.RecentSessions)
+	}
+	if len(analytics.HighTokenSessions) != 3 || analytics.HighTokenSessions[0].ID != sessionA || analytics.HighTokenSessions[1].ID != sessionC || analytics.HighTokenSessions[2].ID != sessionB {
+		t.Fatalf("high token sessions = %+v", analytics.HighTokenSessions)
 	}
 }
 
@@ -410,6 +535,54 @@ func findModelTimeUsage(t *testing.T, items []model.ModelTimeUsage, modelName st
 	return model.ModelTimeUsage{}
 }
 
+func findModelUsage(t *testing.T, items []model.ModelUsage, modelName string) model.ModelUsage {
+	t.Helper()
+	for _, item := range items {
+		if item.Model == modelName {
+			return item
+		}
+	}
+	t.Fatalf("model usage for %s missing: %+v", modelName, items)
+	return model.ModelUsage{}
+}
+
+func findAgentUsage(t *testing.T, items []model.AgentUsage, agentKind, agentName string) model.AgentUsage {
+	t.Helper()
+	for _, item := range items {
+		if item.AgentKind == agentKind && item.AgentName == agentName {
+			return item
+		}
+	}
+	t.Fatalf("agent usage for %s/%s missing: %+v", agentKind, agentName, items)
+	return model.AgentUsage{}
+}
+
+func insertAuditSession(t *testing.T, conn *sql.DB, kind, name string, started time.Time, key string) (int64, int64) {
+	t.Helper()
+	sourceID := insertTimeSource(t, conn, kind, name, started)
+	sourceFileID := insertRow(t, conn, `INSERT INTO source_files
+		(source_id, path, size_bytes, modified_at, content_hash, last_scanned_at, scan_status, error)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		sourceID, "/workspace/audit/"+key+".jsonl", 128, db.FormatTime(started), "hash-"+key, db.FormatTime(started), "indexed", "")
+	sessionID := insertRow(t, conn, `INSERT INTO sessions
+		(source_id, source_file_id, session_key, codex_session_id, project_path, model, model_provider, originator, thread_source, agent_nickname, agent_role,
+		 started_at, ended_at, wall_duration_ms, active_duration_ms, model_duration_ms, tool_duration_ms, idle_duration_ms, event_count, parse_status)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		sourceID, sourceFileID, key, "codex-"+key, "/workspace/project", "gpt-5", "openai", "cli", "local", "", "",
+		db.FormatTime(started), db.FormatTime(started.Add(time.Second)), 1000, 1000, 1000, 0, 0, 1, "ok")
+	return sessionID, sourceFileID
+}
+
+func insertAuditFinding(t *testing.T, conn *sql.DB, sessionID, sourceFileID int64, timestamp time.Time, category, severity, ruleID, command string) int64 {
+	t.Helper()
+	return insertRow(t, conn, `INSERT INTO audit_findings
+		(session_id, tool_call_id, source_file_id, raw_event_id, source_line, timestamp, source, event_type, category, severity, rule_id,
+		 title, description, evidence, command, shell_family, platform, decision, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		sessionID, 0, sourceFileID, 0, 10, db.FormatTime(timestamp), "session_jsonl", "finding", category, severity, ruleID,
+		"Finding "+ruleID, "description", "evidence", command, "sh", "test", "observed", db.FormatTime(timestamp))
+}
+
 func insertToolCallFixture(t *testing.T, conn *sql.DB, kind, name string, started time.Time, duration time.Duration, toolName string) int64 {
 	t.Helper()
 	key := kind + "-" + started.Format("20060102150405")
@@ -431,6 +604,25 @@ func insertToolCallFixture(t *testing.T, conn *sql.DB, kind, name string, starte
 		(session_id, started_at, ended_at, duration_ms, tool_name, status, input_summary, output_summary, error, raw_event_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		sessionID, db.FormatTime(started), db.FormatTime(started.Add(duration)), duration.Milliseconds(), toolName, "completed", "input", "output", "", 0)
+}
+
+func insertTokenAnalyticsSession(t *testing.T, conn *sql.DB, sourceID int64, started time.Time, key, sessionModel, usageModel, usageSource string, inputTokens, cachedInputTokens, outputTokens, reasoningTokens, totalTokens int64) int64 {
+	t.Helper()
+	sourceFileID := insertRow(t, conn, `INSERT INTO source_files
+		(source_id, path, size_bytes, modified_at, content_hash, last_scanned_at, scan_status, error)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		sourceID, "/workspace/tokens/"+key+".jsonl", 128, db.FormatTime(started), "hash-"+key, db.FormatTime(started), "indexed", "")
+	sessionID := insertRow(t, conn, `INSERT INTO sessions
+		(source_id, source_file_id, session_key, codex_session_id, project_path, model, model_provider, originator, thread_source, agent_nickname, agent_role,
+		 started_at, ended_at, wall_duration_ms, active_duration_ms, model_duration_ms, tool_duration_ms, idle_duration_ms, event_count, parse_status)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		sourceID, sourceFileID, key, "codex-"+key, "/workspace/project", sessionModel, "openai", "cli", "local", "", "",
+		db.FormatTime(started), db.FormatTime(started.Add(time.Second)), 1000, 1000, 1000, 0, 0, 1, "ok")
+	insertRow(t, conn, `INSERT INTO token_usage
+		(owner_kind, owner_id, model, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, source)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"session", sessionID, usageModel, inputTokens, cachedInputTokens, outputTokens, reasoningTokens, totalTokens, usageSource)
+	return sessionID
 }
 
 func insertOverviewUsageSession(t *testing.T, conn *sql.DB, sourceID int64, started time.Time, key, sessionModel, usageModel, usageSource string, inputTokens, cachedInputTokens, outputTokens, totalTokens int64) int64 {

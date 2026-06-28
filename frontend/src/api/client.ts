@@ -15,6 +15,7 @@ import type {
   SessionFilters,
   Settings,
   SourceEntry,
+  TokenAnalytics,
   ToolCall,
   ToolCallFilters,
   ToolFilters,
@@ -61,6 +62,7 @@ export const api = {
   indexNow: (rebuild = false) =>
     request<IndexResult>('/api/index', { method: 'POST', body: JSON.stringify({ rebuild }) }),
   getOverview: () => request<Overview>('/api/overview'),
+  getTokenAnalytics: () => request<TokenAnalytics>('/api/tokens'),
   listSessions: (filters: SessionFilters = {}) => {
     const params = new URLSearchParams()
     if (filters.search) params.set('search', filters.search)
@@ -88,9 +90,15 @@ export const api = {
     if (filters.offset) params.set('offset', String(filters.offset))
     return request<ToolCall[]>(`/api/tool-calls?${params}`)
   },
-  getAuditSummary: () => request<AuditSummary>('/api/audit/summary'),
+  getAuditSummary: (filters: Pick<AuditFindingFilters, 'agent'> = {}) => {
+    const params = new URLSearchParams()
+    if (filters.agent) params.set('agent', filters.agent)
+    const query = params.toString()
+    return request<AuditSummary>(`/api/audit/summary${query ? `?${query}` : ''}`)
+  },
   listAuditFindings: (filters: AuditFindingFilters = {}) => {
     const params = new URLSearchParams()
+    if (filters.agent) params.set('agent', filters.agent)
     if (filters.category) params.set('category', filters.category)
     if (filters.severity) params.set('severity', filters.severity)
     if (filters.shell) params.set('shell', filters.shell)
@@ -99,5 +107,6 @@ export const api = {
     if (filters.offset) params.set('offset', String(filters.offset))
     return request<AuditFinding[]>(`/api/audit/findings?${params}`)
   },
+  getAuditFinding: (id: number) => request<AuditFinding>(`/api/audit/findings/${id}`),
   getPricingModels: () => request<PricingModel[]>('/api/pricing')
 }

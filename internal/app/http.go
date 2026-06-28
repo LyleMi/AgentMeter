@@ -1,6 +1,7 @@
 package app
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
@@ -16,7 +17,11 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 	writeJSON := func(w http.ResponseWriter, value any, err error) {
 		w.Header().Set("Content-Type", "application/json")
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+			status := http.StatusInternalServerError
+			if errors.Is(err, sql.ErrNoRows) {
+				status = http.StatusNotFound
+			}
+			w.WriteHeader(status)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
@@ -119,6 +124,10 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		value, err := service.GetOverview()
 		writeJSON(w, value, err)
 	})
+	mux.HandleFunc("GET /api/tokens", func(w http.ResponseWriter, r *http.Request) {
+		value, err := service.GetTokenAnalytics()
+		writeJSON(w, value, err)
+	})
 	mux.HandleFunc("GET /api/sessions", func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
 		limit, _ := strconv.Atoi(query.Get("limit"))
@@ -164,7 +173,10 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		writeJSON(w, value, err)
 	})
 	mux.HandleFunc("GET /api/audit/summary", func(w http.ResponseWriter, r *http.Request) {
-		value, err := service.GetAuditSummary()
+		query := r.URL.Query()
+		value, err := service.GetAuditSummaryWithFilters(model.AuditFindingFilters{
+			Agent: query.Get("agent"),
+		})
 		writeJSON(w, value, err)
 	})
 	mux.HandleFunc("GET /api/audit/findings", func(w http.ResponseWriter, r *http.Request) {
@@ -175,10 +187,20 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 			Category:    query.Get("category"),
 			Severity:    query.Get("severity"),
 			ShellFamily: query.Get("shell"),
+			Agent:       query.Get("agent"),
 			Search:      query.Get("search"),
 			Limit:       limit,
 			Offset:      offset,
 		})
+		writeJSON(w, value, err)
+	})
+	mux.HandleFunc("GET /api/audit/findings/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			writeJSON(w, nil, err)
+			return
+		}
+		value, err := service.GetAuditFinding(id)
 		writeJSON(w, value, err)
 	})
 	mux.HandleFunc("GET /api/pricing", func(w http.ResponseWriter, r *http.Request) {

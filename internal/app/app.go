@@ -374,6 +374,13 @@ func (a *App) GetOverview() (model.Overview, error) {
 	return a.query.Overview(a.ctx)
 }
 
+func (a *App) GetTokenAnalytics() (model.TokenAnalytics, error) {
+	if err := a.ensureReady(); err != nil {
+		return model.TokenAnalytics{}, err
+	}
+	return a.query.TokenAnalytics(a.ctx)
+}
+
 func (a *App) ListSessions(filters model.SessionFilters) ([]model.Session, error) {
 	if err := a.ensureReady(); err != nil {
 		return nil, err
@@ -407,10 +414,14 @@ func (a *App) ListToolCalls(filters model.ToolCallFilters) ([]model.ToolCall, er
 }
 
 func (a *App) GetAuditSummary() (model.AuditSummary, error) {
+	return a.GetAuditSummaryWithFilters(model.AuditFindingFilters{})
+}
+
+func (a *App) GetAuditSummaryWithFilters(filters model.AuditFindingFilters) (model.AuditSummary, error) {
 	if err := a.ensureReady(); err != nil {
 		return model.AuditSummary{}, err
 	}
-	return a.query.AuditSummary(a.ctx)
+	return a.query.AuditSummaryWithFilters(a.ctx, filters)
 }
 
 func (a *App) ListAuditFindings(filters model.AuditFindingFilters) ([]model.AuditFinding, error) {
@@ -418,6 +429,13 @@ func (a *App) ListAuditFindings(filters model.AuditFindingFilters) ([]model.Audi
 		return nil, err
 	}
 	return a.query.AuditFindings(a.ctx, filters)
+}
+
+func (a *App) GetAuditFinding(id int64) (model.AuditFinding, error) {
+	if err := a.ensureReady(); err != nil {
+		return model.AuditFinding{}, err
+	}
+	return a.query.AuditFinding(a.ctx, id)
 }
 
 func (a *App) GetPricingModels() ([]model.PricingModel, error) {

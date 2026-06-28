@@ -159,25 +159,29 @@ type DailyUsage struct {
 }
 
 type ModelUsage struct {
-	Model            string   `json:"model"`
-	SessionCount     int      `json:"sessionCount"`
-	TotalTokens      int64    `json:"totalTokens"`
-	InputTokens      int64    `json:"inputTokens"`
-	OutputTokens     int64    `json:"outputTokens"`
-	EstimatedCostUSD *float64 `json:"estimatedCostUsd,omitempty"`
-	Unpriced         bool     `json:"unpriced"`
+	Model                 string   `json:"model"`
+	SessionCount          int      `json:"sessionCount"`
+	TotalTokens           int64    `json:"totalTokens"`
+	InputTokens           int64    `json:"inputTokens"`
+	CachedInputTokens     int64    `json:"cachedInputTokens"`
+	OutputTokens          int64    `json:"outputTokens"`
+	ReasoningOutputTokens int64    `json:"reasoningOutputTokens"`
+	EstimatedCostUSD      *float64 `json:"estimatedCostUsd,omitempty"`
+	Unpriced              bool     `json:"unpriced"`
 }
 
 type AgentUsage struct {
-	AgentKind        string   `json:"agentKind"`
-	AgentName        string   `json:"agentName"`
-	SessionCount     int      `json:"sessionCount"`
-	TotalTokens      int64    `json:"totalTokens"`
-	InputTokens      int64    `json:"inputTokens"`
-	OutputTokens     int64    `json:"outputTokens"`
-	ToolCalls        int      `json:"toolCalls"`
-	EstimatedCostUSD *float64 `json:"estimatedCostUsd,omitempty"`
-	Unpriced         bool     `json:"unpriced"`
+	AgentKind             string   `json:"agentKind"`
+	AgentName             string   `json:"agentName"`
+	SessionCount          int      `json:"sessionCount"`
+	TotalTokens           int64    `json:"totalTokens"`
+	InputTokens           int64    `json:"inputTokens"`
+	CachedInputTokens     int64    `json:"cachedInputTokens"`
+	OutputTokens          int64    `json:"outputTokens"`
+	ReasoningOutputTokens int64    `json:"reasoningOutputTokens"`
+	ToolCalls             int      `json:"toolCalls"`
+	EstimatedCostUSD      *float64 `json:"estimatedCostUsd,omitempty"`
+	Unpriced              bool     `json:"unpriced"`
 }
 
 type ToolTimeUsage struct {
@@ -240,6 +244,22 @@ type Overview struct {
 	ModelTimeUsage                 []ModelTimeUsage `json:"modelTimeUsage"`
 	RecentSessions                 []Session        `json:"recentSessions"`
 	SlowSessions                   []Session        `json:"slowSessions"`
+}
+
+type TokenAnalytics struct {
+	TotalSessions          int          `json:"totalSessions"`
+	TotalInputTokens       int64        `json:"totalInputTokens"`
+	TotalCachedInputTokens int64        `json:"totalCachedInputTokens"`
+	TotalOutputTokens      int64        `json:"totalOutputTokens"`
+	TotalReasoningTokens   int64        `json:"totalReasoningTokens"`
+	TotalTokens            int64        `json:"totalTokens"`
+	CacheUtilizationRate   float64      `json:"cacheUtilizationRate"`
+	EstimatedCostUSD       *float64     `json:"estimatedCostUsd,omitempty"`
+	UnpricedCount          int          `json:"unpricedCount"`
+	ModelUsage             []ModelUsage `json:"modelUsage"`
+	AgentUsage             []AgentUsage `json:"agentUsage"`
+	RecentSessions         []Session    `json:"recentSessions"`
+	HighTokenSessions      []Session    `json:"highTokenSessions"`
 }
 
 type ToolStat struct {
@@ -362,6 +382,7 @@ type AuditFindingFilters struct {
 	Category    string `json:"category"`
 	Severity    string `json:"severity"`
 	ShellFamily string `json:"shellFamily"`
+	Agent       string `json:"agent"`
 	Search      string `json:"search"`
 	Limit       int    `json:"limit"`
 	Offset      int    `json:"offset"`

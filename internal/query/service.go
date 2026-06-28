@@ -448,19 +448,33 @@ func (s *Service) ToolCalls(ctx context.Context, filters model.ToolCallFilters) 
 }
 
 func (s *Service) AuditSummary(ctx context.Context) (model.AuditSummary, error) {
+	return s.AuditSummaryWithFilters(ctx, model.AuditFindingFilters{})
+}
+
+func (s *Service) AuditSummaryWithFilters(ctx context.Context, filters model.AuditFindingFilters) (model.AuditSummary, error) {
 	var summary model.AuditSummary
-	err := s.conn.QueryRowContext(ctx, `SELECT
+	where := []string{"1 = 1"}
+	args := []any{}
+	if strings.TrimSpace(filters.Agent) != "" {
+		where = append(where, "src.kind = ?")
+		args = append(args, strings.TrimSpace(filters.Agent))
+	}
+	query := fmt.Sprintf(`SELECT
 		COUNT(*),
-		COALESCE(SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END), 0),
-		COALESCE(SUM(CASE WHEN severity = 'high' THEN 1 ELSE 0 END), 0),
-		COALESCE(SUM(CASE WHEN severity = 'medium' THEN 1 ELSE 0 END), 0),
-		COALESCE(SUM(CASE WHEN severity = 'low' THEN 1 ELSE 0 END), 0),
-		COALESCE(SUM(CASE WHEN category = 'command' THEN 1 ELSE 0 END), 0),
-		COALESCE(SUM(CASE WHEN category = 'privacy' THEN 1 ELSE 0 END), 0),
-		COALESCE(SUM(CASE WHEN category = 'egress' THEN 1 ELSE 0 END), 0),
-		COALESCE(SUM(CASE WHEN category = 'file' THEN 1 ELSE 0 END), 0),
-		COUNT(DISTINCT session_id)
-		FROM audit_findings`).Scan(
+		COALESCE(SUM(CASE WHEN af.severity = 'critical' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN af.severity = 'high' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN af.severity = 'medium' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN af.severity = 'low' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN af.category = 'command' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN af.category = 'privacy' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN af.category = 'egress' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN af.category = 'file' THEN 1 ELSE 0 END), 0),
+		COUNT(DISTINCT af.session_id)
+		FROM audit_findings af
+		JOIN sessions sess ON sess.id = af.session_id
+		JOIN sources src ON src.id = sess.source_id
+		WHERE %s`, strings.Join(where, " AND "))
+	err := s.conn.QueryRowContext(ctx, query, args...).Scan(
 		&summary.TotalFindings,
 		&summary.CriticalFindings,
 		&summary.HighFindings,
@@ -475,7 +489,7 @@ func (s *Service) AuditSummary(ctx context.Context) (model.AuditSummary, error) 
 	if err != nil {
 		return summary, err
 	}
-	summary.RecentFindings, err = s.AuditFindings(ctx, model.AuditFindingFilters{Limit: 8})
+	summary.RecentFindings, err = s.AuditFindings(ctx, model.AuditFindingFilters{Agent: filters.Agent, Limit: 8})
 	if summary.RecentFindings == nil {
 		summary.RecentFindings = []model.AuditFinding{}
 	}
@@ -497,6 +511,10 @@ func (s *Service) AuditFindings(ctx context.Context, filters model.AuditFindingF
 		where = append(where, "af.shell_family = ?")
 		args = append(args, strings.TrimSpace(filters.ShellFamily))
 	}
+	if strings.TrimSpace(filters.Agent) != "" {
+		where = append(where, "src.kind = ?")
+		args = append(args, strings.TrimSpace(filters.Agent))
+	}
 	if strings.TrimSpace(filters.Search) != "" {
 		search := "%" + strings.TrimSpace(filters.Search) + "%"
 		where = append(where, `(af.title LIKE ? OR af.description LIKE ? OR af.evidence LIKE ? OR af.command LIKE ? OR af.rule_id LIKE ? OR sess.session_key LIKE ? OR sess.project_path LIKE ? OR sf.path LIKE ?)`)
@@ -509,6 +527,17 @@ func (s *Service) AuditFindings(ctx context.Context, filters model.AuditFindingF
 		ORDER BY af.timestamp DESC, af.id DESC
 		LIMIT ? OFFSET ?`, auditFindingSelect, strings.Join(where, " AND "))
 	return s.scanAuditFindings(ctx, query, args...)
+}
+
+func (s *Service) AuditFinding(ctx context.Context, id int64) (model.AuditFinding, error) {
+	findings, err := s.scanAuditFindings(ctx, auditFindingSelect+` WHERE af.id = ?`, id)
+	if err != nil {
+		return model.AuditFinding{}, err
+	}
+	if len(findings) == 0 {
+		return model.AuditFinding{}, sql.ErrNoRows
+	}
+	return findings[0], nil
 }
 
 func (s *Service) sessionByID(ctx context.Context, id int64) (model.Session, error) {

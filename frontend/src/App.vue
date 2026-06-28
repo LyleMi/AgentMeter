@@ -10,6 +10,7 @@ import Tooltip from 'ant-design-vue/es/tooltip'
 import Typography from 'ant-design-vue/es/typography'
 import {
   BarChartOutlined,
+  DollarCircleOutlined,
   FieldTimeOutlined,
   HistoryOutlined,
   MenuFoldOutlined,
@@ -42,6 +43,7 @@ const { t } = useMessages({
     'nav.section': 'Inspect',
     'nav.overview': 'Overview',
     'nav.time': 'Time',
+    'nav.tokens': 'Tokens',
     'nav.sessions': 'Sessions',
     'nav.tools': 'Tools',
     'nav.audit': 'Audit',
@@ -71,6 +73,7 @@ const { t } = useMessages({
     'nav.section': '查看',
     'nav.overview': '概览',
     'nav.time': '耗时',
+    'nav.tokens': 'Token',
     'nav.sessions': '会话',
     'nav.tools': '工具',
     'nav.audit': '审计',
@@ -115,6 +118,7 @@ const rebuildIndexHint = computed(() => t('index.rebuildHint'))
 
 const selectedKeys = computed(() => {
   if (route.path.startsWith('/time')) return ['time']
+  if (route.path.startsWith('/tokens')) return ['tokens']
   if (route.path.startsWith('/sessions')) return ['sessions']
   if (route.path.startsWith('/tools')) return ['tools']
   if (route.path.startsWith('/audit')) return ['audit']
@@ -126,6 +130,7 @@ const selectedKeys = computed(() => {
 const menuItems = computed(() => [
   { key: 'overview', icon: BarChartOutlined, label: t('nav.overview'), path: '/overview' },
   { key: 'time', icon: FieldTimeOutlined, label: t('nav.time'), path: '/time' },
+  { key: 'tokens', icon: DollarCircleOutlined, label: t('nav.tokens'), path: '/tokens' },
   { key: 'sessions', icon: HistoryOutlined, label: t('nav.sessions'), path: '/sessions' },
   { key: 'tools', icon: ToolOutlined, label: t('nav.tools'), path: '/tools' },
   { key: 'audit', icon: WarningOutlined, label: t('nav.audit'), path: '/audit' },

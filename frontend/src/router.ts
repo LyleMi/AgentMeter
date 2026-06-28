@@ -17,9 +17,19 @@ const router = createRouter({
       ]
     },
     { path: '/time', component: () => import('./views/OverviewTime.vue') },
+    { path: '/tokens', component: () => import('./views/Tokens.vue') },
     { path: '/sessions', component: () => import('./views/Sessions.vue') },
     { path: '/sessions/:id', component: () => import('./views/SessionDetail.vue'), props: true },
-    { path: '/audit', component: () => import('./views/Audit.vue') },
+    {
+      path: '/audit',
+      component: () => import('./views/Audit.vue'),
+      redirect: (to) => ({ path: '/audit/summary', query: to.query }),
+      children: [
+        { path: 'summary', component: () => import('./views/AuditSummary.vue') },
+        { path: 'findings', component: () => import('./views/AuditFindings.vue') },
+        { path: 'findings/:id', component: () => import('./views/AuditDetail.vue') }
+      ]
+    },
     { path: '/agent-privacy', component: () => import('./views/AgentPrivacy.vue') },
     {
       path: '/tools',
@@ -28,6 +38,7 @@ const router = createRouter({
       children: [
         { path: 'overview', component: () => import('./views/ToolsOverview.vue') },
         { path: 'summary', component: () => import('./views/ToolsSummary.vue') },
+        { path: 'shell', component: () => import('./views/ToolsShell.vue') },
         { path: 'calls', component: () => import('./views/ToolsCalls.vue') }
       ]
     },

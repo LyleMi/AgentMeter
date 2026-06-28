@@ -54,7 +54,9 @@ export interface ModelUsage {
   sessionCount: number
   totalTokens: number
   inputTokens: number
+  cachedInputTokens: number
   outputTokens: number
+  reasoningOutputTokens: number
   estimatedCostUsd?: number
   unpriced: boolean
 }
@@ -65,7 +67,9 @@ export interface AgentUsage {
   sessionCount: number
   totalTokens: number
   inputTokens: number
+  cachedInputTokens: number
   outputTokens: number
+  reasoningOutputTokens: number
   toolCalls: number
   estimatedCostUsd?: number
   unpriced: boolean
@@ -131,6 +135,22 @@ export interface Overview {
   modelTimeUsage: ModelTimeUsage[]
   slowSessions: Session[]
   recentSessions: Session[]
+}
+
+export interface TokenAnalytics {
+  totalSessions: number
+  totalInputTokens: number
+  totalCachedInputTokens: number
+  totalOutputTokens: number
+  totalReasoningTokens: number
+  totalTokens: number
+  cacheUtilizationRate: number
+  estimatedCostUsd?: number
+  unpricedCount: number
+  modelUsage: ModelUsage[]
+  agentUsage: AgentUsage[]
+  recentSessions: Session[]
+  highTokenSessions: Session[]
 }
 
 export interface EventItem {
@@ -382,6 +402,7 @@ export interface ToolFilters {
 }
 
 export interface AuditFindingFilters {
+  agent?: string
   category?: string
   severity?: string
   shell?: string
