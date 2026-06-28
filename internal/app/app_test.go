@@ -281,6 +281,35 @@ func TestPrivacyClaudeHTTPApplyEmptyBodyAppliesAll(t *testing.T) {
 	}
 }
 
+func TestPrivacyCodeBuddyHTTPApplyEmptyBodyAppliesAll(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), ".codebuddy", "settings.json")
+	t.Setenv("AGENTMETER_CODEBUDDY_SETTINGS_PATH", configPath)
+
+	mux := http.NewServeMux()
+	RegisterHTTPHandlers(mux, &App{}, fstest.MapFS{})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/privacy/codebuddy/apply", nil)
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var result model.PrivacyConfigApplyResult
+	if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Status.Target != "codebuddy" || !result.Status.Exists {
+		t.Fatalf("status should report created CodeBuddy config: %#v", result.Status)
+	}
+	if len(result.Changed) == 0 {
+		t.Fatal("empty body should apply all supported settings")
+	}
+	if _, err := os.Stat(configPath); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPrivacyCodexHTTPChangesAppliesEditableChanges(t *testing.T) {
 	codexHome := filepath.Join(t.TempDir(), "codex-home")
 	t.Setenv("CODEX_HOME", codexHome)
@@ -399,6 +428,47 @@ func TestPrivacyClaudeHTTPChangesAppliesEditableChanges(t *testing.T) {
 	}
 	env := saved["env"].(map[string]any)
 	if env["DISABLE_TELEMETRY"] != "1" {
+		t.Fatalf("config was not updated: %#v", saved)
+	}
+}
+
+func TestPrivacyCodeBuddyHTTPChangesAppliesEditableChanges(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), ".codebuddy", "settings.json")
+	t.Setenv("AGENTMETER_CODEBUDDY_SETTINGS_PATH", configPath)
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(`{"cleanupPeriodDays":30}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterHTTPHandlers(mux, &App{}, fstest.MapFS{})
+
+	recorder := httptest.NewRecorder()
+	body := strings.NewReader(`{"changes":[{"id":"cleanupPeriodDays","op":"set","value":7}]}`)
+	request := httptest.NewRequest(http.MethodPost, "/api/privacy/codebuddy/changes", body)
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var result model.PrivacyConfigApplyResult
+	if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Changed) != 1 {
+		t.Fatalf("changed = %d, want 1: %#v", len(result.Changed), result.Changed)
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved map[string]any
+	if err := json.Unmarshal(content, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved["cleanupPeriodDays"] != float64(7) {
 		t.Fatalf("config was not updated: %#v", saved)
 	}
 }

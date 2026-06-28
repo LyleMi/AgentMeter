@@ -1869,6 +1869,16 @@ body {
   margin-bottom: 0;
 }
 
+.agent-privacy-tool-panel .panel-header {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.agent-privacy-tool-panel .summary-actions {
+  min-width: 0;
+  justify-content: flex-end;
+}
+
 .settings-subnav {
   display: flex;
   flex-wrap: wrap;
@@ -2460,6 +2470,16 @@ body {
 
   .privacy-count-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .agent-privacy-tool-panel .summary-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .agent-privacy-tool-panel .summary-actions .ant-segmented {
+    max-width: 100%;
+    overflow-x: auto;
   }
 
   .privacy-count-item {

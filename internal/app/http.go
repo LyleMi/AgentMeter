@@ -43,6 +43,9 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		case "claude":
 			value, err := service.GetClaudePrivacyConfig()
 			writeJSON(w, value, err)
+		case "codebuddy":
+			value, err := service.GetCodeBuddyPrivacyConfig()
+			writeJSON(w, value, err)
 		default:
 			writePrivacyTargetError(w, target)
 		}
@@ -56,6 +59,8 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 			apply = service.ApplyGeminiPrivacyConfig
 		case "claude":
 			apply = service.ApplyClaudePrivacyConfig
+		case "codebuddy":
+			apply = service.ApplyCodeBuddyPrivacyConfig
 		default:
 			writePrivacyTargetError(w, target)
 			return
@@ -80,6 +85,8 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 			applyChanges = service.ApplyGeminiPrivacyConfigChanges
 		case "claude":
 			applyChanges = service.ApplyClaudePrivacyConfigChanges
+		case "codebuddy":
+			applyChanges = service.ApplyCodeBuddyPrivacyConfigChanges
 		default:
 			writePrivacyTargetError(w, target)
 			return

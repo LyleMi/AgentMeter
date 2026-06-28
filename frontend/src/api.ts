@@ -250,7 +250,7 @@ export interface PrivacyConfigSummary {
   implicit: number
 }
 
-export type PrivacyConfigValueType = 'bool' | 'string' | 'stringArray'
+export type PrivacyConfigValueType = 'bool' | 'string' | 'stringArray' | 'number'
 
 export interface PrivacyConfigSetting {
   id: string
@@ -299,7 +299,7 @@ export interface PrivacyConfigChange {
   value?: unknown
 }
 
-export type PrivacyTarget = 'codex' | 'gemini' | 'claude'
+export type PrivacyTarget = 'codex' | 'gemini' | 'claude' | 'codebuddy'
 
 export interface SessionFilters {
   search?: string

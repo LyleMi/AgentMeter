@@ -491,6 +491,18 @@ func (a *App) ApplyClaudePrivacyConfigChanges(changes []model.PrivacyConfigEdit)
 	return privacy.NewClaudeAdapter().ApplyChanges(changes)
 }
 
+func (a *App) GetCodeBuddyPrivacyConfig() (model.PrivacyConfigStatus, error) {
+	return privacy.NewCodeBuddyAdapter().Status()
+}
+
+func (a *App) ApplyCodeBuddyPrivacyConfig(settingIDs []string) (model.PrivacyConfigApplyResult, error) {
+	return privacy.NewCodeBuddyAdapter().Apply(settingIDs)
+}
+
+func (a *App) ApplyCodeBuddyPrivacyConfigChanges(changes []model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error) {
+	return privacy.NewCodeBuddyAdapter().ApplyChanges(changes)
+}
+
 func (a *App) ensureReady() error {
 	if a.conn == nil {
 		if a.ctx == nil {

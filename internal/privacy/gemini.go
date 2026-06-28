@@ -231,20 +231,20 @@ func buildGeminiStatus(path string, exists bool, content []byte, warnings []stri
 			strict = jsonSettingAfter(current, ok, definition)
 		}
 		settings = append(settings, model.PrivacyConfigSetting{
-			ID:               definition.ID,
-			Group:            definition.Group,
-			Title:            definition.Title,
-			Description:      definition.Description,
-			Key:              definition.Key,
-			DesiredValue:     definition.Desired,
-			StrictValue:      strict,
-			ValueType:        jsonValueType(definition.Desired),
-			Configured:       ok,
-			SupportsUnset:    canApply,
-			CurrentValue:     currentValue,
-			Status:           status,
-			Impact:           definition.Impact,
-			CanApply:         canApply,
+			ID:            definition.ID,
+			Group:         definition.Group,
+			Title:         definition.Title,
+			Description:   definition.Description,
+			Key:           definition.Key,
+			DesiredValue:  definition.Desired,
+			StrictValue:   strict,
+			ValueType:     jsonValueType(definition.Desired),
+			Configured:    ok,
+			SupportsUnset: canApply,
+			CurrentValue:  currentValue,
+			Status:        status,
+			Impact:        definition.Impact,
+			CanApply:      canApply,
 		})
 	}
 	if summary.Total > 0 {
@@ -487,7 +487,7 @@ func jsonSettingHardened(current any, ok bool, definition jsonSettingDefinition)
 	if definition.MergeArray {
 		return stringArrayContainsAll(current, desiredStrings(definition.Desired))
 	}
-	return reflect.DeepEqual(current, definition.Desired)
+	return jsonValuesEqual(current, definition.Desired)
 }
 
 func jsonSettingAfter(current any, ok bool, definition jsonSettingDefinition) any {
@@ -495,6 +495,48 @@ func jsonSettingAfter(current any, ok bool, definition jsonSettingDefinition) an
 		return mergedStringArray(current, desiredStrings(definition.Desired))
 	}
 	return cloneJSONValue(definition.Desired)
+}
+
+func jsonValuesEqual(left any, right any) bool {
+	if leftNumber, ok := jsonNumberValue(left); ok {
+		rightNumber, rightOK := jsonNumberValue(right)
+		return rightOK && leftNumber == rightNumber
+	}
+	return reflect.DeepEqual(left, right)
+}
+
+func jsonNumberValue(value any) (float64, bool) {
+	switch typed := value.(type) {
+	case json.Number:
+		number, err := typed.Float64()
+		return number, err == nil
+	case float64:
+		return typed, true
+	case float32:
+		return float64(typed), true
+	case int:
+		return float64(typed), true
+	case int8:
+		return float64(typed), true
+	case int16:
+		return float64(typed), true
+	case int32:
+		return float64(typed), true
+	case int64:
+		return float64(typed), true
+	case uint:
+		return float64(typed), true
+	case uint8:
+		return float64(typed), true
+	case uint16:
+		return float64(typed), true
+	case uint32:
+		return float64(typed), true
+	case uint64:
+		return float64(typed), true
+	default:
+		return 0, false
+	}
 }
 
 func nestedJSONValue(root map[string]any, key string) (any, bool) {
@@ -559,6 +601,12 @@ func editableJSONValue(definition jsonSettingDefinition, value any) (any, error)
 			return nil, fmt.Errorf("Gemini privacy setting %q requires a string value", definition.ID)
 		}
 		return typed, nil
+	case "number":
+		typed, ok := editableJSONNumber(value)
+		if !ok {
+			return nil, fmt.Errorf("Gemini privacy setting %q requires a number value", definition.ID)
+		}
+		return typed, nil
 	case "stringArray":
 		typed, ok := value.([]any)
 		if !ok {
@@ -584,10 +632,27 @@ func jsonValueType(value any) string {
 		return "bool"
 	case string:
 		return "string"
+	case json.Number, float64, float32, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return "number"
 	case []string, []any:
 		return "stringArray"
 	default:
 		return "string"
+	}
+}
+
+func editableJSONNumber(value any) (any, bool) {
+	switch typed := value.(type) {
+	case json.Number:
+		number, err := typed.Float64()
+		if err != nil {
+			return nil, false
+		}
+		return number, true
+	case float64, float32, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return typed, true
+	default:
+		return nil, false
 	}
 }
 

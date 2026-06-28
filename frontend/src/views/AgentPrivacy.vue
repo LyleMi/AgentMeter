@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import AAlert from 'ant-design-vue/es/alert'
 import AButton from 'ant-design-vue/es/button'
 import AInput from 'ant-design-vue/es/input'
+import AInputNumber from 'ant-design-vue/es/input-number'
 import message from 'ant-design-vue/es/message'
 import ASegmented from 'ant-design-vue/es/segmented'
 import ASelect from 'ant-design-vue/es/select'
@@ -37,10 +38,11 @@ const { t } = useMessages({
     'privacy.kicker': 'External agent config: {target} user-level {file}',
     'privacy.boundary.title': 'Current support: user-level agent config controls',
     'privacy.boundary.description':
-      'This page reads and edits supported user-level privacy settings for Codex, Gemini CLI, and Claude Code. It does not scan logs, scan secrets, or infer broad filesystem policy.',
+      'This page reads and edits supported user-level privacy settings for Codex, Gemini CLI, Claude Code, and CodeBuddy Code/IDE. It does not scan logs, scan secrets, or infer broad filesystem policy.',
     'privacy.target.codex': 'Codex',
     'privacy.target.gemini': 'Gemini CLI',
     'privacy.target.claude': 'Claude Code',
+    'privacy.target.codebuddy': 'CodeBuddy',
     'privacy.action.refresh': 'Refresh',
     'privacy.action.saveAll': 'Save changes',
     'privacy.action.useStrict': 'Use strict',
@@ -93,10 +95,11 @@ const { t } = useMessages({
     'privacy.kicker': '外部 Agent 配置：{target} 用户级 {file}',
     'privacy.boundary.title': '当前支持范围：用户级 Agent 配置控制项',
     'privacy.boundary.description':
-      '此页面只读取并编辑 Codex、Gemini CLI 与 Claude Code 已支持的用户级隐私设置，不扫描日志、不扫描密钥，也不推断广义文件系统策略。',
+      '此页面只读取并编辑 Codex、Gemini CLI、Claude Code 与 CodeBuddy Code/IDE 已支持的用户级隐私设置，不扫描日志、不扫描密钥，也不推断广义文件系统策略。',
     'privacy.target.codex': 'Codex',
     'privacy.target.gemini': 'Gemini CLI',
     'privacy.target.claude': 'Claude Code',
+    'privacy.target.codebuddy': 'CodeBuddy',
     'privacy.action.refresh': '刷新',
     'privacy.action.saveAll': '保存变更',
     'privacy.action.useStrict': '使用严格值',
@@ -154,6 +157,7 @@ interface SettingEdit {
   valueType: PrivacyConfigValueType
   boolValue: boolean
   stringValue: string
+  numberValue: number
   arrayValue: string[]
 }
 
@@ -170,7 +174,8 @@ let saveRequestId = 0
 const targetOptions = computed<{ label: string; value: PrivacyTarget }[]>(() => [
   { label: t('privacy.target.codex'), value: 'codex' },
   { label: t('privacy.target.gemini'), value: 'gemini' },
-  { label: t('privacy.target.claude'), value: 'claude' }
+  { label: t('privacy.target.claude'), value: 'claude' },
+  { label: t('privacy.target.codebuddy'), value: 'codebuddy' }
 ])
 const targetLabel = computed(() => {
   if (privacyStatus.value?.name) return privacyStatus.value.name
@@ -228,6 +233,7 @@ function valueType(setting: PrivacyConfigSetting): PrivacyConfigValueType {
   const sample = strictValue(setting) ?? setting.currentValue
   if (typeof sample === 'boolean') return 'bool'
   if (Array.isArray(sample)) return 'stringArray'
+  if (typeof sample === 'number') return 'number'
   return 'string'
 }
 
@@ -243,6 +249,11 @@ function normalizeValue(value: unknown, type: PrivacyConfigValueType): unknown {
   if (type === 'stringArray') {
     if (!Array.isArray(value)) return value === undefined || value === null || value === '' ? [] : [String(value)]
     return value.map((item) => String(item))
+  }
+  if (type === 'number') {
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : 0
   }
   if (value === undefined || value === null) return ''
   return typeof value === 'string' ? value : formatConfigValue(value)
@@ -275,6 +286,7 @@ function createEdit(setting: PrivacyConfigSetting): SettingEdit {
     valueType: type,
     boolValue: normalized === true,
     stringValue: typeof normalized === 'string' ? normalized : formatConfigValue(normalized),
+    numberValue: typeof normalized === 'number' ? normalized : Number(normalized) || 0,
     arrayValue: Array.isArray(normalized) ? normalized : []
   }
 }
@@ -296,6 +308,7 @@ function editValue(setting: PrivacyConfigSetting) {
   const edit = editFor(setting)
   if (edit.valueType === 'bool') return edit.boolValue
   if (edit.valueType === 'stringArray') return edit.arrayValue
+  if (edit.valueType === 'number') return edit.numberValue
   return edit.stringValue
 }
 
@@ -311,6 +324,7 @@ function useStrict(setting: PrivacyConfigSetting) {
   edit.valueType = type
   edit.boolValue = normalized === true
   edit.stringValue = typeof normalized === 'string' ? normalized : formatConfigValue(normalized)
+  edit.numberValue = typeof normalized === 'number' ? normalized : Number(normalized) || 0
   edit.arrayValue = Array.isArray(normalized) ? normalized : []
 }
 
@@ -363,6 +377,7 @@ function canEdit(setting: PrivacyConfigSetting) {
 function valueTypeLabel(type: PrivacyConfigValueType) {
   if (type === 'bool') return 'bool'
   if (type === 'stringArray') return 'string[]'
+  if (type === 'number') return 'number'
   return 'string'
 }
 
@@ -652,6 +667,14 @@ watch(selectedTarget, () => {
                         mode="tags"
                         class="privacy-array-editor"
                         :token-separators="[',']"
+                        :disabled="!canEdit(setting)"
+                        @update:value="markEditSet(setting.id)"
+                      />
+                      <a-input-number
+                        v-else-if="valueType(setting) === 'number'"
+                        v-model:value="editFor(setting).numberValue"
+                        class="privacy-string-editor"
+                        :min="0"
                         :disabled="!canEdit(setting)"
                         @update:value="markEditSet(setting.id)"
                       />
