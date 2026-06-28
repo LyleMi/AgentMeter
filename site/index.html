@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="Static AgentMeter GitHub Pages preview with mock local agent usage data."
+    >
+    <link rel="canonical" href="https://lylemi.github.io/AgentMeter/">
+    <meta name="robots" content="index,follow">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="AgentMeter">
+    <meta property="og:title" content="AgentMeter mock dashboard">
+    <meta
+      property="og:description"
+      content="Preview local-first coding-agent usage analytics for tokens, cost, sessions, tools, and audit findings."
+    >
+    <meta property="og:url" content="https://lylemi.github.io/AgentMeter/">
+    <meta property="og:image" content="https://lylemi.github.io/AgentMeter/assets/social-preview.png">
+    <meta property="og:image:width" content="1280">
+    <meta property="og:image:height" content="640">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="AgentMeter mock dashboard">
+    <meta
+      name="twitter:description"
+      content="Static mock preview for a local-first coding-agent usage dashboard."
+    >
+    <meta name="twitter:image" content="https://lylemi.github.io/AgentMeter/assets/social-preview.png">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "AgentMeter",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Windows, macOS, Linux",
+        "url": "https://lylemi.github.io/AgentMeter/",
+        "codeRepository": "https://github.com/LyleMi/AgentMeter",
+        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        "description": "Local-first dashboard for coding-agent JSONL session usage, tokens, estimated cost, timing, sessions, tool calls, and offline audit findings."
+      }
+    </script>
+    <title>AgentMeter Mock Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="demo-banner" role="status">
+      <strong>Mock preview.</strong>
+      This page uses generated demo data only. It does not load, upload, store, or inspect local session files.
+    </div>
+
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Demo navigation">
+        <a class="brand" href="#overview" aria-label="AgentMeter demo overview">
+          <span class="brand-mark">
+            <img
+              src="assets/agentmeter-logo.png"
+              alt=""
+              onerror="this.hidden=true; this.nextElementSibling.hidden=false"
+            >
+            <span class="brand-fallback" hidden>AM</span>
+          </span>
+          <span>
+            <span class="brand-title">AgentMeter</span>
+            <span class="brand-subtitle">Local agent usage</span>
+          </span>
+        </a>
+
+        <div class="nav-label">Inspect</div>
+        <nav class="nav-links" aria-label="Dashboard sections">
+          <a href="#overview" data-view-link="overview" aria-current="page">
+            <span class="nav-icon" aria-hidden="true">O</span>
+            <span>Overview</span>
+          </a>
+          <a href="#sessions" data-view-link="sessions">
+            <span class="nav-icon" aria-hidden="true">S</span>
+            <span>Sessions</span>
+          </a>
+          <a href="#tools" data-view-link="tools">
+            <span class="nav-icon" aria-hidden="true">T</span>
+            <span>Tools</span>
+          </a>
+          <a href="#audit" data-view-link="audit">
+            <span class="nav-icon" aria-hidden="true">A</span>
+            <span>Audit</span>
+          </a>
+          <a href="#privacy" data-view-link="privacy">
+            <span class="nav-icon" aria-hidden="true">P</span>
+            <span>Privacy / Local Model</span>
+          </a>
+        </nav>
+
+        <section class="sidebar-panel" aria-labelledby="mock-sources-title">
+          <h2 id="mock-sources-title">Mock JSONL Sources</h2>
+          <div class="source-chip"><span></span>Codex</div>
+          <div class="source-chip"><span></span>Claude Code</div>
+          <div class="source-chip"><span></span>CodeBuddy</div>
+          <div class="source-chip"><span></span>WorkBuddy</div>
+          <div class="source-chip"><span></span>Generic JSONL</div>
+        </section>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div class="source-bar" aria-label="Source status">
+            <span class="status-dot"></span>
+            <span class="source-state">Demo sources ready</span>
+            <span class="source-path">C:\Users\demo\.agentmeter\mock-jsonl</span>
+          </div>
+          <div class="topbar-actions" aria-label="Preview controls">
+            <button class="ghost-button" type="button" data-density-toggle>Compact</button>
+            <a class="primary-button" href="https://github.com/LyleMi/AgentMeter" rel="noreferrer">GitHub</a>
+          </div>
+        </header>
+
+        <section class="view is-active" id="overview" data-view="overview" aria-labelledby="overview-title">
+          <div class="page-heading">
+            <div>
+              <p class="kicker">Overview</p>
+              <h1 id="overview-title">Local usage snapshot from mock JSONL sessions</h1>
+            </div>
+            <span class="data-pill">All values are demo data</span>
+          </div>
+
+          <section class="snapshot-grid" aria-label="Usage summary">
+            <article class="total-card">
+              <div class="card-head">
+                <span>Total usage</span>
+                <span class="status success">Pricing covered</span>
+              </div>
+              <div class="token-total">4.82M</div>
+              <div class="token-caption">tokens across 146 mock sessions</div>
+              <div class="ledger-rail" aria-label="Token mix">
+                <span style="--w: 46%" data-label="Input"></span>
+                <span style="--w: 28%" data-label="Cached"></span>
+                <span style="--w: 18%" data-label="Output"></span>
+                <span style="--w: 8%" data-label="Reasoning"></span>
+              </div>
+              <div class="token-breakdown">
+                <span><b>2.21M</b> input</span>
+                <span><b>1.36M</b> cached</span>
+                <span><b>858K</b> output</span>
+                <span><b>392K</b> reasoning</span>
+              </div>
+            </article>
+
+            <article class="metric-card">
+              <span class="metric-label">Estimated Cost</span>
+              <strong>$41.27</strong>
+              <span>complete mock pricing coverage</span>
+            </article>
+            <article class="metric-card">
+              <span class="metric-label">Tool Calls</span>
+              <strong>1,924</strong>
+              <span>13.2 calls per session</span>
+            </article>
+            <article class="metric-card">
+              <span class="metric-label">Active Time</span>
+              <strong>21h 48m</strong>
+              <span>model and tool work measured</span>
+            </article>
+            <article class="metric-card">
+              <span class="metric-label">Audit Findings</span>
+              <strong>17</strong>
+              <span>11 warning, 6 info records</span>
+            </article>
+          </section>
+
+          <section class="two-column">
+            <article class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Agent usage</h2>
+                  <p>Mock indexed sessions by source</p>
+                </div>
+                <span class="panel-mark">tokens</span>
+              </div>
+              <div class="agent-list" data-agent-list></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Time & cost</h2>
+                  <p>Density and throughput signals</p>
+                </div>
+                <span class="panel-mark">$ / 1K</span>
+              </div>
+              <div class="signal-list">
+                <div>
+                  <span>Average wall / session</span>
+                  <strong>18m 42s</strong>
+                </div>
+                <div>
+                  <span>Active share</span>
+                  <strong>48%</strong>
+                </div>
+                <div>
+                  <span>Cost / 1K tokens</span>
+                  <strong>$0.0086</strong>
+                </div>
+                <div>
+                  <span>Tokens / active hour</span>
+                  <strong>221K</strong>
+                </div>
+              </div>
+            </article>
+          </section>
+        </section>
+
+        <section class="view" id="sessions" data-view="sessions" aria-labelledby="sessions-title">
+          <div class="page-heading">
+            <div>
+              <p class="kicker">Sessions</p>
+              <h1 id="sessions-title">Recent mock sessions</h1>
+            </div>
+            <div class="segmented" role="group" aria-label="Session filter">
+              <button type="button" class="is-selected" data-filter="all">All</button>
+              <button type="button" data-filter="long">Long</button>
+              <button type="button" data-filter="review">Review</button>
+            </div>
+          </div>
+
+          <article class="panel">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Session</th>
+                    <th>Agent</th>
+                    <th>Model</th>
+                    <th>Tokens</th>
+                    <th>Cost</th>
+                    <th>Wall</th>
+                    <th>Tools</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody data-session-table></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section class="view" id="tools" data-view="tools" aria-labelledby="tools-title">
+          <div class="page-heading">
+            <div>
+              <p class="kicker">Tools</p>
+              <h1 id="tools-title">Tool-call behavior in the mock corpus</h1>
+            </div>
+            <span class="data-pill">Network-likely calls are inferred</span>
+          </div>
+
+          <section class="three-column">
+            <article class="metric-card">
+              <span class="metric-label">Shell commands</span>
+              <strong>512</strong>
+              <span>26.6% of calls</span>
+            </article>
+            <article class="metric-card">
+              <span class="metric-label">File operations</span>
+              <strong>781</strong>
+              <span>read, search, patch, write</span>
+            </article>
+            <article class="metric-card">
+              <span class="metric-label">Network likely</span>
+              <strong>94</strong>
+              <span>search, fetch, package install</span>
+            </article>
+          </section>
+
+          <section class="two-column">
+            <article class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Tool leaders</h2>
+                  <p>Ranked by total call count</p>
+                </div>
+                <span class="panel-mark">calls</span>
+              </div>
+              <div class="tool-list" data-tool-list></div>
+            </article>
+            <article class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Shell command sample</h2>
+                  <p>Sanitized commands from mock sessions</p>
+                </div>
+                <span class="panel-mark">read only</span>
+              </div>
+              <div class="command-list">
+                <code>rg -n "pricing|tokens" internal frontend/src</code>
+                <code>go test ./internal/query ./internal/pricing</code>
+                <code>npm run test:smoke -- --project=chromium</code>
+                <code>powershell -File scripts/smoke-api.ps1 -BaseUrl http://127.0.0.1:34115</code>
+              </div>
+            </article>
+          </section>
+        </section>
+
+        <section class="view" id="audit" data-view="audit" aria-labelledby="audit-title">
+          <div class="page-heading">
+            <div>
+              <p class="kicker">Audit</p>
+              <h1 id="audit-title">Offline findings with source context</h1>
+            </div>
+            <span class="data-pill">No commands run from this preview</span>
+          </div>
+
+          <section class="audit-grid">
+            <article class="metric-card severity-warning">
+              <span class="metric-label">Warnings</span>
+              <strong>11</strong>
+              <span>review recommended</span>
+            </article>
+            <article class="metric-card severity-info">
+              <span class="metric-label">Info</span>
+              <strong>6</strong>
+              <span>contextual signals</span>
+            </article>
+            <article class="metric-card severity-clear">
+              <span class="metric-label">Blocked findings</span>
+              <strong>0</strong>
+              <span>mock corpus only</span>
+            </article>
+          </section>
+
+          <article class="panel">
+            <div class="finding-list" data-finding-list></div>
+          </article>
+        </section>
+
+        <section class="view" id="privacy" data-view="privacy" aria-labelledby="privacy-title">
+          <div class="page-heading">
+            <div>
+              <p class="kicker">Privacy / Local model</p>
+              <h1 id="privacy-title">What this public preview can and cannot do</h1>
+            </div>
+            <span class="data-pill">Static GitHub Pages artifact</span>
+          </div>
+
+          <section class="two-column">
+            <article class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Local-first boundary</h2>
+                  <p>The real AgentMeter app indexes configured local sources on your machine.</p>
+                </div>
+              </div>
+              <div class="privacy-list">
+                <div>
+                  <strong>No real files</strong>
+                  <span>This demo does not read browser storage, local JSONL, config files, or environment variables.</span>
+                </div>
+                <div>
+                  <strong>No upload path</strong>
+                  <span>The page has no backend endpoint and no analytics script.</span>
+                </div>
+                <div>
+                  <strong>No persistence</strong>
+                  <span>View and density controls only change the current browser page.</span>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Mock privacy profile</h2>
+                  <p>Representative controls shown as static status records.</p>
+                </div>
+                <span class="panel-mark">demo</span>
+              </div>
+              <div class="config-list">
+                <div><span>Codex telemetry</span><strong>disabled</strong></div>
+                <div><span>Claude Code history</span><strong>vendor default</strong></div>
+                <div><span>CodeBuddy usage stats</span><strong>disabled</strong></div>
+                <div><span>WorkBuddy local retention</span><strong>14 days</strong></div>
+                <div><span>Generic JSONL ingest</span><strong>read only</strong></div>
+              </div>
+            </article>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,33 @@
+# AgentMeter
+
+AgentMeter is an open-source, local-first Go and Vue dashboard for measuring
+local coding-agent session usage from JSONL files. It indexes local session
+data into SQLite and shows tokens, estimated cost, timing, sessions, projects,
+models, tool-call behavior, and offline audit findings.
+
+Project URL: https://github.com/LyleMi/AgentMeter
+Public preview: https://lylemi.github.io/AgentMeter/
+License: Apache-2.0
+
+## Core Facts
+
+- Runs locally and serves the Web UI on loopback by default.
+- Reads local JSONL session files from supported coding agents.
+- Stores normalized records in a local SQLite database.
+- Does not proxy model traffic.
+- Does not upload session data.
+- Does not send telemetry.
+- Supports Codex, Claude Code, CodeBuddy, WorkBuddy, and generic JSONL source
+  directories.
+- Provides Web and terminal interfaces over the same local data.
+
+## Useful Docs
+
+- README: README.md
+- Install: docs/install.md
+- Supported agents: docs/supported-agents.md
+- Privacy: docs/privacy.md
+- Comparison: docs/comparison.md
+- Architecture: docs/architecture.md
+- Session formats: docs/session-formats.md
+- Validation: docs/validation.md

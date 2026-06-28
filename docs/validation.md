@@ -82,6 +82,20 @@ cd ..
 Override the browser smoke target with `AGENTMETER_WEB_URL` only when needed.
 Routine browser smoke should not perform state-changing app actions.
 
+## Static Pages Preview
+
+The public GitHub Pages preview under `site/` is mock-data-only and does not
+require the Go backend or Vite. For preview changes, validate:
+
+- `site/index.html` renders with the copied logo and social preview asset;
+- Overview, Sessions, Tools, Audit, and Privacy / Local Model navigation works;
+- the session filter and density toggle work;
+- desktop and mobile viewports have no page-level horizontal overflow;
+- `robots.txt`, `sitemap.xml`, `llms.txt`, canonical, and Open Graph metadata
+  remain aligned with `https://lylemi.github.io/AgentMeter/`;
+- no real prompts, file paths, session IDs, secrets, or audit evidence appear
+  in public assets.
+
 ## TUI Smoke
 
 For TUI changes, run backend tests and a terminal smoke path:

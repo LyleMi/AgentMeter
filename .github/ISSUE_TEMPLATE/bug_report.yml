@@ -1,0 +1,75 @@
+name: Bug report
+description: Report a reproducible AgentMeter problem.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please redact prompts, secrets, private paths, repository names, and raw session data.
+  - type: input
+    id: version
+    attributes:
+      label: AgentMeter version
+      description: Release version, commit hash, or branch.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Web UI
+        - TUI
+        - Startup or release package
+        - Indexing or parser
+        - Pricing or cost estimate
+        - Tools or session detail
+        - Audit
+        - Agent Privacy
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the visible problem and impact.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: List the shortest steps that reproduce the issue.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: Explain what you expected AgentMeter to do.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, install method, Web or TUI mode, browser if relevant, and source families such as Codex or Claude Code.
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation performed
+      description: Include commands such as go test, frontend build, API smoke, or browser smoke when you ran them.
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Add redacted logs, screenshots with synthetic data, or small synthetic JSONL examples.
+    validations:
+      required: false

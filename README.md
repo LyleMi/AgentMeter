@@ -6,6 +6,18 @@
   <img src="frontend/src/assets/agentmeter-logo.png" alt="AgentMeter logo" width="180">
 </p>
 
+<p align="center">
+  <strong>Local-first coding-agent usage analytics for tokens, cost, timing, sessions, and tool calls.</strong>
+</p>
+
+<p align="center">
+  <a href="https://lylemi.github.io/AgentMeter/">Live demo</a>
+  | <a href="https://github.com/LyleMi/AgentMeter/releases">Downloads</a>
+  | <a href="docs/assets/screenshots/overview.png">Screenshot</a>
+  | <a href="docs/install.md">Install</a>
+  | <a href="docs/privacy.md">Privacy</a>
+</p>
+
 ![Status: MVP](https://img.shields.io/badge/status-MVP-f2c94c)
 ![Local first](https://img.shields.io/badge/local--first-yes-2f855a)
 ![Platform: Cross-platform](https://img.shields.io/badge/platform-cross--platform-0078d4)
@@ -13,12 +25,29 @@
 ![Frontend: Vue 3](https://img.shields.io/badge/frontend-Vue%203-42b883)
 ![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)
 
-AgentMeter is a local-first dashboard for understanding coding-agent session
-usage: tokens, estimated cost, timing, session history, and tool-call behavior.
-It reads local agent JSONL session files, indexes them into SQLite, and shows
-the data in private local Web and terminal interfaces.
+AgentMeter is an open-source Go + Vue dashboard for understanding local
+coding-agent session usage. It reads local agent JSONL session files, indexes
+them into SQLite, and shows tokens, estimated cost, timing, session history,
+models, projects, and tool-call behavior in private local Web and terminal
+interfaces.
 
 No proxy, no cloud service, no telemetry.
+
+![AgentMeter overview screenshot](docs/assets/screenshots/overview.png)
+
+## At A Glance
+
+- **Supported agents:** Codex, Claude Code, CodeBuddy, WorkBuddy, and generic
+  JSONL directories.
+- **Privacy model:** session data stays on your machine in a local SQLite
+  database; AgentMeter does not proxy traffic or upload telemetry.
+- **Primary views:** sessions, daily usage, models, projects, estimated cost,
+  tool-call analytics, and offline command/privacy audit findings.
+- **Interfaces:** local Web dashboard by default, plus a terminal UI over the
+  same database and query behavior.
+- **Release assets:** cross-platform archives are published on
+  [GitHub Releases](https://github.com/LyleMi/AgentMeter/releases) as
+  `AgentMeter-<platform>-<arch>` builds.
 
 ## Why AgentMeter
 
@@ -47,6 +76,10 @@ inspect directly. AgentMeter turns that data into answers you can use:
 - Built-in pricing registry with unknown models clearly marked as `unpriced`.
 
 ## Quick Start
+
+For packaged builds, download the matching `AgentMeter-<platform>-<arch>` asset
+from [Releases](https://github.com/LyleMi/AgentMeter/releases). For local source
+startup, use the commands below.
 
 Requirements:
 
@@ -124,6 +157,11 @@ See [Roadmap](docs/roadmap.md) for planned work.
 
 ## Documentation
 
+- [Install](docs/install.md)
+- [Supported Agents](docs/supported-agents.md)
+- [Privacy](docs/privacy.md)
+- [Comparison](docs/comparison.md)
+- [Release Distribution](docs/release-distribution.md)
 - [Getting Started](docs/getting-started.md)
 - [Project Brief](docs/project-brief.md)
 - [Architecture](docs/architecture.md)

@@ -1,0 +1,17 @@
+# AgentMeter
+
+AgentMeter is an open-source, local-first dashboard for coding-agent session
+usage. It indexes local JSONL session files into SQLite and shows tokens,
+estimated cost, timing, sessions, projects, models, tool calls, and offline
+audit findings.
+
+GitHub: https://github.com/LyleMi/AgentMeter
+Demo: https://lylemi.github.io/AgentMeter/
+License: Apache-2.0
+
+This GitHub Pages site is a static mock preview with generated demo data only.
+It does not read local files, upload data, store session data, or call a
+backend.
+
+Supported source families described by the project include Codex, Claude Code,
+CodeBuddy, WorkBuddy, and generic JSONL directories.

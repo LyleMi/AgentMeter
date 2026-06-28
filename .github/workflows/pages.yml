@@ -1,0 +1,60 @@
+name: Pages
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build static preview
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare Pages artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf pages-artifact
+          mkdir -p pages-artifact/assets
+          cp -R site/. pages-artifact/
+          cp frontend/src/assets/agentmeter-logo.png pages-artifact/assets/agentmeter-logo.png
+          cp docs/assets/social-preview.png pages-artifact/assets/social-preview.png
+          test -f pages-artifact/index.html
+          test -f pages-artifact/assets/agentmeter-logo.png
+          test -f pages-artifact/assets/social-preview.png
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages-artifact
+
+  deploy:
+    name: Deploy static preview
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

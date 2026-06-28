@@ -6,6 +6,18 @@
   <img src="frontend/src/assets/agentmeter-logo.png" alt="AgentMeter logo" width="180">
 </p>
 
+<p align="center">
+  <strong>面向 coding agent 的本地优先用量分析：token、成本、耗时、会话和工具调用。</strong>
+</p>
+
+<p align="center">
+  <a href="https://lylemi.github.io/AgentMeter/">在线演示</a>
+  · <a href="https://github.com/LyleMi/AgentMeter/releases">下载发布版</a>
+  · <a href="docs/assets/screenshots/overview.png">截图</a>
+  · <a href="docs/install.md">安装</a>
+  · <a href="docs/privacy.md">隐私</a>
+</p>
+
 ![Status: MVP](https://img.shields.io/badge/status-MVP-f2c94c)
 ![Local first](https://img.shields.io/badge/local--first-yes-2f855a)
 ![Platform: Cross-platform](https://img.shields.io/badge/platform-cross--platform-0078d4)
@@ -13,12 +25,28 @@
 ![Frontend: Vue 3](https://img.shields.io/badge/frontend-Vue%203-42b883)
 ![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)
 
-AgentMeter 是一个 local-first 的仪表盘，用于理解 coding-agent 会话的
-使用情况：token、预估成本、耗时、会话历史以及工具调用行为。它读取本地
-agent JSONL 会话文件，将数据索引到 SQLite，并通过私有的本地 Web
-界面和终端界面展示这些数据。
+AgentMeter 是一个开源 Go + Vue 仪表盘，用于理解本地 coding-agent 会话
+用量。它读取本地 agent JSONL 会话文件，将数据索引到 SQLite，并通过私有
+的本地 Web 界面和终端界面展示 token、预估成本、耗时、会话历史、模型、
+项目和工具调用行为。
 
 无代理、无云服务、无遥测。
+
+![AgentMeter 概览截图](docs/assets/screenshots/overview.png)
+
+## 一眼看懂
+
+- **支持的 agent：** Codex、Claude Code、CodeBuddy、WorkBuddy 和通用
+  JSONL 目录。
+- **隐私模型：** 会话数据保留在你的机器上，存入本地 SQLite 数据库；
+  AgentMeter 不代理流量，也不上传遥测。
+- **主要视图：** 会话、每日用量、模型、项目、预估成本、工具调用分析，
+  以及离线命令/隐私审计发现。
+- **界面形态：** 默认使用本地 Web 仪表盘，也提供复用同一数据库和查询行为
+  的终端 UI。
+- **发布资产：** 跨平台压缩包发布在
+  [GitHub Releases](https://github.com/LyleMi/AgentMeter/releases)，命名为
+  `AgentMeter-<platform>-<arch>`。
 
 ## 为什么需要 AgentMeter
 
@@ -46,6 +74,10 @@ AgentMeter 将这些数据整理成可以直接回答的问题：
 - 内置价格注册表，未知模型会清晰标记为 `unpriced`。
 
 ## 快速开始
+
+如需使用打包版本，请从
+[Releases](https://github.com/LyleMi/AgentMeter/releases) 下载匹配的
+`AgentMeter-<platform>-<arch>` 资产。如需从源码本地启动，请使用下面的命令。
 
 要求：
 
@@ -123,6 +155,11 @@ AgentMeter 目前是面向本地 coding-agent JSONL 用量分析的 MVP。Web UI
 
 ## 文档
 
+- [安装](docs/install.md)
+- [支持的 Agent](docs/supported-agents.md)
+- [隐私](docs/privacy.md)
+- [对比](docs/comparison.md)
+- [Release Distribution](docs/release-distribution.md)
 - [Getting Started](docs/getting-started.md)
 - [Project Brief](docs/project-brief.md)
 - [Architecture](docs/architecture.md)
