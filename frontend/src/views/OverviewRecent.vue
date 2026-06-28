@@ -8,6 +8,8 @@ import ATag from 'ant-design-vue/es/tag'
 import Typography from 'ant-design-vue/es/typography'
 import { ClockCircleOutlined } from '@ant-design/icons-vue'
 import { formatDateTime, formatNumber, projectDisplay, sessionFullLabel, sessionLabel, type Session } from '../api'
+import EmptyState from '../components/ui/EmptyState.vue'
+import Panel from '../components/ui/Panel.vue'
 import { useMessages } from '../i18n'
 import { useOverviewContext } from './overviewContext'
 
@@ -73,14 +75,10 @@ function projectInfo(record: Session) {
 
 <template>
   <a-spin :spinning="loading">
-    <section class="panel overview-recent-panel">
-      <div class="panel-header">
-        <div>
-          <h2 class="panel-title">{{ t('title') }}</h2>
-          <div class="panel-kicker">{{ t('kicker') }}</div>
-        </div>
+    <Panel class="overview-recent-panel" :title="t('title')" :kicker="t('kicker')">
+      <template #actions>
         <a-button type="link" @click="$router.push('/sessions')">{{ t('action.viewAll') }}</a-button>
-      </div>
+      </template>
       <a-table
         v-if="hasRecentSessions"
         class="overview-session-table"
@@ -119,11 +117,13 @@ function projectInfo(record: Session) {
           </template>
         </template>
       </a-table>
-      <div v-else class="empty-state empty-state-compact">
-        <ClockCircleOutlined class="empty-state-icon" />
-        <div class="empty-state-title">{{ t('empty.title') }}</div>
-        <div class="empty-state-text">{{ t('empty.text') }}</div>
-      </div>
-    </section>
+      <EmptyState
+        v-else
+        :title="t('empty.title')"
+        :text="t('empty.text')"
+        :icon="ClockCircleOutlined"
+        compact
+      />
+    </Panel>
   </a-spin>
 </template>

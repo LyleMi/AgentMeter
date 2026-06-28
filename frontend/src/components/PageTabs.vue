@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { getCurrentInstance } from 'vue'
 import type { Component } from 'vue'
 import { useRouter } from 'vue-router'
 import AButton from 'ant-design-vue/es/button'
 
-interface PageTabItem {
+export interface PageTabItem {
   key: string
   label: string
   path: string
@@ -15,10 +16,23 @@ defineProps<{
   activeKey: string
 }>()
 
+const emit = defineEmits<{
+  select: [item: PageTabItem]
+}>()
+
+const instance = getCurrentInstance()
 const router = useRouter()
 
-function navigate(path: string) {
-  router.push(path)
+function hasSelectListener() {
+  return Boolean(instance?.vnode.props?.onSelect)
+}
+
+function selectTab(item: PageTabItem) {
+  emit('select', item)
+
+  if (!hasSelectListener()) {
+    router.push(item.path)
+  }
 }
 </script>
 
@@ -28,7 +42,7 @@ function navigate(path: string) {
       v-for="item in tabs"
       :key="item.key"
       :type="item.key === activeKey ? 'primary' : 'default'"
-      @click="navigate(item.path)"
+      @click="selectTab(item)"
     >
       <template #icon>
         <component :is="item.icon" />

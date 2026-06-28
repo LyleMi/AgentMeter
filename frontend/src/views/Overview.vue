@@ -14,9 +14,9 @@ import PageTabs from '../components/PageTabs.vue'
 import UsageScopeBar from '../components/UsageScopeBar.vue'
 import { notifyAppDataChanged } from '../events'
 import { useMessages } from '../i18n'
-import { sourceFilterOptions } from '../presentation/sourceIdentity'
 import { overviewContextKey, type OverviewContext } from './overviewContext'
 import { applyUsageScopeToQuery, useUsageScopeRoute, type UsageScopeForm } from './useUsageScope'
+import { buildUsageAgentOptions, buildUsageModelOptions } from './useUsageScopeOptions'
 
 const route = useRoute()
 const loading = ref(true)
@@ -59,48 +59,35 @@ const tabs = computed(() => [
 ])
 
 const agentOptions = computed(() =>
-  ensureSelectedOption(
-    sourceFilterOptions(
-      [
-        ...(overview.value?.agentUsage || []),
-        ...(optionOverview.value?.agentUsage || []),
-        ...(overview.value?.recentSessions || []),
-        ...(optionOverview.value?.recentSessions || []),
-        ...(overview.value?.slowSessions || []),
-        ...(optionOverview.value?.slowSessions || [])
-      ],
-      'unknown',
-      { includeSecondaryInLabel: false }
-    ),
-    scope.filters.value.agent
-  )
+  buildUsageAgentOptions({
+    sources: [
+      overview.value?.agentUsage,
+      optionOverview.value?.agentUsage,
+      overview.value?.recentSessions,
+      optionOverview.value?.recentSessions,
+      overview.value?.slowSessions,
+      optionOverview.value?.slowSessions
+    ],
+    selected: scope.filters.value.agent,
+    fallback: 'unknown'
+  })
 )
 
-const modelOptions = computed(() => {
-  const values = new Set<string>()
-  for (const item of overview.value?.modelUsage || []) {
-    if (item.model) values.add(item.model)
-  }
-  for (const item of optionOverview.value?.modelUsage || []) {
-    if (item.model) values.add(item.model)
-  }
-  for (const item of overview.value?.recentSessions || []) {
-    if (item.model) values.add(item.model)
-  }
-  for (const item of optionOverview.value?.recentSessions || []) {
-    if (item.model) values.add(item.model)
-  }
-  for (const item of overview.value?.slowSessions || []) {
-    if (item.model) values.add(item.model)
-  }
-  for (const item of optionOverview.value?.slowSessions || []) {
-    if (item.model) values.add(item.model)
-  }
-  return ensureSelectedOption(
-    [...values].sort().map((value) => ({ value, label: value, title: value })),
-    scope.filters.value.model
-  )
-})
+const modelOptions = computed(() =>
+  buildUsageModelOptions({
+    modelUsage: [
+      overview.value?.modelUsage,
+      optionOverview.value?.modelUsage
+    ],
+    sessions: [
+      overview.value?.recentSessions,
+      optionOverview.value?.recentSessions,
+      overview.value?.slowSessions,
+      optionOverview.value?.slowSessions
+    ],
+    selected: scope.filters.value.model
+  })
+)
 
 const activeKey = computed(() => {
   if (route.path.startsWith('/overview/trends')) return 'trends'
@@ -161,11 +148,6 @@ function overviewPath(path: string) {
   const params = new URLSearchParams(query)
   const encoded = params.toString()
   return encoded ? `${path}?${encoded}` : path
-}
-
-function ensureSelectedOption<T extends { value: string; label: string; title?: string }>(options: T[], selected?: string): T[] {
-  if (!selected || options.some((item) => item.value === selected)) return options
-  return [{ value: selected, label: selected, title: selected } as T, ...options]
 }
 
 const context: OverviewContext = {

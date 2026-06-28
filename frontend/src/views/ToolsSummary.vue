@@ -7,6 +7,7 @@ import ATag from 'ant-design-vue/es/tag'
 import Typography from 'ant-design-vue/es/typography'
 import { ReloadOutlined } from '@ant-design/icons-vue'
 import { api, formatDuration, formatNumber, type ToolStat } from '../api'
+import Panel from '../components/ui/Panel.vue'
 import { useMessages } from '../i18n'
 
 const ATable = AntTable as unknown as DefineComponent
@@ -109,22 +110,16 @@ onMounted(load)
 </script>
 
 <template>
-  <section class="panel">
-    <div class="panel-header">
-      <div>
-        <h2 class="panel-title">{{ t('title') }}</h2>
-        <div class="panel-kicker">{{ t('kicker') }}</div>
-      </div>
-      <div class="panel-actions">
-        <span class="row-count">{{ t('rowCount', { count: formatNumber(tools.length) }) }}</span>
-        <a-button @click="load">
-          <template #icon>
-            <ReloadOutlined />
-          </template>
-          {{ t('action.refresh') }}
-        </a-button>
-      </div>
-    </div>
+  <Panel :title="t('title')" :kicker="t('kicker')">
+    <template #actions>
+      <span class="row-count">{{ t('rowCount', { count: formatNumber(tools.length) }) }}</span>
+      <a-button @click="load">
+        <template #icon>
+          <ReloadOutlined />
+        </template>
+        {{ t('action.refresh') }}
+      </a-button>
+    </template>
     <a-table
       class="dense-table tools-table"
       :columns="statColumns"
@@ -172,5 +167,5 @@ onMounted(load)
         </template>
       </template>
     </a-table>
-  </section>
+  </Panel>
 </template>

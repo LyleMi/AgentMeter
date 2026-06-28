@@ -39,8 +39,9 @@ import PageHeader from '../components/PageHeader.vue'
 import UsageScopeBar from '../components/UsageScopeBar.vue'
 import { useAsyncResource } from '../composables/useAsyncResource'
 import { useMessages } from '../i18n'
-import { sourceDisplay, sourceFilterOptions, sourceInstanceKey } from '../presentation/sourceIdentity'
+import { sourceDisplay, sourceInstanceKey } from '../presentation/sourceIdentity'
 import { applyUsageScopeToQuery, useUsageScopeRoute, type UsageScopeForm } from './useUsageScope'
+import { buildUsageAgentOptions, buildUsageModelOptions } from './useUsageScopeOptions'
 
 const ATable = AntTable as unknown as DefineComponent
 const ATypographyText = Typography.Text
@@ -223,48 +224,35 @@ const metricCards = computed(() => {
 })
 
 const agentOptions = computed(() =>
-  ensureSelectedOption(
-    sourceFilterOptions(
-      [
-        ...(analytics.value?.agentUsage || []),
-        ...(optionOverview.value?.agentUsage || []),
-        ...(analytics.value?.recentSessions || []),
-        ...(optionOverview.value?.recentSessions || []),
-        ...(analytics.value?.highTokenSessions || []),
-        ...(optionOverview.value?.slowSessions || [])
-      ],
-      t('fallback.unknown'),
-      { includeSecondaryInLabel: false }
-    ),
-    scope.filters.value.agent
-  )
+  buildUsageAgentOptions({
+    sources: [
+      analytics.value?.agentUsage,
+      optionOverview.value?.agentUsage,
+      analytics.value?.recentSessions,
+      optionOverview.value?.recentSessions,
+      analytics.value?.highTokenSessions,
+      optionOverview.value?.slowSessions
+    ],
+    selected: scope.filters.value.agent,
+    fallback: t('fallback.unknown')
+  })
 )
 
-const modelOptions = computed(() => {
-  const values = new Set<string>()
-  for (const item of analytics.value?.modelUsage || []) {
-    if (item.model) values.add(item.model)
-  }
-  for (const item of optionOverview.value?.modelUsage || []) {
-    if (item.model) values.add(item.model)
-  }
-  for (const item of analytics.value?.recentSessions || []) {
-    if (item.model) values.add(item.model)
-  }
-  for (const item of optionOverview.value?.recentSessions || []) {
-    if (item.model) values.add(item.model)
-  }
-  for (const item of analytics.value?.highTokenSessions || []) {
-    if (item.model) values.add(item.model)
-  }
-  for (const item of optionOverview.value?.slowSessions || []) {
-    if (item.model) values.add(item.model)
-  }
-  return ensureSelectedOption(
-    [...values].sort().map((value) => ({ value, label: value, title: value })),
-    scope.filters.value.model
-  )
-})
+const modelOptions = computed(() =>
+  buildUsageModelOptions({
+    modelUsage: [
+      analytics.value?.modelUsage,
+      optionOverview.value?.modelUsage
+    ],
+    sessions: [
+      analytics.value?.recentSessions,
+      optionOverview.value?.recentSessions,
+      analytics.value?.highTokenSessions,
+      optionOverview.value?.slowSessions
+    ],
+    selected: scope.filters.value.model
+  })
+)
 
 const breakdownGroupOptions = computed(() => [
   { value: 'global', label: t('group.global') },
@@ -393,11 +381,6 @@ function routeBreakdownGroup(): TokenBreakdownGroup {
 function normalizeBreakdownGroup(value: unknown): TokenBreakdownGroup {
   if (value === 'agent' || value === 'model' || value === 'agent,model' || value === 'day') return value
   return DEFAULT_BREAKDOWN_GROUP
-}
-
-function ensureSelectedOption<T extends { value: string; label: string; title?: string }>(options: T[], selected?: string): T[] {
-  if (!selected || options.some((item) => item.value === selected)) return options
-  return [{ value: selected, label: selected, title: selected } as T, ...options]
 }
 
 function rowClass(record: ModelUsage | AgentUsage) {

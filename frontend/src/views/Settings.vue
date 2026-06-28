@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { RouterView, useRoute } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { DatabaseOutlined, DollarOutlined, EyeOutlined, FolderOpenOutlined } from '@ant-design/icons-vue'
-import PageHeader from '../components/PageHeader.vue'
-import PageTabs from '../components/PageTabs.vue'
+import RoutedPageShell from '../components/RoutedPageShell.vue'
 import { useMessages } from '../i18n'
 
 const route = useRoute()
@@ -43,11 +42,10 @@ const activeKey = computed(() => {
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader :title="t('settings.title')" :subtitle="t('settings.subtitle')" />
-
-    <PageTabs :tabs="tabs" :active-key="activeKey" />
-
-    <RouterView />
-  </div>
+  <RoutedPageShell
+    :title="t('settings.title')"
+    :subtitle="t('settings.subtitle')"
+    :tabs="tabs"
+    :active-key="activeKey"
+  />
 </template>
