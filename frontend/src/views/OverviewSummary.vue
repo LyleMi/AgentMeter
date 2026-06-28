@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import AButton from 'ant-design-vue/es/button'
 import ASpin from 'ant-design-vue/es/spin'
 import Typography from 'ant-design-vue/es/typography'
@@ -14,14 +15,26 @@ import {
   ToolOutlined,
   WarningOutlined
 } from '@ant-design/icons-vue'
-import { formatDisplayCost, formatDisplayNumber, formatDuration, formatNumber, isStaticDemo, type DisplayNumber } from '../api'
+import {
+  api,
+  formatDisplayCost,
+  formatDisplayNumber,
+  formatDuration,
+  formatNumber,
+  isStaticDemo,
+  projectDisplay,
+  type DisplayNumber,
+  type UsageBreakdownBucket
+} from '../api'
 import { useMessages } from '../i18n'
 import { useOverviewContext } from './overviewContext'
+import { readUsageScopeQuery, usageScopeToApiFilters } from './useUsageScope'
 
 const ATypographyText = Typography.Text
+const route = useRoute()
 
 const { overview, loading, startupIndexing, hasIndexedData, sourcePathDisplay, indexFromOverview } = useOverviewContext()
-const { t, createNumberFormatter } = useMessages({
+const { t, createNumberFormatter, createDateTimeFormatter } = useMessages({
   en: {
     'metric.totalUsage': 'Total Usage',
     'metric.indexedSessions': '{count} indexed sessions',
@@ -52,6 +65,10 @@ const { t, createNumberFormatter } = useMessages({
     'efficiency.toolsPerSessionNote': 'Tool invocations per session',
     'efficiency.cacheHit': 'Cache hit rate',
     'efficiency.cacheHitNote': '{count} cached input tokens',
+    'efficiency.dayCache': 'Latest day cache',
+    'efficiency.dayCacheNote': '{date} · {count} cached',
+    'efficiency.projectCache': 'Top project cache',
+    'efficiency.projectCacheNote': '{project} · {count} cached',
     'efficiency.outputInput': 'Output / input',
     'efficiency.outputInputNote': 'Response token density',
     'timeCost.title': 'Time & Cost',
@@ -103,6 +120,10 @@ const { t, createNumberFormatter } = useMessages({
     'efficiency.toolsPerSessionNote': '每个会话的工具调用次数',
     'efficiency.cacheHit': '缓存命中率',
     'efficiency.cacheHitNote': '{count} 个缓存输入 Token',
+    'efficiency.dayCache': '最近日期缓存',
+    'efficiency.dayCacheNote': '{date} · {count} 个缓存',
+    'efficiency.projectCache': '主要项目缓存',
+    'efficiency.projectCacheNote': '{project} · {count} 个缓存',
     'efficiency.outputInput': '输出 / 输入',
     'efficiency.outputInputNote': '响应 Token 密度',
     'timeCost.title': '时间与费用',
@@ -125,6 +146,16 @@ const { t, createNumberFormatter } = useMessages({
     'empty.editSource': '编辑来源'
   }
 })
+
+interface OverviewSignalMetric {
+  label: string
+  value: string
+  note: string
+  title?: string
+}
+
+const projectBreakdownRows = ref<UsageBreakdownBucket[]>([])
+let projectBreakdownRequestId = 0
 
 const totalTokensDisplay = computed(() => formatDisplayNumber(overview.value?.totalTokens))
 
@@ -195,12 +226,55 @@ const snapshotCards = computed(() => [
   }
 ])
 
-const efficiencyMetrics = computed(() => {
+const dailyCacheSignal = computed<OverviewSignalMetric | null>(() => {
+  const days = [...(overview.value?.dailyUsage || [])]
+    .filter((day) => (day.inputTokens || 0) > 0)
+    .sort((left, right) => right.date.localeCompare(left.date))
+  const day = days[0]
+  if (!day) return null
+
+  const cachedInputTokens = day.cachedInputTokens || 0
+  const rate = Number.isFinite(day.cacheUtilizationRate)
+    ? day.cacheUtilizationRate
+    : cachedInputTokens / Math.max(day.inputTokens || 0, 1)
+  return {
+    label: t('efficiency.dayCache'),
+    value: formatPercent(rate),
+    note: t('efficiency.dayCacheNote', {
+      date: formatDayLabel(day.date),
+      count: formatNumber(cachedInputTokens)
+    })
+  }
+})
+
+const projectCacheSignal = computed<OverviewSignalMetric | null>(() => {
+  const rows = [...projectBreakdownRows.value]
+    .filter((row) => (row.inputTokens || 0) > 0)
+    .sort((left, right) =>
+      (right.inputTokens || 0) - (left.inputTokens || 0) ||
+      (right.cachedInputTokens || 0) - (left.cachedInputTokens || 0)
+    )
+  const row = rows[0]
+  if (!row) return null
+
+  const project = projectDisplay(row.projectPath)
+  return {
+    label: t('efficiency.projectCache'),
+    value: formatPercent(row.cacheUtilizationRate),
+    note: t('efficiency.projectCacheNote', {
+      project: project.main,
+      count: formatNumber(row.cachedInputTokens || 0)
+    }),
+    title: project.full
+  }
+})
+
+const efficiencyMetrics = computed<OverviewSignalMetric[]>(() => {
   const item = overview.value
   if (!item || item.totalSessions <= 0) return []
   const sessions = item.totalSessions
   const inputTokens = Math.max(item.totalInputTokens || 0, 0)
-  return [
+  const metrics: OverviewSignalMetric[] = [
     {
       label: t('efficiency.avgTokens'),
       value: formatNumber(Math.round((item.totalTokens || 0) / sessions)),
@@ -215,13 +289,24 @@ const efficiencyMetrics = computed(() => {
       label: t('efficiency.cacheHit'),
       value: formatPercent((item.totalCachedInputTokens || 0) / Math.max(inputTokens, 1)),
       note: t('efficiency.cacheHitNote', { count: formatNumber(item.totalCachedInputTokens) })
-    },
+    }
+  ]
+
+  const dailySignal = dailyCacheSignal.value
+  if (dailySignal) metrics.push(dailySignal)
+
+  const projectSignal = projectCacheSignal.value
+  if (projectSignal) metrics.push(projectSignal)
+
+  metrics.push(
     {
       label: t('efficiency.outputInput'),
       value: `${formatRatio((item.totalOutputTokens || 0) / Math.max(inputTokens, 1))}x`,
       note: t('efficiency.outputInputNote')
     }
-  ]
+  )
+
+  return metrics
 })
 
 const timeCostMetrics = computed(() => {
@@ -254,6 +339,36 @@ const timeCostMetrics = computed(() => {
   ]
 })
 
+async function loadProjectBreakdownRows() {
+  const requestId = ++projectBreakdownRequestId
+  if (!hasIndexedData.value) {
+    projectBreakdownRows.value = []
+    return
+  }
+
+  try {
+    const breakdown = await api.getUsageBreakdown({
+      ...usageScopeToApiFilters(readUsageScopeQuery(route.query)),
+      groupBy: 'project'
+    })
+    if (requestId === projectBreakdownRequestId) {
+      projectBreakdownRows.value = breakdown.buckets || []
+    }
+  } catch {
+    if (requestId === projectBreakdownRequestId) {
+      projectBreakdownRows.value = []
+    }
+  }
+}
+
+watch(
+  () => [route.query.agent, route.query.model, route.query.range, route.query.from, route.query.to, overview.value],
+  () => {
+    void loadProjectBreakdownRows()
+  },
+  { immediate: true }
+)
+
 function formatPercent(value: number) {
   if (!Number.isFinite(value)) return '0%'
   return `${Math.round(Math.max(0, value) * 100)}%`
@@ -279,6 +394,11 @@ function displayText(value: string): DisplayNumber {
 
 function formatUSD(value: number, maximumFractionDigits: number) {
   return createNumberFormatter({ style: 'currency', currency: 'USD', maximumFractionDigits }).format(value)
+}
+
+function formatDayLabel(value: string) {
+  if (!value) return '-'
+  return createDateTimeFormatter({ month: 'short', day: '2-digit' }).format(new Date(`${value}T00:00:00`))
 }
 
 function formatSharePercent(value: number) {
@@ -364,7 +484,7 @@ function formatShareWidth(value: number) {
           <div v-for="item in efficiencyMetrics" :key="item.label" class="overview-signal-item">
             <div>
               <div class="overview-signal-label">{{ item.label }}</div>
-              <div class="overview-signal-note">{{ item.note }}</div>
+              <div class="overview-signal-note" :title="item.title || item.note">{{ item.note }}</div>
             </div>
             <strong>{{ item.value }}</strong>
           </div>

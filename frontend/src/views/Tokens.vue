@@ -84,6 +84,7 @@ const { t } = useMessages({
     'group.model': 'Model',
     'group.agentModel': 'Source + Model',
     'group.day': 'Day',
+    'group.project': 'Project',
     'token.input': 'Input',
     'token.cached': 'Cached',
     'token.output': 'Output',
@@ -138,6 +139,7 @@ const { t } = useMessages({
     'group.model': '模型',
     'group.agentModel': '来源 + 模型',
     'group.day': '日期',
+    'group.project': '项目',
     'token.input': '输入',
     'token.cached': '缓存',
     'token.output': '输出',
@@ -259,6 +261,7 @@ const breakdownGroupOptions = computed(() => [
   { value: 'agent', label: t('group.agent') },
   { value: 'model', label: t('group.model') },
   { value: 'agent,model', label: t('group.agentModel') },
+  { value: 'project', label: t('group.project') },
   { value: 'day', label: t('group.day') }
 ])
 
@@ -278,6 +281,7 @@ const breakdownScopeColumnTitle = computed(() => {
   if (breakdownGroup.value === 'agent') return t('column.agent')
   if (breakdownGroup.value === 'model') return t('column.model')
   if (breakdownGroup.value === 'day') return t('group.day')
+  if (breakdownGroup.value === 'project') return t('column.project')
   if (breakdownGroup.value === 'agent,model') return t('group.agentModel')
   return t('group.global')
 })
@@ -379,7 +383,7 @@ function routeBreakdownGroup(): TokenBreakdownGroup {
 }
 
 function normalizeBreakdownGroup(value: unknown): TokenBreakdownGroup {
-  if (value === 'agent' || value === 'model' || value === 'agent,model' || value === 'day') return value
+  if (value === 'agent' || value === 'model' || value === 'agent,model' || value === 'day' || value === 'project') return value
   return DEFAULT_BREAKDOWN_GROUP
 }
 
@@ -445,6 +449,14 @@ function breakdownScope(record: UsageBreakdownBucket) {
     const label = record.date || t('fallback.unknown')
     return { label, secondary: '', title: label }
   }
+  if (breakdownGroup.value === 'project') {
+    const project = projectDisplay(record.projectPath)
+    return {
+      label: project.main,
+      secondary: project.collapsed ? project.full : '',
+      title: project.full
+    }
+  }
   const source = sourceDisplay(record, t('fallback.unknown'))
   if (breakdownGroup.value === 'agent,model') {
     const model = record.model || t('fallback.unknown')
@@ -462,6 +474,7 @@ function breakdownRowKey(record: UsageBreakdownBucket) {
     breakdownGroup.value,
     record.date,
     record.model,
+    record.projectPath,
     sourceInstanceKey(record)
   ].filter(Boolean).join(':')
 }
@@ -572,8 +585,8 @@ onMounted(load)
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'scope'">
-                <span class="source-identity-name">{{ breakdownScope(record).label }}</span>
-                <div class="source-identity-meta">{{ breakdownScope(record).secondary || '-' }}</div>
+                <span class="source-identity-name" :title="breakdownScope(record).title">{{ breakdownScope(record).label }}</span>
+                <div class="source-identity-meta" :title="breakdownScope(record).title">{{ breakdownScope(record).secondary || '-' }}</div>
               </template>
               <template v-else-if="column.key === 'sessions'"><span class="number-cell">{{ formatNumber(record.sessionCount) }}</span></template>
               <template v-else-if="column.key === 'tokens'"><span class="number-cell">{{ formatNumber(record.totalTokens) }}</span></template>

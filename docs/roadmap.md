@@ -152,7 +152,6 @@ Possible additions:
 - JSON export.
 - Estimated token mode.
 - Richer model-call timeline.
-- Project grouping.
 - Custom pricing UI.
 - TUI command palette and saved filter shortcuts.
 - Dark/light theme.

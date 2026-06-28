@@ -1532,6 +1532,7 @@ body {
   color: var(--am-muted);
   font-size: 12px;
   line-height: 18px;
+  overflow-wrap: anywhere;
 }
 
 .overview-breakdown-grid {

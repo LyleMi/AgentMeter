@@ -144,6 +144,9 @@ When shared query behavior or read-model shapes change, validate both Web and
 TUI expectations where relevant:
 
 - totals and filters;
+- shared cache fields, including `dailyUsage.cachedInputTokens`,
+  `dailyUsage.cacheUtilizationRate`, and usage-breakdown `projectPath` for
+  project grouping;
 - session identity and source path display;
 - source instance filters using `source:<id>` and family filters using values
   such as `codex` or `claude`;

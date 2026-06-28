@@ -169,13 +169,15 @@ type PricingModel struct {
 }
 
 type DailyUsage struct {
-	Date             string   `json:"date"`
-	SessionCount     int      `json:"sessionCount"`
-	TotalTokens      int64    `json:"totalTokens"`
-	InputTokens      int64    `json:"inputTokens"`
-	OutputTokens     int64    `json:"outputTokens"`
-	ToolCalls        int      `json:"toolCalls"`
-	EstimatedCostUSD *float64 `json:"estimatedCostUsd,omitempty"`
+	Date                 string   `json:"date"`
+	SessionCount         int      `json:"sessionCount"`
+	TotalTokens          int64    `json:"totalTokens"`
+	InputTokens          int64    `json:"inputTokens"`
+	CachedInputTokens    int64    `json:"cachedInputTokens"`
+	OutputTokens         int64    `json:"outputTokens"`
+	ToolCalls            int      `json:"toolCalls"`
+	CacheUtilizationRate float64  `json:"cacheUtilizationRate"`
+	EstimatedCostUSD     *float64 `json:"estimatedCostUsd,omitempty"`
 }
 
 type ModelUsage struct {
@@ -313,6 +315,7 @@ type UsageBreakdownBucket struct {
 	AgentKind             string   `json:"agentKind,omitempty"`
 	AgentName             string   `json:"agentName,omitempty"`
 	Model                 string   `json:"model,omitempty"`
+	ProjectPath           string   `json:"projectPath,omitempty"`
 	Date                  string   `json:"date,omitempty"`
 	SessionCount          int      `json:"sessionCount"`
 	TotalTokens           int64    `json:"totalTokens"`

@@ -345,8 +345,9 @@ Current read models:
   source-aware agent usage, recent sessions, and high-token sessions. Token
   analytics can be scoped by agent/source, model, and started-at range.
 - Usage Breakdown: token, cache utilization, session count, pricing, and
-  source identity buckets grouped by source, model, source plus model, or day,
-  with the same agent/source, model, and started-at range filters.
+  identity buckets grouped by source (`agent`), model, source plus model
+  (`agent,model`), day, or project, with the same agent/source, model, and
+  started-at range filters.
 - Sessions: filtered list by search, model, agent/source, limit, and offset,
   ordered by newest `started_at` first.
 - Session Detail: one session with normalized events, model calls, and tool
@@ -377,3 +378,14 @@ Contract rules:
   should be updated when those shapes change.
 - `source_entries` and `last_index_result` are surfaced through Settings, but
   normalized usage analytics come from the indexed source tables.
+
+Read-model shape notes:
+
+- Overview `dailyUsage` rows include token totals for each day, including
+  `cachedInputTokens` and `cacheUtilizationRate`, so day-level cache reuse is
+  shared by Web and TUI instead of recomputed in presentation code.
+- `/api/usage/breakdown` returns usage buckets selected by `groupBy`. Project
+  buckets use `groupBy=project` and carry `projectPath`; project bucket keys use
+  the same path normalization and platform case semantics as source paths. All
+  bucket shapes, including day and project, include `cachedInputTokens` and
+  `cacheUtilizationRate` for cache-hit visibility.

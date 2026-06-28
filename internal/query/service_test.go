@@ -568,6 +568,41 @@ func TestOverviewDateOnlyToIncludesWholeDay(t *testing.T) {
 	}
 }
 
+func TestOverviewDailyUsageIncludesCachedInputAndCacheRate(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	sourceID := insertTimeSource(t, conn, "codex", "Codex", now)
+	insertOverviewUsageSession(t, conn, sourceID, now, "day-one-a", "gpt-5", "gpt-5", "actual", 1_000, 250, 300, 1_300)
+	insertOverviewUsageSession(t, conn, sourceID, now.Add(time.Hour), "day-one-b", "gpt-5", "gpt-5", "actual", 500, 50, 100, 600)
+	insertOverviewUsageSession(t, conn, sourceID, now.Add(24*time.Hour), "day-two", "gpt-5", "gpt-5", "actual", 0, 0, 200, 200)
+
+	overview, err := New(conn).Overview(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(overview.DailyUsage) != 2 {
+		t.Fatalf("daily usage = %+v", overview.DailyUsage)
+	}
+	firstDay := overview.DailyUsage[0]
+	if firstDay.Date != "2026-06-27" || firstDay.SessionCount != 2 || firstDay.TotalTokens != 1_900 ||
+		firstDay.InputTokens != 1_500 || firstDay.CachedInputTokens != 300 || firstDay.OutputTokens != 400 {
+		t.Fatalf("first daily usage bucket = %+v", firstDay)
+	}
+	if math.Abs(firstDay.CacheUtilizationRate-0.2) > 0.000001 {
+		t.Fatalf("first daily cache utilization = %f", firstDay.CacheUtilizationRate)
+	}
+	secondDay := overview.DailyUsage[1]
+	if secondDay.Date != "2026-06-28" || secondDay.InputTokens != 0 || secondDay.CachedInputTokens != 0 || secondDay.CacheUtilizationRate != 0 {
+		t.Fatalf("second daily usage bucket = %+v", secondDay)
+	}
+}
+
 func TestOverviewPricingIgnoresZeroTokenUnknownUsage(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
@@ -827,6 +862,70 @@ func TestUsageBreakdownGroupsByAgentModelAndDay(t *testing.T) {
 	}
 }
 
+func TestUsageBreakdownGroupsByProject(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	codexSourceID := insertTimeSource(t, conn, "codex", "Codex", now)
+	claudeSourceID := insertTimeSource(t, conn, "claude", "Claude Code", now)
+
+	apiPriced := insertTokenAnalyticsSession(t, conn, codexSourceID, now, "api-priced", "gpt-5", "gpt-5", "actual", 1_000_000, 200_000, 500_000, 0, 1_500_000)
+	apiUnpriced := insertTokenAnalyticsSession(t, conn, claudeSourceID, now.Add(time.Minute), "api-unpriced", "unknown-model", "unknown-model", "actual", 100_000, 0, 50_000, 0, 150_000)
+	cliSession := insertTokenAnalyticsSession(t, conn, codexSourceID, now.Add(2*time.Minute), "cli", "gpt-5-mini", "gpt-5-mini", "actual", 500_000, 100_000, 250_000, 0, 750_000)
+	webSession := insertTokenAnalyticsSession(t, conn, claudeSourceID, now.Add(3*time.Minute), "web", "gpt-5-mini", "gpt-5-mini", "actual", 500_000, 100_000, 250_000, 0, 750_000)
+	setSessionProjectPath(t, conn, apiPriced, "/workspace/api")
+	setSessionProjectPath(t, conn, apiUnpriced, "/workspace/api/.")
+	setSessionProjectPath(t, conn, cliSession, "/workspace/cli")
+	setSessionProjectPath(t, conn, webSession, "/workspace/web")
+
+	breakdown, err := New(conn).UsageBreakdown(ctx, "project", model.AnalyticsFilters{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if breakdown.GroupBy != "project" || len(breakdown.Buckets) != 3 {
+		t.Fatalf("project breakdown shape = %+v", breakdown)
+	}
+	if breakdown.Buckets[0].ProjectPath != "/workspace/api" || breakdown.Buckets[1].ProjectPath != "/workspace/cli" || breakdown.Buckets[2].ProjectPath != "/workspace/web" {
+		t.Fatalf("project breakdown sort = %+v", breakdown.Buckets)
+	}
+
+	apiBucket := findProjectUsageBreakdownBucket(t, breakdown.Buckets, "/workspace/api")
+	if apiBucket.SessionCount != 2 || apiBucket.TotalTokens != 1_650_000 || apiBucket.InputTokens != 1_100_000 ||
+		apiBucket.CachedInputTokens != 200_000 || !apiBucket.Unpriced {
+		t.Fatalf("api project bucket = %+v", apiBucket)
+	}
+	if math.Abs(apiBucket.CacheUtilizationRate-(float64(200_000)/float64(1_100_000))) > 0.000001 {
+		t.Fatalf("api project cache utilization = %f", apiBucket.CacheUtilizationRate)
+	}
+	assertCostUSD(t, apiBucket.EstimatedCostUSD, 6.025)
+
+	cliBucket := findProjectUsageBreakdownBucket(t, breakdown.Buckets, "/workspace/cli")
+	if cliBucket.SessionCount != 1 || cliBucket.TotalTokens != 750_000 || cliBucket.Unpriced {
+		t.Fatalf("cli project bucket = %+v", cliBucket)
+	}
+	assertCostUSD(t, cliBucket.EstimatedCostUSD, 0.6025)
+
+	filtered, err := New(conn).UsageBreakdown(ctx, "project", model.AnalyticsFilters{
+		Agent: sourceInstanceKey(codexSourceID),
+		Model: "gpt-5",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered.Buckets) != 1 {
+		t.Fatalf("filtered project buckets = %+v", filtered.Buckets)
+	}
+	filteredAPI := findProjectUsageBreakdownBucket(t, filtered.Buckets, "/workspace/api")
+	if filteredAPI.SessionCount != 1 || filteredAPI.TotalTokens != 1_500_000 || filteredAPI.Unpriced {
+		t.Fatalf("filtered api project bucket = %+v", filteredAPI)
+	}
+}
+
 func TestOverviewReturnsEmptyArraysWithoutSessions(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
@@ -1058,6 +1157,17 @@ func findUsageBreakdownBucket(t *testing.T, items []model.UsageBreakdownBucket, 
 	return model.UsageBreakdownBucket{}
 }
 
+func findProjectUsageBreakdownBucket(t *testing.T, items []model.UsageBreakdownBucket, projectPath string) model.UsageBreakdownBucket {
+	t.Helper()
+	for _, item := range items {
+		if item.ProjectPath == projectPath {
+			return item
+		}
+	}
+	t.Fatalf("usage breakdown bucket project=%q missing: %+v", projectPath, items)
+	return model.UsageBreakdownBucket{}
+}
+
 func assertCostUSD(t *testing.T, got *float64, want float64) {
 	t.Helper()
 	if got == nil || math.Abs(*got-want) > 0.000001 {
@@ -1179,6 +1289,13 @@ func insertTokenAnalyticsSession(t *testing.T, conn *sql.DB, sourceID int64, sta
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"session", sessionID, usageModel, inputTokens, cachedInputTokens, outputTokens, reasoningTokens, totalTokens, usageSource)
 	return sessionID
+}
+
+func setSessionProjectPath(t *testing.T, conn *sql.DB, sessionID int64, projectPath string) {
+	t.Helper()
+	if _, err := conn.Exec(`UPDATE sessions SET project_path = ? WHERE id = ?`, projectPath, sessionID); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func insertOverviewUsageSession(t *testing.T, conn *sql.DB, sourceID int64, started time.Time, key, sessionModel, usageModel, usageSource string, inputTokens, cachedInputTokens, outputTokens, totalTokens int64) int64 {

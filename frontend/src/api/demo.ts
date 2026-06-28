@@ -470,6 +470,11 @@ function groupedBy<T>(items: T[], keyFor: (item: T) => string): Map<string, T[]>
   return groups
 }
 
+function projectPathKey(value: string): string {
+  const normalized = value.trim().replace(/[\\/]\.$/, '').replace(/[\\/]+$/, '')
+  return normalized ? normalized.toLowerCase() : 'unknown'
+}
+
 function modelUsageFor(items: Session[]): ModelUsage[] {
   return [...groupedBy(items, (session) => session.model)].map(([model, group]) => ({
     model,
@@ -515,15 +520,21 @@ function costSum(items: Session[]): number | undefined {
 }
 
 function dailyUsageFor(items: Session[]): DailyUsage[] {
-  return [...groupedBy(items, (session) => session.startedAt.slice(0, 10))].map(([date, group]) => ({
-    date,
-    sessionCount: group.length,
-    totalTokens: sum(group, (session) => session.tokenUsage.totalTokens),
-    inputTokens: sum(group, (session) => session.tokenUsage.inputTokens),
-    outputTokens: sum(group, (session) => session.tokenUsage.outputTokens),
-    toolCalls: sum(group, (session) => session.toolCallCount),
-    estimatedCostUsd: costSum(group)
-  })).sort((left, right) => left.date.localeCompare(right.date))
+  return [...groupedBy(items, (session) => session.startedAt.slice(0, 10))].map(([date, group]) => {
+    const inputTokens = sum(group, (session) => session.tokenUsage.inputTokens)
+    const cachedInputTokens = sum(group, (session) => session.tokenUsage.cachedInputTokens)
+    return {
+      date,
+      sessionCount: group.length,
+      totalTokens: sum(group, (session) => session.tokenUsage.totalTokens),
+      inputTokens,
+      cachedInputTokens,
+      outputTokens: sum(group, (session) => session.tokenUsage.outputTokens),
+      cacheUtilizationRate: inputTokens > 0 ? cachedInputTokens / inputTokens : 0,
+      toolCalls: sum(group, (session) => session.toolCallCount),
+      estimatedCostUsd: costSum(group)
+    }
+  }).sort((left, right) => left.date.localeCompare(right.date))
 }
 
 function filteredToolCalls(filters: ToolCallFilters = {}): ToolCall[] {
@@ -636,6 +647,11 @@ function breakdown(filters: UsageBreakdownFilters): UsageBreakdown {
     })
   } else if (filters.groupBy === 'model') {
     groupedBy(scoped, (session) => session.model).forEach((group, model) => buckets.push(bucketFor(group, { model })))
+  } else if (filters.groupBy === 'project') {
+    groupedBy(scoped, (session) => projectPathKey(session.projectPath || session.rawSourcePath)).forEach((group) => {
+      const projectPath = group[0].projectPath || group[0].rawSourcePath
+      buckets.push(bucketFor(group, { projectPath }))
+    })
   } else if (filters.groupBy === 'agent') {
     groupedBy(scoped, (session) => session.sourceKey || session.agentKind).forEach((group) => {
       const first = group[0]

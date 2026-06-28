@@ -10,6 +10,7 @@ import (
 
 	"AgentMeter/internal/model"
 	"AgentMeter/internal/pricing"
+	"AgentMeter/internal/sourcepath"
 )
 
 const usageSessionModelExpr = "COALESCE(NULLIF(tu.model, ''), s.model)"
@@ -186,6 +187,7 @@ func (s *Service) dailyUsageWithFilters(ctx context.Context, filters model.Analy
 			COUNT(*) AS session_count,
 			COALESCE(SUM(tu.total_tokens), 0) AS total_tokens,
 			COALESCE(SUM(tu.input_tokens), 0) AS input_tokens,
+			COALESCE(SUM(tu.cached_input_tokens), 0) AS cached_input_tokens,
 			COALESCE(SUM(tu.output_tokens), 0) AS output_tokens,
 			COALESCE(SUM((SELECT COUNT(*) FROM tool_calls tc WHERE tc.session_id = s.id)), 0) AS tool_calls
 		FROM sessions s
@@ -203,8 +205,11 @@ func (s *Service) dailyUsageWithFilters(ctx context.Context, filters model.Analy
 	var result []model.DailyUsage
 	for rows.Next() {
 		var item model.DailyUsage
-		if err := rows.Scan(&item.Date, &item.SessionCount, &item.TotalTokens, &item.InputTokens, &item.OutputTokens, &item.ToolCalls); err != nil {
+		if err := rows.Scan(&item.Date, &item.SessionCount, &item.TotalTokens, &item.InputTokens, &item.CachedInputTokens, &item.OutputTokens, &item.ToolCalls); err != nil {
 			return nil, err
+		}
+		if item.InputTokens > 0 {
+			item.CacheUtilizationRate = float64(item.CachedInputTokens) / float64(item.InputTokens)
 		}
 		result = append(result, item)
 	}
@@ -456,6 +461,7 @@ func (s *Service) UsageBreakdown(ctx context.Context, groupBy string, filters mo
 			&bucket.AgentKind,
 			&bucket.AgentName,
 			&bucket.Model,
+			&bucket.ProjectPath,
 			&bucket.Date,
 			&pricingModel,
 			&bucket.SessionCount,
@@ -478,6 +484,7 @@ func (s *Service) UsageBreakdown(ctx context.Context, groupBy string, filters mo
 				AgentKind:          bucket.AgentKind,
 				AgentName:          bucket.AgentName,
 				Model:              bucket.Model,
+				ProjectPath:        bucket.ProjectPath,
 				Date:               bucket.Date,
 			}
 			fillBreakdownSourceIdentity(target)
@@ -527,7 +534,7 @@ func usageBreakdownShapeFor(groupBy string) (usageBreakdownShape, error) {
 		return usageBreakdownShape{
 			groupBy: "agent",
 			selectSQL: `src.id, src.root_path, src.sessions_path, src.kind, src.name,
-				'' AS model, '' AS day, ` + usageSessionModelExpr + ` AS pricing_model`,
+				'' AS model, '' AS project_path, '' AS day, ` + usageSessionModelExpr + ` AS pricing_model`,
 			groupSQL: "src.id, " + usageSessionModelExpr,
 			orderSQL: "src.name ASC, SUM(COALESCE(tu.total_tokens, 0)) DESC",
 		}, nil
@@ -535,7 +542,7 @@ func usageBreakdownShapeFor(groupBy string) (usageBreakdownShape, error) {
 		return usageBreakdownShape{
 			groupBy: "model",
 			selectSQL: `0 AS source_id, '' AS source_root_path, '' AS source_sessions_path, '' AS agent_kind, '' AS agent_name,
-				` + usageSessionModelExpr + ` AS model, '' AS day, ` + usageSessionModelExpr + ` AS pricing_model`,
+				` + usageSessionModelExpr + ` AS model, '' AS project_path, '' AS day, ` + usageSessionModelExpr + ` AS pricing_model`,
 			groupSQL: usageSessionModelExpr,
 			orderSQL: "SUM(COALESCE(tu.total_tokens, 0)) DESC, " + usageSessionModelExpr + " ASC",
 		}, nil
@@ -543,15 +550,23 @@ func usageBreakdownShapeFor(groupBy string) (usageBreakdownShape, error) {
 		return usageBreakdownShape{
 			groupBy: "agent,model",
 			selectSQL: `src.id, src.root_path, src.sessions_path, src.kind, src.name,
-				` + usageSessionModelExpr + ` AS model, '' AS day, ` + usageSessionModelExpr + ` AS pricing_model`,
+				` + usageSessionModelExpr + ` AS model, '' AS project_path, '' AS day, ` + usageSessionModelExpr + ` AS pricing_model`,
 			groupSQL: "src.id, " + usageSessionModelExpr,
 			orderSQL: "SUM(COALESCE(tu.total_tokens, 0)) DESC, src.name ASC, " + usageSessionModelExpr + " ASC",
+		}, nil
+	case "project":
+		return usageBreakdownShape{
+			groupBy: "project",
+			selectSQL: `0 AS source_id, '' AS source_root_path, '' AS source_sessions_path, '' AS agent_kind, '' AS agent_name,
+				'' AS model, s.project_path AS project_path, '' AS day, ` + usageSessionModelExpr + ` AS pricing_model`,
+			groupSQL: "s.project_path, " + usageSessionModelExpr,
+			orderSQL: "SUM(COALESCE(tu.total_tokens, 0)) DESC, s.project_path ASC",
 		}, nil
 	case "day":
 		return usageBreakdownShape{
 			groupBy: "day",
 			selectSQL: `0 AS source_id, '' AS source_root_path, '' AS source_sessions_path, '' AS agent_kind, '' AS agent_name,
-				'' AS model, substr(s.started_at, 1, 10) AS day, ` + usageSessionModelExpr + ` AS pricing_model`,
+				'' AS model, '' AS project_path, substr(s.started_at, 1, 10) AS day, ` + usageSessionModelExpr + ` AS pricing_model`,
 			groupSQL: "substr(s.started_at, 1, 10), " + usageSessionModelExpr,
 			orderSQL: "day ASC, SUM(COALESCE(tu.total_tokens, 0)) DESC",
 		}, nil
@@ -568,6 +583,8 @@ func usageBreakdownBucketKey(groupBy string, bucket model.UsageBreakdownBucket) 
 		return bucket.Model
 	case "agent,model":
 		return strconv.FormatInt(bucket.SourceID, 10) + "\x00" + bucket.Model
+	case "project":
+		return sourcepath.Key(sourcepath.Normalize(bucket.ProjectPath))
 	case "day":
 		return bucket.Date
 	default:
@@ -687,6 +704,11 @@ func sortUsageBreakdownBuckets(buckets []model.UsageBreakdownBucket, groupBy str
 				return left.SourceLabel < right.SourceLabel
 			}
 			return left.Model < right.Model
+		case "project":
+			if left.TotalTokens != right.TotalTokens {
+				return left.TotalTokens > right.TotalTokens
+			}
+			return sourcepath.Key(sourcepath.Normalize(left.ProjectPath)) < sourcepath.Key(sourcepath.Normalize(right.ProjectPath))
 		default:
 			if left.TotalTokens != right.TotalTokens {
 				return left.TotalTokens > right.TotalTokens

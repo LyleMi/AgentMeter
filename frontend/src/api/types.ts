@@ -52,7 +52,9 @@ export interface DailyUsage {
   sessionCount: number
   totalTokens: number
   inputTokens: number
+  cachedInputTokens: number
   outputTokens: number
+  cacheUtilizationRate: number
   toolCalls: number
   estimatedCostUsd?: number
 }
@@ -76,7 +78,7 @@ export interface UsageScopeFilters {
   to?: string
 }
 
-export type UsageBreakdownGroupBy = 'agent' | 'model' | 'agent,model' | 'day'
+export type UsageBreakdownGroupBy = 'agent' | 'model' | 'agent,model' | 'day' | 'project'
 
 export interface UsageBreakdownFilters extends UsageScopeFilters {
   groupBy: UsageBreakdownGroupBy
@@ -92,6 +94,7 @@ export interface UsageBreakdownBucket extends SourceIdentity {
   agentName?: string
   model?: string
   date?: string
+  projectPath?: string
   sessionCount: number
   totalTokens: number
   inputTokens: number
