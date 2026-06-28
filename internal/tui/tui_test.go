@@ -277,7 +277,7 @@ func TestToolsOpenToolCallsAndDetail(t *testing.T) {
 
 func TestModelSignalsLoadsAndRenders(t *testing.T) {
 	svc := sampleService()
-	st := newState(svc, 120, 60)
+	st := newState(svc, 180, 60)
 
 	cmd, quit := st.update(keyMsg{typ: keyRune, ch: 'm'})
 	if quit {
@@ -289,13 +289,109 @@ func TestModelSignalsLoadsAndRenders(t *testing.T) {
 	assertContains(t, view, "Model Signals")
 	assertContains(t, view, "Health:")
 	assertContains(t, view, "warning")
+	assertContains(t, view, "Metric Explorer")
+	assertContains(t, view, "P90 latency")
+	assertContains(t, view, "Cache savings")
+	assertContains(t, view, "Failure pressure")
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: ']'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	if cmd != nil {
+		t.Fatal("model signal tab switch returned a command")
+	}
+	view = st.view()
 	assertContains(t, view, "Model Breakdown")
 	assertContains(t, view, "gpt-5-codex")
 	assertContains(t, view, "Top Drift Cohorts")
 	assertContains(t, view, "Tool failures above baseline")
+
+	st.update(keyMsg{typ: keyRune, ch: ']'})
+	view = st.view()
 	assertContains(t, view, "Daily Efficiency")
+	assertContains(t, view, "Cost/H")
+	assertContains(t, view, "P90/P50")
+
+	st.update(keyMsg{typ: keyRune, ch: ']'})
+	st.update(keyMsg{typ: keyRune, ch: ']'})
+	view = st.view()
+	assertContains(t, view, "Source Model Matrix")
+	assertContains(t, view, "RiskLvl")
+	assertContains(t, view, "gpt-5-codex")
+
+	st.update(keyMsg{typ: keyRune, ch: ']'})
+	view = st.view()
 	assertContains(t, view, "Project Hotspots")
+
+	st.update(keyMsg{typ: keyRune, ch: ']'})
+	view = st.view()
 	assertContains(t, view, "Anomaly Sessions")
+	assertContains(t, view, "Output")
+	assertContains(t, view, "Started")
+}
+
+func TestModelSignalTabNavigationWrapsAndResetsScroll(t *testing.T) {
+	svc := sampleService()
+	st := newState(svc, 100, 24)
+
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: 'm'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+
+	st.scroll = 5
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: '['})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	if cmd != nil {
+		t.Fatal("tab switch returned a command")
+	}
+	if st.modelSignalsTab != modelSignalsTabAnomalies {
+		t.Fatalf("tab = %s, want Anomalies", st.modelSignalsTab.title())
+	}
+	if st.scroll != 0 {
+		t.Fatalf("scroll = %d, want reset to 0", st.scroll)
+	}
+
+	st.update(keyMsg{typ: keyRune, ch: 'h'})
+	if st.modelSignalsTab != modelSignalsTabProjects {
+		t.Fatalf("tab = %s, want Projects", st.modelSignalsTab.title())
+	}
+	st.update(keyMsg{typ: keyRune, ch: 'l'})
+	if st.modelSignalsTab != modelSignalsTabAnomalies {
+		t.Fatalf("tab = %s, want Anomalies", st.modelSignalsTab.title())
+	}
+	st.update(keyMsg{typ: keyRune, ch: ']'})
+	if st.modelSignalsTab != modelSignalsTabCharts {
+		t.Fatalf("tab = %s, want Charts", st.modelSignalsTab.title())
+	}
+}
+
+func TestModelSignalsNarrowWidthViewsRender(t *testing.T) {
+	svc := sampleService()
+	st := newState(svc, 80, 24)
+
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: 'm'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+
+	for _, want := range []string{
+		"Metric Explorer",
+		"Health Overview",
+		"Daily Efficiency",
+		"Top Drift Cohorts",
+		"Source Model Matrix",
+		"Project Hotspots",
+		"Anomaly Sessions",
+	} {
+		assertContains(t, st.view(), want)
+		st.update(keyMsg{typ: keyRune, ch: ']'})
+	}
 }
 
 func TestToolsAndToolCallsKeepSelectedRowVisible(t *testing.T) {

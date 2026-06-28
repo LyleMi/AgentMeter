@@ -37,6 +37,49 @@ const (
 	pagePrivacy
 )
 
+type modelSignalsTab int
+
+const (
+	modelSignalsTabCharts modelSignalsTab = iota
+	modelSignalsTabOverview
+	modelSignalsTabDaily
+	modelSignalsTabCohorts
+	modelSignalsTabMatrix
+	modelSignalsTabProjects
+	modelSignalsTabAnomalies
+)
+
+var modelSignalsTabs = []modelSignalsTab{
+	modelSignalsTabCharts,
+	modelSignalsTabOverview,
+	modelSignalsTabDaily,
+	modelSignalsTabCohorts,
+	modelSignalsTabMatrix,
+	modelSignalsTabProjects,
+	modelSignalsTabAnomalies,
+}
+
+func (t modelSignalsTab) title() string {
+	switch t {
+	case modelSignalsTabCharts:
+		return "Charts"
+	case modelSignalsTabOverview:
+		return "Overview"
+	case modelSignalsTabDaily:
+		return "Daily"
+	case modelSignalsTabCohorts:
+		return "Cohorts"
+	case modelSignalsTabMatrix:
+		return "Matrix"
+	case modelSignalsTabProjects:
+		return "Projects"
+	case modelSignalsTabAnomalies:
+		return "Anomalies"
+	default:
+		return "Charts"
+	}
+}
+
 func (p page) title() string {
 	switch p {
 	case pageOverview:
@@ -167,6 +210,8 @@ type state struct {
 	privacyTarget   int
 	privacyPending  *privacyProfileAction
 	privacyApplying bool
+
+	modelSignalsTab modelSignalsTab
 }
 
 func newState(service appService, width, height int) *state {
@@ -327,6 +372,14 @@ func (s *state) handleKey(k keyMsg) (command, bool) {
 			if s.page == pageToolCalls {
 				return s.switchPage(pageTools), false
 			}
+		case '[', 'h', 'H':
+			if s.page == pageModelSignals {
+				s.cycleModelSignalsTab(-1)
+			}
+		case ']', 'l', 'L':
+			if s.page == pageModelSignals {
+				s.cycleModelSignalsTab(1)
+			}
 		}
 	}
 
@@ -379,6 +432,26 @@ func (s *state) handleKey(k keyMsg) (command, bool) {
 		}
 	}
 	return nil, false
+}
+
+func (s *state) cycleModelSignalsTab(delta int) {
+	if delta == 0 {
+		return
+	}
+	index := 0
+	for i, tab := range modelSignalsTabs {
+		if tab == s.modelSignalsTab {
+			index = i
+			break
+		}
+	}
+	index = (index + delta) % len(modelSignalsTabs)
+	if index < 0 {
+		index += len(modelSignalsTabs)
+	}
+	s.modelSignalsTab = modelSignalsTabs[index]
+	s.scroll = 0
+	s.status = "model signals tab: " + s.modelSignalsTab.title()
 }
 
 func (s *state) switchPage(target page) command {
@@ -602,7 +675,7 @@ func (s *state) itemCount() int {
 		}
 		return len(toolCallDetailLines(*s.toolCall, s.width))
 	case pageModelSignals:
-		return len(modelSignalLines(s.signals, s.width))
+		return len(modelSignalLines(s.signals, s.width, s.modelSignalsTab))
 	case pageSettings:
 		return len(settingsLines(s.settings, s.width))
 	case pagePrivacy:

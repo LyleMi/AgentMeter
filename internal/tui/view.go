@@ -69,6 +69,7 @@ func (s *state) headerLine() string {
 	case pageModelSignals:
 		summary := s.signals.HealthSummary
 		parts = append(parts,
+			"tab "+s.modelSignalsTab.title(),
 			"health "+modelSignalSeverityLabel(summary.Severity),
 			fmt.Sprintf("%s sessions", formatInt(int64(s.signals.TotalSessions))),
 			fmt.Sprintf("%s calls", formatInt(int64(s.signals.TotalModelCalls))),
@@ -146,7 +147,7 @@ func (s *state) footerLine() string {
 	case pageToolCallDetail:
 		text = "Keys: b/esc calls  up/down scroll  r refresh  i update index  I rebuild index  q quit"
 	case pageModelSignals:
-		text = "Keys: up/down scroll  tab cycle  r refresh  i update index  I rebuild index  q quit"
+		text = "Keys: [/]/h/l signal tabs  up/down scroll  tab cycle pages  r refresh  i update index  I rebuild index  q quit"
 	case pagePrivacy:
 		if s.privacyPending != nil {
 			text = "Keys: enter write profile  esc cancel  q quit"
