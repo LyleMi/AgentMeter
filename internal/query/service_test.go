@@ -197,6 +197,134 @@ func TestOverviewPricingIgnoresZeroTokenUnknownUsage(t *testing.T) {
 	}
 }
 
+func TestOverviewReturnsEmptyArraysWithoutSessions(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	overview, err := New(conn).Overview(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if overview.TotalSessions != 0 || overview.TotalWallDurationMS != 0 || overview.TotalToolCalls != 0 {
+		t.Fatalf("empty overview totals = %+v", overview)
+	}
+	if overview.DailyUsage == nil || overview.ModelUsage == nil || overview.AgentUsage == nil || overview.RecentSessions == nil {
+		t.Fatalf("legacy overview slices should be empty arrays, got %+v", overview)
+	}
+	if overview.ToolTimeLeaders == nil || overview.AgentTimeUsage == nil || overview.ModelTimeUsage == nil || overview.SlowSessions == nil {
+		t.Fatalf("time-analysis overview slices should be empty arrays, got %+v", overview)
+	}
+}
+
+func TestOverviewTimeAnalysisAggregates(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	codexSourceID := insertTimeSource(t, conn, "codex", "Codex", now)
+	claudeSourceID := insertTimeSource(t, conn, "claude", "Claude Code", now)
+
+	sessionA := insertOverviewTimeSession(t, conn, codexSourceID, now, "session-a", "gpt-5", 10_000, 7_000, 4_000, 2_000, 3_000, 1_000)
+	sessionB := insertOverviewTimeSession(t, conn, codexSourceID, now.Add(time.Minute), "session-b", "gpt-5", 20_000, 15_000, 10_000, 4_000, 5_000, 2_000)
+	sessionC := insertOverviewTimeSession(t, conn, claudeSourceID, now.Add(2*time.Minute), "session-c", "claude-sonnet", 15_000, 10_000, 8_000, 1_000, 5_000, 300)
+
+	insertOverviewToolCall(t, conn, sessionA, now, 1_200, "shell_command", "completed", "curl https://example.com")
+	insertOverviewToolCall(t, conn, sessionA, now.Add(time.Second), 300, "shell_command", "failed", "go test ./...")
+	insertOverviewToolCall(t, conn, sessionB, now.Add(time.Minute), 2_500, "web.run", "completed", "search latest docs")
+	insertOverviewToolCall(t, conn, sessionB, now.Add(time.Minute+time.Second), 700, "read_file", "success", "internal/query/service.go")
+	insertOverviewToolCall(t, conn, sessionC, now.Add(2*time.Minute), 900, "Bash", "failed", "npm ci")
+
+	overview, err := New(conn).Overview(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if overview.TotalSessions != 3 || overview.TotalWallDurationMS != 45_000 || overview.TotalActiveDurationMS != 32_000 {
+		t.Fatalf("overview duration totals = %+v", overview)
+	}
+	if overview.TotalModelDurationMS != 22_000 || overview.TotalToolDurationMS != 7_000 || overview.TotalIdleDurationMS != 13_000 {
+		t.Fatalf("overview time attribution totals = %+v", overview)
+	}
+	if overview.TotalTokens != 3_300 || overview.TotalToolCalls != 5 {
+		t.Fatalf("overview legacy totals changed = %+v", overview)
+	}
+	if overview.SuspectedNetworkToolDurationMS != 4_600 || overview.SuspectedNetworkToolCalls != 3 {
+		t.Fatalf("suspected network totals = duration %d calls %d", overview.SuspectedNetworkToolDurationMS, overview.SuspectedNetworkToolCalls)
+	}
+	if overview.SuspectedNetworkToolDurationMS < 0 || overview.SuspectedNetworkToolDurationMS > overview.TotalToolDurationMS {
+		t.Fatalf("suspected network duration is not a subset of total tool duration: %+v", overview)
+	}
+
+	if len(overview.ToolTimeLeaders) < 4 {
+		t.Fatalf("tool time leaders = %+v", overview.ToolTimeLeaders)
+	}
+	wantToolOrder := []string{"web.run", "shell_command", "Bash", "read_file"}
+	for index, want := range wantToolOrder {
+		if overview.ToolTimeLeaders[index].ToolName != want {
+			t.Fatalf("tool time leader %d = %s, want %s: %+v", index, overview.ToolTimeLeaders[index].ToolName, want, overview.ToolTimeLeaders)
+		}
+	}
+	shellUsage := findToolTimeUsage(t, overview.ToolTimeLeaders, "shell_command")
+	if shellUsage.Calls != 2 || shellUsage.SuccessCalls != 1 || shellUsage.FailedCalls != 1 || shellUsage.TotalDurationMS != 1_500 || shellUsage.AvgDurationMS != 750 || shellUsage.MaxDurationMS != 1_200 || !shellUsage.SuspectedNetwork {
+		t.Fatalf("shell tool time usage = %+v", shellUsage)
+	}
+
+	if len(overview.SlowSessions) != 3 || overview.SlowSessions[0].ID != sessionB || overview.SlowSessions[1].ID != sessionC || overview.SlowSessions[2].ID != sessionA {
+		t.Fatalf("slow sessions = %+v", overview.SlowSessions)
+	}
+
+	codexTime := findAgentTimeUsage(t, overview.AgentTimeUsage, "codex", "Codex")
+	if codexTime.SessionCount != 2 || codexTime.ToolCalls != 4 || codexTime.WallDurationMS != 30_000 || codexTime.ActiveDurationMS != 22_000 ||
+		codexTime.ModelDurationMS != 14_000 || codexTime.ToolDurationMS != 6_000 || codexTime.IdleDurationMS != 8_000 || codexTime.SuspectedNetworkToolDurationMS != 3_700 {
+		t.Fatalf("codex agent time usage = %+v", codexTime)
+	}
+	claudeTime := findAgentTimeUsage(t, overview.AgentTimeUsage, "claude", "Claude Code")
+	if claudeTime.SessionCount != 1 || claudeTime.ToolCalls != 1 || claudeTime.SuspectedNetworkToolDurationMS != 900 {
+		t.Fatalf("claude agent time usage = %+v", claudeTime)
+	}
+
+	gptTime := findModelTimeUsage(t, overview.ModelTimeUsage, "gpt-5")
+	if gptTime.SessionCount != 2 || gptTime.TotalTokens != 3_000 || gptTime.WallDurationMS != 30_000 || gptTime.ActiveDurationMS != 22_000 ||
+		gptTime.ModelDurationMS != 14_000 || gptTime.ToolDurationMS != 6_000 || gptTime.IdleDurationMS != 8_000 {
+		t.Fatalf("gpt model time usage = %+v", gptTime)
+	}
+	claudeModelTime := findModelTimeUsage(t, overview.ModelTimeUsage, "claude-sonnet")
+	if claudeModelTime.SessionCount != 1 || claudeModelTime.TotalTokens != 300 || claudeModelTime.WallDurationMS != 15_000 {
+		t.Fatalf("claude model time usage = %+v", claudeModelTime)
+	}
+}
+
+func TestSuspectedNetworkToolHeuristic(t *testing.T) {
+	tests := []struct {
+		name         string
+		toolName     string
+		inputSummary string
+		want         bool
+	}{
+		{name: "http url", toolName: "shell_command", inputSummary: "curl https://example.com", want: true},
+		{name: "git pull", toolName: "Bash", inputSummary: "git pull --ff-only", want: true},
+		{name: "package install", toolName: "shell_command", inputSummary: "go mod download", want: true},
+		{name: "web tool", toolName: "web.run", inputSummary: "search query", want: true},
+		{name: "go test", toolName: "shell_command", inputSummary: "go test ./...", want: false},
+		{name: "git status", toolName: "Bash", inputSummary: "git status --short", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isSuspectedNetworkTool(tt.toolName, tt.inputSummary); got != tt.want {
+				t.Fatalf("isSuspectedNetworkTool(%q, %q) = %v, want %v", tt.toolName, tt.inputSummary, got, tt.want)
+			}
+		})
+	}
+}
+
 func assertToolCallDetail(t *testing.T, call model.ToolCall, sessionID, startEventID, endEventID int64) {
 	t.Helper()
 	if call.SessionID != sessionID || call.SessionKey != "session-key" || call.ProjectPath != "/workspace/project" {
@@ -211,6 +339,75 @@ func assertToolCallDetail(t *testing.T, call model.ToolCall, sessionID, startEve
 	if call.RawStartEventJSON == "" || call.RawEndEventJSON == "" {
 		t.Fatalf("raw event json missing = %+v", call)
 	}
+}
+
+func insertTimeSource(t *testing.T, conn *sql.DB, kind, name string, now time.Time) int64 {
+	t.Helper()
+	return insertRow(t, conn, `INSERT INTO sources
+		(kind, name, root_path, sessions_path, platform, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		kind, name, "/workspace", "/workspace/"+kind+"/sessions", "test", db.FormatTime(now), db.FormatTime(now))
+}
+
+func insertOverviewTimeSession(t *testing.T, conn *sql.DB, sourceID int64, started time.Time, key, sessionModel string, wallDurationMS, activeDurationMS, modelDurationMS, toolDurationMS, idleDurationMS, totalTokens int64) int64 {
+	t.Helper()
+	sourceFileID := insertRow(t, conn, `INSERT INTO source_files
+		(source_id, path, size_bytes, modified_at, content_hash, last_scanned_at, scan_status, error)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		sourceID, "/workspace/.codex/sessions/"+key+".jsonl", 128, db.FormatTime(started), "hash-"+key, db.FormatTime(started), "indexed", "")
+	sessionID := insertRow(t, conn, `INSERT INTO sessions
+		(source_id, source_file_id, session_key, codex_session_id, project_path, model, model_provider, originator, thread_source, agent_nickname, agent_role,
+		 started_at, ended_at, wall_duration_ms, active_duration_ms, model_duration_ms, tool_duration_ms, idle_duration_ms, event_count, parse_status)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		sourceID, sourceFileID, key, "codex-"+key, "/workspace/project", sessionModel, "openai", "cli", "local", "", "",
+		db.FormatTime(started), db.FormatTime(started.Add(time.Duration(wallDurationMS)*time.Millisecond)),
+		wallDurationMS, activeDurationMS, modelDurationMS, toolDurationMS, idleDurationMS, 1, "ok")
+	insertRow(t, conn, `INSERT INTO token_usage
+		(owner_kind, owner_id, model, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, source)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"session", sessionID, sessionModel, totalTokens, 0, 0, 0, totalTokens, "actual")
+	return sessionID
+}
+
+func insertOverviewToolCall(t *testing.T, conn *sql.DB, sessionID int64, started time.Time, durationMS int64, toolName, status, inputSummary string) int64 {
+	t.Helper()
+	return insertRow(t, conn, `INSERT INTO tool_calls
+		(session_id, started_at, ended_at, duration_ms, tool_name, status, input_summary, output_summary, error, raw_event_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		sessionID, db.FormatTime(started), db.FormatTime(started.Add(time.Duration(durationMS)*time.Millisecond)), durationMS, toolName, status, inputSummary, "output", "", 0)
+}
+
+func findToolTimeUsage(t *testing.T, items []model.ToolTimeUsage, toolName string) model.ToolTimeUsage {
+	t.Helper()
+	for _, item := range items {
+		if item.ToolName == toolName {
+			return item
+		}
+	}
+	t.Fatalf("tool time usage for %s missing: %+v", toolName, items)
+	return model.ToolTimeUsage{}
+}
+
+func findAgentTimeUsage(t *testing.T, items []model.AgentTimeUsage, agentKind, agentName string) model.AgentTimeUsage {
+	t.Helper()
+	for _, item := range items {
+		if item.AgentKind == agentKind && item.AgentName == agentName {
+			return item
+		}
+	}
+	t.Fatalf("agent time usage for %s/%s missing: %+v", agentKind, agentName, items)
+	return model.AgentTimeUsage{}
+}
+
+func findModelTimeUsage(t *testing.T, items []model.ModelTimeUsage, modelName string) model.ModelTimeUsage {
+	t.Helper()
+	for _, item := range items {
+		if item.Model == modelName {
+			return item
+		}
+	}
+	t.Fatalf("model time usage for %s missing: %+v", modelName, items)
+	return model.ModelTimeUsage{}
 }
 
 func insertToolCallFixture(t *testing.T, conn *sql.DB, kind, name string, started time.Time, duration time.Duration, toolName string) int64 {

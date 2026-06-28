@@ -180,22 +180,66 @@ type AgentUsage struct {
 	Unpriced         bool     `json:"unpriced"`
 }
 
+type ToolTimeUsage struct {
+	ToolName         string  `json:"toolName"`
+	Calls            int     `json:"calls"`
+	SuccessCalls     int     `json:"successCalls"`
+	FailedCalls      int     `json:"failedCalls"`
+	TotalDurationMS  int64   `json:"totalDurationMs"`
+	AvgDurationMS    float64 `json:"avgDurationMs"`
+	MaxDurationMS    int64   `json:"maxDurationMs"`
+	SuspectedNetwork bool    `json:"suspectedNetwork"`
+}
+
+type AgentTimeUsage struct {
+	AgentKind                      string `json:"agentKind"`
+	AgentName                      string `json:"agentName"`
+	SessionCount                   int    `json:"sessionCount"`
+	ToolCalls                      int    `json:"toolCalls"`
+	WallDurationMS                 int64  `json:"wallDurationMs"`
+	ActiveDurationMS               int64  `json:"activeDurationMs"`
+	ModelDurationMS                int64  `json:"modelDurationMs"`
+	ToolDurationMS                 int64  `json:"toolDurationMs"`
+	IdleDurationMS                 int64  `json:"idleDurationMs"`
+	SuspectedNetworkToolDurationMS int64  `json:"suspectedNetworkToolDurationMs"`
+}
+
+type ModelTimeUsage struct {
+	Model            string `json:"model"`
+	SessionCount     int    `json:"sessionCount"`
+	TotalTokens      int64  `json:"totalTokens"`
+	WallDurationMS   int64  `json:"wallDurationMs"`
+	ActiveDurationMS int64  `json:"activeDurationMs"`
+	ModelDurationMS  int64  `json:"modelDurationMs"`
+	ToolDurationMS   int64  `json:"toolDurationMs"`
+	IdleDurationMS   int64  `json:"idleDurationMs"`
+}
+
 type Overview struct {
-	TotalSessions          int          `json:"totalSessions"`
-	TotalInputTokens       int64        `json:"totalInputTokens"`
-	TotalCachedInputTokens int64        `json:"totalCachedInputTokens"`
-	TotalOutputTokens      int64        `json:"totalOutputTokens"`
-	TotalReasoningTokens   int64        `json:"totalReasoningTokens"`
-	TotalTokens            int64        `json:"totalTokens"`
-	EstimatedCostUSD       *float64     `json:"estimatedCostUsd,omitempty"`
-	UnpricedSessions       int          `json:"unpricedSessions"`
-	TotalWallDurationMS    int64        `json:"totalWallDurationMs"`
-	TotalActiveDurationMS  int64        `json:"totalActiveDurationMs"`
-	TotalToolCalls         int          `json:"totalToolCalls"`
-	DailyUsage             []DailyUsage `json:"dailyUsage"`
-	ModelUsage             []ModelUsage `json:"modelUsage"`
-	AgentUsage             []AgentUsage `json:"agentUsage"`
-	RecentSessions         []Session    `json:"recentSessions"`
+	TotalSessions                  int              `json:"totalSessions"`
+	TotalInputTokens               int64            `json:"totalInputTokens"`
+	TotalCachedInputTokens         int64            `json:"totalCachedInputTokens"`
+	TotalOutputTokens              int64            `json:"totalOutputTokens"`
+	TotalReasoningTokens           int64            `json:"totalReasoningTokens"`
+	TotalTokens                    int64            `json:"totalTokens"`
+	EstimatedCostUSD               *float64         `json:"estimatedCostUsd,omitempty"`
+	UnpricedSessions               int              `json:"unpricedSessions"`
+	TotalWallDurationMS            int64            `json:"totalWallDurationMs"`
+	TotalActiveDurationMS          int64            `json:"totalActiveDurationMs"`
+	TotalModelDurationMS           int64            `json:"totalModelDurationMs"`
+	TotalToolDurationMS            int64            `json:"totalToolDurationMs"`
+	TotalIdleDurationMS            int64            `json:"totalIdleDurationMs"`
+	TotalToolCalls                 int              `json:"totalToolCalls"`
+	SuspectedNetworkToolDurationMS int64            `json:"suspectedNetworkToolDurationMs"`
+	SuspectedNetworkToolCalls      int              `json:"suspectedNetworkToolCalls"`
+	DailyUsage                     []DailyUsage     `json:"dailyUsage"`
+	ModelUsage                     []ModelUsage     `json:"modelUsage"`
+	AgentUsage                     []AgentUsage     `json:"agentUsage"`
+	ToolTimeLeaders                []ToolTimeUsage  `json:"toolTimeLeaders"`
+	AgentTimeUsage                 []AgentTimeUsage `json:"agentTimeUsage"`
+	ModelTimeUsage                 []ModelTimeUsage `json:"modelTimeUsage"`
+	RecentSessions                 []Session        `json:"recentSessions"`
+	SlowSessions                   []Session        `json:"slowSessions"`
 }
 
 type ToolStat struct {
@@ -342,20 +386,20 @@ type PrivacyConfigSummary struct {
 }
 
 type PrivacyConfigSetting struct {
-	ID               string `json:"id"`
-	Group            string `json:"group"`
-	Title            string `json:"title"`
-	Description      string `json:"description"`
-	Key              string `json:"key"`
-	DesiredValue     any    `json:"desiredValue"`
-	StrictValue      any    `json:"strictValue"`
-	ValueType        string `json:"valueType"`
-	Configured       bool   `json:"configured"`
-	SupportsUnset    bool   `json:"supportsUnset"`
-	CurrentValue     any    `json:"currentValue"`
-	Status           string `json:"status"`
-	Impact           string `json:"impact"`
-	CanApply         bool   `json:"canApply"`
+	ID            string `json:"id"`
+	Group         string `json:"group"`
+	Title         string `json:"title"`
+	Description   string `json:"description"`
+	Key           string `json:"key"`
+	DesiredValue  any    `json:"desiredValue"`
+	StrictValue   any    `json:"strictValue"`
+	ValueType     string `json:"valueType"`
+	Configured    bool   `json:"configured"`
+	SupportsUnset bool   `json:"supportsUnset"`
+	CurrentValue  any    `json:"currentValue"`
+	Status        string `json:"status"`
+	Impact        string `json:"impact"`
+	CanApply      bool   `json:"canApply"`
 }
 
 type PrivacyConfigEdit struct {

@@ -11,7 +11,8 @@ to validate a state-changing flow.
 - Do not click **Update Index**, **Rebuild Index**, save settings, or change
   agent privacy settings during routine smoke checks unless the task explicitly
   requires that state change.
-- Browser smoke uses hash-router URLs such as `/#/overview/summary`.
+- Browser smoke uses hash-router URLs such as `/#/overview/summary` and
+  `/#/overview/time`.
 - Web HMR smoke should target Vite at `http://127.0.0.1:5173`, with Vite
   proxying `/api` to the Go backend.
 - `go run . -start` is for built-asset local use, not the Vite HMR smoke path.

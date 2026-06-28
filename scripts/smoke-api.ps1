@@ -300,11 +300,34 @@ function Assert-Overview {
     Assert-JsonObject -Value $Payload -Label "response"
     Assert-NumberProperty -Object $Payload -Name "totalSessions"
     Assert-NumberProperty -Object $Payload -Name "totalTokens"
+    Assert-NumberProperty -Object $Payload -Name "totalWallDurationMs"
+    Assert-NumberProperty -Object $Payload -Name "totalActiveDurationMs"
+    Assert-NumberProperty -Object $Payload -Name "totalModelDurationMs"
+    Assert-NumberProperty -Object $Payload -Name "totalToolDurationMs"
+    Assert-NumberProperty -Object $Payload -Name "totalIdleDurationMs"
     Assert-NumberProperty -Object $Payload -Name "totalToolCalls"
+    Assert-NumberProperty -Object $Payload -Name "suspectedNetworkToolDurationMs"
+    Assert-NumberProperty -Object $Payload -Name "suspectedNetworkToolCalls"
     Assert-ArrayProperty -Object $Payload -Name "dailyUsage"
     Assert-ArrayProperty -Object $Payload -Name "modelUsage"
     Assert-ArrayProperty -Object $Payload -Name "agentUsage"
+    Assert-ArrayProperty -Object $Payload -Name "toolTimeLeaders"
+    Assert-ArrayProperty -Object $Payload -Name "agentTimeUsage"
+    Assert-ArrayProperty -Object $Payload -Name "modelTimeUsage"
+    Assert-ArrayProperty -Object $Payload -Name "slowSessions"
     Assert-ArrayProperty -Object $Payload -Name "recentSessions"
+
+    $leaders = @((Get-JsonProperty -Object $Payload -Name "toolTimeLeaders").Value)
+    if ($leaders.Count -gt 0) {
+        $leader = $leaders[0]
+        Assert-JsonObject -Value $leader -Label "tool time leader"
+        Assert-StringProperty -Object $leader -Name "toolName"
+        Assert-NumberProperty -Object $leader -Name "calls"
+        Assert-NumberProperty -Object $leader -Name "totalDurationMs"
+        Assert-NumberProperty -Object $leader -Name "avgDurationMs"
+        Assert-NumberProperty -Object $leader -Name "maxDurationMs"
+        Assert-BoolProperty -Object $leader -Name "suspectedNetwork"
+    }
 }
 
 function Assert-Sessions {

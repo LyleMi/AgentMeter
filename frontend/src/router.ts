@@ -11,6 +11,7 @@ const router = createRouter({
       children: [
         { path: 'summary', component: () => import('./views/OverviewSummary.vue') },
         { path: 'trends', component: () => import('./views/OverviewTrends.vue') },
+        { path: 'time', component: () => import('./views/OverviewTime.vue') },
         { path: 'breakdown', component: () => import('./views/OverviewBreakdown.vue') },
         { path: 'recent', component: () => import('./views/OverviewRecent.vue') }
       ]

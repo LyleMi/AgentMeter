@@ -32,6 +32,7 @@ import {
   sessionLabel,
   shortPath,
   type EventItem,
+  type ModelCall,
   type SessionDetail,
   type ToolCall
 } from '../api'
@@ -73,19 +74,34 @@ const { t } = useMessages({
     'count.model': 'model',
     'count.events': 'events',
     'tab.timeline': 'Timeline',
+    'tab.timing': 'Timing',
     'tab.calls': 'Calls',
     'tab.model': 'Model',
     'tab.tools': 'Tools',
     'tab.metadata': 'Metadata',
     'tab.rawEvents': 'Raw Events',
     'panel.timeline.kicker': 'Primary inspection surface ordered by local event time',
+    'panel.timing.kicker': 'Session wall time split across model work, tools, and idle gaps',
     'panel.calls.kicker': 'Model and tool invocations with aligned usage and duration',
     'panel.metadata.kicker': 'Session source, timing breakdown, parser, and index context',
     'panel.rawEvents.kicker': 'Source lines, raw types, and event summaries',
+    'timing.model': 'Model',
+    'timing.tools': 'Tools',
+    'timing.idle': 'Idle / unclassified',
+    'timing.kind.model': 'model',
+    'timing.kind.tool': 'tool',
+    'timing.kind.gap': 'idle',
+    'timing.status.idle': 'idle',
+    'timing.status.unknown': 'unknown',
+    'timing.noCalls': 'No model or tool calls captured',
+    'timing.wall': 'Wall',
+    'timing.start': 'Start',
+    'timing.end': 'End',
     'empty.modelCalls': 'No model calls captured for this session',
     'empty.toolCalls': 'No tool calls captured for this session',
     'empty.sessionNotFound': 'Session not found',
     'empty.rawEvents': 'No raw events captured for this session',
+    'empty.timing': 'No measurable model or tool timing captured for this session',
     'column.ended': 'Ended',
     'column.model': 'Model',
     'column.status': 'Status',
@@ -160,19 +176,34 @@ const { t } = useMessages({
     'count.model': '模型',
     'count.events': '事件',
     'tab.timeline': '时间线',
+    'tab.timing': '耗时',
     'tab.calls': '调用',
     'tab.model': '模型',
     'tab.tools': '工具',
     'tab.metadata': '元数据',
     'tab.rawEvents': '原始事件',
     'panel.timeline.kicker': '按本地事件时间排序的主要检查视图',
+    'panel.timing.kicker': '将会话总耗时拆成模型、工具和空闲间隔',
     'panel.calls.kicker': '模型和工具调用，以及对应的用量和耗时',
     'panel.metadata.kicker': '会话来源、耗时拆分、解析器和索引上下文',
     'panel.rawEvents.kicker': '来源行、原始类型和事件摘要',
+    'timing.model': '模型',
+    'timing.tools': '工具',
+    'timing.idle': '空闲 / 未分类',
+    'timing.kind.model': '模型',
+    'timing.kind.tool': '工具',
+    'timing.kind.gap': '空闲',
+    'timing.status.idle': '空闲',
+    'timing.status.unknown': '未知',
+    'timing.noCalls': '未捕获到模型或工具调用',
+    'timing.wall': '总耗时',
+    'timing.start': '开始',
+    'timing.end': '结束',
     'empty.modelCalls': '此会话没有捕获到模型调用',
     'empty.toolCalls': '此会话没有捕获到工具调用',
     'empty.sessionNotFound': '未找到会话',
     'empty.rawEvents': '此会话没有捕获到原始事件',
+    'empty.timing': '此会话没有可度量的模型或工具耗时',
     'column.ended': '结束',
     'column.model': '模型',
     'column.status': '状态',
@@ -262,6 +293,219 @@ const rawEventsExpandable = {
   rowExpandable: (record: EventItem) => Boolean(record.rawJson)
 }
 
+type TimingKind = 'model' | 'tool' | 'gap'
+
+interface TimingCompositionSegment {
+  key: 'model' | 'tool' | 'idle'
+  label: string
+  durationMs: number
+  percent: number
+  width: number
+}
+
+interface TimingCallSegment {
+  id: string
+  kind: Exclude<TimingKind, 'gap'>
+  label: string
+  status: string
+  startMs: number
+  endMs: number
+  durationMs: number
+}
+
+interface TimingRow {
+  id: string
+  kind: TimingKind
+  label: string
+  status: string
+  startMs: number
+  endMs: number
+  durationMs: number
+  left: number
+  width: number
+}
+
+function safeDurationMs(value: number | undefined): number {
+  return Number.isFinite(value) ? Math.max(0, value || 0) : 0
+}
+
+function safeTimestampMs(value: string | undefined): number | null {
+  if (!value) return null
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+function percentOf(value: number, total: number): number {
+  if (total <= 0) return 0
+  return clamp((value / total) * 100, 0, 100)
+}
+
+function formatPreciseDuration(ms: number): string {
+  const duration = safeDurationMs(ms)
+  if (duration > 0 && duration < 1000) return `${Math.round(duration)}ms`
+  return formatDuration(duration)
+}
+
+function formatOffset(ms: number): string {
+  return `+${formatPreciseDuration(ms)}`
+}
+
+function normalizeCallBounds(
+  startedAt: string,
+  endedAt: string,
+  durationMs: number,
+  sessionStartMs: number | null,
+  totalMs: number
+): Pick<TimingCallSegment, 'startMs' | 'endMs' | 'durationMs'> {
+  const declaredDurationMs = safeDurationMs(durationMs)
+  const startTimestampMs = safeTimestampMs(startedAt)
+  const endTimestampMs = safeTimestampMs(endedAt)
+  let startMs: number | null = null
+  let endMs: number | null = null
+
+  if (sessionStartMs !== null) {
+    if (startTimestampMs !== null) startMs = startTimestampMs - sessionStartMs
+    if (endTimestampMs !== null) endMs = endTimestampMs - sessionStartMs
+  } else if (startTimestampMs !== null && endTimestampMs !== null) {
+    startMs = 0
+    endMs = endTimestampMs - startTimestampMs
+  }
+
+  if (startMs === null && endMs !== null) startMs = endMs - declaredDurationMs
+  if (endMs === null && startMs !== null) endMs = startMs + declaredDurationMs
+  if (startMs === null && endMs === null) {
+    startMs = 0
+    endMs = declaredDurationMs
+  }
+  const resolvedStartMs = startMs ?? 0
+  let resolvedEndMs = endMs ?? resolvedStartMs
+  if (resolvedEndMs < resolvedStartMs) resolvedEndMs = resolvedStartMs
+
+  const boundedStartMs = clamp(resolvedStartMs, 0, totalMs)
+  const boundedEndMs = clamp(Math.max(resolvedEndMs, resolvedStartMs), 0, totalMs)
+  const normalizedEndMs = Math.max(boundedStartMs, boundedEndMs)
+  return {
+    startMs: boundedStartMs,
+    endMs: normalizedEndMs,
+    durationMs: normalizedEndMs - boundedStartMs
+  }
+}
+
+const timingTotalMs = computed(() => {
+  if (!detail.value) return 1
+  const session = detail.value.session
+  const wallMs = safeDurationMs(session.wallDurationMs)
+  if (wallMs > 0) return wallMs
+
+  const sessionStartMs = safeTimestampMs(session.startedAt)
+  const callBounds = [...detail.value.modelCalls, ...detail.value.toolCalls].map((call) => {
+    const startTimestampMs = safeTimestampMs(call.startedAt)
+    const endTimestampMs = safeTimestampMs(call.endedAt)
+    if (sessionStartMs !== null && endTimestampMs !== null) return Math.max(0, endTimestampMs - sessionStartMs)
+    if (sessionStartMs !== null && startTimestampMs !== null) return Math.max(0, startTimestampMs - sessionStartMs + safeDurationMs(call.durationMs))
+    if (startTimestampMs !== null && endTimestampMs !== null) return Math.max(0, endTimestampMs - startTimestampMs)
+    return safeDurationMs(call.durationMs)
+  })
+
+  return Math.max(
+    safeDurationMs(session.activeDurationMs),
+    safeDurationMs(session.modelDurationMs) + safeDurationMs(session.toolDurationMs) + safeDurationMs(session.idleDurationMs),
+    ...callBounds,
+    1
+  )
+})
+
+const timingComposition = computed<TimingCompositionSegment[]>(() => {
+  if (!detail.value) return []
+  const session = detail.value.session
+  const modelMs = safeDurationMs(session.modelDurationMs)
+  const toolMs = safeDurationMs(session.toolDurationMs)
+  const knownIdleMs = safeDurationMs(session.idleDurationMs)
+  const wallMs = safeDurationMs(session.wallDurationMs)
+  const unclassifiedMs = Math.max(0, wallMs - modelMs - toolMs - knownIdleMs)
+  const idleMs = knownIdleMs + unclassifiedMs
+  const totalMs = Math.max(wallMs, modelMs + toolMs + idleMs, 1)
+  const segments: Array<Omit<TimingCompositionSegment, 'percent' | 'width'>> = [
+    { key: 'model', label: t('timing.model'), durationMs: modelMs },
+    { key: 'tool', label: t('timing.tools'), durationMs: toolMs },
+    { key: 'idle', label: t('timing.idle'), durationMs: idleMs }
+  ]
+
+  return segments.map((segment) => {
+    const percent = percentOf(segment.durationMs, totalMs)
+    return {
+      ...segment,
+      percent,
+      width: segment.durationMs > 0 ? Math.max(percent, 1.5) : 0
+    }
+  })
+})
+
+const timedCallSegments = computed<TimingCallSegment[]>(() => {
+  if (!detail.value) return []
+  const sessionStartMs = safeTimestampMs(detail.value.session.startedAt)
+  const totalMs = timingTotalMs.value
+  const modelSegments = detail.value.modelCalls.map((call: ModelCall): TimingCallSegment => ({
+    id: `model-${call.id}`,
+    kind: 'model',
+    label: call.model || t('fallback.unknown'),
+    status: call.status || t('timing.status.unknown'),
+    ...normalizeCallBounds(call.startedAt, call.endedAt, call.durationMs, sessionStartMs, totalMs)
+  }))
+  const toolSegments = detail.value.toolCalls.map((call: ToolCall): TimingCallSegment => ({
+    id: `tool-${call.id}`,
+    kind: 'tool',
+    label: call.toolName || t('fallback.unknown'),
+    status: call.status || t('timing.status.unknown'),
+    ...normalizeCallBounds(call.startedAt, call.endedAt, call.durationMs, sessionStartMs, totalMs)
+  }))
+
+  return [...modelSegments, ...toolSegments].sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs || a.id.localeCompare(b.id))
+})
+
+const timingRows = computed<TimingRow[]>(() => {
+  const totalMs = timingTotalMs.value
+  const rows: TimingRow[] = []
+  let cursorMs = 0
+
+  timedCallSegments.value.forEach((call) => {
+    if (call.startMs > cursorMs) {
+      rows.push(createTimingRow(`gap-${rows.length}`, 'gap', t('timing.idle'), t('timing.status.idle'), cursorMs, call.startMs, totalMs))
+    }
+    rows.push(createTimingRow(call.id, call.kind, call.label, call.status, call.startMs, call.endMs, totalMs))
+    cursorMs = Math.max(cursorMs, call.endMs)
+  })
+
+  if (timedCallSegments.value.length === 0 && safeDurationMs(detail.value?.session.wallDurationMs) > 0) {
+    rows.push(createTimingRow('gap-session', 'gap', t('timing.noCalls'), t('timing.status.idle'), 0, totalMs, totalMs))
+  } else if (cursorMs < totalMs && totalMs > 1) {
+    rows.push(createTimingRow(`gap-${rows.length}`, 'gap', t('timing.idle'), t('timing.status.idle'), cursorMs, totalMs, totalMs))
+  }
+
+  return rows
+})
+
+function createTimingRow(id: string, kind: TimingKind, label: string, status: string, startMs: number, endMs: number, totalMs: number): TimingRow {
+  const boundedStartMs = clamp(startMs, 0, totalMs)
+  const boundedEndMs = Math.max(boundedStartMs, clamp(endMs, 0, totalMs))
+  const durationMs = boundedEndMs - boundedStartMs
+  return {
+    id,
+    kind,
+    label,
+    status,
+    startMs: boundedStartMs,
+    endMs: boundedEndMs,
+    durationMs,
+    left: percentOf(boundedStartMs, totalMs),
+    width: durationMs > 0 ? Math.max(percentOf(durationMs, totalMs), 0.75) : 0
+  }
+}
+
 async function load() {
   loading.value = true
   try {
@@ -276,6 +520,18 @@ function eventColor(kind: string) {
   if (kind === 'tool') return 'purple'
   if (kind === 'error') return 'red'
   return 'default'
+}
+
+function timingKindColor(kind: TimingKind) {
+  if (kind === 'model') return 'blue'
+  if (kind === 'tool') return 'purple'
+  return 'default'
+}
+
+function timingKindLabel(kind: TimingKind) {
+  if (kind === 'model') return t('timing.kind.model')
+  if (kind === 'tool') return t('timing.kind.tool')
+  return t('timing.kind.gap')
 }
 
 function indexStatusHint(session: SessionDetail['session']) {
@@ -436,6 +692,71 @@ onMounted(load)
                     </div>
                   </a-timeline-item>
                 </a-timeline>
+              </div>
+            </section>
+          </a-tab-pane>
+
+          <a-tab-pane key="timing" :tab="t('tab.timing')">
+            <section class="panel session-timing-panel">
+              <div class="panel-header">
+                <div>
+                  <h2 class="panel-title">{{ t('tab.timing') }}</h2>
+                  <div class="panel-kicker">{{ t('panel.timing.kicker') }}</div>
+                </div>
+                <span class="muted">{{ t('timing.wall') }} {{ formatPreciseDuration(detail.session.wallDurationMs) }}</span>
+              </div>
+              <div class="panel-body timing-panel-body">
+                <div class="timing-composition-grid">
+                  <div v-for="segment in timingComposition" :key="segment.key" class="timing-composition-card">
+                    <div class="timing-composition-card-topline">
+                      <span class="timing-dot" :class="'timing-dot-' + segment.key"></span>
+                      <span class="metric-label">{{ segment.label }}</span>
+                    </div>
+                    <div class="timing-composition-duration">{{ formatPreciseDuration(segment.durationMs) }}</div>
+                    <div class="metric-note">{{ formatNumber(Math.round(segment.percent)) }}%</div>
+                  </div>
+                </div>
+
+                <div class="timing-composition-track" :aria-label="t('tab.timing')">
+                  <div
+                    v-for="segment in timingComposition"
+                    :key="segment.key"
+                    class="timing-composition-segment"
+                    :class="'timing-composition-' + segment.key"
+                    :style="{ width: segment.width + '%' }"
+                    :title="segment.label + ' · ' + formatPreciseDuration(segment.durationMs)"
+                  ></div>
+                </div>
+
+                <div v-if="timingRows.length" class="timing-waterfall">
+                  <div class="timing-waterfall-header">
+                    <span>{{ t('timing.start') }} +0s</span>
+                    <span>{{ t('timing.end') }} {{ formatOffset(timingTotalMs) }}</span>
+                  </div>
+                  <div v-for="row in timingRows" :key="row.id" class="timing-row" :class="'timing-row-' + row.kind">
+                    <div class="timing-row-main">
+                      <a-tag class="status-tag timing-kind-tag" :color="timingKindColor(row.kind)">{{ timingKindLabel(row.kind) }}</a-tag>
+                      <a-typography-text class="timing-row-label" :ellipsis="{ tooltip: row.label }">
+                        {{ row.label }}
+                      </a-typography-text>
+                    </div>
+                    <div class="timing-row-track">
+                      <div
+                        class="timing-row-bar"
+                        :class="'timing-row-bar-' + row.kind"
+                        :style="{ left: row.left + '%', width: row.width + '%' }"
+                      ></div>
+                    </div>
+                    <div class="timing-row-meta">
+                      <span>{{ formatOffset(row.startMs) }} - {{ formatOffset(row.endMs) }}</span>
+                      <span>{{ formatPreciseDuration(row.durationMs) }}</span>
+                      <a-tag class="status-tag timing-status-tag" :class="statusClass(row.status)" :color="statusColor(row.status)">
+                        {{ row.status || t('fallback.unknown') }}
+                      </a-tag>
+                    </div>
+                  </div>
+                </div>
+                <a-empty v-else :description="t('empty.timing')" />
               </div>
             </section>
           </a-tab-pane>
@@ -723,3 +1044,174 @@ onMounted(load)
     <ToolCallDetailDrawer :open="Boolean(selectedToolCall)" :call="selectedToolCall" :show-session-link="false" @close="closeToolCall" />
   </div>
 </template>
+
+<style scoped>
+.timing-panel-body {
+  display: grid;
+  gap: 16px;
+}
+
+.timing-composition-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.timing-composition-card {
+  border: 1px solid var(--am-border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--am-surface);
+}
+
+.timing-composition-card-topline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.timing-composition-duration {
+  margin-top: 8px;
+  color: var(--am-text);
+  font-size: 20px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.timing-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 999px;
+}
+
+.timing-dot-model,
+.timing-composition-model,
+.timing-row-bar-model {
+  background: #1677ff;
+}
+
+.timing-dot-tool,
+.timing-composition-tool,
+.timing-row-bar-tool {
+  background: #722ed1;
+}
+
+.timing-dot-idle,
+.timing-composition-idle,
+.timing-row-bar-gap {
+  background: #d9d9d9;
+}
+
+.timing-composition-track {
+  display: flex;
+  width: 100%;
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--am-surface-subtle);
+}
+
+.timing-composition-segment {
+  min-width: 0;
+}
+
+.timing-waterfall {
+  display: grid;
+  gap: 8px;
+}
+
+.timing-waterfall-header,
+.timing-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(180px, 1fr) minmax(250px, 320px);
+  gap: 12px;
+  align-items: center;
+}
+
+.timing-waterfall-header {
+  color: var(--am-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.timing-waterfall-header span:last-child {
+  grid-column: 3;
+  text-align: right;
+}
+
+.timing-row {
+  min-height: 40px;
+  padding: 8px 0;
+  border-top: 1px solid var(--am-border-subtle);
+}
+
+.timing-row-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.timing-kind-tag,
+.timing-status-tag {
+  flex: 0 0 auto;
+}
+
+.timing-row-label {
+  min-width: 0;
+}
+
+.timing-row-track {
+  position: relative;
+  height: 14px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--am-surface-subtle);
+}
+
+.timing-row-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 3px;
+  border-radius: 999px;
+}
+
+.timing-row-gap .timing-row-label,
+.timing-row-gap .timing-row-meta {
+  color: var(--am-muted);
+}
+
+.timing-row-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  color: var(--am-text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .timing-composition-grid,
+  .timing-waterfall-header,
+  .timing-row {
+    grid-template-columns: 1fr;
+  }
+
+  .timing-waterfall-header span:last-child {
+    grid-column: auto;
+    text-align: left;
+  }
+
+  .timing-row-meta {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+}
+</style>

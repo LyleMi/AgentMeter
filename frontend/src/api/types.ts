@@ -71,6 +71,41 @@ export interface AgentUsage {
   unpriced: boolean
 }
 
+export interface ToolTimeUsage {
+  toolName: string
+  calls: number
+  successCalls: number
+  failedCalls: number
+  totalDurationMs: number
+  avgDurationMs: number
+  maxDurationMs: number
+  suspectedNetwork: boolean
+}
+
+export interface AgentTimeUsage {
+  agentKind: string
+  agentName: string
+  sessionCount: number
+  toolCalls: number
+  wallDurationMs: number
+  activeDurationMs: number
+  modelDurationMs: number
+  toolDurationMs: number
+  idleDurationMs: number
+  suspectedNetworkToolDurationMs: number
+}
+
+export interface ModelTimeUsage {
+  model: string
+  sessionCount: number
+  totalTokens: number
+  wallDurationMs: number
+  activeDurationMs: number
+  modelDurationMs: number
+  toolDurationMs: number
+  idleDurationMs: number
+}
+
 export interface Overview {
   totalSessions: number
   totalInputTokens: number
@@ -82,10 +117,19 @@ export interface Overview {
   unpricedSessions: number
   totalWallDurationMs: number
   totalActiveDurationMs: number
+  totalModelDurationMs: number
+  totalToolDurationMs: number
+  totalIdleDurationMs: number
+  suspectedNetworkToolDurationMs: number
+  suspectedNetworkToolCalls: number
   totalToolCalls: number
   dailyUsage: DailyUsage[]
   modelUsage: ModelUsage[]
   agentUsage: AgentUsage[]
+  toolTimeLeaders: ToolTimeUsage[]
+  agentTimeUsage: AgentTimeUsage[]
+  modelTimeUsage: ModelTimeUsage[]
+  slowSessions: Session[]
   recentSessions: Session[]
 }
 
