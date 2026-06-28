@@ -1,14 +1,13 @@
 import type { Ref } from 'vue'
 import type { PrivacyConfigSetting, PrivacyProfileId, PrivacyTarget } from '../../api/types'
+import type { PrivacyTranslate } from '../../presentation/privacyUi'
 import {
   formatPrivacyConfigValue,
   privacyProfileValue,
-  privacyValueType,
-  privacyValuesEqual,
+  privacySettingMatchesStrict,
   strictPrivacyValue
 } from '../../presentation/privacyConfig'
 
-type Translate = (key: string, params?: Record<string, string>) => string
 type SettingTextField = 'title' | 'description' | 'impact'
 
 const groupMessageKeys: Record<string, string> = {
@@ -72,7 +71,7 @@ const settingMessageBases: Partial<Record<PrivacyTarget, Record<string, string>>
 }
 
 export function useAgentPrivacyDisplay(options: {
-  t: Translate
+  t: PrivacyTranslate
   locale: Ref<string>
   activeTarget: () => PrivacyTarget | undefined
 }) {
@@ -120,10 +119,7 @@ export function useAgentPrivacyDisplay(options: {
   }
 
   function settingState(setting: PrivacyConfigSetting) {
-    if (
-      setting.configured &&
-      privacyValuesEqual(setting.currentValue, strictPrivacyValue(setting), privacyValueType(setting))
-    ) {
+    if (privacySettingMatchesStrict(setting)) {
       return { color: 'success', label: t('privacy.status.hardened') }
     }
     if (setting.configured) return { color: 'processing', label: t('privacy.meta.customConfigured') }

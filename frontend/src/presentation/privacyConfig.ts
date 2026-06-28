@@ -41,6 +41,13 @@ export function privacyValuesEqual(left: unknown, right: unknown, type: PrivacyC
   return JSON.stringify(normalizePrivacyConfigValue(left, type)) === JSON.stringify(normalizePrivacyConfigValue(right, type))
 }
 
+export function privacySettingMatchesStrict(setting: PrivacyConfigSetting) {
+  return (
+    setting.configured &&
+    privacyValuesEqual(setting.currentValue, strictPrivacyValue(setting), privacyValueType(setting))
+  )
+}
+
 export function formatPrivacyConfigValue(value: unknown, unsetLabel = 'unset') {
   if (value === undefined || value === null) return unsetLabel
   if (value === '') return '""'

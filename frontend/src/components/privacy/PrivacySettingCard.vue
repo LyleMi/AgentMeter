@@ -9,21 +9,15 @@ import Typography from 'ant-design-vue/es/typography'
 import { CheckOutlined, DeleteOutlined, SafetyCertificateOutlined, UndoOutlined } from '@ant-design/icons-vue'
 import type { PrivacyConfigSetting, PrivacyConfigValueType } from '../../api/types'
 import type { PrivacyConfigEdit } from '../../composables/useAgentPrivacyEditor'
+import type { PrivacyStatusState, PrivacyTranslate } from '../../presentation/privacyUi'
 
 const ATypographyText = Typography.Text
 
-type Translate = (key: string, params?: Record<string, string>) => string
-
-interface StatusState {
-  color: string
-  label: string
-}
-
 defineProps<{
-  t: Translate
+  t: PrivacyTranslate
   setting: PrivacyConfigSetting
   edit: PrivacyConfigEdit
-  state: StatusState
+  state: PrivacyStatusState
   cardClass: Record<string, boolean>
   title: string
   description: string

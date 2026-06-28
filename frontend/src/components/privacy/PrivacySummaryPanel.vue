@@ -6,45 +6,25 @@ import ATag from 'ant-design-vue/es/tag'
 import Typography from 'ant-design-vue/es/typography'
 import { ReloadOutlined, SaveOutlined } from '@ant-design/icons-vue'
 import type { PrivacyConfigApplyResult, PrivacyConfigStatus, PrivacyProfileId, PrivacyTarget } from '../../api/types'
+import type {
+  PrivacyMetricCounts,
+  PrivacyProfileOption,
+  PrivacyStatusState,
+  PrivacyTargetOption,
+  PrivacyTranslate
+} from '../../presentation/privacyUi'
 
 const ATypographyText = Typography.Text
 
-type Translate = (key: string, params?: Record<string, string>) => string
-
-interface TargetOption {
-  label: string
-  value: PrivacyTarget
-}
-
-interface StatusState {
-  color: string
-  label: string
-}
-
-interface ProfileOption {
-  id: PrivacyProfileId
-  title: string
-  description: string
-}
-
-interface MetricCounts {
-  total: number
-  strictConfigured: number
-  defaultSafe: number
-  customConfigured: number
-  missingRequired: number
-  unsavedChanges: number
-}
-
 defineProps<{
-  t: Translate
-  targetOptions: TargetOption[]
+  t: PrivacyTranslate
+  targetOptions: PrivacyTargetOption[]
   kickerText: string
-  statusState: StatusState
+  statusState: PrivacyStatusState
   privacyStatus: PrivacyConfigStatus | null
-  profileOptions: ProfileOption[]
+  profileOptions: PrivacyProfileOption[]
   lastApply: PrivacyConfigApplyResult | null
-  metricCounts: MetricCounts
+  metricCounts: PrivacyMetricCounts
   changedCount: number
   savingAll: boolean
   savingId: string

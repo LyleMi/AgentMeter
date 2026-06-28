@@ -16,6 +16,7 @@ import { useAgentPrivacyEditor } from '../composables/useAgentPrivacyEditor'
 import { useMessages } from '../i18n'
 import { formatNumber } from '../presentation/formatters'
 import { privacyValueType, privacyValueTypeLabel, strictPrivacyValue } from '../presentation/privacyConfig'
+import type { PrivacyTranslate } from '../presentation/privacyUi'
 import { agentPrivacyMessages } from './agent-privacy/messages'
 import { useAgentPrivacyDisplay } from './agent-privacy/privacyDisplay'
 import { useAgentPrivacyViewModel } from './agent-privacy/privacyViewModel'
@@ -29,7 +30,7 @@ const applyingProfile = ref<PrivacyProfileId | ''>('')
 const selectedTarget = ref<PrivacyTarget>('codex')
 const privacyStatus = ref<PrivacyConfigStatus | null>(null)
 const lastApply = ref<PrivacyConfigApplyResult | null>(null)
-const translate = t as (key: string, params?: Record<string, string>) => string
+const translate = t as PrivacyTranslate
 const {
   syncEdits,
   editFor,

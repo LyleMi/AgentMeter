@@ -6,14 +6,18 @@ import type {
   PrivacyProfileId,
   PrivacyTarget
 } from '../../api/types'
-import { privacyValueType, privacyValuesEqual, strictPrivacyValue } from '../../presentation/privacyConfig'
-
-type Translate = (key: string, params?: Record<string, string>) => string
+import { privacySettingMatchesStrict } from '../../presentation/privacyConfig'
+import type {
+  PrivacyProfileOption,
+  PrivacySettingGroup,
+  PrivacyTargetOption,
+  PrivacyTranslate
+} from '../../presentation/privacyUi'
 
 const profileIds: PrivacyProfileId[] = ['default', 'recommended', 'strict']
 
 export function useAgentPrivacyViewModel(options: {
-  t: Translate
+  t: PrivacyTranslate
   selectedTarget: Ref<PrivacyTarget>
   privacyStatus: Ref<PrivacyConfigStatus | null>
   lastApply: Ref<PrivacyConfigApplyResult | null>
@@ -25,13 +29,13 @@ export function useAgentPrivacyViewModel(options: {
   const { t, selectedTarget, privacyStatus, lastApply, canEdit, isEditChanged, localizedSettingGroup, profileTitle } =
     options
 
-  const targetOptions = computed<{ label: string; value: PrivacyTarget }[]>(() => [
+  const targetOptions = computed<PrivacyTargetOption[]>(() => [
     { label: t('privacy.target.codex'), value: 'codex' },
     { label: t('privacy.target.gemini'), value: 'gemini' },
     { label: t('privacy.target.claude'), value: 'claude' },
     { label: t('privacy.target.codebuddy'), value: 'codebuddy' }
   ])
-  const profileOptions = computed(() =>
+  const profileOptions = computed<PrivacyProfileOption[]>(() =>
     profileIds.map((profile) => ({
       id: profile,
       title: profileTitle(profile),
@@ -62,16 +66,10 @@ export function useAgentPrivacyViewModel(options: {
   })
   const metricCounts = computed(() => {
     const total = settings.value.length || summary.value.total
-    const strictConfigured = settings.value.filter(
-      (setting) =>
-        setting.configured &&
-        privacyValuesEqual(setting.currentValue, strictPrivacyValue(setting), privacyValueType(setting))
-    ).length
+    const strictConfigured = settings.value.filter(privacySettingMatchesStrict).length
     const defaultSafe = settings.value.filter((setting) => !setting.configured && setting.status === 'implicit').length
     const customConfigured = settings.value.filter(
-      (setting) =>
-        setting.configured &&
-        !privacyValuesEqual(setting.currentValue, strictPrivacyValue(setting), privacyValueType(setting))
+      (setting) => setting.configured && !privacySettingMatchesStrict(setting)
     ).length
     const missingRequired = settings.value.filter((setting) => !setting.configured && setting.status === 'attention').length
     const unsavedChanges = changedSettings.value.length
@@ -84,7 +82,7 @@ export function useAgentPrivacyViewModel(options: {
     }
     return { color: 'success', label: t('privacy.status.ready') }
   })
-  const groupedSettings = computed(() => {
+  const groupedSettings = computed<PrivacySettingGroup[]>(() => {
     const groups = new Map<string, PrivacyConfigSetting[]>()
     for (const setting of settings.value) {
       const group = localizedSettingGroup(setting)

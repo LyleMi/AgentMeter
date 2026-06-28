@@ -20,21 +20,32 @@ export interface PrivacyConfigEdit {
   arrayValue: string[]
 }
 
+type PrivacyConfigEditValueFields = Pick<
+  PrivacyConfigEdit,
+  'valueType' | 'boolValue' | 'stringValue' | 'numberValue' | 'arrayValue'
+>
+
+function editValueFields(value: unknown, type: PrivacyConfigValueType): PrivacyConfigEditValueFields {
+  const normalized = normalizePrivacyConfigValue(value, type)
+  return {
+    valueType: type,
+    boolValue: normalized === true,
+    stringValue: typeof normalized === 'string' ? normalized : formatPrivacyConfigValue(normalized),
+    numberValue: typeof normalized === 'number' ? normalized : Number(normalized) || 0,
+    arrayValue: Array.isArray(normalized) ? normalized : []
+  }
+}
+
 export function useAgentPrivacyEditor() {
   const edits = ref<Record<string, PrivacyConfigEdit>>({})
 
   function createEdit(setting: PrivacyConfigSetting): PrivacyConfigEdit {
     const type = privacyValueType(setting)
     const baseValue = setting.configured ? setting.currentValue : strictPrivacyValue(setting)
-    const normalized = normalizePrivacyConfigValue(baseValue, type)
     return {
       id: setting.id,
       op: setting.configured ? 'set' : 'unset',
-      valueType: type,
-      boolValue: normalized === true,
-      stringValue: typeof normalized === 'string' ? normalized : formatPrivacyConfigValue(normalized),
-      numberValue: typeof normalized === 'number' ? normalized : Number(normalized) || 0,
-      arrayValue: Array.isArray(normalized) ? normalized : []
+      ...editValueFields(baseValue, type)
     }
   }
 
@@ -66,13 +77,8 @@ export function useAgentPrivacyEditor() {
   function useStrict(setting: PrivacyConfigSetting) {
     const edit = editFor(setting)
     const type = privacyValueType(setting)
-    const normalized = normalizePrivacyConfigValue(strictPrivacyValue(setting), type)
     edit.op = 'set'
-    edit.valueType = type
-    edit.boolValue = normalized === true
-    edit.stringValue = typeof normalized === 'string' ? normalized : formatPrivacyConfigValue(normalized)
-    edit.numberValue = typeof normalized === 'number' ? normalized : Number(normalized) || 0
-    edit.arrayValue = Array.isArray(normalized) ? normalized : []
+    Object.assign(edit, editValueFields(strictPrivacyValue(setting), type))
   }
 
   function unsetEdit(setting: PrivacyConfigSetting) {

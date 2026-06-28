@@ -2,23 +2,12 @@
 import PrivacySettingCard from './PrivacySettingCard.vue'
 import type { PrivacyConfigSetting, PrivacyConfigValueType, PrivacyProfileId } from '../../api/types'
 import type { PrivacyConfigEdit } from '../../composables/useAgentPrivacyEditor'
-
-type Translate = (key: string, params?: Record<string, string>) => string
-
-interface StatusState {
-  color: string
-  label: string
-}
-
-interface SettingGroup {
-  name: string
-  items: PrivacyConfigSetting[]
-}
+import type { PrivacySettingGroup, PrivacyStatusState, PrivacyTranslate } from '../../presentation/privacyUi'
 
 defineProps<{
-  t: Translate
+  t: PrivacyTranslate
   settings: PrivacyConfigSetting[]
-  groupedSettings: SettingGroup[]
+  groupedSettings: PrivacySettingGroup[]
   savingAll: boolean
   savingId: string
   formatNumber: (value: number | undefined) => string
@@ -26,7 +15,7 @@ defineProps<{
   editFor: (setting: PrivacyConfigSetting) => PrivacyConfigEdit
   canEdit: (setting: PrivacyConfigSetting) => boolean
   isEditChanged: (setting: PrivacyConfigSetting) => boolean
-  settingState: (setting: PrivacyConfigSetting) => StatusState
+  settingState: (setting: PrivacyConfigSetting) => PrivacyStatusState
   settingCardClass: (setting: PrivacyConfigSetting) => Record<string, boolean>
   localizedSettingTitle: (setting: PrivacyConfigSetting) => string
   localizedSettingDescription: (setting: PrivacyConfigSetting) => string
