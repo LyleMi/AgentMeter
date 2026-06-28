@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  windows:
-    name: Windows release
+  validate:
+    name: Validate release
     runs-on: windows-latest
 
     steps:
@@ -45,99 +45,171 @@ jobs:
       - name: Run Go tests
         run: go test ./...
 
-      - name: Build Windows executable
-        shell: pwsh
+      - name: Upload frontend assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          if-no-files-found: error
+
+  build:
+    name: Build ${{ matrix.asset_name }}
+    needs: validate
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+            binary_ext: .exe
+            archive: zip
+            asset_name: AgentMeter-windows-amd64.zip
+          - goos: windows
+            goarch: arm64
+            binary_ext: .exe
+            archive: zip
+            asset_name: AgentMeter-windows-arm64.zip
+          - goos: linux
+            goarch: amd64
+            binary_ext: ""
+            archive: tar.gz
+            asset_name: AgentMeter-linux-amd64.tar.gz
+          - goos: linux
+            goarch: arm64
+            binary_ext: ""
+            archive: tar.gz
+            asset_name: AgentMeter-linux-arm64.tar.gz
+          - goos: darwin
+            goarch: amd64
+            binary_ext: ""
+            archive: tar.gz
+            asset_name: AgentMeter-darwin-amd64.tar.gz
+          - goos: darwin
+            goarch: arm64
+            binary_ext: ""
+            archive: tar.gz
+            asset_name: AgentMeter-darwin-arm64.tar.gz
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download frontend assets
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+      - name: Build executable
+        shell: bash
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
         run: |
-          New-Item -ItemType Directory -Path dist -Force | Out-Null
-          go build -trimpath -ldflags "-s -w" -o dist/AgentMeter.exe .
+          mkdir -p dist
+          go build -trimpath -ldflags "-s -w" -o "dist/AgentMeter${{ matrix.binary_ext }}" .
 
       - name: Package release
-        shell: pwsh
+        shell: bash
         run: |
-          $packageRoot = Join-Path $PWD "dist/AgentMeter"
-          $asset = Join-Path $PWD "dist/AgentMeter-windows-amd64.zip"
+          package_root="dist/package/AgentMeter"
+          asset="dist/${{ matrix.asset_name }}"
 
-          Remove-Item -LiteralPath $packageRoot -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item -LiteralPath $asset -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
-          New-Item -ItemType Directory -Path (Join-Path $packageRoot "frontend") -Force | Out-Null
+          rm -rf "$package_root" "$asset"
+          mkdir -p "$package_root/frontend"
 
-          Copy-Item -LiteralPath "dist/AgentMeter.exe" -Destination $packageRoot
-          Copy-Item -LiteralPath "frontend/dist" -Destination (Join-Path $packageRoot "frontend/dist") -Recurse
-          Copy-Item -LiteralPath "README.md", "README.zh-CN.md", "LICENSE", "CHANGELOG.md" -Destination $packageRoot
+          cp "dist/AgentMeter${{ matrix.binary_ext }}" "$package_root/"
+          cp -R frontend/dist "$package_root/frontend/dist"
+          cp README.md README.zh-CN.md LICENSE CHANGELOG.md "$package_root/"
 
-          if (-not (Test-Path (Join-Path $packageRoot "frontend/dist/index.html"))) {
-            throw "Release package is missing frontend/dist/index.html"
-          }
+          if [[ ! -f "$package_root/frontend/dist/index.html" ]]; then
+            echo "Release package is missing frontend/dist/index.html" >&2
+            exit 1
+          fi
 
-          $source = Join-Path $packageRoot "*"
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
-            try {
-              Compress-Archive -Path $source -DestinationPath $asset -Force
-              break
-            } catch {
-              if ($attempt -eq 3) {
-                throw
-              }
-              Start-Sleep -Seconds 2
-            }
-          }
+          if [[ "${{ matrix.archive }}" == "zip" ]]; then
+            (cd "$package_root" && zip -r "../../${{ matrix.asset_name }}" .)
+          else
+            (cd "$package_root" && tar -czf "../../${{ matrix.asset_name }}" .)
+          fi
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AgentMeter-windows-amd64
-          path: dist/AgentMeter-windows-amd64.zip
+          name: AgentMeter-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/${{ matrix.asset_name }}
           if-no-files-found: error
 
-      - name: Prepare release notes
-        shell: pwsh
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: AgentMeter-*
+          path: dist
+          merge-multiple: true
+
+      - name: Prepare release notes and checksums
+        shell: bash
         run: |
-          $tag = "${{ github.ref_name }}"
-          $escapedTag = [regex]::Escape($tag)
-          $lines = Get-Content CHANGELOG.md
-          $start = -1
-
-          for ($i = 0; $i -lt $lines.Count; $i++) {
-            if ($lines[$i] -match "^##\s+\[$escapedTag\]" -or $lines[$i] -match "^##\s+$escapedTag\b") {
-              $start = $i
-              break
-            }
-          }
-
-          $notesLines = @()
-          if ($start -ge 0) {
-            for ($i = $start + 1; $i -lt $lines.Count; $i++) {
-              if ($lines[$i] -match "^##\s+") {
-                break
+          tag="${GITHUB_REF_NAME}"
+          notes="$(
+            awk -v tag="$tag" '
+              index($0, "## [" tag "]") == 1 || $0 == "## " tag || index($0, "## " tag " ") == 1 {
+                found = 1
+                next
               }
-              $notesLines += $lines[$i]
-            }
-          }
+              found && $0 ~ "^##[[:space:]]+" {
+                exit
+              }
+              found {
+                print
+              }
+            ' CHANGELOG.md
+          )"
 
-          $notes = ($notesLines -join "`n").Trim()
-          if (-not $notes) {
-            $notes = "Automated Windows amd64 build."
-          }
-          Set-Content -Path "dist/release-notes.md" -Value $notes -Encoding utf8
+          if [[ -z "${notes//[[:space:]]/}" ]]; then
+            notes="Automated multi-platform build."
+          fi
+
+          printf "%s\n" "$notes" > dist/release-notes.md
+          (cd dist && sha256sum AgentMeter-* > checksums.txt)
 
       - name: Publish GitHub release
-        shell: pwsh
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "${{ github.ref_name }}"
-          $asset = "dist/AgentMeter-windows-amd64.zip"
-          $notes = "dist/release-notes.md"
+          tag="${GITHUB_REF_NAME}"
+          notes="dist/release-notes.md"
+          mapfile -t assets < <(
+            find dist -maxdepth 1 -type f \( -name "AgentMeter-*.zip" -o -name "AgentMeter-*.tar.gz" -o -name "checksums.txt" \) | sort
+          )
 
-          if (-not (Test-Path $asset)) {
-            throw "Release asset not found: $asset"
-          }
+          if ((${#assets[@]} == 0)); then
+            echo "No release assets found" >&2
+            exit 1
+          fi
 
-          gh release view $tag *> $null
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $asset --clobber
-            gh release edit $tag --title "AgentMeter $tag" --notes-file $notes
-          } else {
-            gh release create $tag $asset --title "AgentMeter $tag" --notes-file $notes
-          }
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${assets[@]}" --clobber
+            gh release edit "$tag" --title "AgentMeter $tag" --notes-file "$notes"
+          else
+            gh release create "$tag" "${assets[@]}" --title "AgentMeter $tag" --notes-file "$notes"
+          fi

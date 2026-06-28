@@ -25,12 +25,14 @@ Implemented today:
 - Offline audit findings for indexed local session data, exposed through Web UI
   and `/api/audit/*`.
 - Pricing registry seeding, model normalization, and `unpriced` handling.
+- Cross-platform portable release automation for Windows, macOS, and Linux on
+  amd64 and arm64.
 
 Not implemented today:
 
 - CSV export.
 - JSON export.
-- Packaged release artifacts.
+- Installer packages, signing, and notarization.
 - TUI session search/filter entry.
 - Automated terminal smoke checks in release validation.
 
@@ -128,10 +130,7 @@ Goal: make cross-platform usage easy.
 
 Planned:
 
-- Windows portable build.
-- macOS portable build.
-- Linux portable build.
-- Installer or portable zip.
+- Installer packages, signing, and notarization.
 - Package Web and TUI modes from the same binary.
 - Confirm local database path behavior for packaged builds.
 - Define log file location.
@@ -139,7 +138,7 @@ Planned:
 
 Deliverable:
 
-- Windows release artifact, then macOS and Linux artifacts.
+- Signed installer or documented portable-package distribution.
 
 ### Phase 6: Beyond MVP
 

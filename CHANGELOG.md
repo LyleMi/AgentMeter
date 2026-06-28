@@ -2,6 +2,12 @@
 
 All notable changes to AgentMeter are documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- Expanded release automation to build Windows, Linux, and macOS portable artifacts for amd64 and arm64, with SHA256 checksums.
+
 ## [v0.2.0] - 2026-06-28
 
 ### Added
@@ -44,5 +50,6 @@ All notable changes to AgentMeter are documented in this file.
 
 - Initial MVP release with the redesigned AgentMeter UI.
 
+[Unreleased]: https://github.com/LyleMi/AgentMeter/compare/v0.2.0...HEAD
 [v0.2.0]: https://github.com/LyleMi/AgentMeter/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://github.com/LyleMi/AgentMeter/releases/tag/v0.1.0
