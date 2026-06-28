@@ -14,7 +14,7 @@ import {
   ToolOutlined,
   WarningOutlined
 } from '@ant-design/icons-vue'
-import { formatDisplayCost, formatDisplayNumber, formatDuration, formatNumber, type DisplayNumber } from '../api'
+import { formatDisplayCost, formatDisplayNumber, formatDuration, formatNumber, isStaticDemo, type DisplayNumber } from '../api'
 import { useMessages } from '../i18n'
 import { useOverviewContext } from './overviewContext'
 
@@ -406,7 +406,7 @@ function formatShareWidth(value: number) {
         </div>
       </div>
       <div class="empty-callout-actions">
-        <a-button type="primary" :loading="startupIndexing" :disabled="!sourcePathDisplay" @click="indexFromOverview">
+        <a-button type="primary" :loading="startupIndexing" :disabled="isStaticDemo || !sourcePathDisplay" @click="indexFromOverview">
           <template #icon>
             <PlayCircleOutlined />
           </template>

@@ -8,7 +8,7 @@ import {
   DatabaseOutlined,
   HistoryOutlined
 } from '@ant-design/icons-vue'
-import { api, type Overview, type Settings } from '../api'
+import { api, isStaticDemo, type Overview, type Settings } from '../api'
 import PageHeader from '../components/PageHeader.vue'
 import PageTabs from '../components/PageTabs.vue'
 import UsageScopeBar from '../components/UsageScopeBar.vue'
@@ -34,7 +34,8 @@ const { t } = useMessages({
     'tab.breakdown': 'Breakdown',
     'tab.recent': 'Recent',
     'message.indexed': '{indexed} indexed, {skipped} skipped, {failed} failed',
-    'message.indexFailed': 'Index failed'
+    'message.indexFailed': 'Index failed',
+    'message.demoReadOnly': 'Static demo mode is read-only.'
   },
   'zh-CN': {
     'title': '概览',
@@ -44,7 +45,8 @@ const { t } = useMessages({
     'tab.breakdown': '拆分',
     'tab.recent': '最近',
     'message.indexed': '已索引 {indexed}，已跳过 {skipped}，失败 {failed}',
-    'message.indexFailed': '索引失败'
+    'message.indexFailed': '索引失败',
+    'message.demoReadOnly': '静态演示模式为只读。'
   }
 })
 
@@ -114,6 +116,10 @@ async function load() {
 }
 
 async function indexFromOverview() {
+  if (isStaticDemo) {
+    message.info(t('message.demoReadOnly'))
+    return
+  }
   startupIndexing.value = true
   try {
     const result = await api.indexNow(false)

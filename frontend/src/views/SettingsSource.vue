@@ -8,7 +8,7 @@ import ASwitch from 'ant-design-vue/es/switch'
 import ATag from 'ant-design-vue/es/tag'
 import Typography from 'ant-design-vue/es/typography'
 import { DeleteOutlined, FolderAddOutlined, PlusOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons-vue'
-import { api, formatNumber, type Settings, type SourceEntry } from '../api'
+import { api, formatNumber, isStaticDemo, type Settings, type SourceEntry } from '../api'
 import { notifyAppDataChanged } from '../events'
 import { useMessages } from '../i18n'
 
@@ -31,6 +31,7 @@ const { t } = useMessages({
     'source.meta.active': 'Active',
     'source.meta.enabledSources': 'enabled sources',
     'source.state.unsaved': 'Unsaved',
+    'source.state.demo': 'Static demo',
     'source.state.enabledSuffix': 'enabled',
     'source.state.allDisabled': 'All disabled',
     'source.state.missing': 'Missing',
@@ -38,7 +39,8 @@ const { t } = useMessages({
     'source.message.saved': 'Source settings saved',
     'source.message.saveFailed': 'Save failed',
     'source.message.duplicate': 'Source already exists',
-    'source.message.noDefaults': 'No default sources detected'
+    'source.message.noDefaults': 'No default sources detected',
+    'source.message.demoReadOnly': 'Static demo mode is read-only.'
   },
   'zh-CN': {
     'source.title': '来源',
@@ -57,6 +59,7 @@ const { t } = useMessages({
     'source.meta.active': '当前',
     'source.meta.enabledSources': '个已启用来源',
     'source.state.unsaved': '未保存',
+    'source.state.demo': '静态演示',
     'source.state.enabledSuffix': '个已启用',
     'source.state.allDisabled': '全部禁用',
     'source.state.missing': '缺失',
@@ -64,7 +67,8 @@ const { t } = useMessages({
     'source.message.saved': '来源设置已保存',
     'source.message.saveFailed': '保存失败',
     'source.message.duplicate': '来源已存在',
-    'source.message.noDefaults': '未检测到默认来源'
+    'source.message.noDefaults': '未检测到默认来源',
+    'source.message.demoReadOnly': '静态演示模式为只读。'
   }
 })
 
@@ -81,6 +85,7 @@ const disabledCount = computed(() => normalizedEntries.value.length - enabledCou
 const entriesChanged = computed(() => JSON.stringify(normalizedEntries.value) !== JSON.stringify(savedEntries.value))
 
 const sourceState = computed(() => {
+  if (isStaticDemo) return { color: 'processing', label: t('source.state.demo') }
   if (entriesChanged.value) return { color: 'warning', label: t('source.state.unsaved') }
   if (enabledCount.value > 0) {
     return { color: 'success', label: `${formatNumber(enabledCount.value)} ${t('source.state.enabledSuffix')}` }
@@ -131,6 +136,10 @@ async function load() {
 }
 
 async function save() {
+  if (isStaticDemo) {
+    message.info(t('source.message.demoReadOnly'))
+    return
+  }
   saving.value = true
   try {
     settings.value = await api.saveSourceSettings(normalizedEntries.value)
@@ -145,6 +154,10 @@ async function save() {
 }
 
 function addSource() {
+  if (isStaticDemo) {
+    message.info(t('source.message.demoReadOnly'))
+    return
+  }
   const path = newSourcePath.value.trim()
   if (!path) return
   if (normalizedEntries.value.some((entry) => entryKey(entry.path) === entryKey(path))) {
@@ -156,10 +169,18 @@ function addSource() {
 }
 
 function removeSource(index: number) {
+  if (isStaticDemo) {
+    message.info(t('source.message.demoReadOnly'))
+    return
+  }
   sourceEntries.value.splice(index, 1)
 }
 
 function useDefaults() {
+  if (isStaticDemo) {
+    message.info(t('source.message.demoReadOnly'))
+    return
+  }
   const paths = settings.value?.defaultSourcePaths || []
   if (!paths.length) {
     message.warning(t('source.message.noDefaults'))
@@ -219,14 +240,14 @@ onMounted(load)
                 :class="{ 'is-disabled': !entry.enabled }"
               >
                 <div class="source-entry-state">
-                  <a-switch v-model:checked="entry.enabled" size="small" />
+                  <a-switch v-model:checked="entry.enabled" size="small" :disabled="isStaticDemo" />
                   <a-tag :color="entry.enabled ? 'success' : 'default'" class="status-tag">
                     {{ entry.enabled ? t('source.meta.enabled') : t('source.meta.disabled') }}
                   </a-tag>
                 </div>
-                <a-input v-model:value="entry.label" class="source-entry-label" :placeholder="t('source.placeholder.label')" />
-                <a-input v-model:value="entry.path" class="source-entry-input" :placeholder="t('source.placeholder.path')" />
-                <a-button type="text" danger :title="t('source.action.remove')" @click="removeSource(index)">
+                <a-input v-model:value="entry.label" class="source-entry-label" :placeholder="t('source.placeholder.label')" :disabled="isStaticDemo" />
+                <a-input v-model:value="entry.path" class="source-entry-input" :placeholder="t('source.placeholder.path')" :disabled="isStaticDemo" />
+                <a-button type="text" danger :title="t('source.action.remove')" :disabled="isStaticDemo" @click="removeSource(index)">
                   <template #icon>
                     <DeleteOutlined />
                   </template>
@@ -239,8 +260,8 @@ onMounted(load)
             </div>
 
             <div class="source-add-row">
-              <a-input v-model:value="newSourcePath" :placeholder="t('source.placeholder.path')" @pressEnter="addSource" />
-              <a-button @click="addSource">
+              <a-input v-model:value="newSourcePath" :placeholder="t('source.placeholder.path')" :disabled="isStaticDemo" @pressEnter="addSource" />
+              <a-button :disabled="isStaticDemo" @click="addSource">
                 <template #icon>
                   <PlusOutlined />
                 </template>
@@ -250,13 +271,13 @@ onMounted(load)
 
             <div class="toolbar">
               <div class="toolbar-left">
-                <a-button type="primary" :loading="saving" :disabled="!entriesChanged" @click="save">
+                <a-button type="primary" :loading="saving" :disabled="isStaticDemo || !entriesChanged" @click="save">
                   <template #icon>
                     <SaveOutlined />
                   </template>
                   {{ t('source.action.save') }}
                 </a-button>
-                <a-button @click="useDefaults">
+                <a-button :disabled="isStaticDemo" @click="useDefaults">
                   <template #icon>
                     <FolderAddOutlined />
                   </template>

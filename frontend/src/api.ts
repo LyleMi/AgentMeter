@@ -1,4 +1,4 @@
-export { api } from './api/client'
+export { api, isStaticDemo } from './api/client'
 export type * from './api/types'
 export {
   formatCost,

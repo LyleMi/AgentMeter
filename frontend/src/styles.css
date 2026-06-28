@@ -66,6 +66,22 @@ body {
   min-height: 100vh;
 }
 
+.app-shell.has-demo-banner {
+  min-height: calc(100vh - 34px);
+}
+
+.demo-preview-banner {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 7px 20px;
+  color: #5f3b05;
+  background: #fff7d6;
+  border-bottom: 1px solid var(--am-warning-border);
+  font-size: 13px;
+  font-weight: 650;
+}
+
 .app-sider {
   background:
     linear-gradient(180deg, rgb(255 255 255 / 98%) 0%, rgb(247 251 255 / 98%) 100%),

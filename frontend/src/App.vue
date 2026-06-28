@@ -22,7 +22,7 @@ import {
   ToolOutlined,
   WarningOutlined
 } from '@ant-design/icons-vue'
-import { api, type Settings } from './api'
+import { api, isStaticDemo, type Settings } from './api'
 import { APP_DATA_CHANGED_EVENT, type AppDataChangeDetail } from './events'
 import { antDesignLocale, currentLocale, localeOptions, setLocale, useMessages } from './i18n'
 
@@ -63,6 +63,8 @@ const { t } = useMessages({
     'index.result': '{indexed} indexed, {skipped} skipped, {failed} failed',
     'index.failed': 'Index failed',
     'index.failedWithMessage': 'Index failed: {message}',
+    'demo.banner': 'Static demo mode. This preview uses bundled synthetic data and cannot read local files or write settings.',
+    'demo.readOnly': 'Static demo mode is read-only.',
     'language.label': 'Language',
     'language.aria': 'Select language',
     'language.english': 'English',
@@ -93,6 +95,8 @@ const { t } = useMessages({
     'index.result': '已索引 {indexed}，跳过 {skipped}，失败 {failed}',
     'index.failed': '索引失败',
     'index.failedWithMessage': '索引失败：{message}',
+    'demo.banner': '静态演示模式。此预览使用内置合成数据，不能读取本地文件或写入设置。',
+    'demo.readOnly': '静态演示模式为只读。',
     'language.label': '语言',
     'language.aria': '选择语言',
     'language.english': '英文',
@@ -113,8 +117,8 @@ const sourceSummary = computed(() => {
   return sourcePathDisplay.value
 })
 const sidebarToggleLabel = computed(() => (sidebarCollapsed.value ? t('sidebar.expand') : t('sidebar.collapse')))
-const updateIndexHint = computed(() => t('index.updateHint'))
-const rebuildIndexHint = computed(() => t('index.rebuildHint'))
+const updateIndexHint = computed(() => (isStaticDemo ? t('demo.readOnly') : t('index.updateHint')))
+const rebuildIndexHint = computed(() => (isStaticDemo ? t('demo.readOnly') : t('index.rebuildHint')))
 
 const selectedKeys = computed(() => {
   if (route.path.startsWith('/time')) return ['time']
@@ -157,6 +161,10 @@ async function handleAppDataChanged(event: Event) {
 }
 
 async function indexNow(rebuild = false) {
+  if (isStaticDemo) {
+    message.info(t('demo.readOnly'))
+    return
+  }
   indexing.value = true
   try {
     const result = await api.indexNow(rebuild)
@@ -222,7 +230,10 @@ onBeforeUnmount(() => {
       }
     }"
   >
-    <a-layout class="app-shell">
+    <div v-if="isStaticDemo" class="demo-preview-banner" role="status">
+      {{ t('demo.banner') }}
+    </div>
+    <a-layout class="app-shell" :class="{ 'has-demo-banner': isStaticDemo }">
       <a-layout-sider
         class="app-sider"
         :class="{ 'is-collapsed': sidebarCollapsed }"
@@ -294,7 +305,7 @@ onBeforeUnmount(() => {
               </select>
             </div>
             <a-tooltip :title="updateIndexHint" placement="bottom">
-              <a-button type="primary" :loading="indexing" @click="indexNow(false)">
+              <a-button type="primary" :loading="indexing" :disabled="isStaticDemo" @click="indexNow(false)">
                 <template #icon>
                   <PlayCircleOutlined />
                 </template>
@@ -302,7 +313,7 @@ onBeforeUnmount(() => {
               </a-button>
             </a-tooltip>
             <a-tooltip :title="rebuildIndexHint" placement="bottom">
-              <a-button :loading="indexing" @click="indexNow(true)">
+              <a-button :loading="indexing" :disabled="isStaticDemo" @click="indexNow(true)">
                 <template #icon>
                   <ReloadOutlined />
                 </template>

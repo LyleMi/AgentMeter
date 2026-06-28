@@ -8,7 +8,7 @@ import ATag from 'ant-design-vue/es/tag'
 import Tooltip from 'ant-design-vue/es/tooltip'
 import Typography from 'ant-design-vue/es/typography'
 import { DatabaseOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons-vue'
-import { api, formatDateTime, formatDuration, formatNumber, type Settings } from '../api'
+import { api, formatDateTime, formatDuration, formatNumber, isStaticDemo, type Settings } from '../api'
 import { notifyAppDataChanged } from '../events'
 import { useMessages } from '../i18n'
 
@@ -23,6 +23,7 @@ const { t } = useMessages({
     'database.action.rebuildIndex': 'Rebuild Index',
     'database.action.updateHint': 'Scan enabled sources and parse only new or changed JSONL files.',
     'database.action.rebuildHint': 'Clear indexed files for enabled sources, then parse every JSONL file again.',
+    'database.action.demoHint': 'Static demo mode is read-only. Indexing is disabled.',
     'database.meta.path': 'Database path',
     'database.meta.lastRun': 'Last run',
     'database.meta.indexState': 'Index state',
@@ -63,6 +64,7 @@ const { t } = useMessages({
     'database.action.rebuildIndex': '重建索引',
     'database.action.updateHint': '扫描已启用来源，只解析新增或已变更的 JSONL 文件。',
     'database.action.rebuildHint': '清除已启用来源的索引文件，然后重新解析每个 JSONL 文件。',
+    'database.action.demoHint': '静态演示模式为只读，索引功能已禁用。',
     'database.meta.path': '数据库路径',
     'database.meta.lastRun': '上次运行',
     'database.meta.indexState': '索引状态',
@@ -147,6 +149,10 @@ async function load() {
 }
 
 async function index(rebuild = false) {
+  if (isStaticDemo) {
+    message.info(t('database.action.demoHint'))
+    return
+  }
   indexing.value = true
   try {
     const result = await api.indexNow(rebuild)
@@ -218,16 +224,16 @@ onMounted(load)
 
             <div class="toolbar">
               <div class="toolbar-left">
-                <a-tooltip :title="t('database.action.updateHint')">
-                  <a-button type="primary" :loading="indexing" @click="index(false)">
+                <a-tooltip :title="isStaticDemo ? t('database.action.demoHint') : t('database.action.updateHint')">
+                  <a-button type="primary" :loading="indexing" :disabled="isStaticDemo" @click="index(false)">
                     <template #icon>
                       <PlayCircleOutlined />
                     </template>
                     {{ t('database.action.updateIndex') }}
                   </a-button>
                 </a-tooltip>
-                <a-tooltip :title="t('database.action.rebuildHint')">
-                  <a-button :loading="indexing" @click="index(true)">
+                <a-tooltip :title="isStaticDemo ? t('database.action.demoHint') : t('database.action.rebuildHint')">
+                  <a-button :loading="indexing" :disabled="isStaticDemo" @click="index(true)">
                     <template #icon>
                       <ReloadOutlined />
                     </template>

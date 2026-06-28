@@ -50,6 +50,7 @@ defineProps<{
   savingId: string
   applyingProfile: PrivacyProfileId | ''
   warningList: string[]
+  readOnly?: boolean
   targetLabel: string
   formatNumber: (value: number | undefined) => string
   formatConfigValue: (value: unknown) => string
@@ -108,7 +109,7 @@ const selectedTarget = defineModel<PrivacyTarget>('selectedTarget', { required: 
               </div>
               <a-button
                 :loading="applyingProfile === profile.id"
-                :disabled="!privacyStatus || savingAll || Boolean(savingId)"
+                :disabled="readOnly || !privacyStatus || savingAll || Boolean(savingId)"
                 @click="$emit('applyProfile', profile.id)"
               >
                 {{ t('privacy.profile.apply') }}
@@ -183,7 +184,7 @@ const selectedTarget = defineModel<PrivacyTarget>('selectedTarget', { required: 
             <a-button
               type="primary"
               :loading="savingAll"
-              :disabled="!changedCount || Boolean(savingId)"
+              :disabled="readOnly || !changedCount || Boolean(savingId)"
               @click="$emit('saveAll')"
             >
               <template #icon>

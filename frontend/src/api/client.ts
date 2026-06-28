@@ -24,6 +24,17 @@ import type {
   UsageBreakdownFilters,
   UsageScopeFilters
 } from './types'
+import { demoApi } from './demo'
+
+declare global {
+  interface ImportMeta {
+    readonly env: {
+      readonly VITE_AGENTMETER_STATIC_DEMO?: string
+    }
+  }
+}
+
+export const isStaticDemo = import.meta.env.VITE_AGENTMETER_STATIC_DEMO === 'true'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -61,7 +72,7 @@ function queryPath(path: string, params: URLSearchParams) {
   return query ? `${path}?${query}` : path
 }
 
-export const api = {
+const fetchApi = {
   getSettings: () => request<Settings>('/api/settings'),
   saveSourceSettings: (sourceEntries: SourceEntry[]) =>
     request<Settings>('/api/settings', { method: 'POST', body: JSON.stringify({ sourceEntries }) }),
@@ -134,3 +145,5 @@ export const api = {
   getAuditFinding: (id: number) => request<AuditFinding>(`/api/audit/findings/${id}`),
   getPricingModels: () => request<PricingModel[]>('/api/pricing')
 }
+
+export const api = isStaticDemo ? demoApi : fetchApi

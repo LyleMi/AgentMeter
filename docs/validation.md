@@ -84,12 +84,23 @@ Routine browser smoke should not perform state-changing app actions.
 
 ## Static Pages Preview
 
-The public GitHub Pages preview under `site/` is mock-data-only and does not
-require the Go backend or Vite. For preview changes, validate:
+The public GitHub Pages preview builds the real Vue frontend in static demo
+mode and uploads `frontend/dist`. It does not require the Go backend at runtime.
+For preview changes, validate:
 
-- `site/index.html` renders with the copied logo and social preview asset;
-- Overview, Sessions, Tools, Audit, and Privacy / Local Model navigation works;
-- the session filter and density toggle work;
+```powershell
+cd frontend
+$env:VITE_AGENTMETER_STATIC_DEMO='true'
+npm run build
+cd ..
+```
+
+- `frontend/dist/index.html` renders the Vue app under
+  `https://blog.lyle.ac.cn/AgentMeter/`;
+- built JS, CSS, favicon, and other Vite asset URLs are rooted at
+  `/AgentMeter/`, not `/`;
+- hash-router navigation works for routes such as `/#/overview/summary`,
+  `/#/sessions`, `/#/tools`, `/#/audit/summary`, and `/#/agent-privacy`;
 - desktop and mobile viewports have no page-level horizontal overflow;
 - `robots.txt`, `sitemap.xml`, `llms.txt`, canonical, and Open Graph metadata
   remain aligned with `https://blog.lyle.ac.cn/AgentMeter/`;

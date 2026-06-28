@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import message from 'ant-design-vue/es/message'
 import ASpin from 'ant-design-vue/es/spin'
-import { api } from '../api/client'
+import { api, isStaticDemo } from '../api'
 import type {
   PrivacyConfigApplyResult,
   PrivacyConfigSetting,
@@ -98,6 +98,7 @@ const { t, locale } = useMessages({
     'privacy.message.profileApplied': 'Applied {profile}: {count} changes',
     'privacy.message.profileNoChanges': '{profile} profile made no config changes',
     'privacy.message.profileFailed': 'Apply privacy profile failed',
+    'privacy.message.demoReadOnly': 'Static demo mode is read-only. No agent config will be changed.',
     'privacy.result.title': 'Last config write',
     'privacy.result.changed': 'Changed',
     'privacy.result.noChanges': 'No config values changed',
@@ -337,6 +338,7 @@ const { t, locale } = useMessages({
     'privacy.message.profileApplied': '已应用 {profile}：{count} 项变更',
     'privacy.message.profileNoChanges': '{profile} 档位未产生配置变更',
     'privacy.message.profileFailed': '应用隐私档位失败',
+    'privacy.message.demoReadOnly': '静态演示模式为只读，不会修改 Agent 配置。',
     'privacy.result.title': '上次配置写入',
     'privacy.result.changed': '已变更',
     'privacy.result.noChanges': '没有配置值变更',
@@ -505,7 +507,7 @@ const {
   resetEdit,
   isEditChanged,
   changeForSetting,
-  canEdit
+  canEdit: baseCanEdit
 } = useAgentPrivacyEditor()
 let loadRequestId = 0
 let saveRequestId = 0
@@ -675,6 +677,10 @@ function localizedSettingImpact(setting: PrivacyConfigSetting) {
   return localizedSettingText(setting, 'impact', setting.impact)
 }
 
+function canEdit(setting: PrivacyConfigSetting) {
+  return !isStaticDemo && baseCanEdit(setting)
+}
+
 function formatConfigValue(value: unknown) {
   return formatPrivacyConfigValue(value, t('privacy.value.unset'))
 }
@@ -729,6 +735,10 @@ async function load() {
 }
 
 async function saveSettings(records: PrivacyConfigSetting[], saveAll = false) {
+  if (isStaticDemo) {
+    message.info(t('privacy.message.demoReadOnly'))
+    return
+  }
   if (applyingProfile.value) return
 
   const changes = records.filter((setting) => canEdit(setting) && isEditChanged(setting)).map(changeForSetting)
@@ -769,6 +779,10 @@ async function saveSettings(records: PrivacyConfigSetting[], saveAll = false) {
 }
 
 async function applyProfile(profile: PrivacyProfileId) {
+  if (isStaticDemo) {
+    message.info(t('privacy.message.demoReadOnly'))
+    return
+  }
   if (savingAll.value || savingId.value) return
 
   const requestId = ++saveRequestId
@@ -834,6 +848,7 @@ watch(selectedTarget, () => {
         :saving-id="savingId"
         :applying-profile="applyingProfile"
         :warning-list="warningList"
+        :read-only="isStaticDemo"
         :target-label="targetLabel"
         :format-number="formatNumber"
         :format-config-value="formatConfigValue"
