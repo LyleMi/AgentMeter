@@ -143,6 +143,53 @@ func TestParseFileSupportsCodeBuddyMessagesAndTools(t *testing.T) {
 	}
 }
 
+func TestParseFileSupportsCursorRoleMessagesAndTools(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cursor-session.jsonl")
+	content := `{"id":"msg_1","timestampMs":1782468000000,"role":"user","content":"run tests","providerData":{"agent":"cursor"},"metadata":{"source":"cursor"},"session_id":"cursor_sess","cwd":"D:\\workspace\\project"}
+{"id":"msg_2","timestampMs":1782468002000,"role":"assistant","model":"gpt-5.2-cursor","usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":10,"total_tokens":130},"content":[{"type":"tool_use","id":"toolu_cursor","name":"terminal","input":{"command":"go test ./..."}}],"providerData":{"agent":"cursor"},"session_id":"cursor_sess","cwd":"D:\\workspace\\project"}
+{"id":"msg_3","timestampMs":1782468005000,"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_cursor","content":"ok"}],"providerData":{"agent":"cursor"},"session_id":"cursor_sess","cwd":"D:\\workspace\\project"}
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	parsed, err := ParseFile(path, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Session.SessionKey != "cursor_sess" {
+		t.Fatalf("session key = %q", parsed.Session.SessionKey)
+	}
+	if parsed.Session.ProjectPath != "D:\\workspace\\project" {
+		t.Fatalf("project path = %q", parsed.Session.ProjectPath)
+	}
+	if parsed.Session.Model != "gpt-5.2-cursor" {
+		t.Fatalf("model = %q", parsed.Session.Model)
+	}
+	if parsed.Session.AgentNickname != "cursor" {
+		t.Fatalf("agent nickname = %q", parsed.Session.AgentNickname)
+	}
+	if parsed.Session.Originator != "cursor" {
+		t.Fatalf("originator = %q", parsed.Session.Originator)
+	}
+	if parsed.Usage.InputTokens != 100 || parsed.Usage.CachedInputTokens != 20 || parsed.Usage.OutputTokens != 10 || parsed.Usage.TotalTokens != 130 {
+		t.Fatalf("usage = %+v", parsed.Usage)
+	}
+	if len(parsed.ModelCall) != 1 {
+		t.Fatalf("model calls = %d", len(parsed.ModelCall))
+	}
+	if len(parsed.ToolCall) != 1 {
+		t.Fatalf("tool calls = %d", len(parsed.ToolCall))
+	}
+	if parsed.ToolCall[0].ToolName != "terminal" || parsed.ToolCall[0].Status != "completed" || parsed.ToolCall[0].DurationMS != 3000 {
+		t.Fatalf("tool call = %+v", parsed.ToolCall[0])
+	}
+	if parsed.Session.ParseStatus != "ok" {
+		t.Fatalf("parse status = %q, warnings: %v", parsed.Session.ParseStatus, parsed.Warnings)
+	}
+}
+
 func TestParseFileSupportsWorkBuddyMessagesAndTools(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "workbuddy-session.jsonl")

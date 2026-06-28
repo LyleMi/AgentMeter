@@ -14,37 +14,39 @@ import (
 )
 
 type rawRecord struct {
-	ID             any            `json:"id"`
-	ParentID       any            `json:"parentId"`
-	Timestamp      any            `json:"timestamp"`
-	CreatedAt      any            `json:"created_at"`
-	CreatedAtCamel any            `json:"createdAt"`
-	Type           string         `json:"type"`
-	SessionID      any            `json:"sessionId"`
-	SessionIDSnake any            `json:"session_id"`
-	UUID           any            `json:"uuid"`
-	CWD            any            `json:"cwd"`
-	Role           any            `json:"role"`
-	Status         any            `json:"status"`
-	Name           any            `json:"name"`
-	CallID         any            `json:"callId"`
-	CallIDSnake    any            `json:"call_id"`
-	Arguments      any            `json:"arguments"`
-	Output         any            `json:"output"`
-	Content        any            `json:"content"`
-	RawContent     any            `json:"rawContent"`
-	Summary        any            `json:"summary"`
-	AITitle        any            `json:"aiTitle"`
-	Payload        map[string]any `json:"payload"`
-	Data           map[string]any `json:"data"`
-	Result         map[string]any `json:"result"`
-	Response       map[string]any `json:"response"`
-	Message        map[string]any `json:"message"`
-	Usage          any            `json:"usage"`
-	Model          any            `json:"model"`
-	ModelName      any            `json:"model_name"`
-	Metadata       map[string]any `json:"metadata"`
-	ProviderData   map[string]any `json:"providerData"`
+	ID               any            `json:"id"`
+	ParentID         any            `json:"parentId"`
+	Timestamp        any            `json:"timestamp"`
+	TimestampMS      any            `json:"timestamp_ms"`
+	TimestampMSCamel any            `json:"timestampMs"`
+	CreatedAt        any            `json:"created_at"`
+	CreatedAtCamel   any            `json:"createdAt"`
+	Type             string         `json:"type"`
+	SessionID        any            `json:"sessionId"`
+	SessionIDSnake   any            `json:"session_id"`
+	UUID             any            `json:"uuid"`
+	CWD              any            `json:"cwd"`
+	Role             any            `json:"role"`
+	Status           any            `json:"status"`
+	Name             any            `json:"name"`
+	CallID           any            `json:"callId"`
+	CallIDSnake      any            `json:"call_id"`
+	Arguments        any            `json:"arguments"`
+	Output           any            `json:"output"`
+	Content          any            `json:"content"`
+	RawContent       any            `json:"rawContent"`
+	Summary          any            `json:"summary"`
+	AITitle          any            `json:"aiTitle"`
+	Payload          map[string]any `json:"payload"`
+	Data             map[string]any `json:"data"`
+	Result           map[string]any `json:"result"`
+	Response         map[string]any `json:"response"`
+	Message          map[string]any `json:"message"`
+	Usage            any            `json:"usage"`
+	Model            any            `json:"model"`
+	ModelName        any            `json:"model_name"`
+	Metadata         map[string]any `json:"metadata"`
+	ProviderData     map[string]any `json:"providerData"`
 }
 
 type pendingTool struct {
@@ -100,6 +102,16 @@ func classifyRecord(raw rawRecord) string {
 	if stringValue(raw.Payload, "type") != "" {
 		return classify(raw.Type, raw.Payload)
 	}
+	if raw.Type == "" {
+		switch stringFromAny(raw.Role) {
+		case "user":
+			return "user"
+		case "assistant":
+			return "model"
+		case "system":
+			return "session"
+		}
+	}
 	switch raw.Type {
 	case "message":
 		switch stringFromAny(raw.Role) {
@@ -124,6 +136,11 @@ func classifyRecord(raw rawRecord) string {
 func summarizeRecord(raw rawRecord) string {
 	if stringValue(raw.Payload, "type") != "" {
 		return summarize(raw.Type, raw.Payload)
+	}
+	if raw.Type == "" {
+		if role := stringFromAny(raw.Role); role != "" {
+			return role + ": " + preview(contentText(raw.Content), 180)
+		}
 	}
 	switch raw.Type {
 	case "message":
@@ -568,7 +585,7 @@ func usageFromValue(value any) model.Usage {
 }
 
 func recordTimestamp(raw rawRecord) time.Time {
-	for _, value := range []any{raw.Timestamp, raw.CreatedAt, raw.CreatedAtCamel} {
+	for _, value := range []any{raw.Timestamp, raw.TimestampMS, raw.TimestampMSCamel, raw.CreatedAt, raw.CreatedAtCamel} {
 		if ts := parseTimestampValue(value); !ts.IsZero() {
 			return ts
 		}

@@ -71,6 +71,8 @@ func TestResolveSourceDetectsKnownAndVariantRoots(t *testing.T) {
 		{name: "claude exact", root: ".claude", child: "projects", wantKind: "claude", wantName: "Claude Code"},
 		{name: "claude variant", root: ".xclaude", child: "projects", wantKind: "claude", wantName: "Claude Code (.xclaude)"},
 		{name: "codebuddy variant", root: ".xcodebuddy", child: "projects", wantKind: "codebuddy", wantName: "CodeBuddy (.xcodebuddy)"},
+		{name: "cursor exact", root: ".cursor", child: "projects", wantKind: "cursor", wantName: "Cursor"},
+		{name: "cursor variant", root: ".xcursor", child: "projects", wantKind: "cursor", wantName: "Cursor (.xcursor)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -83,6 +85,40 @@ func TestResolveSourceDetectsKnownAndVariantRoots(t *testing.T) {
 				t.Fatalf("root spec = %+v", spec)
 			}
 		})
+	}
+}
+
+func TestResolveSourceDetectsCursorProjectAndTranscriptPaths(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, ".cursor")
+	projects := filepath.Join(root, "projects")
+	transcripts := filepath.Join(projects, "d-tools-project", "agent-transcripts")
+	if err := os.MkdirAll(transcripts, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	projectsSpec := ResolveSource(projects)
+	if projectsSpec.Kind != "cursor" || projectsSpec.Name != "Cursor" || projectsSpec.RootPath != root || projectsSpec.SessionsPath != projects {
+		t.Fatalf("projects spec = %+v", projectsSpec)
+	}
+
+	transcriptsSpec := ResolveSource(transcripts)
+	if transcriptsSpec.Kind != "cursor" || transcriptsSpec.Name != "Cursor" || transcriptsSpec.RootPath != root || transcriptsSpec.SessionsPath != transcripts {
+		t.Fatalf("transcripts spec = %+v", transcriptsSpec)
+	}
+}
+
+func TestResolveSourceDetectsCursorWorkspaceStoragePath(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, "Cursor")
+	workspaceStorage := filepath.Join(root, "User", "workspaceStorage")
+	if err := os.MkdirAll(workspaceStorage, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	spec := ResolveSource(workspaceStorage)
+	if spec.Kind != "cursor" || spec.Name != "Cursor" || spec.RootPath != root || spec.SessionsPath != workspaceStorage {
+		t.Fatalf("workspaceStorage spec = %+v", spec)
 	}
 }
 

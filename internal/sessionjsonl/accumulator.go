@@ -144,7 +144,7 @@ func (a *parseAccumulator) handleRecord(record parsedRawRecord) {
 		a.handleRecordToolResult(raw, ts, lineNo)
 	}
 
-	if raw.Message != nil {
+	if raw.Message != nil || topLevelRole(raw) != "" {
 		a.handleMessage(raw, ts, lineNo)
 	}
 
@@ -258,13 +258,17 @@ func (a *parseAccumulator) handleRecordToolResult(raw rawRecord, ts time.Time, l
 }
 
 func (a *parseAccumulator) handleMessage(raw rawRecord, ts time.Time, lineNo int) {
-	role := stringValue(raw.Message, "role")
-	if messageModel := modelFromMap(raw.Message); messageModel != "" {
+	message := raw.Message
+	if message == nil {
+		message = topLevelMessage(raw)
+	}
+	role := stringValue(message, "role")
+	if messageModel := modelFromMap(message); messageModel != "" {
 		a.currentModel = messageModel
 		a.parsed.Session.Model = firstNonEmpty(a.parsed.Session.Model, messageModel)
 	}
 	if role == "assistant" || raw.Type == "assistant" {
-		for _, call := range toolUsesFromMessage(raw.Message, ts, lineNo) {
+		for _, call := range toolUsesFromMessage(message, ts, lineNo) {
 			if call.callID != "" {
 				a.pending[call.callID] = call
 			}
@@ -273,7 +277,7 @@ func (a *parseAccumulator) handleMessage(raw rawRecord, ts time.Time, lineNo int
 	if role != "user" && raw.Type != "user" {
 		return
 	}
-	for _, result := range toolResultsFromMessage(raw.Message, ts, lineNo) {
+	for _, result := range toolResultsFromMessage(message, ts, lineNo) {
 		call := a.pending[result.callID]
 		if call.callID == "" {
 			call = pendingTool{
@@ -289,6 +293,40 @@ func (a *parseAccumulator) handleMessage(raw rawRecord, ts time.Time, lineNo int
 		a.parsed.ToolCall = append(a.parsed.ToolCall, toolCall)
 		delete(a.pending, result.callID)
 		a.modelBoundary = ts
+	}
+}
+
+func topLevelMessage(raw rawRecord) map[string]any {
+	role := topLevelRole(raw)
+	if role == "" {
+		return nil
+	}
+	message := map[string]any{"role": role}
+	if raw.Content != nil {
+		message["content"] = raw.Content
+	}
+	if raw.Model != nil {
+		message["model"] = raw.Model
+	}
+	if raw.ModelName != nil {
+		message["model_name"] = raw.ModelName
+	}
+	if raw.Usage != nil {
+		message["usage"] = raw.Usage
+	}
+	return message
+}
+
+func topLevelRole(raw rawRecord) string {
+	role := stringFromAny(raw.Role)
+	if role != "" {
+		return role
+	}
+	switch raw.Type {
+	case "user", "assistant", "system":
+		return raw.Type
+	default:
+		return ""
 	}
 }
 

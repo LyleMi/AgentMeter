@@ -53,6 +53,13 @@ func DefaultWorkBuddyRoot() string {
 	return ".workbuddy"
 }
 
+func DefaultCursorRoot() string {
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".cursor")
+	}
+	return ".cursor"
+}
+
 func DefaultAgentSourceCandidates() []string {
 	candidates := DiscoverAgentSourceCandidates()
 	paths := make([]string, 0, len(candidates))
@@ -81,8 +88,9 @@ func DiscoverAgentSourceCandidates() []SourceCandidate {
 	add(DefaultClaudeRoot(), "default")
 	add(DefaultCodeBuddyRoot(), "default")
 	add(DefaultWorkBuddyRoot(), "default")
+	add(DefaultCursorRoot(), "default")
 
-	for _, env := range []string{"CODEX_HOME", "CLAUDE_CONFIG_DIR", "CODEBUDDY_CONFIG_DIR", "WORKBUDDY_CONFIG_DIR"} {
+	for _, env := range []string{"CODEX_HOME", "CLAUDE_CONFIG_DIR", "CODEBUDDY_CONFIG_DIR", "WORKBUDDY_CONFIG_DIR", "CURSOR_HOME"} {
 		if value := strings.TrimSpace(os.Getenv(env)); value != "" {
 			add(value, "env:"+env)
 		}
@@ -135,7 +143,7 @@ func homeAgentVariants(home string) []string {
 }
 
 func containsKnownAgentToken(name string) bool {
-	for _, token := range []string{"codex", "claude", "codebuddy", "workbuddy"} {
+	for _, token := range []string{"codex", "claude", "codebuddy", "workbuddy", "cursor"} {
 		if strings.Contains(name, token) {
 			return true
 		}
@@ -154,6 +162,8 @@ func inferCandidateFamily(path string) (string, string) {
 		return "claude", "Claude Code"
 	case strings.Contains(name, "codex"):
 		return "codex", "Codex"
+	case strings.Contains(name, "cursor"):
+		return "cursor", "Cursor"
 	default:
 		return "jsonl", "Generic JSONL"
 	}

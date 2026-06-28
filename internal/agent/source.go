@@ -33,12 +33,16 @@ var familyRules = []familyRule{
 	{Kind: "workbuddy", Name: "WorkBuddy", ExactRoot: ".workbuddy", Token: "workbuddy", Children: []string{"projects", "sessions"}},
 	{Kind: "claude", Name: "Claude Code", ExactRoot: ".claude", Token: "claude", Children: []string{"projects"}},
 	{Kind: "codex", Name: "Codex", ExactRoot: ".codex", Token: "codex", Children: []string{"sessions", "archived_sessions"}},
+	{Kind: "cursor", Name: "Cursor", ExactRoot: ".cursor", Token: "cursor", Children: []string{"projects", "User"}},
 }
 
 func ResolveSource(path string) SourceSpec {
 	cleaned := sourcepath.Normalize(path)
 	if cleaned == "" {
 		cleaned = filepath.Clean(path)
+	}
+	if spec, ok := matchingCursorNestedPath(cleaned); ok {
+		return spec
 	}
 	if rule, ok := matchingChildRule(cleaned); ok {
 		root := filepath.Dir(cleaned)
@@ -98,8 +102,87 @@ func UsageSources(spec SourceSpec) []UsageSource {
 				return []UsageSource{{Dir: sessions, DedupeScope: spec.RootPath}}
 			}
 		}
+	case "cursor":
+		if sourcepath.Equal(spec.RootPath, spec.SessionsPath) {
+			projects := filepath.Join(spec.RootPath, "projects")
+			if isDir(projects) {
+				return []UsageSource{{Dir: projects, DedupeScope: spec.RootPath}}
+			}
+			workspaceStorage := filepath.Join(spec.RootPath, "User", "workspaceStorage")
+			if isDir(workspaceStorage) {
+				return []UsageSource{{Dir: workspaceStorage, DedupeScope: spec.RootPath}}
+			}
+		}
+		if strings.EqualFold(filepath.Base(spec.SessionsPath), "User") {
+			workspaceStorage := filepath.Join(spec.SessionsPath, "workspaceStorage")
+			if isDir(workspaceStorage) {
+				return []UsageSource{{Dir: workspaceStorage, DedupeScope: spec.RootPath}}
+			}
+		}
 	}
 	return []UsageSource{{Dir: spec.SessionsPath, DedupeScope: spec.SessionsPath}}
+}
+
+func matchingCursorNestedPath(path string) (SourceSpec, bool) {
+	if root, ok := cursorProjectsRoot(path); ok {
+		return SourceSpec{Kind: "cursor", Name: cursorDisplayName(root), RootPath: root, SessionsPath: path}, true
+	}
+	if root, ok := cursorWorkspaceStorageRoot(path); ok {
+		return SourceSpec{Kind: "cursor", Name: cursorDisplayName(root), RootPath: root, SessionsPath: path}, true
+	}
+	return SourceSpec{}, false
+}
+
+func cursorProjectsRoot(path string) (string, bool) {
+	for current := filepath.Clean(path); ; current = filepath.Dir(current) {
+		if strings.EqualFold(filepath.Base(current), "projects") {
+			root := filepath.Dir(current)
+			if cursorRootNameMatches(root) {
+				return root, true
+			}
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+	}
+	return "", false
+}
+
+func cursorWorkspaceStorageRoot(path string) (string, bool) {
+	for current := filepath.Clean(path); ; current = filepath.Dir(current) {
+		base := filepath.Base(current)
+		if strings.EqualFold(base, "workspaceStorage") || strings.EqualFold(base, "globalStorage") {
+			userDir := filepath.Dir(current)
+			if !strings.EqualFold(filepath.Base(userDir), "User") {
+				continue
+			}
+			root := filepath.Dir(userDir)
+			if cursorRootNameMatches(root) {
+				return root, true
+			}
+			if strings.EqualFold(filepath.Base(root), "data") && cursorRootNameMatches(filepath.Dir(root)) {
+				return filepath.Dir(root), true
+			}
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+	}
+	return "", false
+}
+
+func cursorRootNameMatches(path string) bool {
+	return rootNameMatches(path, familyRule{ExactRoot: ".cursor", Token: "cursor"})
+}
+
+func cursorDisplayName(rootPath string) string {
+	base := filepath.Base(rootPath)
+	if strings.EqualFold(base, ".cursor") || strings.EqualFold(base, "Cursor") {
+		return "Cursor"
+	}
+	return "Cursor (" + base + ")"
 }
 
 func matchingChildRule(path string) (familyRule, bool) {
@@ -144,6 +227,9 @@ func hasFamilyStructure(path string, rule familyRule) bool {
 }
 
 func displayName(rule familyRule, rootPath string) string {
+	if rule.Kind == "cursor" {
+		return cursorDisplayName(rootPath)
+	}
 	base := filepath.Base(rootPath)
 	if strings.EqualFold(base, rule.ExactRoot) {
 		return rule.Name
