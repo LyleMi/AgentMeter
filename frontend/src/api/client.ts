@@ -3,6 +3,7 @@ import type {
   AuditFindingFilters,
   AuditSummary,
   IndexResult,
+  ModelSignals,
   Overview,
   PricingModel,
   PrivacyConfigApplyResult,
@@ -106,6 +107,8 @@ const fetchApi = {
     request<Overview>(queryPath('/api/overview', usageScopeParamValues(filters))),
   getTokenAnalytics: (filters: UsageScopeFilters = {}) =>
     request<TokenAnalytics>(queryPath('/api/tokens', usageScopeParamValues(filters))),
+  getModelSignals: (filters: UsageScopeFilters = {}) =>
+    request<ModelSignals>(queryPath('/api/model-signals', usageScopeParamValues(filters))),
   getUsageBreakdown: (filters: UsageBreakdownFilters) =>
     request<UsageBreakdown>(queryPath('/api/usage/breakdown', {
       ...usageScopeParamValues(filters),

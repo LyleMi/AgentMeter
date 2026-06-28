@@ -28,6 +28,7 @@ const router = createRouter({
         { path: 'sessions', component: () => import('./views/tokens/TokensSessions.vue') }
       ]
     },
+    { path: '/model-signals', component: () => import('./views/ModelSignals.vue') },
     { path: '/sessions', component: () => import('./views/Sessions.vue') },
     { path: '/sessions/:id', component: () => import('./views/SessionDetail.vue'), props: true },
     {

@@ -26,9 +26,10 @@
 ![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)
 
 AgentMeter 是一个开源 Go + Vue 仪表盘，用于理解本地 coding-agent 会话
-用量。它读取本地 agent JSONL 会话文件，将数据索引到 SQLite，并通过私有
-的本地 Web 界面和终端界面展示 token、预估成本、耗时、会话历史、模型、
-项目、缓存（cache）复用和工具调用行为。
+用量。它读取本地 agent JSONL 会话文件，将数据索引到 SQLite，并在私有的
+本地 Web 仪表盘中展示 token、预估成本、耗时、会话历史、模型、项目、缓存
+（cache）复用、工具调用行为和模型表现信号，同时终端界面复用同一份本地数据
+提供摘要视图。
 
 无代理、无云服务、无遥测。
 
@@ -41,7 +42,7 @@ AgentMeter 是一个开源 Go + Vue 仪表盘，用于理解本地 coding-agent 
 - **隐私模型：** 会话数据保留在你的机器上，存入本地 SQLite 数据库；
   AgentMeter 不代理流量，也不上传遥测。
 - **主要视图：** 会话、每日用量、模型、项目、缓存（cache）复用、预估
-  成本、工具调用分析，以及离线命令/隐私审计发现。
+  成本、模型信号、工具调用分析，以及离线命令/隐私审计发现。
 - **界面形态：** 默认使用本地 Web 仪表盘，也提供复用同一数据库和查询行为
   的终端 UI。
 - **发布资产：** 跨平台压缩包发布在
@@ -58,6 +59,7 @@ AgentMeter 将这些数据整理成可以直接回答的问题：
 - 这些 token 大致花费了多少？
 - 哪些模型、日期、项目或会话的用量最高？
 - 按日期、模型或项目看，缓存命中表现是否稳定？
+- 哪些模型表现出异常的扩展率、吞吐、缓存未命中或工具使用信号？
 - 哪些工具被调用得最多？
 - 会话和工具调用分别耗时多久？
 
@@ -65,6 +67,8 @@ AgentMeter 将这些数据整理成可以直接回答的问题：
 
 - 本地 Web 仪表盘，可查看会话、token、预估成本、每日用量、模型用量、
   项目用量、按日期/模型/项目的缓存命中趋势和工具调用分析。
+- 模型表现信号，用于查看输出扩展、reasoning 占比、缓存未命中、吞吐、
+  工具依赖、工具失败和异常会话等操作性代理指标。
 - 离线审计视图，可从已索引的本地会话数据中查看命令风险和隐私/密钥发现。
 - 终端 UI 模式复用同一套数据库、索引流水线、计价规则和查询行为。
 - 支持检测 Codex、Claude Code、CodeBuddy、WorkBuddy 以及通用 JSONL
@@ -166,6 +170,7 @@ AgentMeter 目前是面向本地 coding-agent JSONL 用量分析的 MVP。Web UI
 - [Architecture](docs/architecture.md)
 - [UI Modes](docs/ui-modes.md)
 - [Data Model](docs/data-model.md)
+- [模型信号](docs/model-signals.md)
 - [Session Formats](docs/session-formats.md)
 - [Pricing Sources](docs/pricing-sources.md)
 - [Validation](docs/validation.md)

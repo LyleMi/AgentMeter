@@ -239,6 +239,22 @@ function Assert-ObjectProperty {
     Assert-JsonObject -Value $value -Label "'$Name'"
 }
 
+function Assert-NumberPropertyMatching {
+    param(
+        [Parameter(Mandatory = $true)][object]$Object,
+        [Parameter(Mandatory = $true)][string]$Pattern,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+
+    foreach ($property in $Object.PSObject.Properties) {
+        if ($property.Name -match $Pattern -and (Test-Number -Value $property.Value)) {
+            return
+        }
+    }
+
+    throw "expected $Label numeric field"
+}
+
 function Assert-TopLevelArray {
     param([Parameter(Mandatory = $true)][string]$Raw)
 
@@ -389,6 +405,55 @@ function Assert-TokenAnalytics {
     }
 }
 
+function Assert-ModelSignalMetricRow {
+    param(
+        [Parameter(Mandatory = $true)][object]$Row,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+
+    Assert-JsonObject -Value $Row -Label $Label
+    Assert-NumberPropertyMatching -Object $Row -Pattern "(?i)(sessions|calls|count)" -Label "$Label count"
+    Assert-NumberPropertyMatching -Object $Row -Pattern "(?i)tokens" -Label "$Label token"
+    Assert-NumberPropertyMatching -Object $Row -Pattern "(?i)(duration|throughput)" -Label "$Label duration or throughput"
+    Assert-NumberPropertyMatching -Object $Row -Pattern "(?i)(rate|share)" -Label "$Label rate"
+}
+
+function Assert-ModelSignals {
+    param([Parameter(Mandatory = $true)][object]$Payload)
+
+    Assert-JsonObject -Value $Payload -Label "response"
+    Assert-NumberProperty -Object $Payload -Name "totalSessions"
+    Assert-NumberProperty -Object $Payload -Name "totalModelCalls"
+    Assert-NumberProperty -Object $Payload -Name "totalToolCalls"
+    Assert-NumberProperty -Object $Payload -Name "failedToolCalls"
+    Assert-NumberProperty -Object $Payload -Name "toolFailureRate"
+    Assert-NumberProperty -Object $Payload -Name "toolDependencyRate"
+    Assert-NumberProperty -Object $Payload -Name "avgModelCallsPerSession"
+    Assert-NumberProperty -Object $Payload -Name "outputExpansionRate"
+    Assert-NumberProperty -Object $Payload -Name "reasoningTokenShare"
+    Assert-NumberProperty -Object $Payload -Name "cacheMissRate"
+    Assert-NumberProperty -Object $Payload -Name "modelThroughputTokensPerSecond"
+    Assert-NumberProperty -Object $Payload -Name "modelThroughputOutputTokensPerSecond"
+    Assert-ArrayProperty -Object $Payload -Name "trend"
+    Assert-ArrayProperty -Object $Payload -Name "modelBreakdown"
+    Assert-ArrayProperty -Object $Payload -Name "anomalySessions"
+
+    $trend = @((Get-JsonProperty -Object $Payload -Name "trend").Value)
+    if ($trend.Count -gt 0) {
+        Assert-ModelSignalMetricRow -Row $trend[0] -Label "model signal trend row"
+    }
+
+    $breakdown = @((Get-JsonProperty -Object $Payload -Name "modelBreakdown").Value)
+    if ($breakdown.Count -gt 0) {
+        Assert-ModelSignalMetricRow -Row $breakdown[0] -Label "model signal breakdown row"
+    }
+
+    $anomalies = @((Get-JsonProperty -Object $Payload -Name "anomalySessions").Value)
+    if ($anomalies.Count -gt 0) {
+        Assert-JsonObject -Value $anomalies[0] -Label "model signal anomaly session"
+    }
+}
+
 function Assert-UsageBreakdown {
     param(
         [Parameter(Mandatory = $true)][object]$Payload,
@@ -526,6 +591,7 @@ $checks = @(
     [pscustomobject]@{ Path = "/api/privacy/codebuddy"; Validate = { param($payload, $raw) Assert-PrivacyStatus -Payload $payload -ExpectedTarget "codebuddy" } }
     [pscustomobject]@{ Path = "/api/overview"; Validate = { param($payload, $raw) Assert-Overview -Payload $payload } }
     [pscustomobject]@{ Path = "/api/tokens"; Validate = { param($payload, $raw) Assert-TokenAnalytics -Payload $payload } }
+    [pscustomobject]@{ Path = "/api/model-signals"; Validate = { param($payload, $raw) Assert-ModelSignals -Payload $payload } }
     [pscustomobject]@{ Path = "/api/usage/breakdown?groupBy=day"; Validate = { param($payload, $raw) Assert-UsageBreakdown -Payload $payload -ExpectedGroupBy "day" } }
     [pscustomobject]@{ Path = "/api/usage/breakdown?groupBy=project"; Validate = { param($payload, $raw) Assert-UsageBreakdown -Payload $payload -ExpectedGroupBy "project" } }
     [pscustomobject]@{ Path = "/api/sessions?limit=5"; Validate = { param($payload, $raw) Assert-Sessions -Payload $payload -Raw $raw } }
@@ -553,6 +619,7 @@ try {
         $projectQuery = [System.Uri]::EscapeDataString($projectPath)
         $checks += [pscustomobject]@{ Path = "/api/overview?project=$projectQuery"; Validate = { param($payload, $raw) Assert-Overview -Payload $payload } }
         $checks += [pscustomobject]@{ Path = "/api/tokens?project=$projectQuery"; Validate = { param($payload, $raw) Assert-TokenAnalytics -Payload $payload } }
+        $checks += [pscustomobject]@{ Path = "/api/model-signals?project=$projectQuery"; Validate = { param($payload, $raw) Assert-ModelSignals -Payload $payload } }
     }
 } catch {
     # The main smoke loop still reports endpoint failures. Dynamic project-scope

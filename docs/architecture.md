@@ -141,6 +141,9 @@ tables, component consistency, and UI-state validation.
 The implemented Web product areas are:
 
 - Overview
+- Time
+- Tokens
+- Model Signals
 - Sessions
 - Session Detail
 - Tools

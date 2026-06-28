@@ -213,6 +213,104 @@ export interface TokenAnalytics {
   highTokenSessions: Session[]
 }
 
+export interface ModelSignalRates {
+  outputExpansionRate: number
+  reasoningTokenShare: number
+  cacheMissRate: number
+  modelThroughputTokensPerSecond: number
+  modelThroughputOutputTokensPerSecond: number
+  toolFailureRate: number
+  toolDependencyRate: number
+}
+
+export interface ModelSignalsTrendPoint extends ModelSignalRates {
+  date: string
+  sessionCount: number
+  modelCalls: number
+  toolCalls: number
+  failedToolCalls: number
+  totalTokens: number
+  inputTokens: number
+  cachedInputTokens: number
+  outputTokens: number
+  reasoningOutputTokens: number
+  modelDurationMs: number
+  rollingModelThroughputTokensPerSecond: number
+  rollingToolFailureRate: number
+  lowSample: boolean
+}
+
+export interface ModelSignalBreakdown extends ModelSignalRates {
+  model: string
+  sessionCount: number
+  modelCalls: number
+  toolCalls: number
+  failedToolCalls: number
+  totalTokens: number
+  inputTokens: number
+  cachedInputTokens: number
+  outputTokens: number
+  reasoningOutputTokens: number
+  modelDurationMs: number
+}
+
+export interface ModelSignalAnomalySession {
+  id?: number
+  sessionId?: number
+  session?: Session
+  sessionKey?: string
+  codexSessionId?: string
+  startedAt?: string
+  projectPath?: string
+  rawSourcePath?: string
+  agentKind?: string
+  agentName?: string
+  sourceId?: number
+  sourceKey?: string
+  sourceLabel?: string
+  sourceRootPath?: string
+  sourceSessionsPath?: string
+  model?: string
+  totalTokens?: number
+  inputTokens?: number
+  outputTokens?: number
+  reasoningOutputTokens?: number
+  toolCalls?: number
+  failedToolCalls?: number
+  modelDurationMs?: number
+  outputExpansionRate?: number
+  reasoningTokenShare?: number
+  cacheMissRate?: number
+  modelThroughputTokensPerSecond?: number
+  toolFailureRate?: number
+  toolDependencyRate?: number
+  severity?: string
+  signal?: string
+  reasonLabels?: string[] | string
+  reasons?: string[] | string
+  signalReasons?: string[] | string
+  reason?: string
+  [key: string]: unknown
+}
+
+export interface ModelSignals {
+  totalSessions: number
+  totalModelCalls: number
+  totalToolCalls: number
+  failedToolCalls: number
+  toolFailureRate: number
+  toolDependencyRate: number
+  avgModelCallsPerSession: number
+  outputExpansionRate: number
+  reasoningTokenShare: number
+  cacheMissRate: number
+  modelThroughputTokensPerSecond: number
+  modelThroughputOutputTokensPerSecond: number
+  trend: ModelSignalsTrendPoint[]
+  modelBreakdown: ModelSignalBreakdown[]
+  anomalySessions: ModelSignalAnomalySession[]
+}
+
 export interface EventItem {
   id: number
   sourceLine: number

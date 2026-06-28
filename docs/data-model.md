@@ -350,6 +350,11 @@ Current read models:
   identity buckets grouped by source (`agent`), model, source plus model
   (`agent,model`), day, or project, with the same agent/source, model, and
   project and started-at range filters.
+- Model Signals: operational proxy signals for model behavior, including model
+  call density, output expansion, reasoning-token share, cache-miss rate, model
+  throughput, tool dependency, tool failures, per-model breakdown, trend rows,
+  and anomaly sessions. Model Signals can be scoped by agent/source, model,
+  project, and started-at range.
 - Sessions: filtered list by search, model, agent/source, limit, and offset,
   ordered by newest `started_at` first.
 - Session Detail: one session with normalized events, model calls, and tool
@@ -391,6 +396,19 @@ Read-model shape notes:
   cache utilization rate, a 7-day rolling cache utilization rate weighted by
   input tokens, and low-input-volume metadata so UI can distinguish low-sample
   volatility from broader model/provider behavior.
+- `/api/model-signals` returns a Model Signals read model with the same
+  analytics filters as Overview and Token Analytics: `agent`, `model`,
+  `project`, `from`, and `to`. Top-level fields include `totalSessions`,
+  `totalModelCalls`, `totalToolCalls`, `failedToolCalls`, `toolFailureRate`,
+  `toolDependencyRate`, `avgModelCallsPerSession`, `outputExpansionRate`,
+  `reasoningTokenShare`, `cacheMissRate`,
+  `modelThroughputTokensPerSecond`,
+  `modelThroughputOutputTokensPerSecond`, `trend`, `modelBreakdown`, and
+  `anomalySessions`.
+- Model Signals `trend` and `modelBreakdown` rows expose count, token, duration,
+  and rate fields so Web and TUI clients can present the same numerator and
+  denominator semantics. Empty collection fields must be JSON arrays (`[]`),
+  not `null`.
 - `/api/usage/breakdown` returns usage buckets selected by `groupBy`. Project
   buckets use `groupBy=project` and carry `projectPath`; project bucket keys use
   the same path normalization and platform case semantics as source paths. All

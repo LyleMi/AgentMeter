@@ -8,6 +8,11 @@ import type {
   DailyUsage,
   EventItem,
   IndexResult,
+  ModelSignalAnomalySession,
+  ModelSignalBreakdown,
+  ModelSignalRates,
+  ModelSignals,
+  ModelSignalsTrendPoint,
   ModelCall,
   ModelTimeUsage,
   ModelUsage,
@@ -56,6 +61,7 @@ type DemoApi = {
   indexNow: (rebuild?: boolean) => Promise<IndexResult>
   getOverview: (filters?: UsageScopeFilters) => Promise<Overview>
   getTokenAnalytics: (filters?: UsageScopeFilters) => Promise<TokenAnalytics>
+  getModelSignals: (filters?: UsageScopeFilters) => Promise<ModelSignals>
   getUsageBreakdown: (filters: UsageBreakdownFilters) => Promise<UsageBreakdown>
   listSessions: (filters?: SessionFilters) => Promise<Session[]>
   getSessionDetail: (id: number) => Promise<SessionDetail>
@@ -570,6 +576,190 @@ function cacheHitTrendFor(items: Session[]): CacheHitTrendPoint[] {
   })
 }
 
+function modelCallsForSession(session: Session): number {
+  return Math.max(1, Math.ceil(session.eventCount / 55))
+}
+
+function safeRate(numerator: number, denominator: number): number {
+  return denominator > 0 ? numerator / denominator : 0
+}
+
+function clampRate(value: number): number {
+  if (!Number.isFinite(value) || value < 0) return 0
+  if (value > 1) return 1
+  return value
+}
+
+function isSuccessfulToolStatus(status: string): boolean {
+  return status === 'completed' || status === 'success'
+}
+
+function signalRatesFor(group: Session[], groupToolCalls: ToolCall[]): ModelSignalRates {
+  const inputTokens = sum(group, (session) => session.tokenUsage.inputTokens)
+  const cachedInputTokens = sum(group, (session) => session.tokenUsage.cachedInputTokens)
+  const outputTokens = sum(group, (session) => session.tokenUsage.outputTokens)
+  const reasoningOutputTokens = sum(group, (session) => session.tokenUsage.reasoningOutputTokens)
+  const totalTokens = sum(group, (session) => session.tokenUsage.totalTokens)
+  const modelDurationSeconds = sum(group, (session) => session.modelDurationMs) / 1000
+  const failedToolCalls = groupToolCalls.filter((call) => !isSuccessfulToolStatus(call.status)).length
+
+  return {
+    outputExpansionRate: safeRate(outputTokens, inputTokens),
+    reasoningTokenShare: safeRate(reasoningOutputTokens, outputTokens),
+    cacheMissRate: clampRate(safeRate(inputTokens - cachedInputTokens, inputTokens)),
+    modelThroughputTokensPerSecond: safeRate(totalTokens, modelDurationSeconds),
+    modelThroughputOutputTokensPerSecond: safeRate(outputTokens, modelDurationSeconds),
+    toolFailureRate: safeRate(failedToolCalls, groupToolCalls.length),
+    toolDependencyRate: safeRate(group.filter((session) => session.toolCallCount > 0).length, group.length)
+  }
+}
+
+function modelSignalsTrendFor(items: Session[], scopedToolCalls: ToolCall[]): ModelSignalsTrendPoint[] {
+  const days = [...groupedBy(items, (session) => session.startedAt.slice(0, 10))]
+    .map(([date, group]) => signalTrendPoint(date, group, scopedToolCalls))
+    .sort((left, right) => left.date.localeCompare(right.date))
+
+  return days.map((day, index) => {
+    const window = days.slice(Math.max(0, index - 6), index + 1)
+    const windowToolCalls = window.reduce((total, item) => total + item.toolCalls, 0)
+    const windowFailedTools = window.reduce((total, item) => total + item.failedToolCalls, 0)
+    const windowTokens = window.reduce((total, item) => total + item.totalTokens, 0)
+    const windowDurationSeconds = window.reduce((total, item) => total + item.modelDurationMs, 0) / 1000
+    return {
+      ...day,
+      rollingModelThroughputTokensPerSecond: safeRate(windowTokens, windowDurationSeconds),
+      rollingToolFailureRate: safeRate(windowFailedTools, windowToolCalls)
+    }
+  })
+}
+
+function signalTrendPoint(date: string, group: Session[], scopedToolCalls: ToolCall[]): ModelSignalsTrendPoint {
+  const sessionIds = new Set(group.map((session) => session.id))
+  const groupToolCalls = scopedToolCalls.filter((call) => sessionIds.has(call.sessionId))
+  const inputTokens = sum(group, (session) => session.tokenUsage.inputTokens)
+  const cachedInputTokens = sum(group, (session) => session.tokenUsage.cachedInputTokens)
+  const outputTokens = sum(group, (session) => session.tokenUsage.outputTokens)
+  const reasoningOutputTokens = sum(group, (session) => session.tokenUsage.reasoningOutputTokens)
+  const totalTokens = sum(group, (session) => session.tokenUsage.totalTokens)
+  const modelDurationMs = sum(group, (session) => session.modelDurationMs)
+  const modelCalls = sum(group, modelCallsForSession)
+  const failedToolCalls = groupToolCalls.filter((call) => !isSuccessfulToolStatus(call.status)).length
+  return {
+    date,
+    sessionCount: group.length,
+    modelCalls,
+    toolCalls: groupToolCalls.length,
+    failedToolCalls,
+    totalTokens,
+    inputTokens,
+    cachedInputTokens,
+    outputTokens,
+    reasoningOutputTokens,
+    modelDurationMs,
+    ...signalRatesFor(group, groupToolCalls),
+    rollingModelThroughputTokensPerSecond: 0,
+    rollingToolFailureRate: 0,
+    lowSample: group.length < 2 || modelCalls < 2 || totalTokens < 60_000
+  }
+}
+
+function modelSignalsBreakdownFor(items: Session[], scopedToolCalls: ToolCall[]): ModelSignalBreakdown[] {
+  return [...groupedBy(items, (session) => session.model)].map(([model, group]) => {
+    const sessionIds = new Set(group.map((session) => session.id))
+    const groupToolCalls = scopedToolCalls.filter((call) => sessionIds.has(call.sessionId))
+    return {
+      model,
+      sessionCount: group.length,
+      modelCalls: sum(group, modelCallsForSession),
+      toolCalls: groupToolCalls.length,
+      failedToolCalls: groupToolCalls.filter((call) => !isSuccessfulToolStatus(call.status)).length,
+      totalTokens: sum(group, (session) => session.tokenUsage.totalTokens),
+      inputTokens: sum(group, (session) => session.tokenUsage.inputTokens),
+      cachedInputTokens: sum(group, (session) => session.tokenUsage.cachedInputTokens),
+      outputTokens: sum(group, (session) => session.tokenUsage.outputTokens),
+      reasoningOutputTokens: sum(group, (session) => session.tokenUsage.reasoningOutputTokens),
+      modelDurationMs: sum(group, (session) => session.modelDurationMs),
+      ...signalRatesFor(group, groupToolCalls)
+    }
+  }).sort((left, right) => right.totalTokens - left.totalTokens)
+}
+
+function anomalySessionsFor(items: Session[], scopedToolCalls: ToolCall[]): ModelSignalAnomalySession[] {
+  const anomalies: ModelSignalAnomalySession[] = []
+  for (const session of items) {
+    const sessionToolCalls = scopedToolCalls.filter((call) => call.sessionId === session.id)
+    const rates = signalRatesFor([session], sessionToolCalls)
+    const reasons: string[] = []
+    if (rates.toolFailureRate > 0) reasons.push('Tool failure in session')
+    if (rates.reasoningTokenShare >= 0.25) reasons.push('High reasoning token share')
+    if (rates.outputExpansionRate >= 0.2) reasons.push('Output expanded relative to input')
+    if (rates.cacheMissRate >= 0.85) reasons.push('Low cache reuse')
+    if (rates.modelThroughputTokensPerSecond > 0 && rates.modelThroughputTokensPerSecond < 85) reasons.push('Low model token throughput')
+    if (!reasons.length) continue
+    anomalies.push({
+      session,
+      id: session.id,
+      sessionId: session.id,
+      sessionKey: session.sessionKey,
+      codexSessionId: session.codexSessionId,
+      startedAt: session.startedAt,
+      projectPath: session.projectPath,
+      rawSourcePath: session.rawSourcePath,
+      agentKind: session.agentKind,
+      agentName: session.agentName,
+      sourceId: session.sourceId,
+      sourceKey: session.sourceKey,
+      sourceLabel: session.sourceLabel,
+      sourceRootPath: session.sourceRootPath,
+      sourceSessionsPath: session.sourceSessionsPath,
+      model: session.model,
+      totalTokens: session.tokenUsage.totalTokens,
+      inputTokens: session.tokenUsage.inputTokens,
+      outputTokens: session.tokenUsage.outputTokens,
+      reasoningOutputTokens: session.tokenUsage.reasoningOutputTokens,
+      toolCalls: sessionToolCalls.length,
+      failedToolCalls: sessionToolCalls.filter((call) => !isSuccessfulToolStatus(call.status)).length,
+      modelDurationMs: session.modelDurationMs,
+      severity: reasons.length > 1 ? 'high' : 'medium',
+      signal: reasons[0],
+      reasons,
+      ...rates
+    })
+  }
+  return anomalies
+    .sort((left, right) => {
+      const leftReasons = Array.isArray(left.reasons) ? left.reasons.length : 0
+      const rightReasons = Array.isArray(right.reasons) ? right.reasons.length : 0
+      return rightReasons - leftReasons || (right.totalTokens || 0) - (left.totalTokens || 0)
+    })
+    .slice(0, 6)
+}
+
+function modelSignals(filters: UsageScopeFilters = {}): ModelSignals {
+  const scoped = filteredSessions(filters)
+  const sessionIds = new Set(scoped.map((session) => session.id))
+  const scopedToolCalls = filteredToolCalls({ agent: filters.agent, project: filters.project, from: filters.from, to: filters.to })
+    .filter((call) => sessionIds.has(call.sessionId))
+  const rates = signalRatesFor(scoped, scopedToolCalls)
+  return {
+    totalSessions: scoped.length,
+    totalModelCalls: sum(scoped, modelCallsForSession),
+    totalToolCalls: scopedToolCalls.length,
+    failedToolCalls: scopedToolCalls.filter((call) => !isSuccessfulToolStatus(call.status)).length,
+    toolFailureRate: rates.toolFailureRate,
+    toolDependencyRate: rates.toolDependencyRate,
+    avgModelCallsPerSession: safeRate(sum(scoped, modelCallsForSession), scoped.length),
+    outputExpansionRate: rates.outputExpansionRate,
+    reasoningTokenShare: rates.reasoningTokenShare,
+    cacheMissRate: rates.cacheMissRate,
+    modelThroughputTokensPerSecond: rates.modelThroughputTokensPerSecond,
+    modelThroughputOutputTokensPerSecond: rates.modelThroughputOutputTokensPerSecond,
+    trend: modelSignalsTrendFor(scoped, scopedToolCalls),
+    modelBreakdown: modelSignalsBreakdownFor(scoped, scopedToolCalls),
+    anomalySessions: anomalySessionsFor(scoped, scopedToolCalls)
+  }
+}
+
 function filteredToolCalls(filters: ToolCallFilters & Pick<UsageScopeFilters, 'project'> = {}): ToolCall[] {
   return toolCalls
     .filter((call) => matchesAgent(call, filters.agent))
@@ -900,6 +1090,7 @@ export const demoApi: DemoApi = {
       highTokenSessions: [...scoped].sort((left, right) => right.tokenUsage.totalTokens - left.tokenUsage.totalTokens).slice(0, 5)
     } satisfies TokenAnalytics)
   },
+  getModelSignals: async (filters = {}) => clone(modelSignals(filters)),
   getUsageBreakdown: async (filters) => clone(breakdown(filters)),
   listSessions: async (filters = {}) => clone(paginate(filteredSessions(filters), filters.limit, filters.offset)),
   getSessionDetail: async (id) => clone(sessionDetail(id)),

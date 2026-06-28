@@ -53,12 +53,13 @@ This smoke should remain read-only. It should verify API shape and availability
 without triggering indexing, rebuilds, settings writes, or privacy config
 changes.
 
-API smoke covers overview, token analytics, day/project usage breakdowns,
-sessions, tools, audit, pricing, settings, and privacy status. Cache-related
-shape checks include `totalInputTokens`, `totalCachedInputTokens`,
+API smoke covers overview, token analytics, model signals, day/project usage
+breakdowns, sessions, tools, audit, pricing, settings, and privacy status.
+Cache-related shape checks include `totalInputTokens`, `totalCachedInputTokens`,
 `cacheUtilizationRate`, `cacheHitTrend`, `dailyUsage.cachedInputTokens`, and
 usage-breakdown bucket `projectPath`/`cachedInputTokens`/
-`cacheUtilizationRate`.
+`cacheUtilizationRate`. Model Signals checks include the top-level operational
+proxy metrics plus `trend`, `modelBreakdown`, and `anomalySessions` arrays.
 
 ## Browser Smoke
 
@@ -154,6 +155,8 @@ TUI expectations where relevant:
 - shared cache fields, including `dailyUsage.cachedInputTokens`,
   `dailyUsage.cacheUtilizationRate`, `cacheHitTrend`, and usage-breakdown
   `projectPath` for project grouping;
+- Model Signals fields and filters, including `trend`, `modelBreakdown`,
+  `anomalySessions`, and empty arrays returned as `[]` rather than `null`;
 - project-scoped analytics filters using the `project` query parameter;
 - session identity and source path display;
 - source instance filters using `source:<id>` and family filters using values

@@ -20,6 +20,9 @@ Implemented today:
 - Incremental indexing and rebuild indexing.
 - Overview, Sessions, Session Detail, Tools, Audit, Agent Privacy, and Settings
   in Web mode.
+- Model Signals in Web mode for operational proxy metrics such as output
+  expansion, reasoning share, cache miss, model throughput, tool dependency,
+  tool failures, and anomaly sessions.
 - Overview, Sessions, Session Detail, Tools, Agent Privacy status/profile apply,
   and Settings in TUI mode.
 - Offline audit findings for indexed local session data, exposed through Web UI
@@ -81,6 +84,9 @@ Delivered:
 Delivered Web screens:
 
 - Overview
+- Time
+- Tokens
+- Model Signals
 - Sessions
 - Session Detail
 - Tools

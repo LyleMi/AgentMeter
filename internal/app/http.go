@@ -170,6 +170,10 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		value, err := service.GetTokenAnalyticsWithFilters(analyticsFilters(r))
 		writeJSON(w, value, err)
 	})
+	mux.HandleFunc("GET /api/model-signals", func(w http.ResponseWriter, r *http.Request) {
+		value, err := service.GetModelSignalsWithFilters(analyticsFilters(r))
+		writeJSON(w, value, err)
+	})
 	mux.HandleFunc("GET /api/usage/breakdown", func(w http.ResponseWriter, r *http.Request) {
 		groupBy := strings.TrimSpace(r.URL.Query().Get("groupBy"))
 		if groupBy == "" {

@@ -408,6 +408,13 @@ func (a *App) GetTokenAnalyticsWithFilters(filters model.AnalyticsFilters) (mode
 	return a.query.TokenAnalyticsWithFilters(a.ctx, filters)
 }
 
+func (a *App) GetModelSignalsWithFilters(filters model.AnalyticsFilters) (model.ModelSignals, error) {
+	if err := a.ensureReady(); err != nil {
+		return model.ModelSignals{}, err
+	}
+	return a.query.ModelSignalsWithFilters(a.ctx, filters)
+}
+
 func (a *App) GetUsageBreakdown(groupBy string, filters model.AnalyticsFilters) (model.UsageBreakdown, error) {
 	if err := a.ensureReady(); err != nil {
 		return model.UsageBreakdown{}, err

@@ -316,6 +316,104 @@ type TokenAnalytics struct {
 	HighTokenSessions      []Session            `json:"highTokenSessions"`
 }
 
+type ModelSignals struct {
+	TotalSessions                        int                          `json:"totalSessions"`
+	TotalModelCalls                      int                          `json:"totalModelCalls"`
+	TotalToolCalls                       int                          `json:"totalToolCalls"`
+	FailedToolCalls                      int                          `json:"failedToolCalls"`
+	ToolFailureRate                      float64                      `json:"toolFailureRate"`
+	ToolDependencyRate                   float64                      `json:"toolDependencyRate"`
+	AvgModelCallsPerSession              float64                      `json:"avgModelCallsPerSession"`
+	OutputExpansionRate                  float64                      `json:"outputExpansionRate"`
+	ReasoningTokenShare                  float64                      `json:"reasoningTokenShare"`
+	CacheMissRate                        float64                      `json:"cacheMissRate"`
+	ModelThroughputTokensPerSecond       float64                      `json:"modelThroughputTokensPerSecond"`
+	ModelThroughputOutputTokensPerSecond float64                      `json:"modelThroughputOutputTokensPerSecond"`
+	Trend                                []ModelSignalsTrendPoint     `json:"trend"`
+	ModelBreakdown                       []ModelSignalsBreakdown      `json:"modelBreakdown"`
+	AnomalySessions                      []ModelSignalsAnomalySession `json:"anomalySessions"`
+}
+
+type ModelSignalsTrendPoint struct {
+	Date                                  string  `json:"date"`
+	SessionCount                          int     `json:"sessionCount"`
+	ModelCalls                            int     `json:"modelCalls"`
+	ToolCalls                             int     `json:"toolCalls"`
+	FailedToolCalls                       int     `json:"failedToolCalls"`
+	TotalTokens                           int64   `json:"totalTokens"`
+	InputTokens                           int64   `json:"inputTokens"`
+	CachedInputTokens                     int64   `json:"cachedInputTokens"`
+	OutputTokens                          int64   `json:"outputTokens"`
+	ReasoningOutputTokens                 int64   `json:"reasoningOutputTokens"`
+	ModelDurationMS                       int64   `json:"modelDurationMs"`
+	OutputExpansionRate                   float64 `json:"outputExpansionRate"`
+	ReasoningTokenShare                   float64 `json:"reasoningTokenShare"`
+	CacheMissRate                         float64 `json:"cacheMissRate"`
+	ModelThroughputTokensPerSecond        float64 `json:"modelThroughputTokensPerSecond"`
+	ModelThroughputOutputTokensPerSecond  float64 `json:"modelThroughputOutputTokensPerSecond"`
+	ToolFailureRate                       float64 `json:"toolFailureRate"`
+	ToolDependencyRate                    float64 `json:"toolDependencyRate"`
+	RollingModelThroughputTokensPerSecond float64 `json:"rollingModelThroughputTokensPerSecond"`
+	RollingToolFailureRate                float64 `json:"rollingToolFailureRate"`
+	LowSample                             bool    `json:"lowSample"`
+}
+
+type ModelSignalsBreakdown struct {
+	Model                                string  `json:"model"`
+	SessionCount                         int     `json:"sessionCount"`
+	ModelCalls                           int     `json:"modelCalls"`
+	ToolCalls                            int     `json:"toolCalls"`
+	FailedToolCalls                      int     `json:"failedToolCalls"`
+	TotalTokens                          int64   `json:"totalTokens"`
+	InputTokens                          int64   `json:"inputTokens"`
+	CachedInputTokens                    int64   `json:"cachedInputTokens"`
+	OutputTokens                         int64   `json:"outputTokens"`
+	ReasoningOutputTokens                int64   `json:"reasoningOutputTokens"`
+	ModelDurationMS                      int64   `json:"modelDurationMs"`
+	ToolFailureRate                      float64 `json:"toolFailureRate"`
+	ToolDependencyRate                   float64 `json:"toolDependencyRate"`
+	AvgModelCallsPerSession              float64 `json:"avgModelCallsPerSession"`
+	OutputExpansionRate                  float64 `json:"outputExpansionRate"`
+	ReasoningTokenShare                  float64 `json:"reasoningTokenShare"`
+	CacheMissRate                        float64 `json:"cacheMissRate"`
+	ModelThroughputTokensPerSecond       float64 `json:"modelThroughputTokensPerSecond"`
+	ModelThroughputOutputTokensPerSecond float64 `json:"modelThroughputOutputTokensPerSecond"`
+}
+
+type ModelSignalsAnomalySession struct {
+	SessionID                            int64     `json:"sessionId"`
+	SourceID                             int64     `json:"sourceId"`
+	SourceKey                            string    `json:"sourceKey"`
+	SourceLabel                          string    `json:"sourceLabel"`
+	SourceRootPath                       string    `json:"sourceRootPath"`
+	SourceSessionsPath                   string    `json:"sourceSessionsPath"`
+	AgentKind                            string    `json:"agentKind"`
+	AgentName                            string    `json:"agentName"`
+	SessionKey                           string    `json:"sessionKey"`
+	CodexSessionID                       string    `json:"codexSessionId,omitempty"`
+	ProjectPath                          string    `json:"projectPath"`
+	Model                                string    `json:"model"`
+	StartedAt                            time.Time `json:"startedAt"`
+	RawSourcePath                        string    `json:"rawSourcePath"`
+	ModelCalls                           int       `json:"modelCalls"`
+	ToolCalls                            int       `json:"toolCalls"`
+	FailedToolCalls                      int       `json:"failedToolCalls"`
+	TotalTokens                          int64     `json:"totalTokens"`
+	InputTokens                          int64     `json:"inputTokens"`
+	CachedInputTokens                    int64     `json:"cachedInputTokens"`
+	OutputTokens                         int64     `json:"outputTokens"`
+	ReasoningOutputTokens                int64     `json:"reasoningOutputTokens"`
+	ModelDurationMS                      int64     `json:"modelDurationMs"`
+	OutputExpansionRate                  float64   `json:"outputExpansionRate"`
+	ReasoningTokenShare                  float64   `json:"reasoningTokenShare"`
+	CacheMissRate                        float64   `json:"cacheMissRate"`
+	ModelThroughputTokensPerSecond       float64   `json:"modelThroughputTokensPerSecond"`
+	ModelThroughputOutputTokensPerSecond float64   `json:"modelThroughputOutputTokensPerSecond"`
+	ToolFailureRate                      float64   `json:"toolFailureRate"`
+	ReasonLabels                         []string  `json:"reasons"`
+	Score                                float64   `json:"score"`
+}
+
 type UsageBreakdown struct {
 	GroupBy string                 `json:"groupBy"`
 	Buckets []UsageBreakdownBucket `json:"buckets"`
