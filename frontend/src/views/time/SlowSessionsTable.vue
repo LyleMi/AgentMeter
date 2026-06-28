@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { DefineComponent } from 'vue'
+import { computed, type DefineComponent } from 'vue'
+import { useRouter } from 'vue-router'
 import AButton from 'ant-design-vue/es/button'
 import AntTable from 'ant-design-vue/es/table'
 import Typography from 'ant-design-vue/es/typography'
@@ -12,27 +13,80 @@ import {
   sessionLabel,
   type Session
 } from '../../api'
+import { useMessages } from '../../i18n'
 import { sourceDisplay } from '../../presentation/sourceIdentity'
+import { useTimeContext } from './timeContext'
 
 const ATable = AntTable as unknown as DefineComponent
 const ATypographyText = Typography.Text
+const router = useRouter()
+const { slowSessions: rows } = useTimeContext()
+const { t } = useMessages({
+  en: {
+    'title': 'Slow sessions',
+    'kicker': 'Sessions ranked by wall-clock duration',
+    'empty.title': 'No slow sessions yet',
+    'empty.text': 'Indexed sessions with wall-time data will appear here.',
+    'fallback.unknown': 'unknown',
+    'action.open': 'Open session',
+    'column.project': 'Project / session',
+    'column.source': 'Source',
+    'column.model': 'Model',
+    'column.wall': 'Wall',
+    'column.active': 'Active',
+    'column.modelTime': 'Model',
+    'column.toolTime': 'Tool',
+    'column.started': 'Started',
+    'column.open': ''
+  },
+  'zh-CN': {
+    'title': '慢会话',
+    'kicker': '按墙钟耗时排序的会话',
+    'empty.title': '暂无慢会话',
+    'empty.text': '索引包含墙钟耗时数据的会话后会显示在这里。',
+    'fallback.unknown': '未知',
+    'action.open': '打开会话',
+    'column.project': '项目 / 会话',
+    'column.source': '来源',
+    'column.model': '模型',
+    'column.wall': '墙钟',
+    'column.active': '活跃',
+    'column.modelTime': '模型',
+    'column.toolTime': '工具',
+    'column.started': '开始',
+    'column.open': ''
+  }
+})
 
-const props = defineProps<{
-  title: string
-  kicker: string
-  emptyTitle: string
-  emptyText: string
-  openLabel: string
-  columns: unknown[]
-  rows: Session[]
-  hasRows: boolean
-  fallbackUnknown: string
-  openSession: (id: number) => void
-  rowProps: (record: Session) => Record<string, unknown>
-}>()
+const title = computed(() => t('title'))
+const kicker = computed(() => t('kicker'))
+const emptyTitle = computed(() => t('empty.title'))
+const emptyText = computed(() => t('empty.text'))
+const fallbackUnknown = computed(() => t('fallback.unknown'))
+const openLabel = computed(() => t('action.open'))
+const hasRows = computed(() => rows.value.length > 0)
+const columns = computed(() => [
+  { title: t('column.project'), key: 'project', fixed: 'left', width: 260 },
+  { title: t('column.source'), key: 'agent', width: 220 },
+  { title: t('column.model'), key: 'model', dataIndex: 'model', width: 180 },
+  { title: t('column.wall'), key: 'wall', dataIndex: 'wallDurationMs', align: 'right', width: 120 },
+  { title: t('column.active'), key: 'active', dataIndex: 'activeDurationMs', align: 'right', width: 120 },
+  { title: t('column.modelTime'), key: 'modelTime', dataIndex: 'modelDurationMs', align: 'right', width: 120 },
+  { title: t('column.toolTime'), key: 'toolTime', dataIndex: 'toolDurationMs', align: 'right', width: 120 },
+  { title: t('column.started'), key: 'started', dataIndex: 'startedAt', width: 150 },
+  { title: t('column.open'), key: 'open', width: 64, align: 'center' }
+])
+
+function openSession(id: number) {
+  void router.push(`/sessions/${id}`)
+}
+
+function rowProps(record: Session) {
+  return { class: 'is-clickable-row', onClick: () => openSession(record.id) }
+}
 
 function sourceInfo(record: Session) {
-  return sourceDisplay(record, props.fallbackUnknown)
+  return sourceDisplay(record, fallbackUnknown.value)
 }
 
 function projectInfo(record: Session) {
