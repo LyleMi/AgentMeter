@@ -1,4 +1,4 @@
-export type AppDataChangeReason = 'settings' | 'index'
+export type AppDataChangeReason = 'settings' | 'index' | 'pricing'
 
 export interface AppDataChangeDetail {
   reason: AppDataChangeReason

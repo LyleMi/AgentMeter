@@ -3,6 +3,8 @@ package pricing
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"math"
 	"strings"
 	"time"
 
@@ -17,22 +19,26 @@ type Rate struct {
 	OutputPer1M      float64
 	Source           string
 	EffectiveFrom    time.Time
+	IsCustom         bool
 }
 
 type Calculator struct {
 	rates map[string]Rate
 }
 
+var ErrInvalidRate = errors.New("invalid pricing model")
+
 func Seed(ctx context.Context, conn *sql.DB) error {
 	// These are API list-price estimates used only when a local Codex model name
 	// can be matched. Codex subscription usage may not map one-to-one to API cost.
 	verified := time.Date(2026, 6, 27, 0, 0, 0, 0, time.UTC)
+	verifiedLatest := time.Date(2026, 6, 29, 0, 0, 0, 0, time.UTC)
 	openaiPricing := "OpenAI API pricing, https://developers.openai.com/api/docs/pricing, verified 2026-06-27"
 	openaiGPT5 := "OpenAI GPT-5 model page, https://developers.openai.com/api/docs/models/gpt-5, verified 2026-06-27"
 	openaiGPT5Mini := "OpenAI GPT-5 mini model page, https://developers.openai.com/api/docs/models/gpt-5-mini, verified 2026-06-27"
 	openaiGPT5Nano := "OpenAI GPT-5 nano model page, https://developers.openai.com/api/docs/models/gpt-5-nano, verified 2026-06-27"
 	anthropicPricing := "Anthropic Claude pricing, https://platform.claude.com/docs/en/about-claude/pricing, cache hit rate used, verified 2026-06-27"
-	googlePricing := "Google Gemini Developer API pricing, https://ai.google.dev/gemini-api/docs/pricing, standard text/image/video tier, verified 2026-06-27"
+	googlePricing := "Google Gemini Developer API pricing, https://ai.google.dev/gemini-api/docs/pricing, standard text/image/video tier, verified 2026-06-29"
 	deepseekPricing := "DeepSeek API pricing details USD, https://api-docs.deepseek.com/quick_start/pricing-details-usd, verified 2026-06-27"
 	deepseekV4Pricing := "DeepSeek API pricing, https://api-docs.deepseek.com/quick_start/pricing, verified 2026-06-27"
 	zaiPricing := "Z.AI pricing, https://docs.z.ai/guides/overview/pricing, verified 2026-06-27"
@@ -41,6 +47,7 @@ func Seed(ctx context.Context, conn *sql.DB) error {
 	xaiPricing := "xAI pricing, https://docs.x.ai/developers/pricing, verified 2026-06-27"
 	coherePricing := "Cohere pricing, https://cohere.com/pricing, no cached discount listed, verified 2026-06-27"
 	qwenPricing := "Alibaba Cloud Model Studio pricing, https://www.alibabacloud.com/help/en/model-studio/model-pricing, regional/tiered standard rates, verified 2026-06-27"
+	tencentHy3Pricing := "Tencent Hy3 preview TokenHub pricing, https://www.tencent.com/en-us/articles/2202320.html, starting USD rates, verified 2026-06-29"
 	rates := []Rate{
 		// OpenAI. Long-context rows are explicit opt-in aliases because the
 		// session JSONL model name does not expose prompt length by itself.
@@ -84,11 +91,18 @@ func Seed(ctx context.Context, conn *sql.DB) error {
 		{Model: "claude-haiku-3.5", NormalizedModel: "claude-haiku-3.5", InputPer1M: 0.80, CachedInputPer1M: 0.08, OutputPer1M: 4.00, Source: anthropicPricing, EffectiveFrom: verified},
 
 		// Google Gemini.
+		{Model: "gemini-3.1-pro", NormalizedModel: "gemini-3.1-pro", InputPer1M: 2.00, CachedInputPer1M: 0.20, OutputPer1M: 12.00, Source: googlePricing, EffectiveFrom: verifiedLatest},
+		{Model: "gemini-3.1-pro-preview", NormalizedModel: "gemini-3.1-pro-preview", InputPer1M: 2.00, CachedInputPer1M: 0.20, OutputPer1M: 12.00, Source: googlePricing, EffectiveFrom: verifiedLatest},
+		{Model: "gemini-3.1-pro-long-context", NormalizedModel: "gemini-3.1-pro-long-context", InputPer1M: 4.00, CachedInputPer1M: 0.40, OutputPer1M: 18.00, Source: googlePricing, EffectiveFrom: verifiedLatest},
+		{Model: "gemini-3.1-pro-preview-long-context", NormalizedModel: "gemini-3.1-pro-preview-long-context", InputPer1M: 4.00, CachedInputPer1M: 0.40, OutputPer1M: 18.00, Source: googlePricing, EffectiveFrom: verifiedLatest},
 		{Model: "gemini-2.5-pro", NormalizedModel: "gemini-2.5-pro", InputPer1M: 1.25, CachedInputPer1M: 0.125, OutputPer1M: 10.00, Source: googlePricing, EffectiveFrom: verified},
 		{Model: "gemini-2.5-pro-long-context", NormalizedModel: "gemini-2.5-pro-long-context", InputPer1M: 2.50, CachedInputPer1M: 0.25, OutputPer1M: 15.00, Source: googlePricing, EffectiveFrom: verified},
 		{Model: "gemini-2.5-flash", NormalizedModel: "gemini-2.5-flash", InputPer1M: 0.30, CachedInputPer1M: 0.03, OutputPer1M: 2.50, Source: googlePricing, EffectiveFrom: verified},
 		{Model: "gemini-2.5-flash-lite", NormalizedModel: "gemini-2.5-flash-lite", InputPer1M: 0.10, CachedInputPer1M: 0.01, OutputPer1M: 0.40, Source: googlePricing, EffectiveFrom: verified},
 		{Model: "gemini-2.0-flash", NormalizedModel: "gemini-2.0-flash", InputPer1M: 0.10, CachedInputPer1M: 0.025, OutputPer1M: 0.40, Source: googlePricing, EffectiveFrom: verified},
+
+		// Tencent Hunyuan / Hy.
+		{Model: "hy3-preview", NormalizedModel: "hy3-preview", InputPer1M: 0.18, CachedInputPer1M: 0.06, OutputPer1M: 0.59, Source: tencentHy3Pricing, EffectiveFrom: verifiedLatest},
 
 		// DeepSeek.
 		{Model: "deepseek-chat", NormalizedModel: "deepseek-chat", InputPer1M: 0.27, CachedInputPer1M: 0.07, OutputPer1M: 1.10, Source: deepseekPricing, EffectiveFrom: verified},
@@ -148,15 +162,17 @@ func Seed(ctx context.Context, conn *sql.DB) error {
 	}
 	for _, rate := range rates {
 		_, err := conn.ExecContext(ctx, `INSERT INTO pricing_models
-			(model, normalized_model, input_per_1m, cached_input_per_1m, output_per_1m, source, effective_from)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
+			(model, normalized_model, input_per_1m, cached_input_per_1m, output_per_1m, source, effective_from, is_custom)
+			VALUES (?, ?, ?, ?, ?, ?, ?, 0)
 			ON CONFLICT(normalized_model) DO UPDATE SET
 				model = excluded.model,
 				input_per_1m = excluded.input_per_1m,
 				cached_input_per_1m = excluded.cached_input_per_1m,
 				output_per_1m = excluded.output_per_1m,
 				source = excluded.source,
-				effective_from = excluded.effective_from`,
+				effective_from = excluded.effective_from,
+				is_custom = 0
+			WHERE pricing_models.is_custom = 0`,
 			rate.Model, rate.NormalizedModel, rate.InputPer1M, rate.CachedInputPer1M, rate.OutputPer1M, rate.Source, rate.EffectiveFrom.Format(time.RFC3339Nano))
 		if err != nil {
 			return err
@@ -182,6 +198,9 @@ func normalizeModelName(value string) string {
 		"mistral/",
 		"xai/",
 		"x-ai/",
+		"tencent/",
+		"tencent-hunyuan/",
+		"hunyuan/",
 		"cohere/",
 		"qwen/",
 		"dashscope/",
@@ -226,16 +245,19 @@ func normalizedModelCandidates(value string) []string {
 }
 
 var modelAliases = map[string]string{
-	"claude-4.5-haiku":   "claude-haiku-4.5",
-	"claude-4.6-opus":    "claude-opus-4.6",
-	"claude-4.6-sonnet":  "claude-sonnet-4.6",
-	"claude-4.7-opus":    "claude-opus-4.7",
-	"claude-opus-4-8":    "claude-opus-4.8",
-	"claude-opus-4.6-1m": "claude-opus-4.6",
-	"claude-sonnet-4-6":  "claude-sonnet-4.6",
-	"glm-5":              "glm-5.2",
-	"glm-5.1":            "glm-5.2",
-	"gpt-5.1-codex-mini": "gpt-5-mini",
+	"claude-4.5-haiku":    "claude-haiku-4.5",
+	"claude-4.6-opus":     "claude-opus-4.6",
+	"claude-4.6-sonnet":   "claude-sonnet-4.6",
+	"claude-4.7-opus":     "claude-opus-4.7",
+	"claude-opus-4-8":     "claude-opus-4.8",
+	"claude-opus-4.6-1m":  "claude-opus-4.6",
+	"claude-sonnet-4-6":   "claude-sonnet-4.6",
+	"glm-5":               "glm-5.2",
+	"glm-5.1":             "glm-5.2",
+	"gpt-5.1-codex-mini":  "gpt-5-mini",
+	"hy3":                 "hy3-preview",
+	"hunyuan-hy3":         "hy3-preview",
+	"hunyuan-hy3-preview": "hy3-preview",
 }
 
 func Compute(conn *sql.DB, usage model.Usage) (*float64, bool) {
@@ -261,6 +283,65 @@ func LoadCalculator(ctx context.Context, conn *sql.DB) (Calculator, error) {
 		calc.rates[rate.NormalizedModel] = rate
 	}
 	return calc, rows.Err()
+}
+
+func UpsertCustom(ctx context.Context, conn *sql.DB, input model.PricingModelInput) (model.PricingModel, error) {
+	rate, err := customRate(input)
+	if err != nil {
+		return model.PricingModel{}, err
+	}
+	if _, err := conn.ExecContext(ctx, `INSERT INTO pricing_models
+		(model, normalized_model, input_per_1m, cached_input_per_1m, output_per_1m, source, effective_from, is_custom)
+		VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+		ON CONFLICT(normalized_model) DO UPDATE SET
+			model = excluded.model,
+			input_per_1m = excluded.input_per_1m,
+			cached_input_per_1m = excluded.cached_input_per_1m,
+			output_per_1m = excluded.output_per_1m,
+			source = excluded.source,
+			effective_from = excluded.effective_from,
+			is_custom = 1`,
+		rate.Model,
+		rate.NormalizedModel,
+		rate.InputPer1M,
+		rate.CachedInputPer1M,
+		rate.OutputPer1M,
+		rate.Source,
+		rate.EffectiveFrom.Format(time.RFC3339Nano),
+	); err != nil {
+		return model.PricingModel{}, err
+	}
+	return get(ctx, conn, rate.NormalizedModel)
+}
+
+func customRate(input model.PricingModelInput) (Rate, error) {
+	modelName := strings.TrimSpace(input.Model)
+	if modelName == "" {
+		return Rate{}, ErrInvalidRate
+	}
+	normalized := NormalizeModel(modelName)
+	if normalized == "" || normalized == "unknown" {
+		return Rate{}, ErrInvalidRate
+	}
+	for _, value := range []float64{input.InputPer1M, input.CachedInputPer1M, input.OutputPer1M} {
+		if value < 0 || math.IsNaN(value) || math.IsInf(value, 0) {
+			return Rate{}, ErrInvalidRate
+		}
+	}
+	source := strings.TrimSpace(input.Source)
+	if source == "" {
+		source = "Custom pricing"
+	}
+	return Rate{
+		Model:            modelName,
+		NormalizedModel:  normalized,
+		InputPer1M:       input.InputPer1M,
+		CachedInputPer1M: input.CachedInputPer1M,
+		OutputPer1M:      input.OutputPer1M,
+		Source:           source,
+		EffectiveFrom:    time.Now().UTC(),
+		IsCustom:         true,
+	}, nil
 }
 
 func (c Calculator) Compute(usage model.Usage) (*float64, bool) {
@@ -394,20 +475,36 @@ func hasBillableUsage(usage model.Usage) bool {
 }
 
 func List(ctx context.Context, conn *sql.DB) ([]model.PricingModel, error) {
-	rows, err := conn.QueryContext(ctx, `SELECT id, model, normalized_model, input_per_1m, cached_input_per_1m, output_per_1m, source, effective_from FROM pricing_models ORDER BY normalized_model`)
+	rows, err := conn.QueryContext(ctx, `SELECT id, model, normalized_model, input_per_1m, cached_input_per_1m, output_per_1m, source, effective_from, is_custom FROM pricing_models ORDER BY normalized_model`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var result []model.PricingModel
 	for rows.Next() {
-		var item model.PricingModel
-		var effective string
-		if err := rows.Scan(&item.ID, &item.Model, &item.NormalizedModel, &item.InputPer1M, &item.CachedInputPer1M, &item.OutputPer1M, &item.Source, &effective); err != nil {
+		item, err := scanPricingModel(rows)
+		if err != nil {
 			return nil, err
 		}
-		item.EffectiveFrom, _ = time.Parse(time.RFC3339Nano, effective)
 		result = append(result, item)
 	}
 	return result, rows.Err()
+}
+
+func get(ctx context.Context, conn *sql.DB, normalizedModel string) (model.PricingModel, error) {
+	row := conn.QueryRowContext(ctx, `SELECT id, model, normalized_model, input_per_1m, cached_input_per_1m, output_per_1m, source, effective_from, is_custom
+		FROM pricing_models WHERE normalized_model = ?`, normalizedModel)
+	return scanPricingModel(row)
+}
+
+func scanPricingModel(row interface{ Scan(dest ...any) error }) (model.PricingModel, error) {
+	var item model.PricingModel
+	var effective string
+	var isCustom int
+	if err := row.Scan(&item.ID, &item.Model, &item.NormalizedModel, &item.InputPer1M, &item.CachedInputPer1M, &item.OutputPer1M, &item.Source, &effective, &isCustom); err != nil {
+		return model.PricingModel{}, err
+	}
+	item.EffectiveFrom, _ = time.Parse(time.RFC3339Nano, effective)
+	item.IsCustom = isCustom != 0
+	return item, nil
 }

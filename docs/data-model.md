@@ -264,6 +264,7 @@ Fields:
 - `output_per_1m`
 - `source`
 - `effective_from`
+- `is_custom`
 
 ### app_config
 

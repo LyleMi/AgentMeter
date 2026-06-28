@@ -57,6 +57,7 @@ func (s *Service) events(ctx context.Context, sessionID int64) ([]model.Event, e
 }
 
 func (s *Service) modelCalls(ctx context.Context, sessionID int64) ([]model.ModelCall, error) {
+	calculator := s.pricingCalculator(ctx)
 	rows, err := s.conn.QueryContext(ctx, `SELECT id, session_id, started_at, ended_at, duration_ms, model, provider, status,
 		input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, cost_usd
 		FROM model_calls WHERE session_id = ? ORDER BY started_at, id`, sessionID)
@@ -75,7 +76,19 @@ func (s *Service) modelCalls(ctx context.Context, sessionID int64) ([]model.Mode
 		}
 		item.StartedAt = db.ParseTime(started)
 		item.EndedAt = db.ParseTime(ended)
-		if cost.Valid {
+		currentCost, unpriced := calculator.Compute(model.Usage{
+			Model:                 item.Model,
+			InputTokens:           item.InputTokens,
+			CachedInputTokens:     item.CachedInputTokens,
+			OutputTokens:          item.OutputTokens,
+			ReasoningOutputTokens: item.ReasoningOutputTokens,
+			TotalTokens:           item.TotalTokens,
+			Source:                "model_call",
+		})
+		if currentCost != nil || unpriced {
+			item.CostUSD = currentCost
+			item.Unpriced = unpriced
+		} else if cost.Valid {
 			item.CostUSD = &cost.Float64
 		} else if item.TotalTokens > 0 {
 			item.Unpriced = true

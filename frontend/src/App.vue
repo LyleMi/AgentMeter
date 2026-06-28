@@ -160,7 +160,7 @@ async function loadSettings() {
 async function handleAppDataChanged(event: Event) {
   const detail = (event as CustomEvent<AppDataChangeDetail>).detail
   await loadSettings()
-  if (detail?.reason === 'index') {
+  if (detail?.reason === 'index' || detail?.reason === 'pricing') {
     refreshKey.value += 1
   }
 }

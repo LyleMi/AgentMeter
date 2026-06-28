@@ -486,6 +486,13 @@ func (a *App) GetPricingModels() ([]model.PricingModel, error) {
 	return pricing.List(a.ctx, a.conn)
 }
 
+func (a *App) SavePricingModel(input model.PricingModelInput) (model.PricingModel, error) {
+	if err := a.ensureReady(); err != nil {
+		return model.PricingModel{}, err
+	}
+	return pricing.UpsertCustom(a.ctx, a.conn, input)
+}
+
 func (a *App) PrivacyTargets() []string {
 	return privacy.DefaultRegistry().Targets()
 }

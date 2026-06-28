@@ -5,6 +5,7 @@ import type {
   IndexResult,
   ModelSignals,
   Overview,
+  PricingModelInput,
   PricingModel,
   PrivacyConfigApplyResult,
   PrivacyConfigChange,
@@ -148,7 +149,9 @@ const fetchApi = {
       offset: filters.offset
     })),
   getAuditFinding: (id: number) => request<AuditFinding>(`/api/audit/findings/${id}`),
-  getPricingModels: () => request<PricingModel[]>('/api/pricing')
+  getPricingModels: () => request<PricingModel[]>('/api/pricing'),
+  savePricingModel: (pricing: PricingModelInput) =>
+    request<PricingModel>('/api/pricing', { method: 'POST', body: JSON.stringify(pricing) })
 }
 
 export const api = isStaticDemo ? demoApi : fetchApi

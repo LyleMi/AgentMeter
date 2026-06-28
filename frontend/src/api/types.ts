@@ -579,6 +579,15 @@ export interface PricingModel {
   outputPer1m: number
   source: string
   effectiveFrom: string
+  isCustom: boolean
+}
+
+export interface PricingModelInput {
+  model: string
+  inputPer1m: number
+  cachedInputPer1m: number
+  outputPer1m: number
+  source?: string
 }
 
 export interface SourceEntry {

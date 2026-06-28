@@ -76,6 +76,33 @@ func TestComputeKnownRegistryRows(t *testing.T) {
 			want: 0.42,
 		},
 		{
+			name: "hy3 custom suffix fallback",
+			usage: model.Usage{
+				Model:        "hy3-preview-custom",
+				InputTokens:  1_000_000,
+				OutputTokens: 1_000_000,
+			},
+			want: 0.77,
+		},
+		{
+			name: "gemini 3.1 pro preview",
+			usage: model.Usage{
+				Model:        "gemini-3.1-pro-preview",
+				InputTokens:  1_000_000,
+				OutputTokens: 1_000_000,
+			},
+			want: 14,
+		},
+		{
+			name: "gemini 3.1 pro stable alias",
+			usage: model.Usage{
+				Model:        "gemini-3.1-pro",
+				InputTokens:  1_000_000,
+				OutputTokens: 1_000_000,
+			},
+			want: 14,
+		},
+		{
 			name: "registered suffix wins before fallback",
 			usage: model.Usage{
 				Model:        "gpt-5.4-long-context-variant",
@@ -275,6 +302,67 @@ func TestCalculatorCacheSavings(t *testing.T) {
 	}
 }
 
+func TestUpsertCustomPricingOverridesSeedAndSurvivesSeed(t *testing.T) {
+	conn := openSeededPricingDB(t)
+	defer conn.Close()
+
+	saved, err := UpsertCustom(context.Background(), conn, model.PricingModelInput{
+		Model:            "codex-auto-review",
+		InputPer1M:       9,
+		CachedInputPer1M: 1,
+		OutputPer1M:      20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !saved.IsCustom || saved.NormalizedModel != "codex-auto-review" {
+		t.Fatalf("saved custom pricing = %+v", saved)
+	}
+	cost, unpriced := Compute(conn, model.Usage{
+		Model:        "codex-auto-review",
+		InputTokens:  1_000_000,
+		OutputTokens: 1_000_000,
+	})
+	if unpriced || cost == nil || math.Abs(*cost-29) > 0.000001 {
+		t.Fatalf("custom cost = %v unpriced=%v, want 29 priced", cost, unpriced)
+	}
+
+	if _, err := UpsertCustom(context.Background(), conn, model.PricingModelInput{
+		Model:            "gpt-5",
+		InputPer1M:       9,
+		CachedInputPer1M: 1,
+		OutputPer1M:      20,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Seed(context.Background(), conn); err != nil {
+		t.Fatal(err)
+	}
+	cost, unpriced = Compute(conn, model.Usage{
+		Model:        "gpt-5",
+		InputTokens:  1_000_000,
+		OutputTokens: 1_000_000,
+	})
+	if unpriced || cost == nil || math.Abs(*cost-29) > 0.000001 {
+		t.Fatalf("custom seed override cost = %v unpriced=%v, want 29 priced", cost, unpriced)
+	}
+}
+
+func TestUpsertCustomPricingRejectsInvalidInput(t *testing.T) {
+	conn := openSeededPricingDB(t)
+	defer conn.Close()
+
+	if _, err := UpsertCustom(context.Background(), conn, model.PricingModelInput{Model: "", InputPer1M: 1}); err == nil {
+		t.Fatal("empty model should fail")
+	}
+	if _, err := UpsertCustom(context.Background(), conn, model.PricingModelInput{Model: "custom", InputPer1M: -1}); err == nil {
+		t.Fatal("negative price should fail")
+	}
+	if _, err := UpsertCustom(context.Background(), conn, model.PricingModelInput{Model: "custom", InputPer1M: math.Inf(1)}); err == nil {
+		t.Fatal("infinite price should fail")
+	}
+}
+
 func openSeededPricingDB(t *testing.T) *sql.DB {
 	t.Helper()
 	conn, err := sql.Open("sqlite", ":memory:")
@@ -290,7 +378,8 @@ func openSeededPricingDB(t *testing.T) *sql.DB {
 		cached_input_per_1m REAL NOT NULL,
 		output_per_1m REAL NOT NULL,
 		source TEXT NOT NULL,
-		effective_from TEXT NOT NULL
+		effective_from TEXT NOT NULL,
+		is_custom INTEGER NOT NULL DEFAULT 0
 	)`)
 	if err != nil {
 		t.Fatal(err)

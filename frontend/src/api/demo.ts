@@ -29,6 +29,7 @@ import type {
   ModelUsage,
   Overview,
   PricingModel,
+  PricingModelInput,
   PrivacyConfigApplyResult,
   PrivacyConfigChange,
   PrivacyConfigProfile,
@@ -83,6 +84,7 @@ type DemoApi = {
   listAuditFindings: (filters?: AuditFindingFilters) => Promise<AuditFinding[]>
   getAuditFinding: (id: number) => Promise<AuditFinding>
   getPricingModels: () => Promise<PricingModel[]>
+  savePricingModel: (pricing: PricingModelInput) => Promise<PricingModel>
 }
 
 const sources: DemoSource[] = [
@@ -124,7 +126,8 @@ const pricingModels: PricingModel[] = [
     cachedInputPer1m: 0.125,
     outputPer1m: 10,
     source: 'demo',
-    effectiveFrom: '2026-06-01T00:00:00Z'
+    effectiveFrom: '2026-06-01T00:00:00Z',
+    isCustom: false
   },
   {
     id: 2,
@@ -134,7 +137,8 @@ const pricingModels: PricingModel[] = [
     cachedInputPer1m: 0.31,
     outputPer1m: 10,
     source: 'demo',
-    effectiveFrom: '2026-06-01T00:00:00Z'
+    effectiveFrom: '2026-06-01T00:00:00Z',
+    isCustom: false
   },
   {
     id: 3,
@@ -144,7 +148,8 @@ const pricingModels: PricingModel[] = [
     cachedInputPer1m: 0.3,
     outputPer1m: 15,
     source: 'demo',
-    effectiveFrom: '2026-06-01T00:00:00Z'
+    effectiveFrom: '2026-06-01T00:00:00Z',
+    isCustom: false
   }
 ]
 
@@ -162,6 +167,37 @@ function costUsd(model: string, inputTokens: number, cachedInputTokens: number, 
       (outputTokens * pricing.outputPer1m) / 1_000_000
     ).toFixed(4)
   )
+}
+
+function normalizePricingModelName(value: string) {
+  return value.trim().toLowerCase().replace(/^models\//, '')
+}
+
+function saveDemoPricingModel(input: PricingModelInput): PricingModel {
+  const model = input.model.trim()
+  if (!model) throw new Error('Model is required')
+  if (input.inputPer1m < 0 || input.cachedInputPer1m < 0 || input.outputPer1m < 0) {
+    throw new Error('Prices must be zero or greater')
+  }
+  const normalizedModel = normalizePricingModelName(model)
+  const existingIndex = pricingModels.findIndex((item) => item.normalizedModel === normalizedModel)
+  const saved: PricingModel = {
+    id: existingIndex >= 0 ? pricingModels[existingIndex].id : Math.max(0, ...pricingModels.map((item) => item.id)) + 1,
+    model,
+    normalizedModel,
+    inputPer1m: input.inputPer1m,
+    cachedInputPer1m: input.cachedInputPer1m,
+    outputPer1m: input.outputPer1m,
+    source: input.source?.trim() || 'Custom pricing',
+    effectiveFrom: new Date().toISOString(),
+    isCustom: true
+  }
+  if (existingIndex >= 0) {
+    pricingModels.splice(existingIndex, 1, saved)
+  } else {
+    pricingModels.push(saved)
+  }
+  return saved
 }
 
 function makeSession(
@@ -1683,5 +1719,6 @@ export const demoApi: DemoApi = {
     if (!finding) throw new Error('Demo audit finding not found')
     return clone(finding)
   },
-  getPricingModels: async () => clone(pricingModels)
+  getPricingModels: async () => clone(pricingModels),
+  savePricingModel: async (pricing) => clone(saveDemoPricingModel(pricing))
 }

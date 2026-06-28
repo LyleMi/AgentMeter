@@ -565,6 +565,59 @@ func TestPrivacyCodeBuddyHTTPChangesAppliesEditableChanges(t *testing.T) {
 	}
 }
 
+func TestPricingHTTPSavesCustomModel(t *testing.T) {
+	app := &App{dbPath: filepath.Join(t.TempDir(), "agentmeter.sqlite")}
+	defer app.Shutdown(context.Background())
+	mux := http.NewServeMux()
+	RegisterHTTPHandlers(mux, app, fstest.MapFS{})
+
+	recorder := httptest.NewRecorder()
+	body := strings.NewReader(`{"model":"codex-auto-review","inputPer1m":9,"cachedInputPer1m":1,"outputPer1m":20}`)
+	request := httptest.NewRequest(http.MethodPost, "/api/pricing", body)
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var saved model.PricingModel
+	if err := json.NewDecoder(recorder.Body).Decode(&saved); err != nil {
+		t.Fatal(err)
+	}
+	if !saved.IsCustom || saved.NormalizedModel != "codex-auto-review" || saved.InputPer1M != 9 || saved.OutputPer1M != 20 {
+		t.Fatalf("saved pricing = %+v", saved)
+	}
+
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/api/pricing", nil)
+	mux.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var models []model.PricingModel
+	if err := json.NewDecoder(recorder.Body).Decode(&models); err != nil {
+		t.Fatal(err)
+	}
+	if !hasPricingModel(models, "codex-auto-review") {
+		t.Fatalf("custom model missing from pricing list: %+v", models)
+	}
+}
+
+func TestPricingHTTPRejectsInvalidCustomModel(t *testing.T) {
+	app := &App{dbPath: filepath.Join(t.TempDir(), "agentmeter.sqlite")}
+	defer app.Shutdown(context.Background())
+	mux := http.NewServeMux()
+	RegisterHTTPHandlers(mux, app, fstest.MapFS{})
+
+	recorder := httptest.NewRecorder()
+	body := strings.NewReader(`{"model":"","inputPer1m":-1}`)
+	request := httptest.NewRequest(http.MethodPost, "/api/pricing", body)
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestPrivacyHTTPUnsupportedTargetReturnsNotFound(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterHTTPHandlers(mux, &App{}, fstest.MapFS{})
@@ -604,6 +657,15 @@ func TestUnknownAPIRouteDoesNotServeFrontendIndex(t *testing.T) {
 	if !strings.Contains(recorder.Body.String(), "api route not found") {
 		t.Fatalf("body should explain missing API route: %s", recorder.Body.String())
 	}
+}
+
+func hasPricingModel(models []model.PricingModel, normalized string) bool {
+	for _, item := range models {
+		if item.NormalizedModel == normalized {
+			return true
+		}
+	}
+	return false
 }
 
 func containsExactSourcePath(paths []string, path string) bool {

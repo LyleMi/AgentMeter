@@ -194,7 +194,8 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			cached_input_per_1m REAL NOT NULL,
 			output_per_1m REAL NOT NULL,
 			source TEXT NOT NULL,
-			effective_from TEXT NOT NULL
+			effective_from TEXT NOT NULL,
+			is_custom INTEGER NOT NULL DEFAULT 0
 		)`,
 		`CREATE TABLE IF NOT EXISTS app_config (
 			key TEXT PRIMARY KEY,
@@ -217,6 +218,9 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 		return err
 	}
 	if err := ensureColumn(ctx, conn, "tool_calls", "raw_end_event_id", "raw_end_event_id INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := ensureColumn(ctx, conn, "pricing_models", "is_custom", "is_custom INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
 	if _, err := conn.ExecContext(ctx, `UPDATE sessions SET session_key = codex_session_id WHERE session_key = ''`); err != nil {

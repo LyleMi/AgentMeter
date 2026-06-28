@@ -2117,6 +2117,35 @@ body {
   border-radius: var(--am-radius);
 }
 
+.pricing-edit-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.1fr) repeat(3, minmax(104px, 0.45fr)) minmax(160px, 0.8fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  background: var(--am-surface-subtle);
+  border: 1px solid var(--am-border-subtle);
+  border-radius: var(--am-radius);
+}
+
+.pricing-model-input,
+.pricing-rate-input,
+.pricing-source-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.pricing-model-cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+
+.pricing-model-cell .ant-typography {
+  min-width: 0;
+}
+
 .index-result-block {
   padding: 12px;
   border: 1px solid var(--am-border);
@@ -2821,6 +2850,15 @@ body {
     align-items: start;
   }
 
+  .pricing-edit-row {
+    grid-template-columns: minmax(190px, 1fr) repeat(3, minmax(104px, 0.5fr));
+  }
+
+  .pricing-source-input,
+  .pricing-edit-row > .ant-btn {
+    grid-column: 1 / -1;
+  }
+
   .source-entry-state {
     grid-column: 1;
   }
@@ -2977,7 +3015,8 @@ body {
   }
 
   .source-entry-row,
-  .source-add-row {
+  .source-add-row,
+  .pricing-edit-row {
     grid-template-columns: 1fr;
   }
 

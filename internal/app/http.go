@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"AgentMeter/internal/model"
+	"AgentMeter/internal/pricing"
 )
 
 func writeJSON(w http.ResponseWriter, value any, err error) {
@@ -36,6 +37,9 @@ func writeJSONResponse(w http.ResponseWriter, status int, value any) {
 func statusForError(err error) int {
 	if errors.Is(err, sql.ErrNoRows) {
 		return http.StatusNotFound
+	}
+	if errors.Is(err, pricing.ErrInvalidRate) {
+		return http.StatusBadRequest
 	}
 	return http.StatusInternalServerError
 }
@@ -253,6 +257,15 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 	})
 	mux.HandleFunc("GET /api/pricing", func(w http.ResponseWriter, r *http.Request) {
 		value, err := service.GetPricingModels()
+		writeJSON(w, value, err)
+	})
+	mux.HandleFunc("POST /api/pricing", func(w http.ResponseWriter, r *http.Request) {
+		var body model.PricingModelInput
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, nil, err)
+			return
+		}
+		value, err := service.SavePricingModel(body)
 		writeJSON(w, value, err)
 	})
 
