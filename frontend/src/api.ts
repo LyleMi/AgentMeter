@@ -337,9 +337,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
     ...init
   })
-  const payload = await response.json()
+  const raw = await response.text()
+  let payload: unknown = null
+  if (raw) {
+    try {
+      payload = JSON.parse(raw)
+    } catch {
+      const contentType = response.headers.get('Content-Type') || 'unknown content type'
+      throw new Error(`Expected JSON from ${path}, got ${contentType}`)
+    }
+  }
   if (!response.ok) {
-    throw new Error(payload.error || `Request failed: ${response.status}`)
+    const error = payload && typeof payload === 'object' && 'error' in payload ? String(payload.error) : ''
+    throw new Error(error || `Request failed: ${response.status}`)
   }
   return payload as T
 }
@@ -348,18 +358,7 @@ export const api = {
   getSettings: () => request<Settings>('/api/settings'),
   saveSourceSettings: (sourceEntries: SourceEntry[]) =>
     request<Settings>('/api/settings', { method: 'POST', body: JSON.stringify({ sourceEntries }) }),
-  getCodexPrivacy: () => request<PrivacyConfigStatus>('/api/privacy/codex'),
-  applyCodexPrivacy: (settingIds: string[]) =>
-    request<PrivacyConfigApplyResult>('/api/privacy/codex/apply', {
-      method: 'POST',
-      body: JSON.stringify({ settingIds })
-    }),
   getAgentPrivacy: (target: PrivacyTarget) => request<PrivacyConfigStatus>(`/api/privacy/${target}`),
-  applyAgentPrivacy: (target: PrivacyTarget, settingIds: string[]) =>
-    request<PrivacyConfigApplyResult>(`/api/privacy/${target}/apply`, {
-      method: 'POST',
-      body: JSON.stringify({ settingIds })
-    }),
   applyAgentPrivacyChanges: (target: PrivacyTarget, changes: PrivacyConfigChange[]) =>
     request<PrivacyConfigApplyResult>(`/api/privacy/${target}/changes`, {
       method: 'POST',

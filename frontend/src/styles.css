@@ -2086,8 +2086,8 @@ body {
 
 .privacy-setting-card {
   display: grid;
-  grid-template-columns: minmax(260px, 1.2fr) minmax(260px, 0.95fr) minmax(220px, 0.75fr) auto;
-  gap: 12px;
+  grid-template-columns: minmax(280px, 1.1fr) minmax(300px, 1fr) minmax(164px, 0.42fr);
+  gap: 14px;
   align-items: start;
   min-width: 0;
   padding: 11px;
@@ -2106,8 +2106,7 @@ body {
 }
 
 .privacy-setting-main,
-.privacy-setting-values,
-.privacy-editor {
+.privacy-setting-values {
   min-width: 0;
 }
 
@@ -2149,6 +2148,10 @@ body {
   margin-top: 7px;
 }
 
+.privacy-setting-main .privacy-value-block {
+  margin-top: 8px;
+}
+
 .privacy-copy-block {
   display: block;
   max-width: 100%;
@@ -2169,11 +2172,30 @@ body {
 
 .privacy-setting-values {
   display: grid;
-  gap: 7px;
+  gap: 9px;
 }
 
 .privacy-value-block {
   min-width: 0;
+}
+
+.privacy-current-value-block {
+  padding: 8px;
+  background: #f8fafc;
+  border: 1px solid var(--am-border-subtle);
+  border-radius: var(--am-radius-sm);
+}
+
+.privacy-current-value-block .privacy-copy-block {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.privacy-current-value {
+  color: var(--am-text);
+  font-weight: 650;
 }
 
 .privacy-type-chip {
@@ -2192,6 +2214,7 @@ body {
 .privacy-editor {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
 .privacy-string-editor,
@@ -2210,7 +2233,7 @@ body {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 6px;
-  width: 178px;
+  min-width: 0;
 }
 
 .privacy-setting-actions .ant-btn {
@@ -2462,6 +2485,21 @@ body {
 
   .session-summary-meta {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 980px) and (max-width: 1180px) {
+  .privacy-setting-card {
+    grid-template-columns: minmax(220px, 0.95fr) minmax(260px, 1fr) minmax(150px, 0.42fr);
+  }
+
+  .privacy-setting-actions {
+    justify-content: flex-end;
+    width: auto;
+  }
+
+  .privacy-setting-actions .ant-btn {
+    width: 100%;
   }
 }
 

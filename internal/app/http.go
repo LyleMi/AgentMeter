@@ -187,6 +187,13 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 
 	fileServer := http.FileServer(http.FS(staticFS))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "api route not found: " + r.URL.Path})
+			return
+		}
+
 		path := strings.TrimPrefix(r.URL.Path, "/")
 		if path == "" {
 			fileServer.ServeHTTP(w, r)

@@ -349,6 +349,30 @@ func TestPrivacyHTTPUnsupportedTargetReturnsNotFound(t *testing.T) {
 	}
 }
 
+func TestUnknownAPIRouteDoesNotServeFrontendIndex(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterHTTPHandlers(mux, &App{}, fstest.MapFS{
+		"index.html": {Data: []byte("<!doctype html><title>AgentMeter</title>")},
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/privacy/codex/missing", nil)
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if contentType := recorder.Header().Get("Content-Type"); !strings.Contains(contentType, "application/json") {
+		t.Fatalf("content type = %q, want json", contentType)
+	}
+	if strings.Contains(recorder.Body.String(), "<!doctype html>") {
+		t.Fatalf("unknown API route served frontend index: %s", recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "api route not found") {
+		t.Fatalf("body should explain missing API route: %s", recorder.Body.String())
+	}
+}
+
 func containsExactSourcePath(paths []string, path string) bool {
 	key := sourcePathKey(filepath.Clean(path))
 	for _, candidate := range normalizeSourcePaths(paths) {

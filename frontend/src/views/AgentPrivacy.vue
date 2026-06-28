@@ -73,10 +73,12 @@ const { t } = useMessages({
     'privacy.value.pendingUnset': 'will unset on save',
     'privacy.value.type': 'Type',
     'privacy.value.current': 'Current',
+    'privacy.value.editable': 'Editable',
     'privacy.value.strict': 'Strict',
     'privacy.value.unsaved': 'Unsaved',
     'privacy.message.loadFailed': 'Load privacy settings failed',
     'privacy.message.saveFailed': 'Save privacy settings failed',
+    'privacy.message.targetMismatch': 'Privacy API returned a different target',
     'privacy.message.saved': 'Saved {count} changes',
     'privacy.message.noChanges': 'No unsaved changes',
     'privacy.result.title': 'Last save result',
@@ -126,10 +128,12 @@ const { t } = useMessages({
     'privacy.value.pendingUnset': '保存后取消设置',
     'privacy.value.type': '类型',
     'privacy.value.current': '当前',
+    'privacy.value.editable': '编辑值',
     'privacy.value.strict': '严格值',
     'privacy.value.unsaved': '未保存',
     'privacy.message.loadFailed': '加载隐私设置失败',
     'privacy.message.saveFailed': '保存隐私设置失败',
+    'privacy.message.targetMismatch': '隐私 API 返回了不同目标',
     'privacy.message.saved': '已保存 {count} 项变更',
     'privacy.message.noChanges': '没有未保存变更',
     'privacy.result.title': '上次保存结果',
@@ -159,6 +163,7 @@ const privacyStatus = ref<PrivacyConfigStatus | null>(null)
 const lastApply = ref<PrivacyConfigApplyResult | null>(null)
 const edits = ref<Record<string, SettingEdit>>({})
 let loadRequestId = 0
+let saveRequestId = 0
 
 const targetOptions = computed<{ label: string; value: PrivacyTarget }[]>(() => [
   { label: t('privacy.target.codex'), value: 'codex' },
@@ -258,7 +263,7 @@ function formatConfigValue(value: unknown) {
 
 function createEdit(setting: PrivacyConfigSetting): SettingEdit {
   const type = valueType(setting)
-  const baseValue = setting.configured ? setting.currentValue : undefined
+  const baseValue = setting.configured ? setting.currentValue : strictValue(setting)
   const normalized = normalizeValue(baseValue, type)
   return {
     id: setting.id,
@@ -380,11 +385,18 @@ async function saveSettings(records: PrivacyConfigSetting[], saveAll = false) {
     return
   }
 
+  const requestId = ++saveRequestId
+  const target = selectedTarget.value
   if (saveAll) savingAll.value = true
   else savingId.value = changes[0].id
 
   try {
-    const result = await api.applyAgentPrivacyChanges(selectedTarget.value, changes)
+    const result = await api.applyAgentPrivacyChanges(target, changes)
+    if (requestId !== saveRequestId || selectedTarget.value !== target) return
+    if (result.status.target !== target) {
+      message.error(t('privacy.message.targetMismatch'))
+      return
+    }
     privacyStatus.value = result.status
     lastApply.value = result
     syncEdits(result.status)
@@ -394,15 +406,21 @@ async function saveSettings(records: PrivacyConfigSetting[], saveAll = false) {
       message.info(t('privacy.message.noChanges'))
     }
   } catch (error) {
+    if (requestId !== saveRequestId || selectedTarget.value !== target) return
     message.error(error instanceof Error ? error.message : t('privacy.message.saveFailed'))
   } finally {
-    savingAll.value = false
-    savingId.value = ''
+    if (requestId === saveRequestId) {
+      savingAll.value = false
+      savingId.value = ''
+    }
   }
 }
 
 onMounted(load)
 watch(selectedTarget, () => {
+  saveRequestId++
+  savingAll.value = false
+  savingId.value = ''
   lastApply.value = null
   load()
 })
@@ -594,45 +612,53 @@ watch(selectedTarget, () => {
                     </div>
 
                     <div v-if="setting.impact" class="privacy-impact">{{ setting.impact }}</div>
-                  </div>
-
-                  <div class="privacy-setting-values">
-                    <div class="privacy-value-block">
-                      <div class="metadata-label">{{ t('privacy.value.strict') }}</div>
-                      <a-typography-text class="mono privacy-copy-block" :copyable="{ text: formatConfigValue(strictValue(setting)) }">
-                        {{ formatConfigValue(strictValue(setting)) }}
-                      </a-typography-text>
-                    </div>
                     <div class="privacy-value-block">
                       <div class="metadata-label">{{ t('privacy.value.type') }}</div>
                       <span class="privacy-type-chip">{{ valueTypeLabel(valueType(setting)) }}</span>
                     </div>
                   </div>
 
-                  <div class="privacy-editor">
-                    <div class="metadata-label">{{ t('privacy.value.current') }}</div>
-                    <a-switch
-                      v-if="valueType(setting) === 'bool'"
-                      v-model:checked="editFor(setting).boolValue"
-                      :disabled="!canEdit(setting)"
-                      @change="markEditSet(setting.id)"
-                    />
-                    <a-select
-                      v-else-if="valueType(setting) === 'stringArray'"
-                      v-model:value="editFor(setting).arrayValue"
-                      mode="tags"
-                      class="privacy-array-editor"
-                      :token-separators="[',']"
-                      :disabled="!canEdit(setting)"
-                      @update:value="markEditSet(setting.id)"
-                    />
-                    <a-input
-                      v-else
-                      v-model:value="editFor(setting).stringValue"
-                      class="privacy-string-editor"
-                      :disabled="!canEdit(setting)"
-                      @update:value="markEditSet(setting.id)"
-                    />
+                  <div class="privacy-setting-values">
+                    <div class="privacy-value-block privacy-current-value-block">
+                      <div class="metadata-label">{{ t('privacy.value.current') }}</div>
+                      <a-typography-text
+                        class="mono privacy-copy-block privacy-current-value"
+                        :copyable="{ text: setting.configured ? formatConfigValue(setting.currentValue) : t('privacy.value.notConfigured') }"
+                      >
+                        {{ setting.configured ? formatConfigValue(setting.currentValue) : t('privacy.value.notConfigured') }}
+                      </a-typography-text>
+                    </div>
+                    <div class="privacy-value-block">
+                      <div class="metadata-label">{{ t('privacy.value.strict') }}</div>
+                      <a-typography-text class="mono privacy-copy-block" :copyable="{ text: formatConfigValue(strictValue(setting)) }">
+                        {{ formatConfigValue(strictValue(setting)) }}
+                      </a-typography-text>
+                    </div>
+                    <div class="privacy-editor">
+                      <div class="metadata-label">{{ t('privacy.value.editable') }}</div>
+                      <a-switch
+                        v-if="valueType(setting) === 'bool'"
+                        v-model:checked="editFor(setting).boolValue"
+                        :disabled="!canEdit(setting)"
+                        @change="markEditSet(setting.id)"
+                      />
+                      <a-select
+                        v-else-if="valueType(setting) === 'stringArray'"
+                        v-model:value="editFor(setting).arrayValue"
+                        mode="tags"
+                        class="privacy-array-editor"
+                        :token-separators="[',']"
+                        :disabled="!canEdit(setting)"
+                        @update:value="markEditSet(setting.id)"
+                      />
+                      <a-input
+                        v-else
+                        v-model:value="editFor(setting).stringValue"
+                        class="privacy-string-editor"
+                        :disabled="!canEdit(setting)"
+                        @update:value="markEditSet(setting.id)"
+                      />
+                    </div>
                   </div>
 
                   <div class="privacy-setting-actions">
