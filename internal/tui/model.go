@@ -441,23 +441,46 @@ func (s *state) handlePrivacyKey(k keyMsg) (command, bool, bool) {
 			}
 		}
 		action := *s.privacyPending
-		s.status = fmt.Sprintf("pending %s profile for %s; press Enter to apply or Esc to cancel", action.profile, action.targetName)
+		s.status = fmt.Sprintf("pending %s profile for %s; Enter writes config, Esc cancels", action.profile, action.targetName)
 		return nil, false, true
 	}
 	if s.privacyApplying {
-		if k.typ == keyEnter || (k.typ == keyRune && (k.ch == 'a' || k.ch == 'A' || k.ch == 'u')) {
+		if k.typ == keyEnter || (k.typ == keyRune && isPrivacyProfileKey(k.ch)) {
 			s.status = "privacy profile already applying"
 			return nil, false, true
 		}
+	}
+	switch k.typ {
+	case keyEnter:
+		s.queuePrivacyProfile("recommended")
+		return nil, false, true
+	case keyUp:
+		s.movePrivacyTarget(-1)
+		return nil, false, true
+	case keyDown:
+		s.movePrivacyTarget(1)
+		return nil, false, true
+	case keyHome:
+		s.movePrivacyTargetTo(0)
+		return nil, false, true
+	case keyEnd:
+		s.movePrivacyTargetTo(len(s.privacy) - 1)
+		return nil, false, true
+	case keyPageUp:
+		s.movePrivacyDetail(-s.pageStep())
+		return nil, false, true
+	case keyPageDown:
+		s.movePrivacyDetail(s.pageStep())
+		return nil, false, true
 	}
 	if k.typ != keyRune {
 		return nil, false, false
 	}
 	switch k.ch {
-	case '[':
+	case '[', 'k', 'K':
 		s.movePrivacyTarget(-1)
 		return nil, false, true
-	case ']':
+	case ']', 'j', 'J':
 		s.movePrivacyTarget(1)
 		return nil, false, true
 	case 'a':
@@ -471,6 +494,15 @@ func (s *state) handlePrivacyKey(k keyMsg) (command, bool, bool) {
 		return nil, false, true
 	}
 	return nil, false, false
+}
+
+func isPrivacyProfileKey(ch rune) bool {
+	switch ch {
+	case 'a', 'A', 'u', 'U':
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *state) queuePrivacyProfile(profile string) {
@@ -522,15 +554,56 @@ func (s *state) movePrivacyTarget(delta int) {
 		s.status = "no privacy target loaded"
 		return
 	}
-	s.privacyTarget += delta
-	if s.privacyTarget < 0 {
-		s.privacyTarget = len(s.privacy) - 1
+	next := s.privacyTarget + delta
+	if next < 0 {
+		next = len(s.privacy) - 1
 	}
-	if s.privacyTarget >= len(s.privacy) {
+	if next >= len(s.privacy) {
+		next = 0
+	}
+	s.setPrivacyTarget(next)
+}
+
+func (s *state) movePrivacyTargetTo(index int) {
+	if len(s.privacy) == 0 {
 		s.privacyTarget = 0
+		s.status = "no privacy target loaded"
+		return
 	}
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(s.privacy) {
+		index = len(s.privacy) - 1
+	}
+	s.setPrivacyTarget(index)
+}
+
+func (s *state) setPrivacyTarget(index int) {
+	s.privacyTarget = index
 	s.scroll = 0
 	s.status = "selected privacy target: " + privacyDisplayName(s.privacy[s.privacyTarget])
+}
+
+func (s *state) movePrivacyDetail(delta int) {
+	if len(s.privacy) == 0 {
+		s.scroll = 0
+		s.status = "no privacy target loaded"
+		return
+	}
+	maxScroll := s.maxScroll()
+	s.scroll += delta
+	if s.scroll < 0 {
+		s.scroll = 0
+	}
+	if s.scroll > maxScroll {
+		s.scroll = maxScroll
+	}
+	if maxScroll == 0 {
+		s.status = "selected privacy target fits on screen"
+		return
+	}
+	s.status = fmt.Sprintf("privacy detail scroll %d/%d for %s", s.scroll+1, maxScroll+1, privacyDisplayName(s.privacy[s.privacyTarget]))
 }
 
 func (s *state) selectedPrivacyStatus() *agentmodel.PrivacyConfigStatus {
@@ -628,7 +701,10 @@ func (s *state) itemCount() int {
 	case pageSettings:
 		return len(settingsLines(s.settings, s.width))
 	case pagePrivacy:
-		return len(s.privacyLines())
+		if status := s.selectedPrivacyStatus(); status != nil {
+			return len(privacyDetailLines(*status, s.width))
+		}
+		return 0
 	default:
 		return 0
 	}
@@ -716,6 +792,9 @@ func (s *state) ensureVisible() {
 }
 
 func (s *state) maxScroll() int {
+	if s.page == pagePrivacy {
+		return s.privacyMaxScroll()
+	}
 	max := s.itemCount() - s.contentHeight()
 	if max < 0 {
 		return 0

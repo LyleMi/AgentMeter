@@ -128,17 +128,17 @@ Flag behavior:
 5 / p      Agent Privacy
 tab/right  next screen
 shift-tab/left previous screen
-up/down    select or scroll
-j / k      select or scroll
-pgup/pgdn  page through scrollable content
+up/down    select, scroll, or select privacy target
+j / k      select, scroll, or select privacy target
+pgup/pgdn  page through scrollable content or selected privacy details
 home/end   jump within lists
-enter      open selected session detail, or confirm pending privacy profile
+enter      open selected session detail, queue recommended privacy profile, or confirm pending privacy profile
 b / esc    return from detail, or cancel pending privacy profile
 r          refresh current screen
 i          update index
 I          rebuild index
-[/]        previous/next privacy target
-a          queue recommended privacy profile for selected target
+[/]        previous/next privacy target shortcut
+a          queue recommended privacy profile for selected target shortcut
 A          queue strict privacy profile for selected target
 u          queue default privacy profile for selected target
 q / ctrl-c quit

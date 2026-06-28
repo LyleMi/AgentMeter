@@ -20,8 +20,8 @@ Implemented today:
 - Incremental indexing and rebuild indexing.
 - Overview, Sessions, Session Detail, Tools, Audit, Agent Privacy, and Settings
   in Web mode.
-- Overview, Sessions, Session Detail, Tools, read-only Agent Privacy status, and
-  Settings in TUI mode.
+- Overview, Sessions, Session Detail, Tools, Agent Privacy status/profile apply,
+  and Settings in TUI mode.
 - Offline audit findings for indexed local session data, exposed through Web UI
   and `/api/audit/*`.
 - Pricing registry seeding, model normalization, and `unpriced` handling.
@@ -111,7 +111,8 @@ Delivered:
   derived metrics, and Tools summary.
 - TUI navigation, table browsing, and session detail panes.
 - TUI index trigger and visible indexing/parse status.
-- Read-only TUI Agent Privacy status screen for supported targets.
+- TUI Agent Privacy status screen for supported targets, including confirmed
+  profile application.
 - Terminal resize and narrow-width behavior.
 - Documented TUI keyboard behavior and README examples.
 

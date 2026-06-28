@@ -164,19 +164,29 @@ func TestPrivacyPageLoadsAndRenders(t *testing.T) {
 	view := st.view()
 	assertContains(t, view, "Agent Privacy")
 	assertContains(t, view, "Selected: Codex (1/4)")
-	assertContains(t, view, "Profiles: default, recommended, strict")
+	assertContains(t, view, "Next: Enter recommended, A strict, u defaults")
 	assertContains(t, view, "Codex")
 	assertContains(t, view, "Claude Code")
 	assertContains(t, view, "CodeBuddy")
-	assertContains(t, view, "Target: codex  Config: exists  Score: 2/3 (66%)")
+	assertContains(t, view, "Target: codex  Config: exists  Safe: 2/3 (66%)")
 	assertContains(t, view, "[attention] Web search")
 	assertContains(t, view, "default-safe")
 	assertContains(t, view, "default=unset")
 	assertContains(t, view, "recommended=false")
+	assertContains(t, view, "Codex warning")
+
+	cmd, quit = st.update(keyMsg{typ: keyDown})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	if cmd != nil {
+		t.Fatal("target selection returned a command")
+	}
+	view = st.view()
+	assertContains(t, view, "Selected: Gemini CLI (2/4)")
 	assertContains(t, view, `strict=["web_search","web_fetch"]`)
 	assertContains(t, view, "Broken JSON")
 	assertContains(t, view, "read-only")
-	assertContains(t, view, "Codex warning")
 
 	cmd, quit = st.update(keyMsg{typ: keyShiftTab})
 	if quit {
@@ -311,7 +321,7 @@ func TestPrivacyProfileRequiresConfirmationBeforeApply(t *testing.T) {
 	assertContains(t, st.status, "1 change")
 	assertContains(t, st.status, "1 warning(s): restart Gemini CLI to pick up changes")
 	assertContains(t, st.view(), "Selected: Gemini CLI (2/4)")
-	assertContains(t, st.view(), "Score: 1/1 (100%)")
+	assertContains(t, st.view(), "Safe: 1/1 (100%)")
 }
 
 func runCommand(t *testing.T, cmd command) message {

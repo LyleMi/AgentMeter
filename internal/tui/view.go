@@ -125,9 +125,9 @@ func (s *state) footerLine() string {
 		return dim("Keys: enter detail  up/down select  tab cycle  r refresh  i update index  I rebuild index  q quit")
 	case pagePrivacy:
 		if s.privacyPending != nil {
-			return dim("Keys: enter apply profile  esc cancel  q quit")
+			return dim("Keys: enter write profile  esc cancel  q quit")
 		}
-		return dim("Keys: [/] target  a recommended  A strict  u defaults  r refresh  q quit")
+		return dim("Keys: up/down target  enter recommended  A strict  u defaults  pgup/pgdn detail  r refresh  q quit")
 	case pageSettings:
 		return dim("Keys: up/down scroll  tab cycle  r refresh  i update index  I rebuild index  q quit")
 	default:
@@ -318,19 +318,24 @@ func (s *state) settingsViewportLines() []string {
 }
 
 func (s *state) privacyViewportLines() []string {
-	lines := s.privacyLines()
-	height := s.contentHeight()
-	if s.scroll >= len(lines) {
-		s.scroll = len(lines) - 1
+	lines := privacySummaryLines(s.privacy, s.privacyTarget, s.privacyPending, s.width)
+	status := s.selectedPrivacyStatus()
+	if status == nil {
+		return lines
+	}
+	detail := privacyDetailLines(*status, s.width)
+	detailHeight := s.privacyDetailHeight()
+	if s.scroll >= len(detail) {
+		s.scroll = len(detail) - 1
 	}
 	if s.scroll < 0 {
 		s.scroll = 0
 	}
-	end := s.scroll + height
-	if end > len(lines) {
-		end = len(lines)
+	end := s.scroll + detailHeight
+	if end > len(detail) {
+		end = len(detail)
 	}
-	return lines[s.scroll:end]
+	return append(lines, detail[s.scroll:end]...)
 }
 
 func sessionHeader(width int) string {
@@ -474,6 +479,17 @@ func (s *state) privacyLines() []string {
 }
 
 func privacyLines(statuses []agentmodel.PrivacyConfigStatus, selected int, pending *privacyProfileAction, width int) []string {
+	lines := privacySummaryLines(statuses, selected, pending, width)
+	if len(statuses) == 0 {
+		return lines
+	}
+	if selected < 0 || selected >= len(statuses) {
+		selected = 0
+	}
+	return append(lines, privacyDetailLines(statuses[selected], width)...)
+}
+
+func privacySummaryLines(statuses []agentmodel.PrivacyConfigStatus, selected int, pending *privacyProfileAction, width int) []string {
 	lines := []string{bold("Agent Privacy")}
 	if len(statuses) == 0 {
 		return append(lines, "No privacy targets loaded.")
@@ -483,76 +499,133 @@ func privacyLines(statuses []agentmodel.PrivacyConfigStatus, selected int, pendi
 	}
 	selectedStatus := statuses[selected]
 	lines = append(lines,
-		fmt.Sprintf("Targets: %d  Selected: %s (%d/%d)  Profiles: %s",
-			len(statuses),
+		"User-level config controls for supported agents. Profile writes require confirmation.",
+		fmt.Sprintf("Selected: %s (%d/%d)  Score: %s  Next: Enter recommended, A strict, u defaults",
 			privacyDisplayName(selectedStatus),
 			selected+1,
 			len(statuses),
-			strings.Join(privacyProfileNames(selectedStatus), ", "),
+			privacyScoreLabel(selectedStatus),
 		),
-		"Keys: [ and ] target  a recommended  A strict  u defaults  Enter confirm  Esc cancel",
 	)
 	if pending != nil {
-		lines = append(lines, accent(fmt.Sprintf("Pending: apply %s profile to %s; press Enter to apply or Esc to cancel.", pending.profile, pending.targetName)))
+		lines = append(lines, accent(fmt.Sprintf("Pending: apply %s profile to %s; Enter writes config, Esc cancels.", pending.profile, pending.targetName)))
 	}
+	lines = append(lines,
+		"",
+		bold("Targets"),
+		fmt.Sprintf("  %-18s %-13s %7s %9s %9s %s", "Agent", "State", "Score", "Attention", "Config", "Path"),
+	)
 	for i, status := range statuses {
-		if i > 0 {
-			lines = append(lines, "")
-		}
 		summary := status.Summary
-		exists := "missing"
-		if status.Exists {
-			exists = "exists"
-		}
 		prefix := "  "
 		if i == selected {
 			prefix = "> "
 		}
-		lines = append(lines,
-			bold(prefix+privacyDisplayName(status)),
-			fmt.Sprintf("Target: %s  Config: %s  Score: %d/%d (%d%%)  Hardened: %d  Implicit: %d  Attention: %d",
-				empty(status.Target, "unknown"),
-				exists,
-				summary.Hardened+summary.Implicit,
-				summary.Total,
-				summary.Score,
-				summary.Hardened,
-				summary.Implicit,
-				summary.Attention,
-			),
-			"Path: "+empty(status.ConfigPath, "unknown"),
-		)
-		if len(status.Warnings) > 0 {
-			lines = append(lines, "Warnings:")
-			for _, warning := range status.Warnings {
-				lines = append(lines, fit("- "+warning, width))
-			}
-		}
-		lines = append(lines, "Settings:")
-		if len(status.Settings) == 0 {
-			lines = append(lines, "  No settings reported.")
-			continue
-		}
-		profiles := privacyProfileNames(status)
-		for _, setting := range status.Settings {
-			lines = append(lines, fit(fmt.Sprintf("  [%s] %-28s %-14s %s",
-				empty(setting.Status, "unknown"),
-				truncate(empty(setting.Title, setting.ID), 28),
-				privacyConfigState(setting),
-				empty(setting.Key, setting.ID),
-			), width))
-			profileParts := []string{"current=" + formatPrivacyValue(setting.CurrentValue)}
-			for _, profile := range profiles {
-				profileParts = append(profileParts, profile+"="+formatPrivacyValue(privacyProfileValue(setting, profile)))
-			}
-			valueLine := "      " + strings.Join(profileParts, "  ")
-			if setting.Impact != "" {
-				valueLine += "  impact=" + setting.Impact
-			}
-			lines = append(lines, fit(valueLine, width))
-		}
+		lines = append(lines, fit(fmt.Sprintf("%s%-18s %-13s %7s %9d %9s %s",
+			prefix,
+			truncate(privacyDisplayName(status), 18),
+			privacyStateLabel(status),
+			fmt.Sprintf("%d%%", summary.Score),
+			summary.Attention,
+			privacyConfigExistsLabel(status),
+			shortPath(status.ConfigPath, width-65),
+		), width))
 	}
 	return lines
+}
+
+func privacyDetailLines(status agentmodel.PrivacyConfigStatus, width int) []string {
+	summary := status.Summary
+	lines := []string{
+		"",
+		bold("Selected Target"),
+		fmt.Sprintf("Target: %s  Config: %s  Safe: %d/%d (%d%%)  Hardened: %d  Default-safe: %d  Attention: %d",
+			empty(status.Target, "unknown"),
+			privacyConfigExistsLabel(status),
+			summary.Hardened+summary.Implicit,
+			summary.Total,
+			summary.Score,
+			summary.Hardened,
+			summary.Implicit,
+			summary.Attention,
+		),
+		"Path: " + empty(status.ConfigPath, "unknown"),
+		"Profiles: " + strings.Join(privacyProfileNames(status), ", "),
+	}
+	if len(status.Warnings) > 0 {
+		lines = append(lines, "", bold("Warnings"))
+		for _, warning := range status.Warnings {
+			lines = append(lines, fit("- "+warning, width))
+		}
+	}
+	lines = append(lines, "", bold("Settings"))
+	if len(status.Settings) == 0 {
+		return append(lines, "No settings reported.")
+	}
+	profiles := privacyProfileNames(status)
+	for _, setting := range status.Settings {
+		lines = append(lines, fit(fmt.Sprintf("[%s] %-28s %-14s %s",
+			empty(setting.Status, "unknown"),
+			truncate(empty(setting.Title, setting.ID), 28),
+			privacyConfigState(setting),
+			empty(setting.Key, setting.ID),
+		), width))
+		profileParts := []string{"current=" + formatPrivacyValue(setting.CurrentValue)}
+		for _, profile := range profiles {
+			profileParts = append(profileParts, profile+"="+formatPrivacyValue(privacyProfileValue(setting, profile)))
+		}
+		valueLine := "    " + strings.Join(profileParts, "  ")
+		if setting.Impact != "" {
+			valueLine += "  impact=" + setting.Impact
+		}
+		lines = append(lines, fit(valueLine, width))
+	}
+	return lines
+}
+
+func (s *state) privacyDetailHeight() int {
+	height := s.contentHeight() - len(privacySummaryLines(s.privacy, s.privacyTarget, s.privacyPending, s.width))
+	if height < 1 {
+		return 1
+	}
+	return height
+}
+
+func (s *state) privacyMaxScroll() int {
+	status := s.selectedPrivacyStatus()
+	if status == nil {
+		return 0
+	}
+	max := len(privacyDetailLines(*status, s.width)) - s.privacyDetailHeight()
+	if max < 0 {
+		return 0
+	}
+	return max
+}
+
+func privacyStateLabel(status agentmodel.PrivacyConfigStatus) string {
+	if status.Summary.Attention > 0 {
+		return "needs review"
+	}
+	if status.Summary.Total == 0 {
+		return "no status"
+	}
+	return "ready"
+}
+
+func privacyScoreLabel(status agentmodel.PrivacyConfigStatus) string {
+	summary := status.Summary
+	if summary.Total == 0 {
+		return "no status"
+	}
+	return fmt.Sprintf("%d/%d safe (%d%%)", summary.Hardened+summary.Implicit, summary.Total, summary.Score)
+}
+
+func privacyConfigExistsLabel(status agentmodel.PrivacyConfigStatus) string {
+	if status.Exists {
+		return "exists"
+	}
+	return "missing"
 }
 
 func privacyConfigState(setting agentmodel.PrivacyConfigSetting) string {

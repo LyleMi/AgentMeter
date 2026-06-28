@@ -145,12 +145,14 @@ The implemented TUI product areas are:
 - Sessions
 - Session Detail
 - Tools
-- Agent Privacy status
+- Agent Privacy status and profile apply
 - Settings
 
-The TUI Agent Privacy screen is read-only. Web Agent Privacy supports status and
-editable user-level controls for Codex `config.toml` and Gemini CLI, Claude
-Code, and CodeBuddy Code/IDE `settings.json`.
+The TUI Agent Privacy screen shows all supported targets in a compact summary,
+lets users select a target, and can apply supported privacy profiles only after
+an explicit confirmation step. Web Agent Privacy supports the richer per-setting
+editing flow for Codex `config.toml` and Gemini CLI, Claude Code, and CodeBuddy
+Code/IDE `settings.json`.
 
 ## Interface Synchronization
 
