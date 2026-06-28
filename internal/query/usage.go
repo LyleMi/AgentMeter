@@ -608,11 +608,7 @@ func fillBreakdownSourceIdentity(item *model.UsageBreakdownBucket) {
 	if item.SourceID <= 0 {
 		return
 	}
-	item.SourceKey = sourceInstanceKey(item.SourceID)
-	item.SourceLabel = item.AgentName
-	if item.SourceLabel == "" {
-		item.SourceLabel = item.AgentKind
-	}
+	item.SourceKey, item.SourceLabel = sourceIdentity(item.SourceID, item.AgentName, item.AgentKind)
 }
 
 func addCost(target **float64, cost float64) {

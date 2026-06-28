@@ -16,28 +16,24 @@ func sourceInstanceKey(id int64) string {
 	return "source:" + strconv.FormatInt(id, 10)
 }
 
-func fillSessionSourceIdentity(item *model.Session) {
-	item.SourceKey = sourceInstanceKey(item.SourceID)
-	item.SourceLabel = item.AgentName
-	if item.SourceLabel == "" {
-		item.SourceLabel = item.AgentKind
+func sourceIdentity(sourceID int64, agentName, agentKind string) (string, string) {
+	label := agentName
+	if label == "" {
+		label = agentKind
 	}
+	return sourceInstanceKey(sourceID), label
+}
+
+func fillSessionSourceIdentity(item *model.Session) {
+	item.SourceKey, item.SourceLabel = sourceIdentity(item.SourceID, item.AgentName, item.AgentKind)
 }
 
 func fillToolCallSourceIdentity(item *model.ToolCall) {
-	item.SourceKey = sourceInstanceKey(item.SourceID)
-	item.SourceLabel = item.AgentName
-	if item.SourceLabel == "" {
-		item.SourceLabel = item.AgentKind
-	}
+	item.SourceKey, item.SourceLabel = sourceIdentity(item.SourceID, item.AgentName, item.AgentKind)
 }
 
 func fillAuditFindingSourceIdentity(item *model.AuditFinding) {
-	item.SourceKey = sourceInstanceKey(item.SourceID)
-	item.SourceLabel = item.AgentName
-	if item.SourceLabel == "" {
-		item.SourceLabel = item.AgentKind
-	}
+	item.SourceKey, item.SourceLabel = sourceIdentity(item.SourceID, item.AgentName, item.AgentKind)
 }
 
 func (s *Service) events(ctx context.Context, sessionID int64) ([]model.Event, error) {

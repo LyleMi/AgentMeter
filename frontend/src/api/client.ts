@@ -58,12 +58,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return payload as T
 }
 
+function setTextParam(params: URLSearchParams, key: string, value?: string) {
+  if (value) params.set(key, value)
+}
+
+function setNumberParam(params: URLSearchParams, key: string, value?: number) {
+  if (value) params.set(key, String(value))
+}
+
 function usageScopeParams(filters: UsageScopeFilters = {}) {
   const params = new URLSearchParams()
-  if (filters.agent) params.set('agent', filters.agent)
-  if (filters.model) params.set('model', filters.model)
-  if (filters.from) params.set('from', filters.from)
-  if (filters.to) params.set('to', filters.to)
+  setTextParam(params, 'agent', filters.agent)
+  setTextParam(params, 'model', filters.model)
+  setTextParam(params, 'from', filters.from)
+  setTextParam(params, 'to', filters.to)
   return params
 }
 
@@ -100,47 +108,45 @@ const fetchApi = {
   },
   listSessions: (filters: SessionFilters = {}) => {
     const params = new URLSearchParams()
-    if (filters.search) params.set('search', filters.search)
-    if (filters.model) params.set('model', filters.model)
-    if (filters.agent) params.set('agent', filters.agent)
-    if (filters.limit) params.set('limit', String(filters.limit))
-    if (filters.offset) params.set('offset', String(filters.offset))
-    return request<Session[]>(`/api/sessions?${params}`)
+    setTextParam(params, 'search', filters.search)
+    setTextParam(params, 'model', filters.model)
+    setTextParam(params, 'agent', filters.agent)
+    setNumberParam(params, 'limit', filters.limit)
+    setNumberParam(params, 'offset', filters.offset)
+    return request<Session[]>(queryPath('/api/sessions', params))
   },
   getSessionDetail: (id: number) => request<SessionDetail>(`/api/sessions/${id}`),
   getTools: (filters: ToolFilters = {}) => {
     const params = new URLSearchParams()
-    if (filters.agent) params.set('agent', filters.agent)
-    const query = params.toString()
-    return request<ToolStat[]>(`/api/tools${query ? `?${query}` : ''}`)
+    setTextParam(params, 'agent', filters.agent)
+    return request<ToolStat[]>(queryPath('/api/tools', params))
   },
   listToolCalls: (filters: ToolCallFilters = {}) => {
     const params = new URLSearchParams()
-    if (filters.tool) params.set('tool', filters.tool)
-    if (filters.agent) params.set('agent', filters.agent)
-    if (filters.from) params.set('from', filters.from)
-    if (filters.to) params.set('to', filters.to)
-    if (filters.sort) params.set('sort', filters.sort)
-    if (filters.limit) params.set('limit', String(filters.limit))
-    if (filters.offset) params.set('offset', String(filters.offset))
-    return request<ToolCall[]>(`/api/tool-calls?${params}`)
+    setTextParam(params, 'tool', filters.tool)
+    setTextParam(params, 'agent', filters.agent)
+    setTextParam(params, 'from', filters.from)
+    setTextParam(params, 'to', filters.to)
+    setTextParam(params, 'sort', filters.sort)
+    setNumberParam(params, 'limit', filters.limit)
+    setNumberParam(params, 'offset', filters.offset)
+    return request<ToolCall[]>(queryPath('/api/tool-calls', params))
   },
   getAuditSummary: (filters: Pick<AuditFindingFilters, 'agent'> = {}) => {
     const params = new URLSearchParams()
-    if (filters.agent) params.set('agent', filters.agent)
-    const query = params.toString()
-    return request<AuditSummary>(`/api/audit/summary${query ? `?${query}` : ''}`)
+    setTextParam(params, 'agent', filters.agent)
+    return request<AuditSummary>(queryPath('/api/audit/summary', params))
   },
   listAuditFindings: (filters: AuditFindingFilters = {}) => {
     const params = new URLSearchParams()
-    if (filters.agent) params.set('agent', filters.agent)
-    if (filters.category) params.set('category', filters.category)
-    if (filters.severity) params.set('severity', filters.severity)
-    if (filters.shell) params.set('shell', filters.shell)
-    if (filters.search) params.set('search', filters.search)
-    if (filters.limit) params.set('limit', String(filters.limit))
-    if (filters.offset) params.set('offset', String(filters.offset))
-    return request<AuditFinding[]>(`/api/audit/findings?${params}`)
+    setTextParam(params, 'agent', filters.agent)
+    setTextParam(params, 'category', filters.category)
+    setTextParam(params, 'severity', filters.severity)
+    setTextParam(params, 'shell', filters.shell)
+    setTextParam(params, 'search', filters.search)
+    setNumberParam(params, 'limit', filters.limit)
+    setNumberParam(params, 'offset', filters.offset)
+    return request<AuditFinding[]>(queryPath('/api/audit/findings', params))
   },
   getAuditFinding: (id: number) => request<AuditFinding>(`/api/audit/findings/${id}`),
   getPricingModels: () => request<PricingModel[]>('/api/pricing')

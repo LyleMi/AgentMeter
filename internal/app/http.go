@@ -13,38 +13,58 @@ import (
 	"AgentMeter/internal/model"
 )
 
+func writeJSON(w http.ResponseWriter, value any, err error) {
+	if err != nil {
+		writeJSONError(w, statusForError(err), err.Error())
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, value)
+}
+
+func writeJSONError(w http.ResponseWriter, status int, message string) {
+	writeJSONResponse(w, status, map[string]string{"error": message})
+}
+
+func writeJSONResponse(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	if status != http.StatusOK {
+		w.WriteHeader(status)
+	}
+	_ = json.NewEncoder(w).Encode(value)
+}
+
+func statusForError(err error) int {
+	if errors.Is(err, sql.ErrNoRows) {
+		return http.StatusNotFound
+	}
+	return http.StatusInternalServerError
+}
+
+func decodeOptionalJSONBody(r *http.Request, value any) error {
+	if err := json.NewDecoder(r.Body).Decode(value); err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil
+}
+
+func analyticsFilters(r *http.Request) model.AnalyticsFilters {
+	query := r.URL.Query()
+	return model.AnalyticsFilters{
+		Agent:       query.Get("agent"),
+		Model:       query.Get("model"),
+		StartedFrom: query.Get("from"),
+		StartedTo:   query.Get("to"),
+	}
+}
+
 func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
-	writeJSON := func(w http.ResponseWriter, value any, err error) {
-		w.Header().Set("Content-Type", "application/json")
-		if err != nil {
-			status := http.StatusInternalServerError
-			if errors.Is(err, sql.ErrNoRows) {
-				status = http.StatusNotFound
-			}
-			w.WriteHeader(status)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-			return
-		}
-		_ = json.NewEncoder(w).Encode(value)
-	}
-	analyticsFilters := func(r *http.Request) model.AnalyticsFilters {
-		query := r.URL.Query()
-		return model.AnalyticsFilters{
-			Agent:       query.Get("agent"),
-			Model:       query.Get("model"),
-			StartedFrom: query.Get("from"),
-			StartedTo:   query.Get("to"),
-		}
-	}
 
 	mux.HandleFunc("GET /api/settings", func(w http.ResponseWriter, r *http.Request) {
 		value, err := service.GetSettings()
 		writeJSON(w, value, err)
 	})
 	writePrivacyTargetError := func(w http.ResponseWriter, target string) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "unsupported privacy target: " + target})
+		writeJSONError(w, http.StatusNotFound, "unsupported privacy target: "+target)
 	}
 	mux.HandleFunc("GET /api/privacy/{target}", func(w http.ResponseWriter, r *http.Request) {
 		target := r.PathValue("target")
@@ -65,7 +85,7 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		var body struct {
 			SettingIDs []string `json:"settingIds"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		if err := decodeOptionalJSONBody(r, &body); err != nil {
 			writeJSON(w, nil, err)
 			return
 		}
@@ -82,7 +102,7 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		var body struct {
 			Profile string `json:"profile"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		if err := decodeOptionalJSONBody(r, &body); err != nil {
 			writeJSON(w, nil, err)
 			return
 		}
@@ -103,7 +123,7 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		var body struct {
 			Changes []model.PrivacyConfigEdit `json:"changes"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		if err := decodeOptionalJSONBody(r, &body); err != nil {
 			writeJSON(w, nil, err)
 			return
 		}
@@ -235,9 +255,7 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 	fileServer := http.FileServer(http.FS(staticFS))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusNotFound)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "api route not found: " + r.URL.Path})
+			writeJSONError(w, http.StatusNotFound, "api route not found: "+r.URL.Path)
 			return
 		}
 
