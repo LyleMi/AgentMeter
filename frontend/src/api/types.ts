@@ -253,6 +253,7 @@ export interface ModelSignalMetricSet extends ModelSignalRates {
   costPerActiveHour?: number
   costPer1kTokens?: number
   failurePressure?: number
+  degradationRiskScore: number
   avgModelCallsPerSession: number
   modelLatencyMsPer1kOutputTokens: number
   p50ModelLatencyMsPer1kOutputTokens?: number

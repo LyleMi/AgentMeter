@@ -429,17 +429,19 @@ Read-model shape notes:
 - `/api/model-signals` also includes `dailyMetrics` for day-level operational
   efficiency. Rows should expose enough date, sample, cost, cost-per-session,
   cost-per-active-hour, cost-per-1k-tokens, cache-savings, latency percentile,
-  throughput percentile, failure-pressure, retry-pressure/model-calls-per-session,
-  low-sample, and rolling 7-calendar-day drift metadata for Web and TUI clients
-  to explain the metric without recomputing it. Latency and throughput
-  percentiles should use model-call token/duration samples when available and
-  fall back to session-level samples when per-call token counts are missing.
+  throughput percentile, failure-pressure, degradation-risk score,
+  retry-pressure/model-calls-per-session, low-sample, and rolling
+  7-calendar-day drift metadata for Web and TUI clients to explain the metric
+  without recomputing it. Latency and throughput percentiles should use
+  model-call token/duration samples when available and fall back to
+  session-level samples when per-call token counts are missing.
 - `/api/model-signals` also includes `projectMetrics` for project-level
   operational efficiency. Rows should expose enough project identity, sample,
   project cost burn, cache-savings, cost-per-session, cost-per-active-hour,
   cost-per-1k-tokens, dominant-model, model-mix, retry-pressure,
-  failure-pressure, confidence, and current-versus-baseline drift metadata for
-  clients to present the same semantics.
+  failure-pressure, degradation-risk score, confidence, and
+  current-versus-baseline drift metadata for clients to present the same
+  semantics.
 - Model Signals `trend` and `modelBreakdown` rows expose count, token, duration,
   and rate fields so Web and TUI clients can present the same numerator and
   denominator semantics. Reasoning fields keep `reasoningTokenShare` for API
@@ -450,9 +452,12 @@ Read-model shape notes:
 - Model Health rows should expose enough cohort identity and sample/confidence
   metadata for clients to explain a health label without recomputing it. Strong
   signals are latency per 1k output tokens, throughput, model-call status/error
-  data when available, and token/cost shape. Tool failure, model calls per
-  session, output expansion, cache miss, and reasoning overhead are weaker
-  symptoms that require session context and baseline comparison.
+  data when available, and token/cost shape. The degradation-risk score is a
+  composite triage metric for stacked service symptoms, including relay or
+  gateway suspicion, but it is not proof of provider substitution or token
+  padding. Tool failure, model calls per session, output expansion, cache miss,
+  and reasoning overhead are weaker symptoms that require session context and
+  baseline comparison.
 - Model Signals efficiency fields are operational proxies for local behavior,
   not universal model capability scores. Missing pricing, unavailable
   cache-token data, missing baseline history, and low sample sizes should be

@@ -124,6 +124,57 @@ func TestModelSignalsAggregatesFiltersAndRanksAnomalies(t *testing.T) {
 	}
 }
 
+func TestModelSignalsDegradationRiskScoreAndDrift(t *testing.T) {
+	baseline := model.ModelSignalsMetricSet{
+		SessionCount:                         4,
+		ModelCalls:                           4,
+		FailurePressure:                      0,
+		ToolFailureRate:                      0,
+		CacheMissRate:                        0.2,
+		AvgModelCallsPerSession:              1,
+		OutputExpansionRate:                  0.5,
+		ReasoningOverheadRate:                0.1,
+		ModelLatencyMsPer1kOutputTokens:      1_200,
+		P90ModelLatencyMsPer1kOutputTokens:   1_500,
+		ModelThroughputTokensPerSecond:       240,
+		ModelThroughputOutputTokensPerSecond: 90,
+		P10ModelThroughputTokensPerSecond:    80,
+	}
+	baseline.DegradationRiskScore = modelSignalDegradationRiskScore(baseline)
+
+	current := model.ModelSignalsMetricSet{
+		SessionCount:                         4,
+		ModelCalls:                           6,
+		FailedModelCalls:                     1,
+		ToolCalls:                            6,
+		FailedToolCalls:                      2,
+		FailurePressure:                      0.75,
+		ToolFailureRate:                      0.33,
+		CacheMissRate:                        0.95,
+		AvgModelCallsPerSession:              2.25,
+		OutputExpansionRate:                  4,
+		ReasoningOverheadRate:                2,
+		ModelLatencyMsPer1kOutputTokens:      16_000,
+		P90ModelLatencyMsPer1kOutputTokens:   24_000,
+		ModelThroughputTokensPerSecond:       16,
+		ModelThroughputOutputTokensPerSecond: 10,
+		P10ModelThroughputTokensPerSecond:    8,
+	}
+	current.DegradationRiskScore = modelSignalDegradationRiskScore(current)
+
+	if baseline.DegradationRiskScore != 0 {
+		t.Fatalf("baseline degradation risk = %f", baseline.DegradationRiskScore)
+	}
+	if current.DegradationRiskScore < 0.75 {
+		t.Fatalf("current degradation risk = %f", current.DegradationRiskScore)
+	}
+
+	drift := compareModelSignalDrift(current, baseline)
+	if drift.Severity != "critical" || !containsModelSignalDriftMetric(drift.Metrics, "degradationRiskScore") {
+		t.Fatalf("degradation drift = %+v", drift)
+	}
+}
+
 func TestModelSignalsEmptyAndZeroDenominatorResponses(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))

@@ -664,6 +664,62 @@ function percentile(values: number[], percentileRank: number): number | undefine
   return sorted[index]
 }
 
+function modelSignalDegradationRiskScore(metric: {
+  sessionCount: number
+  modelCalls: number
+  failurePressure?: number
+  toolFailureRate?: number
+  cacheMissRate?: number
+  avgModelCallsPerSession?: number
+  outputExpansionRate?: number
+  reasoningOverheadRate?: number
+  modelLatencyMsPer1kOutputTokens?: number
+  p90ModelLatencyMsPer1kOutputTokens?: number
+  modelThroughputTokensPerSecond?: number
+  modelThroughputOutputTokensPerSecond?: number
+  p10ModelThroughputTokensPerSecond?: number
+}): number {
+  if (!metric.sessionCount || !metric.modelCalls) return 0
+  const latency = firstPositiveNumber(metric.p90ModelLatencyMsPer1kOutputTokens, metric.modelLatencyMsPer1kOutputTokens)
+  const throughput = firstPositiveNumber(
+    metric.p10ModelThroughputTokensPerSecond,
+    metric.modelThroughputOutputTokensPerSecond,
+    metric.modelThroughputTokensPerSecond
+  )
+  return clampRate(
+    thresholdScore(latency, 8_000, 20_000) * 0.24 +
+    inverseThresholdScore(throughput, 40, 12) * 0.24 +
+    rangeScore(metric.failurePressure || 0, 0.05, 0.95) * 0.18 +
+    rangeScore(metric.toolFailureRate || 0, 0.08, 0.42) * 0.10 +
+    rangeScore(metric.cacheMissRate || 0, 0.70, 0.30) * 0.08 +
+    rangeScore(metric.avgModelCallsPerSession || 0, 1.5, 2.5) * 0.07 +
+    rangeScore(metric.outputExpansionRate || 0, 3.0, 5.0) * 0.05 +
+    rangeScore(metric.reasoningOverheadRate || 0, 1.0, 4.0) * 0.04
+  )
+}
+
+function thresholdScore(value: number, warning: number, critical: number): number {
+  if (value <= warning || warning >= critical) return 0
+  if (value >= critical) return 1
+  return clampRate((value - warning) / (critical - warning))
+}
+
+function inverseThresholdScore(value: number, warning: number, critical: number): number {
+  if (value <= 0 || warning <= critical) return 0
+  if (value >= warning) return 0
+  if (value <= critical) return 1
+  return clampRate((warning - value) / (warning - critical))
+}
+
+function rangeScore(value: number, start: number, span: number): number {
+  if (value <= start || span <= 0) return 0
+  return clampRate((value - start) / span)
+}
+
+function firstPositiveNumber(...values: Array<number | undefined>): number {
+  return values.find((value) => Number.isFinite(value) && (value || 0) > 0) || 0
+}
+
 function sessionLatencyMsPer1kOutputTokens(session: Session): number {
   return safeRate(session.modelDurationMs, session.tokenUsage.outputTokens / 1000)
 }
@@ -739,6 +795,15 @@ function metricSetFromTotals(totals: MetricTotals): ModelSignalMetricSet {
   const costPerSession = hasCompletePricing ? safeRate(estimatedCostUsd, totals.sessionCount) : undefined
   const costPerActiveHour = hasCompletePricing ? safeRate(estimatedCostUsd, activeDurationHours) : undefined
   const costPer1kTokens = hasCompletePricing ? safeRate(estimatedCostUsd, totals.totalTokens / 1000) : undefined
+  const failurePressure = safeRate((totals.failedModelCalls || 0) + totals.failedToolCalls, totals.sessionCount)
+  const avgModelCallsPerSession = safeRate(totals.modelCalls, totals.sessionCount)
+  const outputExpansionRate = safeRate(totals.outputTokens, totals.inputTokens)
+  const reasoningOverheadRate = safeRate(totals.reasoningOutputTokens, Math.max(0, totals.outputTokens - totals.reasoningOutputTokens))
+  const cacheMissRate = clampRate(safeRate(totals.inputTokens - totals.cachedInputTokens, totals.inputTokens))
+  const modelThroughputOutputTokensPerSecond = safeRate(totals.outputTokens, modelDurationSeconds)
+  const p90ModelLatencyMsPer1kOutputTokens = percentile(totals.latencySamples || [], 0.9) ?? modelLatencyMsPer1kOutputTokens
+  const p10ModelThroughputTokensPerSecond = percentile(totals.throughputSamples || [], 0.1) ?? modelThroughputTokensPerSecond
+  const toolFailureRate = safeRate(totals.failedToolCalls, totals.toolCalls)
   return {
     sessionCount: totals.sessionCount,
     modelCalls: totals.modelCalls,
@@ -761,23 +826,38 @@ function metricSetFromTotals(totals: MetricTotals): ModelSignalMetricSet {
     costPerSession,
     costPerActiveHour,
     costPer1kTokens,
-    failurePressure: safeRate((totals.failedModelCalls || 0) + totals.failedToolCalls, totals.sessionCount),
-    avgModelCallsPerSession: safeRate(totals.modelCalls, totals.sessionCount),
-    outputExpansionRate: safeRate(totals.outputTokens, totals.inputTokens),
-    generationTokenOverhead: safeRate(totals.outputTokens, totals.inputTokens),
+    failurePressure,
+    degradationRiskScore: modelSignalDegradationRiskScore({
+      sessionCount: totals.sessionCount,
+      modelCalls: totals.modelCalls,
+      failurePressure,
+      toolFailureRate,
+      cacheMissRate,
+      avgModelCallsPerSession,
+      outputExpansionRate,
+      reasoningOverheadRate,
+      modelLatencyMsPer1kOutputTokens,
+      p90ModelLatencyMsPer1kOutputTokens,
+      modelThroughputTokensPerSecond,
+      modelThroughputOutputTokensPerSecond,
+      p10ModelThroughputTokensPerSecond
+    }),
+    avgModelCallsPerSession,
+    outputExpansionRate,
+    generationTokenOverhead: outputExpansionRate,
     reasoningTokenShare: safeRate(totals.reasoningOutputTokens, totals.outputTokens),
-    reasoningOverheadRate: safeRate(totals.reasoningOutputTokens, Math.max(0, totals.outputTokens - totals.reasoningOutputTokens)),
+    reasoningOverheadRate,
     reasoningTokenOverhead: safeRate(totals.reasoningOutputTokens, totals.outputTokens),
     reasoningOutputShare: safeRate(totals.reasoningOutputTokens, totals.outputTokens),
-    cacheMissRate: clampRate(safeRate(totals.inputTokens - totals.cachedInputTokens, totals.inputTokens)),
+    cacheMissRate,
     modelThroughputTokensPerSecond,
-    modelThroughputOutputTokensPerSecond: safeRate(totals.outputTokens, modelDurationSeconds),
+    modelThroughputOutputTokensPerSecond,
     modelLatencyMsPer1kOutputTokens,
     p50ModelLatencyMsPer1kOutputTokens: percentile(totals.latencySamples || [], 0.5) ?? modelLatencyMsPer1kOutputTokens,
-    p90ModelLatencyMsPer1kOutputTokens: percentile(totals.latencySamples || [], 0.9) ?? modelLatencyMsPer1kOutputTokens,
+    p90ModelLatencyMsPer1kOutputTokens,
     p50ModelThroughputTokensPerSecond: percentile(totals.throughputSamples || [], 0.5) ?? modelThroughputTokensPerSecond,
-    p10ModelThroughputTokensPerSecond: percentile(totals.throughputSamples || [], 0.1) ?? modelThroughputTokensPerSecond,
-    toolFailureRate: safeRate(totals.failedToolCalls, totals.toolCalls),
+    p10ModelThroughputTokensPerSecond,
+    toolFailureRate,
     toolDependencyRate: totals.toolDependencyRate ?? safeRate(totals.toolCalls, totals.sessionCount)
   }
 }
@@ -938,6 +1018,13 @@ function modelSignalDriftFor(current: ModelSignalMetricSet, baseline: ModelSigna
   const reasoningOverheadDelta = reasoningOverhead(current) - reasoningOverhead(baseline)
   if (reasoningOverheadDelta >= 0.12) {
     mark('warning', 'reasoningOverheadRate', 'reasoning overhead', 'cost_shape_review', 'Reasoning overhead rose', reasoningOverhead(current), reasoningOverhead(baseline))
+  }
+
+  const degradationRiskDelta = current.degradationRiskScore - baseline.degradationRiskScore
+  if (current.degradationRiskScore >= 0.3 && degradationRiskDelta >= 0.3) {
+    mark('critical', 'degradationRiskScore', 'degradation risk score', 'higher_worse', 'Degradation risk rose', current.degradationRiskScore, baseline.degradationRiskScore)
+  } else if (current.degradationRiskScore >= 0.3 && degradationRiskDelta >= 0.15) {
+    mark('warning', 'degradationRiskScore', 'degradation risk score', 'higher_worse', 'Degradation risk rose', current.degradationRiskScore, baseline.degradationRiskScore)
   }
 
   const uniqueReasons = [...new Set(reasons)]

@@ -36,6 +36,7 @@ type MetricKey =
   | 'costPer1kTokens'
   | 'cacheSavings'
   | 'failurePressure'
+  | 'degradationRisk'
   | 'retryPressure'
   | 'modelFailureRate'
   | 'toolFailureRate'
@@ -136,6 +137,8 @@ const { t, locale } = useMessages({
     'metric.cacheSavingsDesc': 'Estimated avoided cost from cached input tokens',
     'metric.failurePressure': 'Failure pressure',
     'metric.failurePressureDesc': 'Failed model and tool calls per session',
+    'metric.degradationRisk': 'Degradation risk',
+    'metric.degradationRiskDesc': 'Composite relay or downgrade risk from latency, throughput, failures, retry pressure, cache misses, and token-shape symptoms; not proof of substitution',
     'metric.retryPressure': 'Retry pressure',
     'metric.retryPressureDesc': 'Model calls per session as a repair-loop proxy',
     'metric.modelFailureRate': 'Model failure rate',
@@ -212,6 +215,8 @@ const { t, locale } = useMessages({
     'metric.cacheSavingsDesc': '缓存输入 token 带来的估算节省',
     'metric.failurePressure': '失败压力',
     'metric.failurePressureDesc': '每个会话的失败模型与工具调用压力',
+    'metric.degradationRisk': '中转风险',
+    'metric.degradationRiskDesc': '综合延迟、吞吐、失败、重试、缓存未命中和 token 形态的疑似降级风险；不是掺水证明',
     'metric.retryPressure': '重试压力',
     'metric.retryPressureDesc': '用每会话模型调用数代理修复循环',
     'metric.modelFailureRate': '模型失败率',
@@ -356,6 +361,17 @@ const metricDefinitions = computed<MetricDefinition[]>(() => [
     chart: 'line',
     direction: 'lower',
     value: (metric) => finiteNumber(metric?.failurePressure)
+  },
+  {
+    key: 'degradationRisk',
+    label: t('metric.degradationRisk'),
+    description: t('metric.degradationRiskDesc'),
+    group: 'pressure',
+    kind: 'percent',
+    color: '#be123c',
+    chart: 'line',
+    direction: 'lower',
+    value: (metric) => finiteNumber(metric?.degradationRiskScore)
   },
   {
     key: 'retryPressure',
@@ -833,8 +849,8 @@ function baselineSeriesName(metric: MetricDefinition) {
 
 function defaultMetricsForMode(mode: ChartMode): MetricKey[] {
   return mode === 'projects'
-    ? ['costBurn', 'costPer1kTokens', 'failurePressure']
-    : ['p90Latency', 'p10Throughput', 'modelFailureRate']
+    ? ['degradationRisk', 'costPer1kTokens', 'failurePressure']
+    : ['degradationRisk', 'p90Latency', 'p10Throughput']
 }
 
 function valueOrNull(value?: number) {

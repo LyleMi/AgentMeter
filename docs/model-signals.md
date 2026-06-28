@@ -10,8 +10,10 @@ cost, cache, retry, failure, and tool-call data.
 Use Model Signals to find patterns worth investigating, such as models that
 produce unusually long outputs, show slower observed throughput, miss cache more
 often, burn more cost per session or active hour, or start failing calls in a
-specific project. Do not use a single signal as proof that one model is better
-or worse than another.
+specific project. It can also help investigate whether sessions routed through
+a relay or gateway appear degraded compared with the same local cohort's own
+history. Do not use a single signal as proof that one model is better or worse
+than another, or as proof that a relay substituted or padded a model response.
 
 The feature has three related views:
 
@@ -88,6 +90,11 @@ Stronger service-health signals:
   when the source exposes it.
 - **Token and cost shape:** shifts in input, cached input, output, reasoning,
   and cost mix for the same cohort.
+- **Degradation risk score:** a 0.0-1.0 composite risk score for relay,
+  gateway, or model-service degradation triage. It weighs latency, throughput,
+  model/tool failure pressure, retry pressure, cache misses, output expansion,
+  and reasoning overhead. It is a suspicion-ranking metric, not a provider
+  authenticity verdict.
 
 Operational efficiency metrics:
 
@@ -110,6 +117,10 @@ Operational efficiency metrics:
   depending on what the source exposes.
 - **Retry pressure:** repeated model-call pressure, including model calls per
   session as a proxy for repair loops or larger tasks.
+- **Degradation risk drift:** current degradation risk compared with the same
+  cohort's baseline. A rising score means several operational symptoms are
+  stacking up and the cohort should be reviewed before assuming the relay is
+  healthy.
 
 Weaker operational symptoms:
 
@@ -196,6 +207,10 @@ Read the signals together:
   when it changes against the same cohort's baseline.
 - Pair tool dependency and tool failure rates with actual tool-call history.
 - Treat low-sample rows as directional only.
+- Treat relay or gateway "watered down" concerns as an investigation workflow:
+  compare the same model, agent/source, project, and task shape over time; then
+  inspect sessions behind high degradation risk instead of treating the score as
+  a standalone accusation.
 
 The `/api/model-signals` endpoint supports the same analytics filters as
 overview and token analytics: `agent`, `model`, `project`, `from`, and `to`.
@@ -205,13 +220,13 @@ returns day-level and project-level efficiency views:
 
 - `dailyMetrics`: day rows for operational efficiency, including cost, cost per
   session, cost per active hour, cost per 1k tokens, cache savings, p50/p90
-  latency, p50/p10 throughput, failure pressure, retry pressure or model calls
-  per session, low sample flags, baseline metric values from the preceding
-  7 calendar days, and drift against that baseline.
+  latency, p50/p10 throughput, failure pressure, degradation risk, retry
+  pressure or model calls per session, low sample flags, baseline metric values
+  from the preceding 7 calendar days, and drift against that baseline.
 - `projectMetrics`: project rows for operational efficiency, including project
   cost burn, cache savings, cost per session, cost per active hour, cost per 1k
   tokens, dominant model, model mix, retry pressure, failure pressure,
-  confidence, and current-versus-baseline drift.
+  degradation risk, confidence, and current-versus-baseline drift.
 
 The Model Health layer adds:
 

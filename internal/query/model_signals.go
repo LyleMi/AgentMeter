@@ -724,6 +724,7 @@ func (a modelSignalMetricAccumulator) metricSet() model.ModelSignalsMetricSet {
 	item.P90ModelLatencyMsPer1kOutputTokens = percentileNearest(a.latencySamples, 0.90)
 	item.P50ModelThroughputTokensPerSecond = percentileNearest(a.throughputSamples, 0.50)
 	item.P10ModelThroughputTokensPerSecond = percentileNearest(a.throughputSamples, 0.10)
+	item.DegradationRiskScore = modelSignalDegradationRiskScore(item)
 	return item
 }
 
@@ -752,6 +753,7 @@ func compareModelSignalDrift(current, baseline model.ModelSignalsMetricSet) mode
 	addRelativeIncreaseDriftMetric(&drift, "avgModelCallsPerSession", "model calls per session", "higher_retry_loop_symptom", "model calls per session increased", current.AvgModelCallsPerSession, baseline.AvgModelCallsPerSession, 0.5, 1.0, 0.5)
 	addRelativeIncreaseDriftMetric(&drift, "outputExpansionRate", "output expansion rate", "behavior_higher", "output expansion increased", current.OutputExpansionRate, baseline.OutputExpansionRate, 1.0, 2.0, 1.0)
 	addAbsoluteIncreaseDriftMetric(&drift, "reasoningOverheadRate", "reasoning overhead rate", "cost_shape_review", "reasoning overhead increased", current.ReasoningOverheadRate, baseline.ReasoningOverheadRate, 0.50, 1.00, 0.50)
+	addAbsoluteIncreaseDriftMetric(&drift, "degradationRiskScore", "degradation risk score", "higher_worse", "degradation risk increased", current.DegradationRiskScore, baseline.DegradationRiskScore, 0.15, 0.30, 0.30)
 
 	return drift
 }
@@ -1560,6 +1562,67 @@ func modelLatencyMSPer1kOutputTokens(outputTokens, durationMS int64) float64 {
 		return 0
 	}
 	return float64(durationMS) / float64(outputTokens) * 1000
+}
+
+func modelSignalDegradationRiskScore(item model.ModelSignalsMetricSet) float64 {
+	if item.SessionCount <= 0 || item.ModelCalls <= 0 {
+		return 0
+	}
+	latency := firstPositiveFloat(item.P90ModelLatencyMsPer1kOutputTokens, item.ModelLatencyMsPer1kOutputTokens)
+	throughput := firstPositiveFloat(
+		item.P10ModelThroughputTokensPerSecond,
+		item.ModelThroughputOutputTokensPerSecond,
+		item.ModelThroughputTokensPerSecond,
+	)
+	score := 0.0
+	score += thresholdScore(latency, 8_000, 20_000) * 0.24
+	score += inverseThresholdScore(throughput, 40, 12) * 0.24
+	score += rangeScore(item.FailurePressure, 0.05, 0.95) * 0.18
+	score += rangeScore(item.ToolFailureRate, 0.08, 0.42) * 0.10
+	score += rangeScore(item.CacheMissRate, 0.70, 0.30) * 0.08
+	score += rangeScore(item.AvgModelCallsPerSession, 1.5, 2.5) * 0.07
+	score += rangeScore(item.OutputExpansionRate, 3.0, 5.0) * 0.05
+	score += rangeScore(item.ReasoningOverheadRate, 1.0, 4.0) * 0.04
+	return clamp01(score)
+}
+
+func thresholdScore(value, warning, critical float64) float64 {
+	if value <= warning || warning >= critical {
+		return 0
+	}
+	if value >= critical {
+		return 1
+	}
+	return clamp01((value - warning) / (critical - warning))
+}
+
+func inverseThresholdScore(value, warning, critical float64) float64 {
+	if value <= 0 || warning <= critical {
+		return 0
+	}
+	if value >= warning {
+		return 0
+	}
+	if value <= critical {
+		return 1
+	}
+	return clamp01((warning - value) / (warning - critical))
+}
+
+func rangeScore(value, start, span float64) float64 {
+	if value <= start || span <= 0 {
+		return 0
+	}
+	return clamp01((value - start) / span)
+}
+
+func firstPositiveFloat(values ...float64) float64 {
+	for _, value := range values {
+		if value > 0 && !math.IsNaN(value) && !math.IsInf(value, 0) {
+			return value
+		}
+	}
+	return 0
 }
 
 func parseModelSignalSamples(value string) []float64 {

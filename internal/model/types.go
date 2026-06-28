@@ -390,6 +390,7 @@ type ModelSignalsMetricSet struct {
 	CostPerActiveHour                    *float64 `json:"costPerActiveHour,omitempty"`
 	CostPer1kTokens                      *float64 `json:"costPer1kTokens,omitempty"`
 	FailurePressure                      float64  `json:"failurePressure"`
+	DegradationRiskScore                 float64  `json:"degradationRiskScore"`
 	ModelThroughputTokensPerSecond       float64  `json:"modelThroughputTokensPerSecond"`
 	ModelThroughputOutputTokensPerSecond float64  `json:"modelThroughputOutputTokensPerSecond"`
 	ModelLatencyMsPer1kOutputTokens      float64  `json:"modelLatencyMsPer1kOutputTokens"`
