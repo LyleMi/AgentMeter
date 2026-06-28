@@ -21,6 +21,12 @@ const routes: SmokeRoute[] = [
     title: /^(Model Signals|模型表现)$/,
     panelTitle: /^(Health Summary|Model Health|Signal Trend|Daily Signal Lens|健康摘要|模型健康|信号趋势|每日指标图)$/
   },
+  {
+    path: '/#/model-signals/risk',
+    hash: '#/model-signals/risk',
+    title: /^(Model Quality Risk|模型质量风险)$/,
+    panelTitle: /^(Score drivers|分数驱动因子)$/
+  },
   { path: '/#/tools/overview', hash: '#/tools/overview', title: /^(Tools|工具)$/ },
   { path: '/#/tools/calls', hash: '#/tools/calls', title: /^(Tools|工具)$/ },
   { path: '/#/tools/shell', hash: '#/tools/shell', title: /^(Tools|工具)$/ },

@@ -163,15 +163,15 @@ func TestModelSignalsDegradationRiskScoreAndDrift(t *testing.T) {
 	current.DegradationRiskScore = modelSignalDegradationRiskScore(current)
 
 	if baseline.DegradationRiskScore != 0 {
-		t.Fatalf("baseline degradation risk = %f", baseline.DegradationRiskScore)
+		t.Fatalf("baseline model quality risk = %f", baseline.DegradationRiskScore)
 	}
 	if current.DegradationRiskScore < 0.75 {
-		t.Fatalf("current degradation risk = %f", current.DegradationRiskScore)
+		t.Fatalf("current model quality risk = %f", current.DegradationRiskScore)
 	}
 
 	drift := compareModelSignalDrift(current, baseline)
 	if drift.Severity != "critical" || !containsModelSignalDriftMetric(drift.Metrics, "degradationRiskScore") {
-		t.Fatalf("degradation drift = %+v", drift)
+		t.Fatalf("model quality risk drift = %+v", drift)
 	}
 }
 
@@ -442,6 +442,12 @@ func TestModelSignalsEmitsDriftCohortsMatrixAndHotspots(t *testing.T) {
 	if cell.ModelProvider != "openai" || cell.Model != "gpt-5" || cell.CohortCount != 1 || cell.Severity != "critical" || cell.KeyReason == "" {
 		t.Fatalf("matrix cell = %+v", cell)
 	}
+	if cell.Drift.Severity != "critical" || cell.Drift.Confidence != "high" {
+		t.Fatalf("matrix cell drift = %+v", cell.Drift)
+	}
+	if !containsModelSignalLabel(cell.Drift.Reasons, "model latency increased") || !containsModelSignalDriftMetric(cell.Drift.Metrics, "modelLatencyMsPer1kOutputTokens") {
+		t.Fatalf("matrix cell drift details = %+v", cell.Drift)
+	}
 
 	if len(signals.ProjectHotspots) != 1 {
 		t.Fatalf("project hotspots = %+v", signals.ProjectHotspots)
@@ -485,8 +491,15 @@ func TestModelSignalsDriftLowConfidenceWhenWindowMissing(t *testing.T) {
 	if drift.Reasons == nil || drift.Metrics == nil {
 		t.Fatalf("low-confidence drift slices should be non-nil: %+v", drift)
 	}
-	if len(signals.Matrix) != 1 || signals.Matrix[0].Cells[0].Confidence != "low" || signals.Matrix[0].Cells[0].Severity != "unknown" {
+	if len(signals.Matrix) != 1 || len(signals.Matrix[0].Cells) != 1 || signals.Matrix[0].Cells[0].Confidence != "low" || signals.Matrix[0].Cells[0].Severity != "unknown" {
 		t.Fatalf("matrix low confidence = %+v", signals.Matrix)
+	}
+	cellDrift := signals.Matrix[0].Cells[0].Drift
+	if cellDrift.Severity != "unknown" || cellDrift.Confidence != "low" || cellDrift.SampleNote != "missing baseline window" {
+		t.Fatalf("matrix low-confidence drift = %+v", cellDrift)
+	}
+	if !containsModelSignalLabel(cellDrift.Reasons, "missing baseline window") || cellDrift.Metrics == nil {
+		t.Fatalf("matrix low-confidence drift details = %+v", cellDrift)
 	}
 	if len(signals.ProjectHotspots) != 1 || signals.ProjectHotspots[0].Drift.Confidence != "low" {
 		t.Fatalf("hotspots low confidence = %+v", signals.ProjectHotspots)

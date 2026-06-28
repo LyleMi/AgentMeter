@@ -76,6 +76,7 @@ const directionLabel = computed(() => {
   return t('direction.mixed')
 })
 const selectionCountLabel = computed(() => t('selection.count', { count: selectedMetrics.value.length }))
+const selectedMetricLabel = computed(() => t('selection.metric', { metric: primaryMetric.value.label }))
 const plottedRows = computed(() =>
   plottedRowsForMode(selectedMode.value, props.dailyRows, props.projectRows, primaryMetric.value)
 )
@@ -94,7 +95,7 @@ watch(() => props.initialMode, (mode) => {
 })
 
 watch(selectedMode, (mode, previous) => {
-  if (mode !== previous && selectedMetricKeys.value.length === 0) {
+  if (mode !== previous) {
     selectedMetricKeys.value = defaultMetricsForMode(mode)
   }
 })
@@ -155,14 +156,8 @@ function renderProjectChart() {
   }), true)
 }
 
-function toggleMetric(key: MetricKey) {
-  const selected = selectedMetricKeys.value
-  if (selected.includes(key)) {
-    if (selected.length <= 1) return
-    selectedMetricKeys.value = selected.filter((item) => item !== key)
-    return
-  }
-  selectedMetricKeys.value = [...selected, key]
+function selectMetric(key: MetricKey) {
+  selectedMetricKeys.value = [key]
 }
 
 function resetMetricSelection() {
@@ -172,10 +167,6 @@ function resetMetricSelection() {
 
 function isMetricSelected(key: MetricKey) {
   return selectedMetricKeys.value.includes(key)
-}
-
-function isLastSelectedMetric(key: MetricKey) {
-  return selectedMetricKeys.value.length === 1 && selectedMetricKeys.value[0] === key
 }
 
 function metricsForGroup(group: MetricGroupKey) {
@@ -192,7 +183,7 @@ function metricsForGroup(group: MetricGroupKey) {
       </div>
       <div class="model-signals-chart-actions">
         <a-tag class="status-tag model-signals-chart-count" color="processing">
-          {{ selectionCountLabel }}
+          {{ selectedMetricLabel || selectionCountLabel }}
         </a-tag>
         <a-tooltip :title="selectedMetrics.map((metric) => metric.description).join('\n')">
           <a-tag class="status-tag model-signals-chart-direction" :color="directionLabel === t('direction.higher') ? 'success' : directionLabel === t('direction.context') ? 'default' : 'warning'">
@@ -233,14 +224,13 @@ function metricsForGroup(group: MetricGroupKey) {
           <a-tooltip v-for="item in metricsForGroup(group.key)" :key="item.key" :title="item.description">
             <label
               class="model-signals-metric-choice"
-              :class="{ 'is-active': isMetricSelected(item.key), 'is-disabled': isLastSelectedMetric(item.key) }"
+              :class="{ 'is-active': isMetricSelected(item.key) }"
               :style="{ '--signal-color': item.color }"
             >
               <input
-                type="checkbox"
+                type="radio"
                 :checked="isMetricSelected(item.key)"
-                :disabled="isLastSelectedMetric(item.key)"
-                @change="toggleMetric(item.key)"
+                @change="selectMetric(item.key)"
               >
               <span class="model-signals-metric-swatch"></span>
               <span class="model-signals-metric-label">{{ item.label }}</span>

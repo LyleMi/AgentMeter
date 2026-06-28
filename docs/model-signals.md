@@ -10,10 +10,11 @@ cost, cache, retry, failure, and tool-call data.
 Use Model Signals to find patterns worth investigating, such as models that
 produce unusually long outputs, show slower observed throughput, miss cache more
 often, burn more cost per session or active hour, or start failing calls in a
-specific project. It can also help investigate whether sessions routed through
-a relay or gateway appear degraded compared with the same local cohort's own
-history. Do not use a single signal as proof that one model is better or worse
-than another, or as proof that a relay substituted or padded a model response.
+specific project. It can also help investigate whether a source/model pair
+appears degraded compared with the same local cohort's own history. Do not use
+a single signal as proof that one model is better or worse than another, or as
+proof that a relay, official provider, or gateway substituted, throttled, or
+padded a model response.
 
 The feature has three related views:
 
@@ -32,6 +33,10 @@ agent and one model, and teams or power users who compare many
 provider/model x agent/source x project cohorts. The primary comparison is
 self-comparison over time. Peer comparison can provide context, but it is not
 proof that a model is generally better.
+
+Model Quality Risk is a separate investigation page because it combines several
+signals into one triage score. It must show the score with the visible drivers,
+sample confidence, and reasons, not as a standalone number.
 
 ## Health And Drift
 
@@ -65,12 +70,12 @@ general model capability score.
 ## Presentation Standard
 
 Model Signals should lead with configurable dynamic charts, not raw numeric
-tables. The primary view should let users select multiple compatible or
-complementary operational lenses in the same chart, such as P90/P50 latency,
-P10 and output throughput, cost burn, cost per session, cost per active hour,
-cost per 1k tokens, cache savings, model and tool failure pressure, retry
-pressure, cache miss rate, reasoning overhead, tool dependency, and output
-expansion.
+tables. The primary trend chart should keep one metric family on one axis at a
+time, such as P90/P50 latency, P10 and output throughput, cost burn, cost per
+session, cost per active hour, cost per 1k tokens, cache savings, model and tool
+failure pressure, retry pressure, cache miss rate, reasoning overhead, tool
+dependency, or output expansion. Cross-source and same-source model comparison
+should use horizontal comparison views instead of mixed-unit multi-axis charts.
 
 Tables remain useful as inspectable detail, but they should sit after the chart
 for traceability. Chart controls should preserve the active agent/source, model,
@@ -90,11 +95,11 @@ Stronger service-health signals:
   when the source exposes it.
 - **Token and cost shape:** shifts in input, cached input, output, reasoning,
   and cost mix for the same cohort.
-- **Degradation risk score:** a 0.0-1.0 composite risk score for relay,
-  gateway, or model-service degradation triage. It weighs latency, throughput,
+- **Model quality risk score:** a 0.0-1.0 composite risk score for
+  source/model quality-degradation triage. It weighs latency, throughput,
   model/tool failure pressure, retry pressure, cache misses, output expansion,
-  and reasoning overhead. It is a suspicion-ranking metric, not a provider
-  authenticity verdict.
+  and reasoning overhead. It is a suspicion-ranking metric, not proof of relay,
+  official-provider throttling, model substitution, or token padding.
 
 Operational efficiency metrics:
 
@@ -117,10 +122,10 @@ Operational efficiency metrics:
   depending on what the source exposes.
 - **Retry pressure:** repeated model-call pressure, including model calls per
   session as a proxy for repair loops or larger tasks.
-- **Degradation risk drift:** current degradation risk compared with the same
+- **Model quality risk drift:** current quality risk compared with the same
   cohort's baseline. A rising score means several operational symptoms are
-  stacking up and the cohort should be reviewed before assuming the relay is
-  healthy.
+  stacking up and the cohort should be reviewed before assuming any particular
+  cause.
 
 Weaker operational symptoms:
 
@@ -207,10 +212,10 @@ Read the signals together:
   when it changes against the same cohort's baseline.
 - Pair tool dependency and tool failure rates with actual tool-call history.
 - Treat low-sample rows as directional only.
-- Treat relay or gateway "watered down" concerns as an investigation workflow:
-  compare the same model, agent/source, project, and task shape over time; then
-  inspect sessions behind high degradation risk instead of treating the score as
-  a standalone accusation.
+- Treat relay, gateway, provider-side, or "watered down" concerns as an
+  investigation workflow: compare the same model, agent/source, project, and
+  task shape over time; then inspect sessions behind high model quality risk
+  instead of treating the score as a standalone accusation.
 
 The `/api/model-signals` endpoint supports the same analytics filters as
 overview and token analytics: `agent`, `model`, `project`, `from`, and `to`.
@@ -220,21 +225,22 @@ returns day-level and project-level efficiency views:
 
 - `dailyMetrics`: day rows for operational efficiency, including cost, cost per
   session, cost per active hour, cost per 1k tokens, cache savings, p50/p90
-  latency, p50/p10 throughput, failure pressure, degradation risk, retry
+  latency, p50/p10 throughput, failure pressure, model quality risk, retry
   pressure or model calls per session, low sample flags, baseline metric values
   from the preceding 7 calendar days, and drift against that baseline.
 - `projectMetrics`: project rows for operational efficiency, including project
   cost burn, cache savings, cost per session, cost per active hour, cost per 1k
   tokens, dominant model, model mix, retry pressure, failure pressure,
-  degradation risk, confidence, and current-versus-baseline drift.
+  model quality risk, confidence, and current-versus-baseline drift.
 
 The Model Health layer adds:
 
 - `healthSummary`: scope-level current window, baseline availability, sample,
   confidence, and strongest observed health/drift indicators.
 - `cohorts`: provider/model + agent/source + project health rows.
-- `matrix`: a cross-cohort view for scanning provider/model, agent/source, and
-  project combinations.
+- `matrix`: a cross-cohort view for scanning provider/model and agent/source
+  combinations, including per-cell drift so clients can explain horizontal
+  comparisons without recomputing backend drift rules.
 - `projectHotspots`: projects whose current cohort behavior most deserves
   review.
 

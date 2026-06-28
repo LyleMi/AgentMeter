@@ -33,7 +33,6 @@ export type MetricKey =
   | 'costPer1kTokens'
   | 'cacheSavings'
   | 'failurePressure'
-  | 'degradationRisk'
   | 'retryPressure'
   | 'modelFailureRate'
   | 'toolFailureRate'
@@ -184,17 +183,6 @@ export function buildMetricDefinitions(t: ModelSignalsMetricChartTranslate): Met
       value: (metric) => finiteNumber(metric?.failurePressure)
     },
     {
-      key: 'degradationRisk',
-      label: t('metric.degradationRisk'),
-      description: t('metric.degradationRiskDesc'),
-      group: 'pressure',
-      kind: 'percent',
-      color: '#be123c',
-      chart: 'line',
-      direction: 'lower',
-      value: (metric) => finiteNumber(metric?.degradationRiskScore)
-    },
-    {
       key: 'retryPressure',
       label: t('metric.retryPressure'),
       description: t('metric.retryPressureDesc'),
@@ -276,8 +264,8 @@ export function buildMetricDefinitions(t: ModelSignalsMetricChartTranslate): Met
 
 export function defaultMetricsForMode(mode: ChartMode): MetricKey[] {
   return mode === 'projects'
-    ? ['degradationRisk', 'costPer1kTokens', 'failurePressure']
-    : ['degradationRisk', 'p90Latency', 'p10Throughput']
+    ? ['costPer1kTokens']
+    : ['p90Latency']
 }
 
 export function resolveSelectedMetrics(keys: MetricKey[], definitions: MetricDefinition[]) {

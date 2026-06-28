@@ -439,6 +439,7 @@ func buildModelSignalMatrixRows(aggregates map[string]*modelSignalMatrixCellAggr
 			Severity:      drift.Severity,
 			Confidence:    drift.Confidence,
 			KeyReason:     firstModelSignalReason(drift.Reasons),
+			Drift:         drift,
 			Current:       currentSet,
 			Baseline:      baselineSet,
 		})

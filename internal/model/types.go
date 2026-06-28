@@ -471,6 +471,7 @@ type ModelSignalsMatrixCell struct {
 	Severity      string                `json:"severity"`
 	Confidence    string                `json:"confidence"`
 	KeyReason     string                `json:"keyReason"`
+	Drift         ModelSignalsDrift     `json:"drift"`
 	Current       ModelSignalsMetricSet `json:"current"`
 	Baseline      ModelSignalsMetricSet `json:"baseline"`
 }

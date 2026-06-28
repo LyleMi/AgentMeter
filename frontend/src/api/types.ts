@@ -357,6 +357,7 @@ export interface ModelSignalMatrixCell {
   severity: string
   confidence: string
   keyReason?: string
+  drift: ModelSignalDrift
   current: ModelSignalMetricSet
   baseline: ModelSignalMetricSet
 }

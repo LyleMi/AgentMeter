@@ -232,6 +232,9 @@ func normalizeModelSignalsSlices(result *model.ModelSignals) {
 		if result.Matrix[rowIndex].Cells == nil {
 			result.Matrix[rowIndex].Cells = []model.ModelSignalsMatrixCell{}
 		}
+		for cellIndex := range result.Matrix[rowIndex].Cells {
+			normalizeModelSignalsDrift(&result.Matrix[rowIndex].Cells[cellIndex].Drift)
+		}
 	}
 	if result.ProjectHotspots == nil {
 		result.ProjectHotspots = []model.ModelSignalsProjectHotspot{}

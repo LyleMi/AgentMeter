@@ -1022,9 +1022,9 @@ function modelSignalDriftFor(current: ModelSignalMetricSet, baseline: ModelSigna
 
   const degradationRiskDelta = current.degradationRiskScore - baseline.degradationRiskScore
   if (current.degradationRiskScore >= 0.3 && degradationRiskDelta >= 0.3) {
-    mark('critical', 'degradationRiskScore', 'degradation risk score', 'higher_worse', 'Degradation risk rose', current.degradationRiskScore, baseline.degradationRiskScore)
+    mark('critical', 'degradationRiskScore', 'model quality risk score', 'higher_worse', 'Model quality risk rose', current.degradationRiskScore, baseline.degradationRiskScore)
   } else if (current.degradationRiskScore >= 0.3 && degradationRiskDelta >= 0.15) {
-    mark('warning', 'degradationRiskScore', 'degradation risk score', 'higher_worse', 'Degradation risk rose', current.degradationRiskScore, baseline.degradationRiskScore)
+    mark('warning', 'degradationRiskScore', 'model quality risk score', 'higher_worse', 'Model quality risk rose', current.degradationRiskScore, baseline.degradationRiskScore)
   }
 
   const uniqueReasons = [...new Set(reasons)]
@@ -1157,6 +1157,7 @@ function modelSignalMatrixFor(cohorts: ModelSignalCohort[]): ModelSignalMatrixRo
             severity: drift.severity,
             confidence: drift.confidence,
             keyReason: drift.reasons[0],
+            drift,
             current,
             baseline
           }

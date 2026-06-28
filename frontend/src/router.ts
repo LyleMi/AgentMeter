@@ -39,6 +39,7 @@ const router = createRouter({
       ]
     },
     { path: '/model-signals', component: () => import('./views/ModelSignals.vue') },
+    { path: '/model-signals/risk', component: () => import('./views/ModelRisk.vue') },
     { path: '/sessions', component: () => import('./views/Sessions.vue') },
     { path: '/sessions/:id', component: () => import('./views/SessionDetail.vue'), props: true },
     {

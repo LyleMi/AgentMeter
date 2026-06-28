@@ -56,6 +56,7 @@ import ProjectCell from './model-signals/ProjectCell.vue'
 import ReasonTags from './model-signals/ReasonTags.vue'
 import SeverityTag from './model-signals/SeverityTag.vue'
 import SourceCell from './model-signals/SourceCell.vue'
+import SourceModelComparison from './model-signals/SourceModelComparison.vue'
 import { buildModelSignalsTabs, type ModelSignalsTabKey } from './model-signals/tabs'
 import type { ProjectMetricRow } from './model-signals/types'
 
@@ -613,54 +614,58 @@ onMounted(load)
         </div>
 
         <div v-else-if="activeTab === 'matrix'">
-          <Panel
-            class="model-signals-table-panel"
-            :title="t('matrix.title')"
-            :kicker="t('matrix.kicker')"
-            :icon="TableOutlined"
-          >
-            <a-table
-              class="dense-table model-signals-matrix-table"
-              :columns="matrixColumns"
-              :data-source="matrixRows"
-              :loading="loading"
-              :locale="matrixTableLocale"
-              :pagination="false"
-              :row-key="matrixRowKey"
-              size="small"
-              :scroll="{ x: 980 }"
-              >
-              <template #bodyCell="{ column, record }">
-                <template v-if="column.key === 'source'">
-                  <SourceCell :info="sourceInfo(record)" />
-                </template>
-                <template v-else-if="column.key === 'models'">
-                  <div class="model-signals-matrix-cells">
-                    <a-tooltip
-                      v-for="cell in record.cells"
-                      :key="matrixCellKey(cell)"
-                      :title="matrixCellTitle(cell)"
-                      placement="topLeft"
-                    >
-                      <div class="model-signals-matrix-cell" :class="severityClass(cell.severity)">
-                        <div class="model-signals-matrix-cell-head">
-                          <span class="model-name">{{ cell.model || t('fallback.unknown') }}</span>
-                          <SeverityTag :color="severityTagColor(cell.severity)" :label="severityLabel(cell.severity)" />
+          <div class="section-stack">
+            <SourceModelComparison :rows="matrixRows" :loading="loading" />
+
+            <Panel
+              class="model-signals-table-panel"
+              :title="t('matrix.title')"
+              :kicker="t('matrix.kicker')"
+              :icon="TableOutlined"
+            >
+              <a-table
+                class="dense-table model-signals-matrix-table"
+                :columns="matrixColumns"
+                :data-source="matrixRows"
+                :loading="loading"
+                :locale="matrixTableLocale"
+                :pagination="false"
+                :row-key="matrixRowKey"
+                size="small"
+                :scroll="{ x: 980 }"
+                >
+                <template #bodyCell="{ column, record }">
+                  <template v-if="column.key === 'source'">
+                    <SourceCell :info="sourceInfo(record)" />
+                  </template>
+                  <template v-else-if="column.key === 'models'">
+                    <div class="model-signals-matrix-cells">
+                      <a-tooltip
+                        v-for="cell in record.cells"
+                        :key="matrixCellKey(cell)"
+                        :title="matrixCellTitle(cell)"
+                        placement="topLeft"
+                      >
+                        <div class="model-signals-matrix-cell" :class="severityClass(cell.severity)">
+                          <div class="model-signals-matrix-cell-head">
+                            <span class="model-name">{{ cell.model || t('fallback.unknown') }}</span>
+                            <SeverityTag :color="severityTagColor(cell.severity)" :label="severityLabel(cell.severity)" />
+                          </div>
+                          <div class="source-identity-meta">{{ cell.modelProvider || '-' }} · {{ formatNumber(cell.cohortCount) }} {{ t('tab.cohorts') }}</div>
+                          <div class="model-signals-matrix-metrics">
+                            <span>{{ formatLatency(cell.current?.modelLatencyMsPer1kOutputTokens) }}</span>
+                            <span>{{ formatRate(cell.current?.modelThroughputTokensPerSecond, 1) }} tok/s</span>
+                            <span>{{ formatConfidence(cell.confidence) }}</span>
+                          </div>
+                          <div class="model-signals-matrix-reason">{{ cell.keyReason || t('fallback.noReason') }}</div>
                         </div>
-                        <div class="source-identity-meta">{{ cell.modelProvider || '-' }} · {{ formatNumber(cell.cohortCount) }} {{ t('tab.cohorts') }}</div>
-                        <div class="model-signals-matrix-metrics">
-                          <span>{{ formatLatency(cell.current?.modelLatencyMsPer1kOutputTokens) }}</span>
-                          <span>{{ formatRate(cell.current?.modelThroughputTokensPerSecond, 1) }} tok/s</span>
-                          <span>{{ formatConfidence(cell.confidence) }}</span>
-                        </div>
-                        <div class="model-signals-matrix-reason">{{ cell.keyReason || t('fallback.noReason') }}</div>
-                      </div>
-                    </a-tooltip>
-                  </div>
+                      </a-tooltip>
+                    </div>
+                  </template>
                 </template>
-              </template>
-            </a-table>
-          </Panel>
+              </a-table>
+            </Panel>
+          </div>
         </div>
 
         <div v-else-if="activeTab === 'projects'">

@@ -170,12 +170,13 @@ TUI expectations where relevant:
 - Model Signals daily/project efficiency interpretation, including cost,
   cost-per-session, cost-per-active-hour, cost-per-1k-tokens, cache savings,
   p50/p90 latency, p50/p10 throughput, retry pressure, failure pressure,
-  degradation risk, preceding 7-calendar-day daily drift, project
+  model quality risk, preceding 7-calendar-day daily drift, project
   current-versus-baseline drift, and missing pricing or low sample being labeled
   as confidence/completeness risk rather than failure;
-- Model Signals Web presentation, including configurable chart metric controls,
-  degradation-risk charting, current-versus-baseline project comparison where
-  available, and missing chart values not being rendered as zero;
+- Model Signals Web presentation, including single-axis chart metric controls,
+  horizontal source/model comparison, a standalone model-quality-risk page with
+  explanations, current-versus-baseline project comparison where available, and
+  missing chart values not being rendered as zero;
 - project-scoped analytics filters using the `project` query parameter;
 - session identity and source path display;
 - source instance filters using `source:<id>` and family filters using values
