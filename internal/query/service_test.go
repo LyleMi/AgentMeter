@@ -448,6 +448,52 @@ func TestSourceScopedTokenAnalyticsSumMatchesUnfilteredTotals(t *testing.T) {
 	}
 }
 
+func TestTokenAnalyticsIgnoresOrphanTokenUsage(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	codexSourceID := insertSource(t, conn, "codex", "Codex", "/home/me/.codex", "/home/me/.codex/sessions", now)
+	claudeSourceID := insertSource(t, conn, "claude", "Claude Code", "/home/me/.claude", "/home/me/.claude/projects", now)
+	insertTokenAnalyticsSession(t, conn, codexSourceID, now, "codex", "gpt-5", "gpt-5", "actual", 1_000_000, 100_000, 200_000, 0, 1_200_000)
+	insertTokenAnalyticsSession(t, conn, claudeSourceID, now.Add(time.Minute), "claude", "gpt-5-mini", "gpt-5-mini", "actual", 500_000, 50_000, 100_000, 0, 600_000)
+	insertRow(t, conn, `INSERT INTO token_usage
+		(owner_kind, owner_id, model, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, source)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"session", int64(9_999_999), "gpt-5", 100_000_000, 0, 100_000_000, 0, 200_000_000, "actual")
+
+	service := New(conn)
+	unfiltered, err := service.TokenAnalytics(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	codexScoped, err := service.TokenAnalyticsWithFilters(ctx, model.AnalyticsFilters{Agent: sourceInstanceKey(codexSourceID)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claudeScoped, err := service.TokenAnalyticsWithFilters(ctx, model.AnalyticsFilters{Agent: sourceInstanceKey(claudeSourceID)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	scopedTotal := codexScoped.TotalTokens + claudeScoped.TotalTokens
+	if unfiltered.TotalSessions != 2 || unfiltered.TotalTokens != scopedTotal {
+		t.Fatalf("unfiltered analytics included orphan usage: unfiltered=%+v scopedTotal=%d", unfiltered, scopedTotal)
+	}
+	scopedCost := valueCost(codexScoped.EstimatedCostUSD) + valueCost(claudeScoped.EstimatedCostUSD)
+	if math.Abs(valueCost(unfiltered.EstimatedCostUSD)-scopedCost) > 0.000001 {
+		t.Fatalf("unfiltered cost should match source-scoped cost sum: unfiltered=%v scoped=%.6f", unfiltered.EstimatedCostUSD, scopedCost)
+	}
+	gptUsage := findModelUsage(t, unfiltered.ModelUsage, "gpt-5")
+	if gptUsage.TotalTokens != codexScoped.TotalTokens {
+		t.Fatalf("model usage included orphan usage: %+v", gptUsage)
+	}
+}
+
 func TestOverviewWithFiltersScopesTotalsAndLists(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
@@ -953,6 +999,13 @@ func assertCostUSD(t *testing.T, got *float64, want float64) {
 	if got == nil || math.Abs(*got-want) > 0.000001 {
 		t.Fatalf("estimated cost = %v, want %.6f", got, want)
 	}
+}
+
+func valueCost(value *float64) float64 {
+	if value == nil {
+		return 0
+	}
+	return *value
 }
 
 func findModelUsage(t *testing.T, items []model.ModelUsage, modelName string) model.ModelUsage {

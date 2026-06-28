@@ -122,7 +122,7 @@ func (i *Indexer) IndexSource(ctx context.Context, sessionsPath, label string, r
 		return result, err
 	}
 	if rebuild {
-		if _, err := i.conn.ExecContext(ctx, `DELETE FROM source_files WHERE source_id = ?`, source.ID); err != nil {
+		if err := i.deleteSourceFilesForRebuild(ctx, source.ID); err != nil {
 			return result, err
 		}
 	}
@@ -304,6 +304,29 @@ func (i *Indexer) markSourceFile(ctx context.Context, sourceFileID int64, status
 	return err
 }
 
+func (i *Indexer) deleteSourceFilesForRebuild(ctx context.Context, sourceID int64) error {
+	tx, err := i.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM token_usage
+		WHERE owner_kind = 'session'
+		AND owner_id IN (
+			SELECT s.id
+			FROM sessions s
+			JOIN source_files sf ON sf.id = s.source_file_id
+			WHERE sf.source_id = ?
+		)`, sourceID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM source_files WHERE source_id = ?`, sourceID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (i *Indexer) replaceParsedSession(ctx context.Context, source model.Source, sourceFileID int64, parsed model.ParsedSession) error {
 	calculator, err := pricing.LoadCalculator(ctx, i.conn)
 	if err != nil {
@@ -330,6 +353,11 @@ func (i *Indexer) replaceParsedSession(ctx context.Context, source model.Source,
 	}
 	defer tx.Rollback()
 
+	if _, err := tx.ExecContext(ctx, `DELETE FROM token_usage
+		WHERE owner_kind = 'session'
+		AND owner_id IN (SELECT id FROM sessions WHERE source_file_id = ?)`, sourceFileID); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE source_file_id = ?`, sourceFileID); err != nil {
 		return err
 	}

@@ -46,8 +46,8 @@ func (s *Service) totalCostWithFilters(ctx context.Context, filters model.Analyt
 	where, args := analyticsUsageWhere(filters)
 	rows, err := s.conn.QueryContext(ctx, `SELECT `+usageSessionModelExpr+`, tu.input_tokens, tu.cached_input_tokens, tu.output_tokens, tu.reasoning_output_tokens, tu.total_tokens, tu.source
 		FROM token_usage tu
-		LEFT JOIN sessions s ON s.id = tu.owner_id
-		LEFT JOIN sources src ON src.id = s.source_id
+		JOIN sessions s ON s.id = tu.owner_id
+		JOIN sources src ON src.id = s.source_id
 		WHERE `+strings.Join(where, " AND "), args...)
 	if err != nil {
 		return nil, 0, err
@@ -146,8 +146,8 @@ func (s *Service) usageTotals(ctx context.Context, filters model.AnalyticsFilter
 		COALESCE(SUM(tu.reasoning_output_tokens), 0),
 		COALESCE(SUM(tu.total_tokens), 0)
 		FROM token_usage tu
-		LEFT JOIN sessions s ON s.id = tu.owner_id
-		LEFT JOIN sources src ON src.id = s.source_id
+		JOIN sessions s ON s.id = tu.owner_id
+		JOIN sources src ON src.id = s.source_id
 		WHERE `+strings.Join(where, " AND "), args...).
 		Scan(&usage.InputTokens, &usage.CachedInputTokens, &usage.OutputTokens, &usage.ReasoningOutputTokens, &usage.TotalTokens)
 	return usage, err
@@ -284,8 +284,8 @@ func (s *Service) modelUsageWithFilters(ctx context.Context, filters model.Analy
 		COALESCE(SUM(tu.total_tokens), 0), COALESCE(SUM(tu.input_tokens), 0), COALESCE(SUM(tu.cached_input_tokens), 0),
 		COALESCE(SUM(tu.output_tokens), 0), COALESCE(SUM(tu.reasoning_output_tokens), 0)
 		FROM token_usage tu
-		LEFT JOIN sessions s ON s.id = tu.owner_id
-		LEFT JOIN sources src ON src.id = s.source_id
+		JOIN sessions s ON s.id = tu.owner_id
+		JOIN sources src ON src.id = s.source_id
 		WHERE `+strings.Join(where, " AND ")+`
 		GROUP BY `+usageSessionModelExpr+`
 		ORDER BY SUM(tu.total_tokens) DESC, `+usageSessionModelExpr+` ASC`, args...)
@@ -322,8 +322,8 @@ func (s *Service) modelCostsWithFilters(ctx context.Context, calculator pricing.
 	rows, err := s.conn.QueryContext(ctx, `SELECT `+usageSessionModelExpr+`,
 		tu.input_tokens, tu.cached_input_tokens, tu.output_tokens, tu.reasoning_output_tokens, tu.total_tokens, tu.source
 		FROM token_usage tu
-		LEFT JOIN sessions s ON s.id = tu.owner_id
-		LEFT JOIN sources src ON src.id = s.source_id
+		JOIN sessions s ON s.id = tu.owner_id
+		JOIN sources src ON src.id = s.source_id
 		WHERE `+strings.Join(where, " AND "), args...)
 	if err != nil {
 		return nil, nil, err

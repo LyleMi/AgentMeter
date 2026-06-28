@@ -200,6 +200,66 @@ func TestIndexEntriesUsesConfiguredSourceLabel(t *testing.T) {
 	}
 }
 
+func TestIndexRebuildRemovesReplacedSessionTokenUsage(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "agentmeter.sqlite")
+	conn, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	sourceDir := filepath.Join(dir, "logs")
+	run := filepath.Join(sourceDir, "run.jsonl")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := `{"timestamp":"2026-06-26T10:00:00Z","type":"session_meta","payload":{"session_id":"usage_sess","cwd":"D:\\workspace\\project","originator":"codex_cli","thread_source":"local","model_provider":"openai"}}
+{"timestamp":"2026-06-26T10:00:01Z","type":"turn_context","payload":{"model":"gpt-5","cwd":"D:\\workspace\\project"}}
+{"timestamp":"2026-06-26T10:00:02Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":100,"output_tokens":80,"reasoning_output_tokens":20,"total_tokens":1100}}}}
+`
+	if err := os.WriteFile(run, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	indexer := New(conn, dbPath)
+	for range 2 {
+		result, err := indexer.Index(ctx, sourceDir, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Sessions != 1 || result.Indexed != 1 {
+			t.Fatalf("index result = %+v", result)
+		}
+	}
+
+	var usageRows int
+	if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM token_usage WHERE owner_kind = 'session'`).Scan(&usageRows); err != nil {
+		t.Fatal(err)
+	}
+	if usageRows != 1 {
+		t.Fatalf("token usage rows = %d, want 1", usageRows)
+	}
+	var orphanRows int
+	if err := conn.QueryRowContext(ctx, `SELECT COUNT(*)
+		FROM token_usage tu
+		LEFT JOIN sessions s ON s.id = tu.owner_id
+		WHERE tu.owner_kind = 'session' AND s.id IS NULL`).Scan(&orphanRows); err != nil {
+		t.Fatal(err)
+	}
+	if orphanRows != 0 {
+		t.Fatalf("orphan token usage rows = %d", orphanRows)
+	}
+	analytics, err := query.New(conn).TokenAnalytics(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if analytics.TotalSessions != 1 || analytics.TotalTokens != 1100 {
+		t.Fatalf("analytics after rebuild = %+v", analytics)
+	}
+}
+
 func TestIndexWritesAuditFindings(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()

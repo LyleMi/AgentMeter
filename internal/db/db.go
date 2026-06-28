@@ -111,6 +111,9 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			UNIQUE(owner_kind, owner_id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_token_usage_owner ON token_usage(owner_kind, owner_id)`,
+		`DELETE FROM token_usage
+			WHERE owner_kind = 'session'
+			AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.id = token_usage.owner_id)`,
 		`CREATE TABLE IF NOT EXISTS model_calls (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
