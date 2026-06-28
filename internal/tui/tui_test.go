@@ -2,6 +2,8 @@ package tui
 
 import (
 	"context"
+	"fmt"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -10,15 +12,17 @@ import (
 )
 
 type fakeService struct {
-	overview agentmodel.Overview
-	sessions []agentmodel.Session
-	detail   agentmodel.SessionDetail
-	tools    []agentmodel.ToolStat
-	settings agentmodel.Settings
-	privacy  []agentmodel.PrivacyConfigStatus
-	index    agentmodel.IndexResult
+	overview  agentmodel.Overview
+	sessions  []agentmodel.Session
+	detail    agentmodel.SessionDetail
+	tools     []agentmodel.ToolStat
+	toolCalls []agentmodel.ToolCall
+	settings  agentmodel.Settings
+	privacy   []agentmodel.PrivacyConfigStatus
+	index     agentmodel.IndexResult
 
 	indexCalls       []bool
+	toolCallFilters  []agentmodel.ToolCallFilters
 	privacyApply     agentmodel.PrivacyConfigApplyResult
 	privacyApplyErr  error
 	privacyApplyCall []privacyApplyCall
@@ -43,6 +47,47 @@ func (f *fakeService) GetSessionDetail(_ int64) (agentmodel.SessionDetail, error
 
 func (f *fakeService) GetTools() ([]agentmodel.ToolStat, error) {
 	return f.tools, nil
+}
+
+func (f *fakeService) ListToolCalls(filters agentmodel.ToolCallFilters) ([]agentmodel.ToolCall, error) {
+	f.toolCallFilters = append(f.toolCallFilters, filters)
+	result := make([]agentmodel.ToolCall, 0, len(f.toolCalls))
+	for _, call := range f.toolCalls {
+		if strings.TrimSpace(filters.ToolName) != "" && call.ToolName != filters.ToolName {
+			continue
+		}
+		result = append(result, call)
+	}
+	switch filters.Sort {
+	case "duration_desc":
+		sort.Slice(result, func(i, j int) bool {
+			if result[i].DurationMS == result[j].DurationMS {
+				return result[i].StartedAt.After(result[j].StartedAt)
+			}
+			return result[i].DurationMS > result[j].DurationMS
+		})
+	case "duration_asc":
+		sort.Slice(result, func(i, j int) bool {
+			if result[i].DurationMS == result[j].DurationMS {
+				return result[i].StartedAt.After(result[j].StartedAt)
+			}
+			return result[i].DurationMS < result[j].DurationMS
+		})
+	default:
+		sort.Slice(result, func(i, j int) bool {
+			return result[i].StartedAt.After(result[j].StartedAt)
+		})
+	}
+	if filters.Offset > 0 && filters.Offset < len(result) {
+		result = result[filters.Offset:]
+	}
+	if filters.Offset >= len(result) {
+		result = []agentmodel.ToolCall{}
+	}
+	if filters.Limit > 0 && filters.Limit < len(result) {
+		result = result[:filters.Limit]
+	}
+	return result, nil
 }
 
 func (f *fakeService) GetSettings() (agentmodel.Settings, error) {
@@ -155,6 +200,128 @@ func TestIndexNowRefreshesCurrentPage(t *testing.T) {
 	assertContains(t, view, "Database:")
 	assertContains(t, view, `Work Codex -> D:\sessions\codex-work`)
 	assertContains(t, view, "Indexed: 3")
+}
+
+func TestToolsOpenToolCallsAndDetail(t *testing.T) {
+	svc := sampleService()
+	st := newState(svc, 120, 30)
+
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '3'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+
+	view := st.view()
+	assertContains(t, view, "Tools")
+	assertContains(t, view, "shell_command")
+
+	cmd, quit = st.update(keyMsg{typ: keyEnter})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if st.page != pageToolCalls {
+		t.Fatalf("page = %v, want tool calls", st.page)
+	}
+	if len(svc.toolCallFilters) == 0 || svc.toolCallFilters[len(svc.toolCallFilters)-1].ToolName != "shell_command" {
+		t.Fatalf("tool call filters = %+v, want shell_command filter", svc.toolCallFilters)
+	}
+	view = st.view()
+	assertContains(t, view, "Tool Calls")
+	assertContains(t, view, "Scope: shell_command")
+	assertContains(t, view, "rg --files")
+	assertContains(t, view, "Work Codex")
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'd'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if got := svc.toolCallFilters[len(svc.toolCallFilters)-1].Sort; got != "duration_desc" {
+		t.Fatalf("sort = %q, want duration_desc", got)
+	}
+	assertContains(t, st.view(), "Sort: duration high to low")
+
+	cmd, quit = st.update(keyMsg{typ: keyEnter})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	if cmd != nil {
+		t.Fatal("tool call detail should not load")
+	}
+	view = st.view()
+	assertContains(t, view, "Tool Call Detail")
+	assertContains(t, view, "Tool: shell_command")
+	assertContains(t, view, "Project: D:\\tools\\custom\\AgentMeter")
+	assertContains(t, view, "Raw source: D:\\sessions\\codex-work\\sessions\\2026\\06\\27\\session-42.jsonl")
+	assertContains(t, view, "Input")
+	assertContains(t, view, "rg --files")
+	assertContains(t, view, "Output")
+	assertContains(t, view, "repository file list")
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'b'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if st.page != pageToolCalls {
+		t.Fatalf("page = %v, want tool calls after back", st.page)
+	}
+}
+
+func TestToolsAndToolCallsKeepSelectedRowVisible(t *testing.T) {
+	svc := sampleService()
+	started := time.Date(2026, 6, 27, 9, 30, 0, 0, time.Local)
+	svc.tools = nil
+	svc.toolCalls = nil
+	for i := 0; i < 8; i++ {
+		toolName := fmt.Sprintf("tool-%02d", i)
+		svc.tools = append(svc.tools, agentmodel.ToolStat{ToolName: toolName, Calls: 1})
+		svc.toolCalls = append(svc.toolCalls, agentmodel.ToolCall{
+			ID:           int64(i + 1),
+			SessionID:    42,
+			ToolName:     toolName,
+			Status:       "completed",
+			StartedAt:    started.Add(time.Duration(i) * time.Minute),
+			DurationMS:   int64(100 + i),
+			InputSummary: "call " + toolName,
+			SourceLabel:  "Work Codex",
+		})
+	}
+	st := newState(svc, 100, 12)
+
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '3'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+
+	cmd, quit = st.update(keyMsg{typ: keyPageDown})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	if cmd != nil {
+		t.Fatal("page down returned a command on tools")
+	}
+	selectedTool := st.tools[st.selected].ToolName
+	assertSelectedLineContains(t, st.view(), selectedTool)
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'c'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+
+	cmd, quit = st.update(keyMsg{typ: keyPageDown})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	if cmd != nil {
+		t.Fatal("page down returned a command on tool calls")
+	}
+	selectedCall := st.toolCalls[st.selected].ToolName
+	assertSelectedLineContains(t, st.view(), selectedCall)
 }
 
 func TestPrivacyPageLoadsAndRenders(t *testing.T) {
@@ -375,6 +542,60 @@ func sampleService() *fakeService {
 		ToolCallCount:    2,
 		RawSourcePath:    `D:\sessions\codex-work\sessions\2026\06\27\session-42.jsonl`,
 	}
+	toolCall := agentmodel.ToolCall{
+		ID:                   99,
+		SessionID:            session.ID,
+		SourceID:             session.SourceID,
+		SourceKey:            session.SourceKey,
+		SourceLabel:          session.SourceLabel,
+		SourceRootPath:       session.SourceRootPath,
+		SourceSessionsPath:   session.SourceSessionsPath,
+		StartedAt:            started.Add(2 * time.Minute),
+		EndedAt:              started.Add(2*time.Minute + 250*time.Millisecond),
+		DurationMS:           250,
+		ToolName:             "shell_command",
+		Status:               "completed",
+		InputSummary:         "rg --files",
+		OutputSummary:        "repository file list",
+		CallID:               "call-shell-99",
+		RawEventID:           1001,
+		RawStartEventID:      1001,
+		RawEndEventID:        1002,
+		RawEventLine:         17,
+		RawStartEventLine:    17,
+		RawEndEventLine:      18,
+		RawStartEventType:    "tool_call",
+		RawEndEventType:      "tool_result",
+		RawStartEventSummary: "started shell command",
+		RawEndEventSummary:   "completed shell command",
+		SessionKey:           session.SessionKey,
+		CodexSessionID:       session.CodexSessionID,
+		ProjectPath:          session.ProjectPath,
+		AgentKind:            session.AgentKind,
+		AgentName:            session.AgentName,
+		RawSourcePath:        session.RawSourcePath,
+	}
+	webCall := agentmodel.ToolCall{
+		ID:                 100,
+		SessionID:          session.ID,
+		SourceID:           session.SourceID,
+		SourceKey:          session.SourceKey,
+		SourceLabel:        session.SourceLabel,
+		SourceRootPath:     session.SourceRootPath,
+		SourceSessionsPath: session.SourceSessionsPath,
+		StartedAt:          started.Add(3 * time.Minute),
+		EndedAt:            started.Add(3*time.Minute + 500*time.Millisecond),
+		DurationMS:         500,
+		ToolName:           "web_fetch",
+		Status:             "failed",
+		InputSummary:       "https://example.test",
+		Error:              "network disabled",
+		SessionKey:         session.SessionKey,
+		ProjectPath:        session.ProjectPath,
+		AgentKind:          session.AgentKind,
+		AgentName:          session.AgentName,
+		RawSourcePath:      session.RawSourcePath,
+	}
 	index := agentmodel.IndexResult{FilesSeen: 4, Indexed: 3, Skipped: 1, Sessions: 2, DurationMS: 1200}
 	return &fakeService{
 		overview: agentmodel.Overview{
@@ -404,12 +625,14 @@ func sampleService() *fakeService {
 				{StartedAt: started, Model: "gpt-5-codex", DurationMS: 3000, TotalTokens: 12345, CostUSD: &cost},
 			},
 			ToolCalls: []agentmodel.ToolCall{
-				{StartedAt: started, ToolName: "shell_command", Status: "completed", DurationMS: 250, InputSummary: "rg --files"},
+				toolCall,
 			},
 		},
 		tools: []agentmodel.ToolStat{
 			{ToolName: "shell_command", Calls: 2, SuccessCalls: 2, TotalDurationMS: 500, AvgDurationMS: 250},
+			{ToolName: "web_fetch", Calls: 1, FailedCalls: 1, TotalDurationMS: 500, AvgDurationMS: 500},
 		},
+		toolCalls: []agentmodel.ToolCall{toolCall, webCall},
 		settings: agentmodel.Settings{
 			DatabasePath:    `D:\tools\custom\AgentMeter\agentmeter.sqlite`,
 			SourceEntries:   []agentmodel.SourceEntry{{Path: `D:\sessions\codex-work`, Label: "Work Codex", Enabled: true}},
@@ -492,4 +715,14 @@ func assertContains(t *testing.T, value, want string) {
 	if !strings.Contains(value, want) {
 		t.Fatalf("view does not contain %q:\n%s", want, value)
 	}
+}
+
+func assertSelectedLineContains(t *testing.T, view, want string) {
+	t.Helper()
+	for _, line := range strings.Split(view, "\n") {
+		if strings.HasPrefix(line, "> ") && strings.Contains(line, want) {
+			return
+		}
+	}
+	t.Fatalf("selected row does not contain %q:\n%s", want, view)
 }

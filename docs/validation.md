@@ -144,8 +144,8 @@ Manually cover:
 - Settings source entries showing configured labels when labels are present;
 - Agent Privacy staying target-based while clearly showing backend status
   warnings for the selected target;
-- Overview totals, Session Detail values, and Tools aggregates compared against
-  Web mode for the same database.
+- Overview totals, Session Detail values, Tools aggregates, and recent tool-call
+  rows/details compared against Web mode for the same database.
 
 Index and rebuild keys are state-changing. Use them only when the task
 explicitly requires validating indexing from TUI.

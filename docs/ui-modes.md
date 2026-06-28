@@ -61,6 +61,7 @@ Implemented MVP TUI screens:
 - Sessions
 - Session Detail
 - Tools
+- Tool Calls
 - Agent Privacy
 - Settings
 
@@ -71,6 +72,9 @@ Implemented TUI actions:
 - trigger rebuild indexing;
 - open a selected session detail from the session list;
 - navigate back from detail to the session list;
+- open recent calls for a selected tool from the tools list;
+- inspect an individual tool call with session, source, input, output, and raw
+  event context;
 - inspect supported agent privacy configuration status;
 - apply supported agent privacy profiles after an explicit confirmation step.
 
@@ -138,11 +142,13 @@ up/down    select, scroll, or select privacy target
 j / k      select, scroll, or select privacy target
 pgup/pgdn  page through scrollable content or selected privacy details
 home/end   jump within lists
-enter      open selected session detail, queue recommended privacy profile, or confirm pending privacy profile
-b / esc    return from detail, or cancel pending privacy profile
+enter      open selected session detail, open tool calls/detail, queue recommended privacy profile, or confirm pending profile
+b / esc    return from detail/tool-call screens, or cancel pending privacy profile
 r          refresh current screen
 i          update index
 I          rebuild index
+c          show all recent tool calls from the Tools screen
+d          cycle tool-call sort between recent first, duration high-to-low, and duration low-to-high
 [/]        previous/next privacy target shortcut
 a          queue recommended privacy profile for selected target shortcut
 A          queue strict privacy profile for selected target

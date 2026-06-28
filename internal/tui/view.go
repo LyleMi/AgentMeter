@@ -56,6 +56,16 @@ func (s *state) headerLine() string {
 		parts = append(parts, fmt.Sprintf("%s sessions loaded", formatInt(int64(len(s.sessions)))))
 	case pageTools:
 		parts = append(parts, fmt.Sprintf("%s tools", formatInt(int64(len(s.tools)))))
+	case pageToolCalls:
+		parts = append(parts, fmt.Sprintf("%s calls", formatInt(int64(len(s.toolCalls)))))
+		if strings.TrimSpace(s.toolCallTool) != "" {
+			parts = append(parts, "tool "+s.toolCallTool)
+		}
+		parts = append(parts, toolCallSortLabel(s.toolCallSort))
+	case pageToolCallDetail:
+		if s.toolCall != nil {
+			parts = append(parts, empty(s.toolCall.ToolName, "unknown"), "#"+formatInt(s.toolCall.ID))
+		}
 	case pagePrivacy:
 		parts = append(parts, fmt.Sprintf("%s targets", formatInt(int64(len(s.privacy)))))
 		if status := s.selectedPrivacyStatus(); status != nil {
@@ -84,7 +94,7 @@ func (s *state) navLine() string {
 	parts := make([]string, 0, len(items))
 	for _, item := range items {
 		label := item.key + " " + item.label
-		if s.page == item.page || (s.page == pageSessionDetail && item.page == pageSessions) {
+		if s.page == item.page || (s.page == pageSessionDetail && item.page == pageSessions) || ((s.page == pageToolCalls || s.page == pageToolCallDetail) && item.page == pageTools) {
 			label = inverse(" " + label + " ")
 		}
 		parts = append(parts, label)
@@ -120,6 +130,12 @@ func (s *state) footerLine() string {
 		return dim("Keys: b/esc back  up/down scroll  r refresh  i update index  I rebuild index  q quit")
 	case pageSessions:
 		return dim("Keys: enter detail  up/down select  tab cycle  r refresh  i update index  I rebuild index  q quit")
+	case pageTools:
+		return dim("Keys: enter calls  c all calls  up/down select  tab cycle  r refresh  i update index  I rebuild index  q quit")
+	case pageToolCalls:
+		return dim("Keys: enter detail  b/esc tools  d sort  up/down select  r refresh  i update index  I rebuild index  q quit")
+	case pageToolCallDetail:
+		return dim("Keys: b/esc calls  up/down scroll  r refresh  i update index  I rebuild index  q quit")
 	case pagePrivacy:
 		if s.privacyPending != nil {
 			return dim("Keys: enter write profile  esc cancel  q quit")
@@ -154,6 +170,10 @@ func (s *state) content() []string {
 		return s.detailLines()
 	case pageTools:
 		return s.toolLines()
+	case pageToolCalls:
+		return s.toolCallLines()
+	case pageToolCallDetail:
+		return s.toolCallDetailViewportLines()
 	case pageSettings:
 		return s.settingsViewportLines()
 	case pagePrivacy:
@@ -237,6 +257,18 @@ func sessionLabel(session agentmodel.Session) string {
 
 func sessionSourceName(session agentmodel.Session) string {
 	return sourceDisplayName(session.SourceLabel, session.AgentName, session.AgentKind, session.SourceKey)
+}
+
+func toolCallSourceName(call agentmodel.ToolCall) string {
+	return sourceDisplayName(call.SourceLabel, call.AgentName, call.AgentKind, call.SourceKey)
+}
+
+func toolCallSessionLabel(call agentmodel.ToolCall) string {
+	return viewmodel.SessionLabel(agentmodel.Session{
+		ID:             call.SessionID,
+		SessionKey:     call.SessionKey,
+		CodexSessionID: call.CodexSessionID,
+	})
 }
 
 func agentUsageSourceName(item agentmodel.AgentUsage) string {
