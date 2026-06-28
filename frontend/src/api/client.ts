@@ -36,6 +36,9 @@ declare global {
 
 export const isStaticDemo = import.meta.env.VITE_AGENTMETER_STATIC_DEMO === 'true'
 
+type QueryParamValue = string | number | undefined
+type QueryParamValues = Record<string, QueryParamValue>
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
@@ -58,24 +61,25 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return payload as T
 }
 
-function setTextParam(params: URLSearchParams, key: string, value?: string) {
-  if (value) params.set(key, value)
-}
-
-function setNumberParam(params: URLSearchParams, key: string, value?: number) {
-  if (value) params.set(key, String(value))
-}
-
-function usageScopeParams(filters: UsageScopeFilters = {}) {
+function queryParams(values: QueryParamValues) {
   const params = new URLSearchParams()
-  setTextParam(params, 'agent', filters.agent)
-  setTextParam(params, 'model', filters.model)
-  setTextParam(params, 'from', filters.from)
-  setTextParam(params, 'to', filters.to)
+  for (const [key, value] of Object.entries(values)) {
+    if (value) params.set(key, String(value))
+  }
   return params
 }
 
-function queryPath(path: string, params: URLSearchParams) {
+function usageScopeParamValues(filters: UsageScopeFilters = {}): QueryParamValues {
+  return {
+    agent: filters.agent,
+    model: filters.model,
+    from: filters.from,
+    to: filters.to
+  }
+}
+
+function queryPath(path: string, values: QueryParamValues = {}) {
+  const params = queryParams(values)
   const query = params.toString()
   return query ? `${path}?${query}` : path
 }
@@ -98,56 +102,47 @@ const fetchApi = {
   indexNow: (rebuild = false) =>
     request<IndexResult>('/api/index', { method: 'POST', body: JSON.stringify({ rebuild }) }),
   getOverview: (filters: UsageScopeFilters = {}) =>
-    request<Overview>(queryPath('/api/overview', usageScopeParams(filters))),
+    request<Overview>(queryPath('/api/overview', usageScopeParamValues(filters))),
   getTokenAnalytics: (filters: UsageScopeFilters = {}) =>
-    request<TokenAnalytics>(queryPath('/api/tokens', usageScopeParams(filters))),
-  getUsageBreakdown: (filters: UsageBreakdownFilters) => {
-    const params = usageScopeParams(filters)
-    params.set('groupBy', filters.groupBy)
-    return request<UsageBreakdown>(queryPath('/api/usage/breakdown', params))
-  },
-  listSessions: (filters: SessionFilters = {}) => {
-    const params = new URLSearchParams()
-    setTextParam(params, 'search', filters.search)
-    setTextParam(params, 'model', filters.model)
-    setTextParam(params, 'agent', filters.agent)
-    setNumberParam(params, 'limit', filters.limit)
-    setNumberParam(params, 'offset', filters.offset)
-    return request<Session[]>(queryPath('/api/sessions', params))
-  },
+    request<TokenAnalytics>(queryPath('/api/tokens', usageScopeParamValues(filters))),
+  getUsageBreakdown: (filters: UsageBreakdownFilters) =>
+    request<UsageBreakdown>(queryPath('/api/usage/breakdown', {
+      ...usageScopeParamValues(filters),
+      groupBy: filters.groupBy
+    })),
+  listSessions: (filters: SessionFilters = {}) =>
+    request<Session[]>(queryPath('/api/sessions', {
+      search: filters.search,
+      model: filters.model,
+      agent: filters.agent,
+      limit: filters.limit,
+      offset: filters.offset
+    })),
   getSessionDetail: (id: number) => request<SessionDetail>(`/api/sessions/${id}`),
-  getTools: (filters: ToolFilters = {}) => {
-    const params = new URLSearchParams()
-    setTextParam(params, 'agent', filters.agent)
-    return request<ToolStat[]>(queryPath('/api/tools', params))
-  },
-  listToolCalls: (filters: ToolCallFilters = {}) => {
-    const params = new URLSearchParams()
-    setTextParam(params, 'tool', filters.tool)
-    setTextParam(params, 'agent', filters.agent)
-    setTextParam(params, 'from', filters.from)
-    setTextParam(params, 'to', filters.to)
-    setTextParam(params, 'sort', filters.sort)
-    setNumberParam(params, 'limit', filters.limit)
-    setNumberParam(params, 'offset', filters.offset)
-    return request<ToolCall[]>(queryPath('/api/tool-calls', params))
-  },
-  getAuditSummary: (filters: Pick<AuditFindingFilters, 'agent'> = {}) => {
-    const params = new URLSearchParams()
-    setTextParam(params, 'agent', filters.agent)
-    return request<AuditSummary>(queryPath('/api/audit/summary', params))
-  },
-  listAuditFindings: (filters: AuditFindingFilters = {}) => {
-    const params = new URLSearchParams()
-    setTextParam(params, 'agent', filters.agent)
-    setTextParam(params, 'category', filters.category)
-    setTextParam(params, 'severity', filters.severity)
-    setTextParam(params, 'shell', filters.shell)
-    setTextParam(params, 'search', filters.search)
-    setNumberParam(params, 'limit', filters.limit)
-    setNumberParam(params, 'offset', filters.offset)
-    return request<AuditFinding[]>(queryPath('/api/audit/findings', params))
-  },
+  getTools: (filters: ToolFilters = {}) =>
+    request<ToolStat[]>(queryPath('/api/tools', { agent: filters.agent })),
+  listToolCalls: (filters: ToolCallFilters = {}) =>
+    request<ToolCall[]>(queryPath('/api/tool-calls', {
+      tool: filters.tool,
+      agent: filters.agent,
+      from: filters.from,
+      to: filters.to,
+      sort: filters.sort,
+      limit: filters.limit,
+      offset: filters.offset
+    })),
+  getAuditSummary: (filters: Pick<AuditFindingFilters, 'agent'> = {}) =>
+    request<AuditSummary>(queryPath('/api/audit/summary', { agent: filters.agent })),
+  listAuditFindings: (filters: AuditFindingFilters = {}) =>
+    request<AuditFinding[]>(queryPath('/api/audit/findings', {
+      agent: filters.agent,
+      category: filters.category,
+      severity: filters.severity,
+      shell: filters.shell,
+      search: filters.search,
+      limit: filters.limit,
+      offset: filters.offset
+    })),
   getAuditFinding: (id: number) => request<AuditFinding>(`/api/audit/findings/${id}`),
   getPricingModels: () => request<PricingModel[]>('/api/pricing')
 }

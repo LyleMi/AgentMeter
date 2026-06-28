@@ -57,53 +57,67 @@ func analyticsFilters(r *http.Request) model.AnalyticsFilters {
 	}
 }
 
+func queryInt(r *http.Request, key string) int {
+	value, _ := strconv.Atoi(r.URL.Query().Get(key))
+	return value
+}
+
+func requirePrivacyTarget(w http.ResponseWriter, r *http.Request, service *App) (string, bool) {
+	target := r.PathValue("target")
+	if !service.SupportsPrivacyTarget(target) {
+		writeJSONError(w, http.StatusNotFound, "unsupported privacy target: "+target)
+		return "", false
+	}
+	return target, true
+}
+
+func decodeOptionalJSONBodyOrWrite(w http.ResponseWriter, r *http.Request, value any) bool {
+	if err := decodeOptionalJSONBody(r, value); err != nil {
+		writeJSON(w, nil, err)
+		return false
+	}
+	return true
+}
+
 func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 
 	mux.HandleFunc("GET /api/settings", func(w http.ResponseWriter, r *http.Request) {
 		value, err := service.GetSettings()
 		writeJSON(w, value, err)
 	})
-	writePrivacyTargetError := func(w http.ResponseWriter, target string) {
-		writeJSONError(w, http.StatusNotFound, "unsupported privacy target: "+target)
-	}
 	mux.HandleFunc("GET /api/privacy/{target}", func(w http.ResponseWriter, r *http.Request) {
-		target := r.PathValue("target")
-		if !service.SupportsPrivacyTarget(target) {
-			writePrivacyTargetError(w, target)
+		target, ok := requirePrivacyTarget(w, r, service)
+		if !ok {
 			return
 		}
 		value, err := service.GetPrivacyConfig(target)
 		writeJSON(w, value, err)
 	})
 	mux.HandleFunc("POST /api/privacy/{target}/apply", func(w http.ResponseWriter, r *http.Request) {
-		target := r.PathValue("target")
-		if !service.SupportsPrivacyTarget(target) {
-			writePrivacyTargetError(w, target)
+		target, ok := requirePrivacyTarget(w, r, service)
+		if !ok {
 			return
 		}
 
 		var body struct {
 			SettingIDs []string `json:"settingIds"`
 		}
-		if err := decodeOptionalJSONBody(r, &body); err != nil {
-			writeJSON(w, nil, err)
+		if !decodeOptionalJSONBodyOrWrite(w, r, &body) {
 			return
 		}
 		value, err := service.ApplyPrivacyConfig(target, body.SettingIDs)
 		writeJSON(w, value, err)
 	})
 	mux.HandleFunc("POST /api/privacy/{target}/profile", func(w http.ResponseWriter, r *http.Request) {
-		target := r.PathValue("target")
-		if !service.SupportsPrivacyTarget(target) {
-			writePrivacyTargetError(w, target)
+		target, ok := requirePrivacyTarget(w, r, service)
+		if !ok {
 			return
 		}
 
 		var body struct {
 			Profile string `json:"profile"`
 		}
-		if err := decodeOptionalJSONBody(r, &body); err != nil {
-			writeJSON(w, nil, err)
+		if !decodeOptionalJSONBodyOrWrite(w, r, &body) {
 			return
 		}
 		if strings.TrimSpace(body.Profile) == "" {
@@ -114,17 +128,15 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		writeJSON(w, value, err)
 	})
 	mux.HandleFunc("POST /api/privacy/{target}/changes", func(w http.ResponseWriter, r *http.Request) {
-		target := r.PathValue("target")
-		if !service.SupportsPrivacyTarget(target) {
-			writePrivacyTargetError(w, target)
+		target, ok := requirePrivacyTarget(w, r, service)
+		if !ok {
 			return
 		}
 
 		var body struct {
 			Changes []model.PrivacyConfigEdit `json:"changes"`
 		}
-		if err := decodeOptionalJSONBody(r, &body); err != nil {
-			writeJSON(w, nil, err)
+		if !decodeOptionalJSONBodyOrWrite(w, r, &body) {
 			return
 		}
 		value, err := service.ApplyPrivacyConfigChanges(target, body.Changes)
@@ -167,14 +179,12 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 	})
 	mux.HandleFunc("GET /api/sessions", func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
-		limit, _ := strconv.Atoi(query.Get("limit"))
-		offset, _ := strconv.Atoi(query.Get("offset"))
 		value, err := service.ListSessions(model.SessionFilters{
 			Search: query.Get("search"),
 			Model:  query.Get("model"),
 			Agent:  query.Get("agent"),
-			Limit:  limit,
-			Offset: offset,
+			Limit:  queryInt(r, "limit"),
+			Offset: queryInt(r, "offset"),
 		})
 		writeJSON(w, value, err)
 	})
@@ -196,16 +206,14 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 	})
 	mux.HandleFunc("GET /api/tool-calls", func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
-		limit, _ := strconv.Atoi(query.Get("limit"))
-		offset, _ := strconv.Atoi(query.Get("offset"))
 		value, err := service.ListToolCalls(model.ToolCallFilters{
 			ToolName:    query.Get("tool"),
 			Agent:       query.Get("agent"),
 			StartedFrom: query.Get("from"),
 			StartedTo:   query.Get("to"),
 			Sort:        query.Get("sort"),
-			Limit:       limit,
-			Offset:      offset,
+			Limit:       queryInt(r, "limit"),
+			Offset:      queryInt(r, "offset"),
 		})
 		writeJSON(w, value, err)
 	})
@@ -218,16 +226,14 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 	})
 	mux.HandleFunc("GET /api/audit/findings", func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
-		limit, _ := strconv.Atoi(query.Get("limit"))
-		offset, _ := strconv.Atoi(query.Get("offset"))
 		value, err := service.ListAuditFindings(model.AuditFindingFilters{
 			Category:    query.Get("category"),
 			Severity:    query.Get("severity"),
 			ShellFamily: query.Get("shell"),
 			Agent:       query.Get("agent"),
 			Search:      query.Get("search"),
-			Limit:       limit,
-			Offset:      offset,
+			Limit:       queryInt(r, "limit"),
+			Offset:      queryInt(r, "offset"),
 		})
 		writeJSON(w, value, err)
 	})
