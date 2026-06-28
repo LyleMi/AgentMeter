@@ -11,11 +11,12 @@ const router = createRouter({
       children: [
         { path: 'summary', component: () => import('./views/OverviewSummary.vue') },
         { path: 'trends', component: () => import('./views/OverviewTrends.vue') },
-        { path: 'time', component: () => import('./views/OverviewTime.vue') },
+        { path: 'time', redirect: '/time' },
         { path: 'breakdown', component: () => import('./views/OverviewBreakdown.vue') },
         { path: 'recent', component: () => import('./views/OverviewRecent.vue') }
       ]
     },
+    { path: '/time', component: () => import('./views/OverviewTime.vue') },
     { path: '/sessions', component: () => import('./views/Sessions.vue') },
     { path: '/sessions/:id', component: () => import('./views/SessionDetail.vue'), props: true },
     { path: '/audit', component: () => import('./views/Audit.vue') },

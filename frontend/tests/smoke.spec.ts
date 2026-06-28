@@ -8,7 +8,7 @@ interface SmokeRoute {
 
 const routes: SmokeRoute[] = [
   { path: '/#/overview/summary', hash: '#/overview/summary', title: /^(Overview|概览)$/ },
-  { path: '/#/overview/time', hash: '#/overview/time', title: /^(Overview|概览)$/ },
+  { path: '/#/time', hash: '#/time', title: /^(Time|耗时)$/ },
   { path: '/#/sessions', hash: '#/sessions', title: /^(Sessions|会话)$/ },
   { path: '/#/tools/overview', hash: '#/tools/overview', title: /^(Tools|工具)$/ },
   { path: '/#/tools/calls', hash: '#/tools/calls', title: /^(Tools|工具)$/ },

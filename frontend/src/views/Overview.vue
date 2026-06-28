@@ -7,7 +7,6 @@ import {
   BarChartOutlined,
   ClockCircleOutlined,
   DatabaseOutlined,
-  FieldTimeOutlined,
   HistoryOutlined,
   ReloadOutlined
 } from '@ant-design/icons-vue'
@@ -30,7 +29,6 @@ const { t } = useMessages({
     'action.refresh': 'Refresh',
     'tab.summary': 'Summary',
     'tab.trends': 'Trends',
-    'tab.time': 'Time',
     'tab.breakdown': 'Breakdown',
     'tab.recent': 'Recent',
     'message.indexed': '{indexed} indexed, {skipped} skipped, {failed} failed',
@@ -42,7 +40,6 @@ const { t } = useMessages({
     'action.refresh': '刷新',
     'tab.summary': '汇总',
     'tab.trends': '趋势',
-    'tab.time': '时间',
     'tab.breakdown': '拆分',
     'tab.recent': '最近',
     'message.indexed': '已索引 {indexed}，已跳过 {skipped}，失败 {failed}',
@@ -56,14 +53,12 @@ const sourcePathDisplay = computed(() => settings.value?.sourcePath || settings.
 const tabs = computed(() => [
   { key: 'summary', label: t('tab.summary'), path: '/overview/summary', icon: BarChartOutlined },
   { key: 'trends', label: t('tab.trends'), path: '/overview/trends', icon: ClockCircleOutlined },
-  { key: 'time', label: t('tab.time'), path: '/overview/time', icon: FieldTimeOutlined },
   { key: 'breakdown', label: t('tab.breakdown'), path: '/overview/breakdown', icon: DatabaseOutlined },
   { key: 'recent', label: t('tab.recent'), path: '/overview/recent', icon: HistoryOutlined }
 ])
 
 const activeKey = computed(() => {
   if (route.path.startsWith('/overview/trends')) return 'trends'
-  if (route.path.startsWith('/overview/time')) return 'time'
   if (route.path.startsWith('/overview/breakdown')) return 'breakdown'
   if (route.path.startsWith('/overview/recent')) return 'recent'
   return 'summary'

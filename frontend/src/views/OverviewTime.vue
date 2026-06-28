@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, type Component, type DefineComponent } from 'vue'
+import { computed, onMounted, ref, type Component, type DefineComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import AButton from 'ant-design-vue/es/button'
 import ASpin from 'ant-design-vue/es/spin'
@@ -10,10 +10,12 @@ import {
   ArrowRightOutlined,
   ClockCircleOutlined,
   FieldTimeOutlined,
+  ReloadOutlined,
   TableOutlined,
   ToolOutlined
 } from '@ant-design/icons-vue'
 import {
+  api,
   formatDateTime,
   formatDuration,
   formatNumber,
@@ -21,19 +23,24 @@ import {
   shortPath,
   type AgentTimeUsage,
   type ModelTimeUsage,
+  type Overview,
   type Session,
   type ToolTimeUsage
 } from '../api'
+import PageHeader from '../components/PageHeader.vue'
 import { useMessages } from '../i18n'
-import { useOverviewContext } from './overviewContext'
 
 const ATable = AntTable as unknown as DefineComponent
 const ATypographyText = Typography.Text
 
 const router = useRouter()
-const { overview, loading, hasIndexedData } = useOverviewContext()
+const loading = ref(true)
+const overview = ref<Overview | null>(null)
 const { t, createNumberFormatter } = useMessages({
   en: {
+    'title': 'Time',
+    'subtitle': 'Wall-time attribution across model, tool, agent, and slow session activity',
+    'action.refresh': 'Refresh',
     'composition.title': 'Time Composition',
     'composition.kicker': 'Exclusive wall-time split. Network-likely tool time is inferred from tool name/input, not network telemetry.',
     'composition.model': 'Model',
@@ -91,6 +98,9 @@ const { t, createNumberFormatter } = useMessages({
     'fallback.unknown': 'unknown'
   },
   'zh-CN': {
+    'title': '耗时',
+    'subtitle': '按模型、工具、Agent 和慢会话归因墙钟耗时',
+    'action.refresh': '刷新',
     'composition.title': '时间构成',
     'composition.kicker': '按墙钟时间互斥拆分。疑似网络工具耗时由工具名/输入推断，不是网络遥测。',
     'composition.model': '模型',
@@ -165,6 +175,7 @@ interface KpiCard {
   icon: Component
 }
 
+const hasIndexedData = computed(() => (overview.value?.totalSessions || 0) > 0)
 const wallDurationMs = computed(() => Math.max(0, overview.value?.totalWallDurationMs || 0))
 const activeDurationMs = computed(() => Math.max(0, overview.value?.totalActiveDurationMs || 0))
 const toolDurationMs = computed(() => Math.max(0, overview.value?.totalToolDurationMs || 0))
@@ -331,280 +342,304 @@ function openSession(id: number) {
 function slowSessionRow(record: Session) {
   return { class: 'overview-session-row is-clickable-row', onClick: () => openSession(record.id) }
 }
+
+async function load() {
+  loading.value = true
+  try {
+    overview.value = await api.getOverview()
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(load)
 </script>
 
 <template>
-  <a-spin :spinning="loading">
-    <div v-if="hasIndexedData" class="overview-time-view">
-      <section class="overview-time-top">
-        <section class="panel overview-time-composition">
-          <div class="panel-header">
-            <div>
-              <h2 class="panel-title">{{ t('composition.title') }}</h2>
-              <div class="panel-kicker">{{ t('composition.kicker') }}</div>
+  <div class="page">
+    <PageHeader :title="t('title')" :subtitle="t('subtitle')">
+      <template #actions>
+        <a-button :loading="loading" @click="load">
+          <template #icon>
+            <ReloadOutlined />
+          </template>
+          {{ t('action.refresh') }}
+        </a-button>
+      </template>
+    </PageHeader>
+
+    <a-spin :spinning="loading">
+      <div v-if="hasIndexedData" class="overview-time-view">
+        <section class="overview-time-top">
+          <section class="panel overview-time-composition">
+            <div class="panel-header">
+              <div>
+                <h2 class="panel-title">{{ t('composition.title') }}</h2>
+                <div class="panel-kicker">{{ t('composition.kicker') }}</div>
+              </div>
+              <FieldTimeOutlined class="panel-header-icon" />
             </div>
-            <FieldTimeOutlined class="panel-header-icon" />
-          </div>
-          <div class="overview-time-composition-body">
-            <div class="overview-time-total">
-              <span class="metric-label">{{ t('composition.total') }}</span>
-              <strong>{{ formatDuration(wallDurationMs) }}</strong>
-            </div>
-            <div class="overview-time-bar" :aria-label="t('composition.title')">
-              <span
-                v-for="item in compositionSegments"
-                :key="item.key"
-                :class="['overview-time-bar-segment', item.tone]"
-                :style="{ width: item.width }"
-                :title="`${item.label}: ${formatDuration(item.value)} (${formatPercent(item.share)})`"
-              />
-            </div>
-            <div class="overview-time-segments">
-              <div v-for="item in compositionSegments" :key="item.key" class="overview-time-segment">
-                <span :class="['overview-time-dot', item.tone]"></span>
-                <div>
-                  <div class="overview-time-segment-label">{{ item.label }}</div>
-                  <div class="overview-time-segment-value">
-                    {{ formatDuration(item.value) }}
-                    <span>{{ formatPercent(item.share) }}</span>
+            <div class="overview-time-composition-body">
+              <div class="overview-time-total">
+                <span class="metric-label">{{ t('composition.total') }}</span>
+                <strong>{{ formatDuration(wallDurationMs) }}</strong>
+              </div>
+              <div class="overview-time-bar" :aria-label="t('composition.title')">
+                <span
+                  v-for="item in compositionSegments"
+                  :key="item.key"
+                  :class="['overview-time-bar-segment', item.tone]"
+                  :style="{ width: item.width }"
+                  :title="`${item.label}: ${formatDuration(item.value)} (${formatPercent(item.share)})`"
+                />
+              </div>
+              <div class="overview-time-segments">
+                <div v-for="item in compositionSegments" :key="item.key" class="overview-time-segment">
+                  <span :class="['overview-time-dot', item.tone]"></span>
+                  <div>
+                    <div class="overview-time-segment-label">{{ item.label }}</div>
+                    <div class="overview-time-segment-value">
+                      {{ formatDuration(item.value) }}
+                      <span>{{ formatPercent(item.share) }}</span>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
+          </section>
+
+          <div class="overview-time-kpis">
+            <div v-for="item in kpiCards" :key="item.label" class="overview-kpi-card overview-time-kpi-card">
+              <div class="overview-kpi-head">
+                <span class="metric-label">{{ item.label }}</span>
+                <component :is="item.icon" class="metric-icon" />
+              </div>
+              <div class="overview-kpi-value" :title="item.value">
+                <span>{{ item.value }}</span>
+              </div>
+              <div class="overview-kpi-note">{{ item.note }}</div>
+            </div>
           </div>
         </section>
 
-        <div class="overview-time-kpis">
-          <div v-for="item in kpiCards" :key="item.label" class="overview-kpi-card overview-time-kpi-card">
-            <div class="overview-kpi-head">
-              <span class="metric-label">{{ item.label }}</span>
-              <component :is="item.icon" class="metric-icon" />
-            </div>
-            <div class="overview-kpi-value" :title="item.value">
-              <span>{{ item.value }}</span>
-            </div>
-            <div class="overview-kpi-note">{{ item.note }}</div>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel overview-time-panel">
-        <div class="panel-header">
-          <div>
-            <h2 class="panel-title">{{ t('tools.title') }}</h2>
-            <div class="panel-kicker">{{ t('tools.kicker') }}</div>
-          </div>
-          <ToolOutlined class="panel-header-icon" />
-        </div>
-        <a-table
-          v-if="hasToolLeaders"
-          class="dense-table overview-time-table"
-          size="small"
-          :columns="toolColumns"
-          :data-source="rankedToolLeaders"
-          :pagination="false"
-          :row-key="toolRowKey"
-          :scroll="{ x: 940 }"
-        >
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'toolName'">
-              <a-typography-text :ellipsis="{ tooltip: record.toolName }">
-                {{ record.toolName || t('fallback.unknown') }}
-              </a-typography-text>
-            </template>
-            <template v-else-if="column.key === 'calls'">
-              <span class="number-cell">{{ formatNumber(record.calls) }}</span>
-            </template>
-            <template v-else-if="column.key === 'success'">
-              <span class="number-cell">{{ formatNumber(record.successCalls) }}</span>
-            </template>
-            <template v-else-if="column.key === 'failed'">
-              <span class="number-cell" :class="{ 'status-error': record.failedCalls > 0 }">{{ formatNumber(record.failedCalls) }}</span>
-            </template>
-            <template v-else-if="column.key === 'total'">
-              <span class="number-cell duration-cell">{{ formatDuration(record.totalDurationMs) }}</span>
-            </template>
-            <template v-else-if="column.key === 'average'">
-              <span class="number-cell duration-cell">{{ formatDuration(record.avgDurationMs) }}</span>
-            </template>
-            <template v-else-if="column.key === 'max'">
-              <span class="number-cell duration-cell">{{ formatDuration(record.maxDurationMs) }}</span>
-            </template>
-            <template v-else-if="column.key === 'network'">
-              <a-tag v-if="record.suspectedNetwork" color="processing" class="status-tag">{{ t('status.networkLikely') }}</a-tag>
-              <span v-else class="muted">{{ t('status.notNetwork') }}</span>
-            </template>
-          </template>
-        </a-table>
-        <div v-else class="empty-state empty-state-compact">
-          <ToolOutlined class="empty-state-icon" />
-          <div class="empty-state-title">{{ t('empty.tools') }}</div>
-          <div class="empty-state-text">{{ t('empty.text') }}</div>
-        </div>
-        <div class="panel-footer-note">{{ t('tools.networkHint') }}</div>
-      </section>
-
-      <section class="overview-time-attribution-grid">
         <section class="panel overview-time-panel">
           <div class="panel-header">
             <div>
-              <h2 class="panel-title">{{ t('agent.title') }}</h2>
-              <div class="panel-kicker">{{ t('agent.kicker') }}</div>
+              <h2 class="panel-title">{{ t('tools.title') }}</h2>
+              <div class="panel-kicker">{{ t('tools.kicker') }}</div>
             </div>
-            <TableOutlined class="panel-header-icon" />
+            <ToolOutlined class="panel-header-icon" />
           </div>
           <a-table
-            v-if="hasAgentTimeUsage"
+            v-if="hasToolLeaders"
             class="dense-table overview-time-table"
             size="small"
-            :columns="agentColumns"
-            :data-source="rankedAgentTimeUsage"
+            :columns="toolColumns"
+            :data-source="rankedToolLeaders"
             :pagination="false"
-            :row-key="agentRowKey"
-            :scroll="{ x: 930 }"
+            :row-key="toolRowKey"
+            :scroll="{ x: 940 }"
           >
             <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'agent'">
-                <div class="model-rank-cell">
-                  <span class="model-name">{{ record.agentName || record.agentKind || t('fallback.unknown') }}</span>
-                </div>
-                <div class="timeline-event-raw">{{ record.agentKind || '-' }}</div>
-              </template>
-              <template v-else-if="column.key === 'sessions'">
-                <span class="number-cell">{{ formatNumber(record.sessionCount) }}</span>
+              <template v-if="column.key === 'toolName'">
+                <a-typography-text :ellipsis="{ tooltip: record.toolName }">
+                  {{ record.toolName || t('fallback.unknown') }}
+                </a-typography-text>
               </template>
               <template v-else-if="column.key === 'calls'">
-                <span class="number-cell">{{ formatNumber(record.toolCalls) }}</span>
+                <span class="number-cell">{{ formatNumber(record.calls) }}</span>
               </template>
-              <template v-else>
-                <span class="number-cell duration-cell">{{ formatDuration(record[column.dataIndex]) }}</span>
+              <template v-else-if="column.key === 'success'">
+                <span class="number-cell">{{ formatNumber(record.successCalls) }}</span>
+              </template>
+              <template v-else-if="column.key === 'failed'">
+                <span class="number-cell" :class="{ 'status-error': record.failedCalls > 0 }">{{ formatNumber(record.failedCalls) }}</span>
+              </template>
+              <template v-else-if="column.key === 'total'">
+                <span class="number-cell duration-cell">{{ formatDuration(record.totalDurationMs) }}</span>
+              </template>
+              <template v-else-if="column.key === 'average'">
+                <span class="number-cell duration-cell">{{ formatDuration(record.avgDurationMs) }}</span>
+              </template>
+              <template v-else-if="column.key === 'max'">
+                <span class="number-cell duration-cell">{{ formatDuration(record.maxDurationMs) }}</span>
+              </template>
+              <template v-else-if="column.key === 'network'">
+                <a-tag v-if="record.suspectedNetwork" color="processing" class="status-tag">{{ t('status.networkLikely') }}</a-tag>
+                <span v-else class="muted">{{ t('status.notNetwork') }}</span>
               </template>
             </template>
           </a-table>
           <div v-else class="empty-state empty-state-compact">
-            <TableOutlined class="empty-state-icon" />
-            <div class="empty-state-title">{{ t('empty.agents') }}</div>
+            <ToolOutlined class="empty-state-icon" />
+            <div class="empty-state-title">{{ t('empty.tools') }}</div>
             <div class="empty-state-text">{{ t('empty.text') }}</div>
           </div>
+          <div class="panel-footer-note">{{ t('tools.networkHint') }}</div>
+        </section>
+
+        <section class="overview-time-attribution-grid">
+          <section class="panel overview-time-panel">
+            <div class="panel-header">
+              <div>
+                <h2 class="panel-title">{{ t('agent.title') }}</h2>
+                <div class="panel-kicker">{{ t('agent.kicker') }}</div>
+              </div>
+              <TableOutlined class="panel-header-icon" />
+            </div>
+            <a-table
+              v-if="hasAgentTimeUsage"
+              class="dense-table overview-time-table"
+              size="small"
+              :columns="agentColumns"
+              :data-source="rankedAgentTimeUsage"
+              :pagination="false"
+              :row-key="agentRowKey"
+              :scroll="{ x: 930 }"
+            >
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.key === 'agent'">
+                  <div class="model-rank-cell">
+                    <span class="model-name">{{ record.agentName || record.agentKind || t('fallback.unknown') }}</span>
+                  </div>
+                  <div class="timeline-event-raw">{{ record.agentKind || '-' }}</div>
+                </template>
+                <template v-else-if="column.key === 'sessions'">
+                  <span class="number-cell">{{ formatNumber(record.sessionCount) }}</span>
+                </template>
+                <template v-else-if="column.key === 'calls'">
+                  <span class="number-cell">{{ formatNumber(record.toolCalls) }}</span>
+                </template>
+                <template v-else>
+                  <span class="number-cell duration-cell">{{ formatDuration(record[column.dataIndex]) }}</span>
+                </template>
+              </template>
+            </a-table>
+            <div v-else class="empty-state empty-state-compact">
+              <TableOutlined class="empty-state-icon" />
+              <div class="empty-state-title">{{ t('empty.agents') }}</div>
+              <div class="empty-state-text">{{ t('empty.text') }}</div>
+            </div>
+          </section>
+
+          <section class="panel overview-time-panel">
+            <div class="panel-header">
+              <div>
+                <h2 class="panel-title">{{ t('model.title') }}</h2>
+                <div class="panel-kicker">{{ t('model.kicker') }}</div>
+              </div>
+              <TableOutlined class="panel-header-icon" />
+            </div>
+            <a-table
+              v-if="hasModelTimeUsage"
+              class="dense-table overview-time-table"
+              size="small"
+              :columns="modelColumns"
+              :data-source="rankedModelTimeUsage"
+              :pagination="false"
+              :row-key="modelRowKey"
+              :scroll="{ x: 880 }"
+            >
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.key === 'model'">
+                  <a-typography-text class="model-name" :ellipsis="{ tooltip: record.model }">
+                    {{ record.model || t('fallback.unknown') }}
+                  </a-typography-text>
+                </template>
+                <template v-else-if="column.key === 'sessions'">
+                  <span class="number-cell">{{ formatNumber(record.sessionCount) }}</span>
+                </template>
+                <template v-else-if="column.key === 'tokens'">
+                  <span class="number-cell">{{ formatNumber(record.totalTokens) }}</span>
+                </template>
+                <template v-else>
+                  <span class="number-cell duration-cell">{{ formatDuration(record[column.dataIndex]) }}</span>
+                </template>
+              </template>
+            </a-table>
+            <div v-else class="empty-state empty-state-compact">
+              <TableOutlined class="empty-state-icon" />
+              <div class="empty-state-title">{{ t('empty.models') }}</div>
+              <div class="empty-state-text">{{ t('empty.text') }}</div>
+            </div>
+          </section>
         </section>
 
         <section class="panel overview-time-panel">
           <div class="panel-header">
             <div>
-              <h2 class="panel-title">{{ t('model.title') }}</h2>
-              <div class="panel-kicker">{{ t('model.kicker') }}</div>
+              <h2 class="panel-title">{{ t('sessions.title') }}</h2>
+              <div class="panel-kicker">{{ t('sessions.kicker') }}</div>
             </div>
-            <TableOutlined class="panel-header-icon" />
+            <ClockCircleOutlined class="panel-header-icon" />
           </div>
           <a-table
-            v-if="hasModelTimeUsage"
-            class="dense-table overview-time-table"
+            v-if="hasSlowSessions"
+            class="overview-session-table overview-time-table"
             size="small"
-            :columns="modelColumns"
-            :data-source="rankedModelTimeUsage"
+            :columns="slowSessionColumns"
+            :data-source="slowSessions"
             :pagination="false"
-            :row-key="modelRowKey"
-            :scroll="{ x: 880 }"
+            row-key="id"
+            :custom-row="slowSessionRow"
+            :scroll="{ x: 1150 }"
           >
             <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'model'">
+              <template v-if="column.key === 'project'">
+                <div class="overview-session-identity">
+                  <a-typography-text class="overview-session-project" :ellipsis="{ tooltip: record.projectPath }">
+                    {{ shortPath(record.projectPath) }}
+                  </a-typography-text>
+                  <span class="overview-session-meta mono">{{ sessionLabel(record) }}</span>
+                </div>
+              </template>
+              <template v-else-if="column.key === 'agent'">
+                <a-tag class="model-lite-tag">{{ record.agentName || record.agentKind || t('fallback.unknown') }}</a-tag>
+              </template>
+              <template v-else-if="column.key === 'model'">
                 <a-typography-text class="model-name" :ellipsis="{ tooltip: record.model }">
                   {{ record.model || t('fallback.unknown') }}
                 </a-typography-text>
               </template>
-              <template v-else-if="column.key === 'sessions'">
-                <span class="number-cell">{{ formatNumber(record.sessionCount) }}</span>
+              <template v-else-if="column.key === 'wall'">
+                <span class="number-cell">{{ formatDuration(record.wallDurationMs) }}</span>
               </template>
-              <template v-else-if="column.key === 'tokens'">
-                <span class="number-cell">{{ formatNumber(record.totalTokens) }}</span>
+              <template v-else-if="column.key === 'active'">
+                <span class="number-cell">{{ formatDuration(record.activeDurationMs) }}</span>
               </template>
-              <template v-else>
-                <span class="number-cell duration-cell">{{ formatDuration(record[column.dataIndex]) }}</span>
+              <template v-else-if="column.key === 'modelTime'">
+                <span class="number-cell">{{ formatDuration(record.modelDurationMs) }}</span>
+              </template>
+              <template v-else-if="column.key === 'toolTime'">
+                <span class="number-cell">{{ formatDuration(record.toolDurationMs) }}</span>
+              </template>
+              <template v-else-if="column.key === 'started'">
+                {{ formatDateTime(record.startedAt) }}
+              </template>
+              <template v-else-if="column.key === 'open'">
+                <a-button type="text" size="small" :aria-label="t('column.open')" @click.stop="openSession(record.id)">
+                  <template #icon>
+                    <ArrowRightOutlined />
+                  </template>
+                </a-button>
               </template>
             </template>
           </a-table>
           <div v-else class="empty-state empty-state-compact">
-            <TableOutlined class="empty-state-icon" />
-            <div class="empty-state-title">{{ t('empty.models') }}</div>
+            <ClockCircleOutlined class="empty-state-icon" />
+            <div class="empty-state-title">{{ t('empty.sessions') }}</div>
             <div class="empty-state-text">{{ t('empty.text') }}</div>
           </div>
         </section>
-      </section>
+      </div>
 
-      <section class="panel overview-time-panel">
-        <div class="panel-header">
-          <div>
-            <h2 class="panel-title">{{ t('sessions.title') }}</h2>
-            <div class="panel-kicker">{{ t('sessions.kicker') }}</div>
-          </div>
-          <ClockCircleOutlined class="panel-header-icon" />
-        </div>
-        <a-table
-          v-if="hasSlowSessions"
-          class="overview-session-table overview-time-table"
-          size="small"
-          :columns="slowSessionColumns"
-          :data-source="slowSessions"
-          :pagination="false"
-          row-key="id"
-          :custom-row="slowSessionRow"
-          :scroll="{ x: 1150 }"
-        >
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'project'">
-              <div class="overview-session-identity">
-                <a-typography-text class="overview-session-project" :ellipsis="{ tooltip: record.projectPath }">
-                  {{ shortPath(record.projectPath) }}
-                </a-typography-text>
-                <span class="overview-session-meta mono">{{ sessionLabel(record) }}</span>
-              </div>
-            </template>
-            <template v-else-if="column.key === 'agent'">
-              <a-tag class="model-lite-tag">{{ record.agentName || record.agentKind || t('fallback.unknown') }}</a-tag>
-            </template>
-            <template v-else-if="column.key === 'model'">
-              <a-typography-text class="model-name" :ellipsis="{ tooltip: record.model }">
-                {{ record.model || t('fallback.unknown') }}
-              </a-typography-text>
-            </template>
-            <template v-else-if="column.key === 'wall'">
-              <span class="number-cell">{{ formatDuration(record.wallDurationMs) }}</span>
-            </template>
-            <template v-else-if="column.key === 'active'">
-              <span class="number-cell">{{ formatDuration(record.activeDurationMs) }}</span>
-            </template>
-            <template v-else-if="column.key === 'modelTime'">
-              <span class="number-cell">{{ formatDuration(record.modelDurationMs) }}</span>
-            </template>
-            <template v-else-if="column.key === 'toolTime'">
-              <span class="number-cell">{{ formatDuration(record.toolDurationMs) }}</span>
-            </template>
-            <template v-else-if="column.key === 'started'">
-              {{ formatDateTime(record.startedAt) }}
-            </template>
-            <template v-else-if="column.key === 'open'">
-              <a-button type="text" size="small" :aria-label="t('column.open')" @click.stop="openSession(record.id)">
-                <template #icon>
-                  <ArrowRightOutlined />
-                </template>
-              </a-button>
-            </template>
-          </template>
-        </a-table>
-        <div v-else class="empty-state empty-state-compact">
-          <ClockCircleOutlined class="empty-state-icon" />
-          <div class="empty-state-title">{{ t('empty.sessions') }}</div>
-          <div class="empty-state-text">{{ t('empty.text') }}</div>
-        </div>
-      </section>
-    </div>
-
-    <div v-else-if="!loading" class="empty-state">
-      <FieldTimeOutlined class="empty-state-icon" />
-      <div class="empty-state-title">{{ t('empty.title') }}</div>
-      <div class="empty-state-text">{{ t('empty.text') }}</div>
-    </div>
-  </a-spin>
+      <div v-else-if="!loading" class="empty-state">
+        <FieldTimeOutlined class="empty-state-icon" />
+        <div class="empty-state-title">{{ t('empty.title') }}</div>
+        <div class="empty-state-text">{{ t('empty.text') }}</div>
+      </div>
+    </a-spin>
+  </div>
 </template>
 
 <style scoped>
