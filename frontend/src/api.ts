@@ -250,6 +250,8 @@ export interface PrivacyConfigSummary {
   implicit: number
 }
 
+export type PrivacyConfigValueType = 'bool' | 'string' | 'stringArray'
+
 export interface PrivacyConfigSetting {
   id: string
   group: string
@@ -257,7 +259,11 @@ export interface PrivacyConfigSetting {
   description: string
   key: string
   desiredValue: unknown
+  strictValue: unknown
   currentValue: unknown
+  valueType: PrivacyConfigValueType
+  configured: boolean
+  supportsUnset: boolean
   status: string
   impact: string
   canApply: boolean
@@ -285,6 +291,12 @@ export interface PrivacyConfigApplyResult {
   changed: PrivacyConfigChanged[]
   backupPath?: string
   warnings: string[]
+}
+
+export interface PrivacyConfigChange {
+  id: string
+  op: 'set' | 'unset'
+  value?: unknown
 }
 
 export type PrivacyTarget = 'codex' | 'gemini'
@@ -347,6 +359,11 @@ export const api = {
     request<PrivacyConfigApplyResult>(`/api/privacy/${target}/apply`, {
       method: 'POST',
       body: JSON.stringify({ settingIds })
+    }),
+  applyAgentPrivacyChanges: (target: PrivacyTarget, changes: PrivacyConfigChange[]) =>
+    request<PrivacyConfigApplyResult>(`/api/privacy/${target}/changes`, {
+      method: 'POST',
+      body: JSON.stringify({ changes })
     }),
   indexNow: (rebuild = false) =>
     request<IndexResult>('/api/index', { method: 'POST', body: JSON.stringify({ rebuild }) }),

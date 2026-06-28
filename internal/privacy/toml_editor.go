@@ -118,6 +118,19 @@ func (d *tomlDocument) Set(table, key string, value configValue) {
 	d.index()
 }
 
+func (d *tomlDocument) Unset(table, key string) {
+	fullKey := key
+	if table != "" {
+		fullKey = table + "." + key
+	}
+	position, ok := d.positions[fullKey]
+	if !ok {
+		return
+	}
+	d.lines = append(d.lines[:position], d.lines[position+1:]...)
+	d.index()
+}
+
 func (d *tomlDocument) insertLine(index int, line string) {
 	if index < 0 || index > len(d.lines) {
 		index = len(d.lines)

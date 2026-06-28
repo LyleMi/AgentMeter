@@ -252,6 +252,44 @@ func TestPrivacyGeminiHTTPApplyEmptyBodyAppliesAll(t *testing.T) {
 	}
 }
 
+func TestPrivacyCodexHTTPChangesAppliesEditableChanges(t *testing.T) {
+	codexHome := filepath.Join(t.TempDir(), "codex-home")
+	t.Setenv("CODEX_HOME", codexHome)
+	if err := os.MkdirAll(codexHome, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(codexHome, "config.toml")
+	if err := os.WriteFile(configPath, []byte("[analytics]\nenabled = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterHTTPHandlers(mux, &App{}, fstest.MapFS{})
+
+	recorder := httptest.NewRecorder()
+	body := strings.NewReader(`{"changes":[{"id":"analytics.enabled","op":"set","value":false}]}`)
+	request := httptest.NewRequest(http.MethodPost, "/api/privacy/codex/changes", body)
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var result model.PrivacyConfigApplyResult
+	if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Changed) != 1 {
+		t.Fatalf("changed = %d, want 1: %#v", len(result.Changed), result.Changed)
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "enabled = false") {
+		t.Fatalf("config was not updated:\n%s", content)
+	}
+}
+
 func containsExactSourcePath(paths []string, path string) bool {
 	key := sourcePathKey(filepath.Clean(path))
 	for _, candidate := range normalizeSourcePaths(paths) {

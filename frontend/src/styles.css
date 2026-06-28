@@ -2001,56 +2001,220 @@ body {
   background: #f0f9ff;
 }
 
-.privacy-score strong {
-  font-size: 16px;
-  font-weight: 760;
+.privacy-config-meta {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.privacy-count-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(108px, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius);
+  background: #ffffff;
+}
+
+.privacy-count-item {
+  min-width: 0;
+  padding: 11px 12px;
+  border-right: 1px solid var(--am-border-subtle);
+  background: var(--am-surface-subtle);
+}
+
+.privacy-count-item:last-child {
+  border-right: 0;
+}
+
+.privacy-count-item strong {
+  display: block;
+  color: var(--am-text);
+  font-size: 20px;
+  font-weight: 780;
+  line-height: 26px;
   font-variant-numeric: tabular-nums;
 }
 
-.privacy-settings-table .ant-table-tbody > tr.privacy-row-attention > td {
+.privacy-count-item.is-success strong {
+  color: var(--am-success);
+}
+
+.privacy-count-item.is-warning {
+  background: var(--am-warning-soft);
+}
+
+.privacy-count-item.is-warning strong {
+  color: var(--am-warning);
+}
+
+.privacy-edit-toolbar {
+  margin-bottom: 0;
+}
+
+.privacy-group-list {
+  display: grid;
+  gap: 14px;
+}
+
+.privacy-group-section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.privacy-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.privacy-group-header h3 {
+  min-width: 0;
+  margin: 0;
+  color: var(--am-text);
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.privacy-setting-list {
+  display: grid;
+  gap: 8px;
+}
+
+.privacy-setting-card {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.2fr) minmax(260px, 0.95fr) minmax(220px, 0.75fr) auto;
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+  padding: 11px;
+  background: #ffffff;
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius-sm);
+}
+
+.privacy-setting-card.is-attention {
+  border-color: #fde68a;
   background: #fffdf5;
 }
 
-.privacy-settings-table .ant-table-tbody > tr.privacy-row-attention:hover > td {
-  background: #fff8e1 !important;
+.privacy-setting-card.is-changed {
+  box-shadow: inset 3px 0 0 var(--am-primary);
 }
 
-.privacy-setting-cell {
+.privacy-setting-main,
+.privacy-setting-values,
+.privacy-editor {
+  min-width: 0;
+}
+
+.privacy-setting-heading {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
   min-width: 0;
-  gap: 4px;
-}
-
-.privacy-setting-head {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  gap: 8px;
 }
 
 .privacy-setting-title {
   min-width: 0;
-  overflow: hidden;
   color: var(--am-text);
-  font-weight: 680;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 19px;
+  overflow-wrap: anywhere;
 }
 
 .privacy-setting-description,
 .privacy-impact {
-  display: -webkit-box;
-  overflow: hidden;
+  margin-top: 3px;
   color: var(--am-muted);
   font-size: 12px;
   line-height: 18px;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
 }
 
-.privacy-value {
+.privacy-setting-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+  max-width: 240px;
+}
+
+.privacy-setting-key {
+  margin-top: 7px;
+}
+
+.privacy-copy-block {
   display: block;
   max-width: 100%;
+  padding: 6px 7px;
+  color: var(--am-text-soft);
+  line-height: 17px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  background: var(--am-surface-subtle);
+  border: 1px solid var(--am-border-subtle);
+  border-radius: var(--am-radius-sm);
+}
+
+.privacy-copy-block .ant-typography-copy {
+  margin-inline-start: 6px;
+}
+
+.privacy-setting-values {
+  display: grid;
+  gap: 7px;
+}
+
+.privacy-value-block {
+  min-width: 0;
+}
+
+.privacy-type-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  color: var(--am-text-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  background: var(--am-surface-subtle);
+  border: 1px solid var(--am-border-subtle);
+  border-radius: var(--am-radius-sm);
+}
+
+.privacy-editor {
+  display: grid;
+  gap: 6px;
+}
+
+.privacy-string-editor,
+.privacy-array-editor {
+  width: 100%;
+}
+
+.privacy-array-editor .ant-select-selection-item {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.privacy-setting-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  width: 178px;
+}
+
+.privacy-setting-actions .ant-btn {
+  width: 100%;
 }
 
 .privacy-change-list {
@@ -2074,9 +2238,8 @@ body {
 
 .privacy-change-row span {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .status-number-cell {
@@ -2270,6 +2433,31 @@ body {
   .info-block-grid,
   .index-result-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .privacy-count-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .privacy-count-item {
+    border-bottom: 1px solid var(--am-border-subtle);
+  }
+
+  .privacy-count-item:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .privacy-setting-card {
+    grid-template-columns: 1fr;
+  }
+
+  .privacy-setting-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .privacy-setting-actions .ant-btn {
+    width: auto;
   }
 
   .session-summary-meta {

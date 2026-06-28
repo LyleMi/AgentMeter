@@ -463,12 +463,20 @@ func (a *App) ApplyCodexPrivacyConfig(settingIDs []string) (model.PrivacyConfigA
 	return privacy.NewCodexAdapter().Apply(settingIDs)
 }
 
+func (a *App) ApplyCodexPrivacyConfigChanges(changes []model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error) {
+	return privacy.NewCodexAdapter().ApplyChanges(changes)
+}
+
 func (a *App) GetGeminiPrivacyConfig() (model.PrivacyConfigStatus, error) {
 	return privacy.NewGeminiAdapter().Status()
 }
 
 func (a *App) ApplyGeminiPrivacyConfig(settingIDs []string) (model.PrivacyConfigApplyResult, error) {
 	return privacy.NewGeminiAdapter().Apply(settingIDs)
+}
+
+func (a *App) ApplyGeminiPrivacyConfigChanges(changes []model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error) {
+	return privacy.NewGeminiAdapter().ApplyChanges(changes)
 }
 
 func (a *App) ensureReady() error {

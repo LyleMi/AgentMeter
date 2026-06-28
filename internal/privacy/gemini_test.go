@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"AgentMeter/internal/model"
 )
 
 func TestGeminiStatusMissingConfig(t *testing.T) {
@@ -125,6 +127,122 @@ func TestGeminiApplyCreatesSettingsAndMergesWebToolExcludes(t *testing.T) {
 	}
 	if settingStatus(result.Status.Settings, "tools.exclude.web") != statusHardened {
 		t.Fatalf("web tools should be hardened after apply")
+	}
+}
+
+func TestGeminiApplyChangesSetsCustomValue(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), ".gemini", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(`{"tools":{"exclude":["write_file"]}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	adapter := NewGeminiAdapter()
+	adapter.ConfigPath = configPath
+	result, err := adapter.ApplyChanges([]model.PrivacyConfigEdit{
+		{ID: "tools.exclude.web", Op: "set", Value: []any{"google_web_search"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Changed) != 1 {
+		t.Fatalf("changed = %d, want 1: %#v", len(result.Changed), result.Changed)
+	}
+
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved map[string]any
+	if err := json.Unmarshal(content, &saved); err != nil {
+		t.Fatal(err)
+	}
+	exclude := saved["tools"].(map[string]any)["exclude"].([]any)
+	if len(exclude) != 1 || exclude[0] != "google_web_search" {
+		t.Fatalf("tools.exclude should be replaced by custom value: %#v", exclude)
+	}
+	setting := findSetting(result.Status.Settings, "tools.exclude.web")
+	if setting == nil {
+		t.Fatal("tools.exclude.web setting missing")
+	}
+	if setting.ValueType != "stringArray" || !setting.Configured || !setting.SupportsUnset {
+		t.Fatalf("setting metadata = %#v", setting)
+	}
+}
+
+func TestGeminiStatusStrictArrayPreservesExistingExcludes(t *testing.T) {
+	content := []byte(`{
+  "tools": { "exclude": ["write_file"] }
+}`)
+
+	status := buildGeminiStatus(filepath.Join("gemini", "settings.json"), true, content, nil)
+	setting := findSetting(status.Settings, "tools.exclude.web")
+	if setting == nil {
+		t.Fatal("tools.exclude.web setting missing")
+	}
+	strict, ok := setting.StrictValue.([]any)
+	if !ok {
+		t.Fatalf("strict value = %#v", setting.StrictValue)
+	}
+	for _, want := range []string{"write_file", "google_web_search", "web_fetch"} {
+		if !jsonArrayContainsString(strict, want) {
+			t.Fatalf("strict value missing %q: %#v", want, strict)
+		}
+	}
+}
+
+func TestGeminiApplyChangesUnsetsNestedKey(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), ".gemini", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := []byte(`{
+  "general": {
+    "sessionRetention": {
+      "enabled": true,
+      "maxAge": "14d"
+    }
+  }
+}`)
+	if err := os.WriteFile(configPath, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	adapter := NewGeminiAdapter()
+	adapter.ConfigPath = configPath
+	result, err := adapter.ApplyChanges([]model.PrivacyConfigEdit{
+		{ID: "general.sessionRetention.maxAge", Op: "unset"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Changed) != 1 {
+		t.Fatalf("changed = %d, want 1: %#v", len(result.Changed), result.Changed)
+	}
+	if result.Changed[0].Before != "14d" || result.Changed[0].After != nil {
+		t.Fatalf("changed = %#v", result.Changed[0])
+	}
+
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved map[string]any
+	if err := json.Unmarshal(content, &saved); err != nil {
+		t.Fatal(err)
+	}
+	retention := saved["general"].(map[string]any)["sessionRetention"].(map[string]any)
+	if _, ok := retention["maxAge"]; ok {
+		t.Fatalf("maxAge should be removed: %#v", retention)
+	}
+	if retention["enabled"] != true {
+		t.Fatalf("sibling nested value should be preserved: %#v", retention)
+	}
+	setting := findSetting(result.Status.Settings, "general.sessionRetention.maxAge")
+	if setting == nil || setting.Configured {
+		t.Fatalf("maxAge should be unconfigured after unset: %#v", setting)
 	}
 }
 

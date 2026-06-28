@@ -176,6 +176,90 @@ func TestCodexApplyCreatesBackupForExistingConfig(t *testing.T) {
 	}
 }
 
+func TestCodexApplyChangesSetsCustomValue(t *testing.T) {
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+	configPath := filepath.Join(codexHome, "config.toml")
+	if err := os.WriteFile(configPath, []byte("[analytics]\nenabled = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := NewCodexAdapter().ApplyChanges([]model.PrivacyConfigEdit{
+		{ID: "analytics.enabled", Op: "set", Value: false},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Changed) != 1 {
+		t.Fatalf("changed = %d, want 1: %#v", len(result.Changed), result.Changed)
+	}
+	if result.Changed[0].Before != true || result.Changed[0].After != false {
+		t.Fatalf("changed = %#v", result.Changed[0])
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "enabled = false") {
+		t.Fatalf("custom value was not written:\n%s", content)
+	}
+	setting := findSetting(result.Status.Settings, "analytics.enabled")
+	if setting == nil {
+		t.Fatal("analytics setting missing")
+	}
+	if setting.ValueType != "bool" || !setting.Configured || !setting.SupportsUnset || setting.StrictValue != false {
+		t.Fatalf("setting metadata = %#v", setting)
+	}
+}
+
+func TestCodexApplyChangesUnsetsValue(t *testing.T) {
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+	configPath := filepath.Join(codexHome, "config.toml")
+	original := strings.Join([]string{
+		"# existing config",
+		"web_search = \"disabled\" # remove only this line",
+		`model = "gpt-5"`,
+		"",
+		"[analytics]",
+		"enabled = false",
+		"",
+	}, "\n")
+	if err := os.WriteFile(configPath, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := NewCodexAdapter().ApplyChanges([]model.PrivacyConfigEdit{
+		{ID: "web_search", Op: "unset"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Changed) != 1 {
+		t.Fatalf("changed = %d, want 1: %#v", len(result.Changed), result.Changed)
+	}
+	if result.Changed[0].Before != "disabled" || result.Changed[0].After != nil {
+		t.Fatalf("changed = %#v", result.Changed[0])
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	if strings.Contains(text, "web_search") {
+		t.Fatalf("web_search should be removed:\n%s", text)
+	}
+	for _, want := range []string{"# existing config", `model = "gpt-5"`, "[analytics]", "enabled = false"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("updated config lost %q:\n%s", want, text)
+		}
+	}
+	setting := findSetting(result.Status.Settings, "web_search")
+	if setting == nil || setting.Configured {
+		t.Fatalf("web_search should be unconfigured after unset: %#v", setting)
+	}
+}
+
 func TestCodexApplyPreservesUnrelatedConfigLines(t *testing.T) {
 	codexHome := t.TempDir()
 	t.Setenv("CODEX_HOME", codexHome)
@@ -228,4 +312,13 @@ func settingStatus(settings []model.PrivacyConfigSetting, id string) string {
 		}
 	}
 	return ""
+}
+
+func findSetting(settings []model.PrivacyConfigSetting, id string) *model.PrivacyConfigSetting {
+	for index := range settings {
+		if settings[index].ID == id {
+			return &settings[index]
+		}
+	}
+	return nil
 }

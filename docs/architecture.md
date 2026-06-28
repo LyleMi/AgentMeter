@@ -133,9 +133,12 @@ Session Detail should show:
 - tool calls;
 - raw source path.
 
-Agent Privacy should show external-agent privacy configuration status and
-apply supported hardening controls. The current implementation targets Codex
-user-level `config.toml` and Gemini CLI user-level `settings.json`.
+Agent Privacy should show external-agent privacy configuration status and edit
+supported user-level controls with explicit set/unset changes. Strict values are
+available as a privacy-first preset per option, but users can save custom values
+or remove configured values to return to tool defaults. The current
+implementation targets Codex user-level `config.toml` and Gemini CLI user-level
+`settings.json`.
 
 The Web UI can use charts, wide layouts, and browser affordances. The TUI can
 use tables, panes, keyboard navigation, and compact summaries. Differences in

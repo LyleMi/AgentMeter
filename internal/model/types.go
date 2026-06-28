@@ -342,16 +342,26 @@ type PrivacyConfigSummary struct {
 }
 
 type PrivacyConfigSetting struct {
-	ID           string `json:"id"`
-	Group        string `json:"group"`
-	Title        string `json:"title"`
-	Description  string `json:"description"`
-	Key          string `json:"key"`
-	DesiredValue any    `json:"desiredValue"`
-	CurrentValue any    `json:"currentValue"`
-	Status       string `json:"status"`
-	Impact       string `json:"impact"`
-	CanApply     bool   `json:"canApply"`
+	ID               string `json:"id"`
+	Group            string `json:"group"`
+	Title            string `json:"title"`
+	Description      string `json:"description"`
+	Key              string `json:"key"`
+	DesiredValue     any    `json:"desiredValue"`
+	StrictValue      any    `json:"strictValue"`
+	ValueType        string `json:"valueType"`
+	Configured       bool   `json:"configured"`
+	SupportsUnset    bool   `json:"supportsUnset"`
+	CurrentValue     any    `json:"currentValue"`
+	Status           string `json:"status"`
+	Impact           string `json:"impact"`
+	CanApply         bool   `json:"canApply"`
+}
+
+type PrivacyConfigEdit struct {
+	ID    string `json:"id"`
+	Op    string `json:"op"`
+	Value any    `json:"value,omitempty"`
 }
 
 type PrivacyConfigChange struct {
