@@ -78,7 +78,7 @@ const { t } = useMessages({
     'nav.overview': '概览',
     'nav.time': '耗时',
     'nav.tokens': 'Token',
-    'nav.modelSignals': '模型信号',
+    'nav.modelSignals': '模型表现',
     'nav.sessions': '会话',
     'nav.tools': '工具',
     'nav.audit': '审计',

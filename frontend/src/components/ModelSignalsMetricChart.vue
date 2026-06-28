@@ -158,10 +158,10 @@ const { t, locale } = useMessages({
     'fallback.noReason': 'No drift reason'
   },
   'zh-CN': {
-    'title.daily': '每日信号镜头',
-    'title.projects': '项目信号镜头',
+    'title.daily': '每日指标图',
+    'title.projects': '项目指标图',
     'kicker.daily': '先对比服务速度、失败压力、费用和 token 形态，再进入明细行',
-    'kicker.projects': '按当前排查关心的信号扫描项目热点',
+    'kicker.projects': '按当前排查关心的指标扫描项目热点',
     'mode.daily': '时间',
     'mode.projects': '项目',
     'control.mode': '图表视图',
@@ -226,7 +226,7 @@ const { t, locale } = useMessages({
     'tooltip.confidence': '置信度',
     'tooltip.reason': '原因',
     'tooltip.unavailable': '不可用',
-    'empty.title': '没有可绘制的信号值',
+    'empty.title': '没有可绘制的指标值',
     'empty.text': '可以选择其他指标，或放宽来源、模型、项目、日期范围。',
     'fallback.unknown': '未知',
     'fallback.noReason': '无漂移原因'

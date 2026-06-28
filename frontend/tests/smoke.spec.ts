@@ -18,8 +18,8 @@ const routes: SmokeRoute[] = [
   {
     path: '/#/model-signals',
     hash: '#/model-signals',
-    title: /^(Model Signals|模型信号)$/,
-    panelTitle: /^(Health Summary|Model Health|Signal Trend|Daily Signal Lens|健康摘要|模型健康|信号趋势|每日信号镜头)$/
+    title: /^(Model Signals|模型表现)$/,
+    panelTitle: /^(Health Summary|Model Health|Signal Trend|Daily Signal Lens|健康摘要|模型健康|信号趋势|每日指标图)$/
   },
   { path: '/#/tools/overview', hash: '#/tools/overview', title: /^(Tools|工具)$/ },
   { path: '/#/tools/calls', hash: '#/tools/calls', title: /^(Tools|工具)$/ },

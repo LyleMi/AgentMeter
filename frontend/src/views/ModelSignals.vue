@@ -59,7 +59,7 @@ const resource = useAsyncResource<ModelSignals | null>(null)
 const signals = computed(() => resource.data.value)
 const loading = resource.loading
 const error = resource.error
-const activeTab = ref('overview')
+const activeTab = ref('charts')
 const optionOverview = ref<Overview | null>(null)
 const projectOptionRows = ref<UsageBreakdownBucket[]>([])
 const scope = useUsageScopeRoute(() => {
@@ -70,6 +70,7 @@ const { t } = useMessages({
   en: {
     'title': 'Model Signals',
     'subtitle': 'Service health and behavior drift across model cohorts, agents, and projects',
+    'tab.charts': 'Metric Charts',
     'tab.overview': 'Health Overview',
     'tab.daily': 'Daily Metrics',
     'tab.cohorts': 'Cohorts',
@@ -164,8 +165,9 @@ const { t } = useMessages({
     'severity.low': 'low'
   },
   'zh-CN': {
-    'title': '模型信号',
-    'subtitle': '按模型分组、来源和项目监控服务健康与行为漂移',
+    'title': '模型表现',
+    'subtitle': '按模型、来源和项目查看健康状态、延迟、吞吐和费用变化',
+    'tab.charts': '指标图表',
     'tab.overview': '健康概览',
     'tab.daily': '每日指标',
     'tab.cohorts': '分组',
@@ -188,7 +190,7 @@ const { t } = useMessages({
     'overview.title': '主要漂移分组',
     'overview.kicker': '当前范围内严重程度最高的分组漂移',
     'daily.title': '每日效率',
-    'daily.kicker': '按天展示模型服务费用、延迟、吞吐与置信信号',
+    'daily.kicker': '按天展示模型服务费用、延迟、吞吐与置信度',
     'cohorts.title': '分组漂移',
     'cohorts.kicker': '按供应商、模型、来源和项目对比基线行为',
     'matrix.title': '来源模型矩阵',
@@ -196,7 +198,7 @@ const { t } = useMessages({
     'projects.title': '项目热点',
     'projects.kicker': '展示模型服务漂移集中或样本风险较高的项目',
     'anomaly.title': '异常会话',
-    'anomaly.kicker': '列出运营信号异常的会话供复核',
+    'anomaly.kicker': '列出指标异常的会话供复核',
     'column.source': '来源',
     'column.model': '模型',
     'column.models': '模型',
@@ -228,7 +230,7 @@ const { t } = useMessages({
     'column.reasons': '原因',
     'column.sources': '来源数',
     'column.session': '会话',
-    'column.signal': '信号',
+    'column.signal': '异常指标',
     'column.outputExpansion': '输出/输入',
     'column.reasoning': '推理',
     'column.cacheMiss': '缓存未命中',
@@ -238,7 +240,7 @@ const { t } = useMessages({
     'metric.baseline': '基线',
     'label.lowSample': '低样本',
     'label.unpriced': '未定价',
-    'empty.loading': '正在加载模型信号...',
+    'empty.loading': '正在加载模型表现...',
     'empty.overview': '当前范围内没有漂移分组',
     'empty.daily': '当前范围内没有每日指标',
     'empty.cohorts': '当前范围内没有分组行',
@@ -247,7 +249,7 @@ const { t } = useMessages({
     'empty.anomalies': '当前范围内没有异常会话',
     'fallback.unknown': '未知',
     'fallback.noReason': '无漂移原因',
-    'error.title': '模型信号加载失败',
+    'error.title': '模型表现加载失败',
     'action.openSession': '打开会话',
     'severity.ok': '正常',
     'severity.watch': '观察',
@@ -897,6 +899,10 @@ onMounted(load)
     <a-spin :spinning="loading && !signals">
       <div class="section-stack">
         <div class="model-signals-tabs" role="tablist" :aria-label="t('title')">
+          <a-button :type="activeTab === 'charts' ? 'primary' : 'default'" role="tab" :aria-selected="activeTab === 'charts'" @click="activeTab = 'charts'">
+            <template #icon><LineChartOutlined /></template>
+            {{ t('tab.charts') }}
+          </a-button>
           <a-button :type="activeTab === 'overview' ? 'primary' : 'default'" role="tab" :aria-selected="activeTab === 'overview'" @click="activeTab = 'overview'">
             <template #icon><DashboardOutlined /></template>
             {{ t('tab.overview') }}
@@ -923,7 +929,15 @@ onMounted(load)
           </a-button>
         </div>
 
-        <div v-if="activeTab === 'overview'">
+        <div v-if="activeTab === 'charts'">
+          <ModelSignalsMetricChart
+            :daily-rows="dailyMetricRows"
+            :project-rows="projectRows"
+            :loading="loading"
+          />
+        </div>
+
+        <div v-else-if="activeTab === 'overview'">
           <div class="section-stack">
             <section class="metric-strip model-signals-metric-strip" :class="{ 'is-empty': !hasData }">
               <div v-for="item in metricCards" :key="item.label" class="metric-strip-item" :class="item.tone">
@@ -950,12 +964,6 @@ onMounted(load)
                 </a-tag>
               </div>
             </div>
-
-            <ModelSignalsMetricChart
-              :daily-rows="dailyMetricRows"
-              :project-rows="projectRows"
-              :loading="loading"
-            />
 
             <section class="panel">
               <div class="panel-header">
