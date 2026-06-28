@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, provide, ref } from 'vue'
-import { RouterView, useRoute, useRouter } from 'vue-router'
+import { RouterView, useRoute } from 'vue-router'
 import AButton from 'ant-design-vue/es/button'
 import message from 'ant-design-vue/es/message'
 import {
@@ -11,12 +11,13 @@ import {
   ReloadOutlined
 } from '@ant-design/icons-vue'
 import { api, type Overview, type Settings } from '../api'
+import PageHeader from '../components/PageHeader.vue'
+import PageTabs from '../components/PageTabs.vue'
 import { notifyAppDataChanged } from '../events'
 import { useMessages } from '../i18n'
 import { overviewContextKey, type OverviewContext } from './overviewContext'
 
 const route = useRoute()
-const router = useRouter()
 const loading = ref(true)
 const startupIndexing = ref(false)
 const overview = ref<Overview | null>(null)
@@ -94,10 +95,6 @@ async function indexFromOverview() {
   }
 }
 
-function navigate(path: string) {
-  router.push(path)
-}
-
 const context: OverviewContext = {
   overview,
   settings,
@@ -116,32 +113,18 @@ onMounted(load)
 
 <template>
   <div class="page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ t('title') }}</h1>
-        <div class="page-subtitle">{{ t('subtitle') }}</div>
-      </div>
-      <a-button :loading="loading" @click="load">
-        <template #icon>
-          <ReloadOutlined />
-        </template>
-        {{ t('action.refresh') }}
-      </a-button>
-    </div>
+    <PageHeader :title="t('title')" :subtitle="t('subtitle')">
+      <template #actions>
+        <a-button :loading="loading" @click="load">
+          <template #icon>
+            <ReloadOutlined />
+          </template>
+          {{ t('action.refresh') }}
+        </a-button>
+      </template>
+    </PageHeader>
 
-    <div class="settings-subnav overview-subnav">
-      <a-button
-        v-for="item in tabs"
-        :key="item.key"
-        :type="item.key === activeKey ? 'primary' : 'default'"
-        @click="navigate(item.path)"
-      >
-        <template #icon>
-          <component :is="item.icon" />
-        </template>
-        {{ item.label }}
-      </a-button>
-    </div>
+    <PageTabs class="overview-subnav" :tabs="tabs" :active-key="activeKey" />
 
     <RouterView />
   </div>

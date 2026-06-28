@@ -11,7 +11,6 @@ import ATooltip from 'ant-design-vue/es/tooltip'
 import Typography from 'ant-design-vue/es/typography'
 import {
   CodeOutlined,
-  FolderOpenOutlined,
   GlobalOutlined,
   HistoryOutlined,
   LockOutlined,
@@ -20,6 +19,7 @@ import {
   WarningOutlined
 } from '@ant-design/icons-vue'
 import { api, formatDateTime, formatNumber, shortPath, type AuditFinding, type AuditSummary } from '../api'
+import PageHeader from '../components/PageHeader.vue'
 import { useMessages } from '../i18n'
 
 const ATable = AntTable as unknown as DefineComponent
@@ -388,18 +388,16 @@ onMounted(load)
 
 <template>
   <div class="page audit-page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ t('title') }}</h1>
-        <div class="page-subtitle">{{ t('subtitle') }}</div>
-      </div>
-      <a-button :loading="loading" @click="load">
-        <template #icon>
-          <ReloadOutlined />
-        </template>
-        {{ t('action.refresh') }}
-      </a-button>
-    </div>
+    <PageHeader :title="t('title')" :subtitle="t('subtitle')">
+      <template #actions>
+        <a-button :loading="loading" @click="load">
+          <template #icon>
+            <ReloadOutlined />
+          </template>
+          {{ t('action.refresh') }}
+        </a-button>
+      </template>
+    </PageHeader>
 
     <a-alert
       v-if="error"

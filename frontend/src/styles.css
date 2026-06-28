@@ -1879,6 +1879,7 @@ body {
   justify-content: flex-end;
 }
 
+.page-tabs,
 .settings-subnav {
   display: flex;
   flex-wrap: wrap;
@@ -1886,6 +1887,7 @@ body {
   margin: -4px 0 14px;
 }
 
+.page-tabs .ant-btn,
 .settings-subnav .ant-btn {
   min-width: 112px;
   height: 34px;

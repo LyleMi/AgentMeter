@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { RouterView, useRoute, useRouter } from 'vue-router'
-import AButton from 'ant-design-vue/es/button'
+import { RouterView, useRoute } from 'vue-router'
 import { DatabaseOutlined, DollarOutlined, FolderOpenOutlined } from '@ant-design/icons-vue'
+import PageHeader from '../components/PageHeader.vue'
+import PageTabs from '../components/PageTabs.vue'
 import { useMessages } from '../i18n'
 
 const route = useRoute()
-const router = useRouter()
 const { t } = useMessages({
   en: {
     'settings.title': 'Settings',
@@ -36,33 +36,13 @@ const activeKey = computed(() => {
   return 'source'
 })
 
-function navigate(path: string) {
-  router.push(path)
-}
 </script>
 
 <template>
   <div class="page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ t('settings.title') }}</h1>
-        <div class="page-subtitle">{{ t('settings.subtitle') }}</div>
-      </div>
-    </div>
+    <PageHeader :title="t('settings.title')" :subtitle="t('settings.subtitle')" />
 
-    <div class="settings-subnav">
-      <a-button
-        v-for="item in tabs"
-        :key="item.key"
-        :type="item.key === activeKey ? 'primary' : 'default'"
-        @click="navigate(item.path)"
-      >
-        <template #icon>
-          <component :is="item.icon" />
-        </template>
-        {{ item.label }}
-      </a-button>
-    </div>
+    <PageTabs :tabs="tabs" :active-key="activeKey" />
 
     <RouterView />
   </div>

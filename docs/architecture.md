@@ -104,6 +104,10 @@ Responsibilities:
 
 ## UI Shape
 
+UI contributors should follow the practical design guidance in
+[`docs/ui-design.md`](ui-design.md) for Web layout, visual quality, dense data
+tables, component consistency, and UI-state validation.
+
 The Web and TUI interfaces should cover the same product areas:
 
 - Overview

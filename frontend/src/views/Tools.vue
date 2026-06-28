@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { RouterView, useRoute, useRouter } from 'vue-router'
-import AButton from 'ant-design-vue/es/button'
+import { RouterView, useRoute } from 'vue-router'
 import { BarChartOutlined, HistoryOutlined, ToolOutlined } from '@ant-design/icons-vue'
+import PageHeader from '../components/PageHeader.vue'
+import PageTabs from '../components/PageTabs.vue'
 import { useMessages } from '../i18n'
 
 const route = useRoute()
-const router = useRouter()
 const { t } = useMessages({
   en: {
     pageTitle: 'Tools',
@@ -36,33 +36,13 @@ const activeKey = computed(() => {
   return 'overview'
 })
 
-function navigate(path: string) {
-  router.push(path)
-}
 </script>
 
 <template>
   <div class="page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ t('pageTitle') }}</h1>
-        <div class="page-subtitle">{{ t('pageSubtitle') }}</div>
-      </div>
-    </div>
+    <PageHeader :title="t('pageTitle')" :subtitle="t('pageSubtitle')" />
 
-    <div class="settings-subnav tools-subnav">
-      <a-button
-        v-for="item in tabs"
-        :key="item.key"
-        :type="item.key === activeKey ? 'primary' : 'default'"
-        @click="navigate(item.path)"
-      >
-        <template #icon>
-          <component :is="item.icon" />
-        </template>
-        {{ item.label }}
-      </a-button>
-    </div>
+    <PageTabs class="tools-subnav" :tabs="tabs" :active-key="activeKey" />
 
     <RouterView />
   </div>

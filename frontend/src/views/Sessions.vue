@@ -10,6 +10,7 @@ import ATooltip from 'ant-design-vue/es/tooltip'
 import Typography from 'ant-design-vue/es/typography'
 import { ArrowRightOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import { api, formatCost, formatDateTime, formatDuration, formatNumber, sessionLabel, shortPath, type Session } from '../api'
+import PageHeader from '../components/PageHeader.vue'
 import { useMessages } from '../i18n'
 import { statusClass, statusColor } from '../presentation/status'
 
@@ -165,18 +166,16 @@ onMounted(load)
 
 <template>
   <div class="page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ t('title') }}</h1>
-        <div class="page-subtitle">{{ t('subtitle') }}</div>
-      </div>
-      <a-button @click="load">
-        <template #icon>
-          <ReloadOutlined />
-        </template>
-        {{ t('action.refresh') }}
-      </a-button>
-    </div>
+    <PageHeader :title="t('title')" :subtitle="t('subtitle')">
+      <template #actions>
+        <a-button @click="load">
+          <template #icon>
+            <ReloadOutlined />
+          </template>
+          {{ t('action.refresh') }}
+        </a-button>
+      </template>
+    </PageHeader>
 
     <section class="panel">
       <div class="panel-body">

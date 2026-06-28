@@ -79,6 +79,9 @@ The first user is a developer who uses local coding agents and wants to understa
 - Keep data local unless the user explicitly exports it.
 - Store normalized data so UI queries do not repeatedly rescan raw JSONL.
 - Make raw source traceability possible for debugging.
+- Design for fast local diagnosis with clear hierarchy and consistent UI
+  patterns rather than a marketing-page feel; use
+  [`docs/ui-design.md`](ui-design.md) as the practical Web UI guide.
 
 ## First Usable Version
 
