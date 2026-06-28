@@ -79,7 +79,7 @@ Tasks:
 - Session table with filters.
 - Session detail timeline.
 - Tool-call breakdown.
-- Editable external-agent privacy controls for supported Codex and Gemini CLI config settings.
+- Editable external-agent privacy controls for supported Codex, Gemini CLI, and Claude Code config settings.
 - Pricing registry display.
 - Rebuild index action.
 

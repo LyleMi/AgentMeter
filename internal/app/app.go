@@ -479,6 +479,18 @@ func (a *App) ApplyGeminiPrivacyConfigChanges(changes []model.PrivacyConfigEdit)
 	return privacy.NewGeminiAdapter().ApplyChanges(changes)
 }
 
+func (a *App) GetClaudePrivacyConfig() (model.PrivacyConfigStatus, error) {
+	return privacy.NewClaudeAdapter().Status()
+}
+
+func (a *App) ApplyClaudePrivacyConfig(settingIDs []string) (model.PrivacyConfigApplyResult, error) {
+	return privacy.NewClaudeAdapter().Apply(settingIDs)
+}
+
+func (a *App) ApplyClaudePrivacyConfigChanges(changes []model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error) {
+	return privacy.NewClaudeAdapter().ApplyChanges(changes)
+}
+
 func (a *App) ensureReady() error {
 	if a.conn == nil {
 		if a.ctx == nil {

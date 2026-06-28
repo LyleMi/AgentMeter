@@ -252,6 +252,35 @@ func TestPrivacyGeminiHTTPApplyEmptyBodyAppliesAll(t *testing.T) {
 	}
 }
 
+func TestPrivacyClaudeHTTPApplyEmptyBodyAppliesAll(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), ".claude", "settings.json")
+	t.Setenv("AGENTMETER_CLAUDE_SETTINGS_PATH", configPath)
+
+	mux := http.NewServeMux()
+	RegisterHTTPHandlers(mux, &App{}, fstest.MapFS{})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/privacy/claude/apply", nil)
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var result model.PrivacyConfigApplyResult
+	if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Status.Target != "claude" || !result.Status.Exists {
+		t.Fatalf("status should report created Claude config: %#v", result.Status)
+	}
+	if len(result.Changed) == 0 {
+		t.Fatal("empty body should apply all supported settings")
+	}
+	if _, err := os.Stat(configPath); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPrivacyCodexHTTPChangesAppliesEditableChanges(t *testing.T) {
 	codexHome := filepath.Join(t.TempDir(), "codex-home")
 	t.Setenv("CODEX_HOME", codexHome)
@@ -332,19 +361,61 @@ func TestPrivacyGeminiHTTPChangesAppliesEditableChanges(t *testing.T) {
 	}
 }
 
+func TestPrivacyClaudeHTTPChangesAppliesEditableChanges(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), ".claude", "settings.json")
+	t.Setenv("AGENTMETER_CLAUDE_SETTINGS_PATH", configPath)
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(`{"env":{"DISABLE_TELEMETRY":"0"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterHTTPHandlers(mux, &App{}, fstest.MapFS{})
+
+	recorder := httptest.NewRecorder()
+	body := strings.NewReader(`{"changes":[{"id":"env.DISABLE_TELEMETRY","op":"set","value":"1"}]}`)
+	request := httptest.NewRequest(http.MethodPost, "/api/privacy/claude/changes", body)
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var result model.PrivacyConfigApplyResult
+	if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Changed) != 1 {
+		t.Fatalf("changed = %d, want 1: %#v", len(result.Changed), result.Changed)
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved map[string]any
+	if err := json.Unmarshal(content, &saved); err != nil {
+		t.Fatal(err)
+	}
+	env := saved["env"].(map[string]any)
+	if env["DISABLE_TELEMETRY"] != "1" {
+		t.Fatalf("config was not updated: %#v", saved)
+	}
+}
+
 func TestPrivacyHTTPUnsupportedTargetReturnsNotFound(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterHTTPHandlers(mux, &App{}, fstest.MapFS{})
 
 	recorder := httptest.NewRecorder()
 	body := strings.NewReader(`{`)
-	request := httptest.NewRequest(http.MethodPost, "/api/privacy/claude/changes", body)
+	request := httptest.NewRequest(http.MethodPost, "/api/privacy/unknown/changes", body)
 	mux.ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
-	if !strings.Contains(recorder.Body.String(), "unsupported privacy target: claude") {
+	if !strings.Contains(recorder.Body.String(), "unsupported privacy target: unknown") {
 		t.Fatalf("body should explain unsupported target: %s", recorder.Body.String())
 	}
 }

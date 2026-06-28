@@ -407,6 +407,7 @@ $checks = @(
     [pscustomobject]@{ Path = "/api/settings"; Validate = { param($payload, $raw) Assert-Settings -Payload $payload } }
     [pscustomobject]@{ Path = "/api/privacy/codex"; Validate = { param($payload, $raw) Assert-PrivacyStatus -Payload $payload -ExpectedTarget "codex" } }
     [pscustomobject]@{ Path = "/api/privacy/gemini"; Validate = { param($payload, $raw) Assert-PrivacyStatus -Payload $payload -ExpectedTarget "gemini" } }
+    [pscustomobject]@{ Path = "/api/privacy/claude"; Validate = { param($payload, $raw) Assert-PrivacyStatus -Payload $payload -ExpectedTarget "claude" } }
     [pscustomobject]@{ Path = "/api/overview"; Validate = { param($payload, $raw) Assert-Overview -Payload $payload } }
     [pscustomobject]@{ Path = "/api/sessions?limit=5"; Validate = { param($payload, $raw) Assert-Sessions -Payload $payload -Raw $raw } }
     [pscustomobject]@{ Path = "/api/tools"; Validate = { param($payload, $raw) Assert-Tools -Payload $payload -Raw $raw } }

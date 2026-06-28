@@ -37,9 +37,10 @@ const { t } = useMessages({
     'privacy.kicker': 'External agent config: {target} user-level {file}',
     'privacy.boundary.title': 'Current support: user-level agent config controls',
     'privacy.boundary.description':
-      'This page reads and edits supported user-level privacy settings for Codex and Gemini CLI. It does not scan logs, scan secrets, or infer broad filesystem policy.',
+      'This page reads and edits supported user-level privacy settings for Codex, Gemini CLI, and Claude Code. It does not scan logs, scan secrets, or infer broad filesystem policy.',
     'privacy.target.codex': 'Codex',
     'privacy.target.gemini': 'Gemini CLI',
+    'privacy.target.claude': 'Claude Code',
     'privacy.action.refresh': 'Refresh',
     'privacy.action.saveAll': 'Save changes',
     'privacy.action.useStrict': 'Use strict',
@@ -92,9 +93,10 @@ const { t } = useMessages({
     'privacy.kicker': '外部 Agent 配置：{target} 用户级 {file}',
     'privacy.boundary.title': '当前支持范围：用户级 Agent 配置控制项',
     'privacy.boundary.description':
-      '此页面只读取并编辑 Codex 与 Gemini CLI 已支持的用户级隐私设置，不扫描日志、不扫描密钥，也不推断广义文件系统策略。',
+      '此页面只读取并编辑 Codex、Gemini CLI 与 Claude Code 已支持的用户级隐私设置，不扫描日志、不扫描密钥，也不推断广义文件系统策略。',
     'privacy.target.codex': 'Codex',
     'privacy.target.gemini': 'Gemini CLI',
+    'privacy.target.claude': 'Claude Code',
     'privacy.action.refresh': '刷新',
     'privacy.action.saveAll': '保存变更',
     'privacy.action.useStrict': '使用严格值',
@@ -167,13 +169,14 @@ let saveRequestId = 0
 
 const targetOptions = computed<{ label: string; value: PrivacyTarget }[]>(() => [
   { label: t('privacy.target.codex'), value: 'codex' },
-  { label: t('privacy.target.gemini'), value: 'gemini' }
+  { label: t('privacy.target.gemini'), value: 'gemini' },
+  { label: t('privacy.target.claude'), value: 'claude' }
 ])
 const targetLabel = computed(() => {
   if (privacyStatus.value?.name) return privacyStatus.value.name
-  return selectedTarget.value === 'gemini' ? t('privacy.target.gemini') : t('privacy.target.codex')
+  return targetOptions.value.find((option) => option.value === selectedTarget.value)?.label || selectedTarget.value
 })
-const targetFile = computed(() => (selectedTarget.value === 'gemini' ? 'settings.json' : 'config.toml'))
+const targetFile = computed(() => (selectedTarget.value === 'codex' ? 'config.toml' : 'settings.json'))
 const summary = computed(
   () =>
     privacyStatus.value?.summary || {
@@ -250,7 +253,8 @@ function valuesEqual(left: unknown, right: unknown, type: PrivacyConfigValueType
 }
 
 function formatConfigValue(value: unknown) {
-  if (value === undefined || value === null || value === '') return t('privacy.value.unset')
+  if (value === undefined || value === null) return t('privacy.value.unset')
+  if (value === '') return '""'
   if (typeof value === 'string') return value
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
 

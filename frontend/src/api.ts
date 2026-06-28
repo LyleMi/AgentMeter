@@ -299,7 +299,7 @@ export interface PrivacyConfigChange {
   value?: unknown
 }
 
-export type PrivacyTarget = 'codex' | 'gemini'
+export type PrivacyTarget = 'codex' | 'gemini' | 'claude'
 
 export interface SessionFilters {
   search?: string
