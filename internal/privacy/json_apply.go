@@ -304,36 +304,6 @@ func applyJSONSettingsMutation(
 	return result, nil
 }
 
-func writeUpdatedConfig(path string, original, updated []byte, exists bool, now func() time.Time) (string, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return "", err
-	}
-	perm := os.FileMode(0o644)
-	var backupPath string
-	if exists {
-		stat, err := os.Stat(path)
-		if err != nil {
-			return "", err
-		}
-		perm = stat.Mode().Perm()
-		backupPath = backupConfigPath(path, callNow(now))
-		if err := os.WriteFile(backupPath, original, perm); err != nil {
-			return "", err
-		}
-	}
-	if err := os.WriteFile(path, updated, perm); err != nil {
-		return "", err
-	}
-	return backupPath, nil
-}
-
-func callNow(now func() time.Time) time.Time {
-	if now != nil {
-		return now()
-	}
-	return time.Now()
-}
-
 func plannedJSONChanges(root map[string]any, selected []jsonSettingDefinition) []model.PrivacyConfigChange {
 	changes := make([]model.PrivacyConfigChange, 0, len(selected))
 	for _, definition := range selected {

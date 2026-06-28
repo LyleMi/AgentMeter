@@ -2,7 +2,6 @@ import {
   formatCost,
   formatDisplayNumber,
   formatNumber,
-  formatPercent as formatSharedPercent,
   projectDisplay,
   sessionDisplay,
   type ModelSignalAnomalySession,
@@ -18,6 +17,10 @@ import {
   type Session
 } from '../../api'
 import { sourceDisplay } from '../../presentation/sourceIdentity'
+import {
+  formatModelSignalPercent as formatPercent,
+  formatModelSignalRate as formatRate
+} from '../../presentation/modelSignals'
 import type { ModelSignalsTranslate } from './messages'
 import type { NormalizedAnomalySession, ProjectMetricRow } from './types'
 
@@ -57,19 +60,6 @@ export function createModelSignalsDisplay(t: ModelSignalsTranslate) {
   function displayRate(value?: number, suffix = '', digits = 0) {
     const text = `${formatRate(value, digits)}${suffix}`
     return { main: text, full: text }
-  }
-
-  function formatPercent(value?: number) {
-    const numeric = Number(value)
-    return formatSharedPercent(value, {
-      lessThanOne: true,
-      maximumFractionDigits: Number.isFinite(numeric) && numeric >= 0.1 ? 0 : 1
-    })
-  }
-
-  function formatRate(value?: number, digits = 0) {
-    if (!Number.isFinite(value)) return '0'
-    return (value || 0).toLocaleString(undefined, { maximumFractionDigits: digits })
   }
 
   function formatLatency(value?: number) {

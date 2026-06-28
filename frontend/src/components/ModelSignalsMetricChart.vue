@@ -9,7 +9,6 @@ import { BarChartOutlined, LineChartOutlined, UndoOutlined } from '@ant-design/i
 import {
   formatCost,
   formatNumber,
-  formatPercent as formatSharedPercent,
   projectDisplay,
   type ModelSignalMetricSet,
   type ModelSignalProjectHotspot,
@@ -19,6 +18,11 @@ import {
 import { chartPalette } from '../chartPalette'
 import { useEChart } from '../composables/useEChart'
 import { useMessages } from '../i18n'
+import { modelSignalsMetricChartMessages } from './model-signals/chartMessages'
+import {
+  formatModelSignalPercent as formatPercent,
+  formatModelSignalRate as formatRate
+} from '../presentation/modelSignals'
 
 type ChartMode = 'daily' | 'projects'
 type ChartKind = 'bar' | 'line'
@@ -86,164 +90,7 @@ const selectedMode = ref<ChartMode>(props.initialMode)
 const selectedMetricKeys = ref<MetricKey[]>(defaultMetricsForMode(props.initialMode))
 const showBaselineComparison = ref(false)
 const { chartEl, getChart, disposeChart } = useEChart()
-const { t, locale } = useMessages({
-  en: {
-    'title.daily': 'Daily Signal Lens',
-    'title.projects': 'Project Signal Lens',
-    'kicker.daily': 'Compare service speed, failure pressure, cost, and token shape before inspecting rows',
-    'kicker.projects': 'Scan project hotspots across the signals that matter for the current investigation',
-    'mode.daily': 'Time',
-    'mode.projects': 'Projects',
-    'control.mode': 'Chart view',
-    'control.metrics': 'Metrics',
-    'control.baseline': 'Compare baseline',
-    'control.baselineUnavailable': 'No baseline values for the selected metrics',
-    'action.reset': 'Reset',
-    'direction.lower': 'lower is better',
-    'direction.higher': 'higher is better',
-    'direction.context': 'context dependent',
-    'direction.mixed': 'mixed directions',
-    'selection.count': '{count} metrics',
-    'series.current': 'Current',
-    'series.baseline': 'Baseline',
-    'series.lowSample': 'Low sample',
-    'axis.cost': 'cost',
-    'axis.latency': 'latency',
-    'axis.throughput': 'throughput',
-    'axis.percent': 'rate',
-    'axis.pressure': 'pressure',
-    'axis.ratio': 'ratio',
-    'axis.relative': 'relative scale',
-    'group.performance': 'Performance',
-    'group.cost': 'Cost',
-    'group.pressure': 'Pressure',
-    'group.shape': 'Token shape',
-    'metric.p90Latency': 'P90 latency',
-    'metric.p90LatencyDesc': 'Tail model latency per 1k output tokens',
-    'metric.p50Latency': 'P50 latency',
-    'metric.p50LatencyDesc': 'Typical model latency per 1k output tokens',
-    'metric.p10Throughput': 'P10 throughput',
-    'metric.p10ThroughputDesc': 'Slow-floor observed total-token throughput',
-    'metric.outputThroughput': 'Output throughput',
-    'metric.outputThroughputDesc': 'Observed output-token throughput',
-    'metric.costBurn': 'Cost burn',
-    'metric.costBurnDesc': 'Observed estimated cost in the row',
-    'metric.costPerSession': 'Cost / session',
-    'metric.costPerSessionDesc': 'Estimated cost normalized by session count',
-    'metric.costPerActiveHour': 'Cost / active hour',
-    'metric.costPerActiveHourDesc': 'Estimated cost normalized by active time',
-    'metric.costPer1kTokens': 'Cost / 1k tokens',
-    'metric.costPer1kTokensDesc': 'Estimated cost normalized by total token volume',
-    'metric.cacheSavings': 'Cache savings',
-    'metric.cacheSavingsDesc': 'Estimated avoided cost from cached input tokens',
-    'metric.failurePressure': 'Failure pressure',
-    'metric.failurePressureDesc': 'Failed model and tool calls per session',
-    'metric.degradationRisk': 'Degradation risk',
-    'metric.degradationRiskDesc': 'Composite relay or downgrade risk from latency, throughput, failures, retry pressure, cache misses, and token-shape symptoms; not proof of substitution',
-    'metric.retryPressure': 'Retry pressure',
-    'metric.retryPressureDesc': 'Model calls per session as a repair-loop proxy',
-    'metric.modelFailureRate': 'Model failure rate',
-    'metric.modelFailureRateDesc': 'Failed model calls divided by model calls',
-    'metric.toolFailureRate': 'Tool failure rate',
-    'metric.toolFailureRateDesc': 'Failed tool calls divided by tool calls',
-    'metric.cacheMiss': 'Cache miss rate',
-    'metric.cacheMissDesc': 'Uncached input share',
-    'metric.reasoningShare': 'Reasoning overhead',
-    'metric.reasoningShareDesc': 'Reasoning tokens relative to generated output; interpret by task shape',
-    'metric.outputExpansion': 'Generation overhead',
-    'metric.outputExpansionDesc': 'Generated output volume relative to input tokens',
-    'metric.toolDependency': 'Tool dependency',
-    'metric.toolDependencyDesc': 'Sessions with tool calls divided by sessions',
-    'tooltip.sessions': 'Sessions',
-    'tooltip.modelCalls': 'Model calls',
-    'tooltip.tokens': 'Tokens',
-    'tooltip.confidence': 'Confidence',
-    'tooltip.reason': 'Reason',
-    'tooltip.unavailable': 'Unavailable',
-    'empty.title': 'No chartable signal values',
-    'empty.text': 'Select another metric or broaden the source, model, project, or date scope.',
-    'fallback.unknown': 'unknown',
-    'fallback.noReason': 'No drift reason'
-  },
-  'zh-CN': {
-    'title.daily': '每日指标图',
-    'title.projects': '项目指标图',
-    'kicker.daily': '先对比服务速度、失败压力、费用和 token 形态，再进入明细行',
-    'kicker.projects': '按当前排查关心的指标扫描项目热点',
-    'mode.daily': '时间',
-    'mode.projects': '项目',
-    'control.mode': '图表视图',
-    'control.metrics': '指标',
-    'control.baseline': '对比基线',
-    'control.baselineUnavailable': '所选指标没有可用基线值',
-    'action.reset': '重置',
-    'direction.lower': '越低越好',
-    'direction.higher': '越高越好',
-    'direction.context': '依上下文判断',
-    'direction.mixed': '方向混合',
-    'selection.count': '{count} 个指标',
-    'series.current': '当前',
-    'series.baseline': '基线',
-    'series.lowSample': '低样本',
-    'axis.cost': '费用',
-    'axis.latency': '延迟',
-    'axis.throughput': '吞吐',
-    'axis.percent': '比例',
-    'axis.pressure': '压力',
-    'axis.ratio': '倍率',
-    'axis.relative': '相对刻度',
-    'group.performance': '性能',
-    'group.cost': '费用',
-    'group.pressure': '压力',
-    'group.shape': 'Token 形态',
-    'metric.p90Latency': 'P90 延迟',
-    'metric.p90LatencyDesc': '按 1k 输出 token 归一化的尾部模型延迟',
-    'metric.p50Latency': 'P50 延迟',
-    'metric.p50LatencyDesc': '按 1k 输出 token 归一化的典型模型延迟',
-    'metric.p10Throughput': 'P10 吞吐',
-    'metric.p10ThroughputDesc': '低谷观测总 token 吞吐',
-    'metric.outputThroughput': '输出吞吐',
-    'metric.outputThroughputDesc': '观测输出 token 吞吐',
-    'metric.costBurn': '费用消耗',
-    'metric.costBurnDesc': '当前行的观测估算费用',
-    'metric.costPerSession': '每会话费用',
-    'metric.costPerSessionDesc': '按会话数归一化的估算费用',
-    'metric.costPerActiveHour': '每活跃小时费用',
-    'metric.costPerActiveHourDesc': '按活跃时间归一化的估算费用',
-    'metric.costPer1kTokens': '每 1k token 费用',
-    'metric.costPer1kTokensDesc': '按总 token 量归一化的估算费用',
-    'metric.cacheSavings': '缓存节省',
-    'metric.cacheSavingsDesc': '缓存输入 token 带来的估算节省',
-    'metric.failurePressure': '失败压力',
-    'metric.failurePressureDesc': '每个会话的失败模型与工具调用压力',
-    'metric.degradationRisk': '中转风险',
-    'metric.degradationRiskDesc': '综合延迟、吞吐、失败、重试、缓存未命中和 token 形态的疑似降级风险；不是掺水证明',
-    'metric.retryPressure': '重试压力',
-    'metric.retryPressureDesc': '用每会话模型调用数代理修复循环',
-    'metric.modelFailureRate': '模型失败率',
-    'metric.modelFailureRateDesc': '失败模型调用占模型调用的比例',
-    'metric.toolFailureRate': '工具失败率',
-    'metric.toolFailureRateDesc': '失败工具调用占工具调用的比例',
-    'metric.cacheMiss': '缓存未命中率',
-    'metric.cacheMissDesc': '未缓存输入占比',
-    'metric.reasoningShare': '推理开销',
-    'metric.reasoningShareDesc': '推理 token 相对生成输出的比例，需要结合任务形态解读',
-    'metric.outputExpansion': '生成开销',
-    'metric.outputExpansionDesc': '生成输出量相对输入 token 的比例',
-    'metric.toolDependency': '工具依赖',
-    'metric.toolDependencyDesc': '使用工具的会话占比',
-    'tooltip.sessions': '会话',
-    'tooltip.modelCalls': '模型调用',
-    'tooltip.tokens': 'Token',
-    'tooltip.confidence': '置信度',
-    'tooltip.reason': '原因',
-    'tooltip.unavailable': '不可用',
-    'empty.title': '没有可绘制的指标值',
-    'empty.text': '可以选择其他指标，或放宽来源、模型、项目、日期范围。',
-    'fallback.unknown': '未知',
-    'fallback.noReason': '无漂移原因'
-  }
-})
+const { t, locale } = useMessages(modelSignalsMetricChartMessages)
 
 const metricGroups = computed<MetricGroup[]>(() => [
   { key: 'performance', label: t('group.performance') },
@@ -920,18 +767,6 @@ function compactNumber(value: number) {
   if (Math.abs(normalized) >= 1_000_000) return `${formatRate(normalized / 1_000_000, 1)}M`
   if (Math.abs(normalized) >= 1_000) return `${formatRate(normalized / 1_000, 1)}K`
   return formatRate(normalized, Math.abs(normalized) >= 10 ? 0 : 1)
-}
-
-function formatPercent(value: number) {
-  return formatSharedPercent(value, {
-    lessThanOne: true,
-    maximumFractionDigits: Number.isFinite(value) && value >= 0.1 ? 0 : 1
-  })
-}
-
-function formatRate(value: number, digits = 0) {
-  if (!Number.isFinite(value)) return '0'
-  return (value || 0).toLocaleString(undefined, { maximumFractionDigits: digits })
 }
 
 function escapeHtml(value: string | number | undefined) {

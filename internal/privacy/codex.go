@@ -86,26 +86,11 @@ func (a CodexAdapter) Apply(settingIDs []string) (model.PrivacyConfigApplyResult
 		return result, nil
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	backupPath, err := writeUpdatedConfig(path, original, updated, exists, a.Now)
+	if err != nil {
 		return model.PrivacyConfigApplyResult{}, err
 	}
-	perm := os.FileMode(0o644)
-	if exists {
-		stat, err := os.Stat(path)
-		if err != nil {
-			return model.PrivacyConfigApplyResult{}, err
-		}
-		perm = stat.Mode().Perm()
-		backupPath := backupConfigPath(path, a.now())
-		if err := os.WriteFile(backupPath, original, perm); err != nil {
-			return model.PrivacyConfigApplyResult{}, err
-		}
-		result.BackupPath = backupPath
-	}
-	if err := os.WriteFile(path, updated, perm); err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-
+	result.BackupPath = backupPath
 	result.Status = buildCodexStatus(path, true, updated, warnings)
 	return result, nil
 }
@@ -133,26 +118,11 @@ func (a CodexAdapter) ApplyChanges(edits []model.PrivacyConfigEdit) (model.Priva
 		return result, nil
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	backupPath, err := writeUpdatedConfig(path, original, updated, exists, a.Now)
+	if err != nil {
 		return model.PrivacyConfigApplyResult{}, err
 	}
-	perm := os.FileMode(0o644)
-	if exists {
-		stat, err := os.Stat(path)
-		if err != nil {
-			return model.PrivacyConfigApplyResult{}, err
-		}
-		perm = stat.Mode().Perm()
-		backupPath := backupConfigPath(path, a.now())
-		if err := os.WriteFile(backupPath, original, perm); err != nil {
-			return model.PrivacyConfigApplyResult{}, err
-		}
-		result.BackupPath = backupPath
-	}
-	if err := os.WriteFile(path, updated, perm); err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-
+	result.BackupPath = backupPath
 	result.Status = buildCodexStatus(path, true, updated, warnings)
 	return result, nil
 }
@@ -168,13 +138,6 @@ func (a CodexAdapter) ApplyProfile(profile string) (model.PrivacyConfigApplyResu
 	return a.ApplyChanges(codexProfileEdits(normalized))
 }
 
-func (a CodexAdapter) now() time.Time {
-	if a.Now != nil {
-		return a.Now()
-	}
-	return time.Now()
-}
-
 func codexConfigPath() (string, error) {
 	if root := strings.TrimSpace(os.Getenv("CODEX_HOME")); root != "" {
 		return filepath.Join(filepath.Clean(root), "config.toml"), nil
@@ -184,17 +147,6 @@ func codexConfigPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(home, ".codex", "config.toml"), nil
-}
-
-func readOptionalFile(path string) ([]byte, bool, error) {
-	content, err := os.ReadFile(path)
-	if err == nil {
-		return content, true, nil
-	}
-	if os.IsNotExist(err) {
-		return nil, false, nil
-	}
-	return nil, false, err
 }
 
 func buildCodexStatus(path string, exists bool, content []byte, warnings []string) model.PrivacyConfigStatus {
@@ -437,11 +389,6 @@ func configValueFromJSON(definition settingDefinition, value any) (configValue, 
 	default:
 		return configValue{}, fmt.Errorf("Codex privacy setting %q does not support editable values", definition.ID)
 	}
-}
-
-func backupConfigPath(path string, now time.Time) string {
-	stamp := now.UTC().Format("20060102T150405.000000000Z")
-	return filepath.Join(filepath.Dir(path), fmt.Sprintf("%s.%s.bak", filepath.Base(path), stamp))
 }
 
 func boolValue(value bool) configValue {

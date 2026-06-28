@@ -65,6 +65,10 @@ friction.
 
 - Reuse existing Vue components, layout wrappers, buttons, form controls,
   badges, tables, charts, and CSS variables before adding new patterns.
+- Keep Vue view files focused on route-level state, data loading, and screen
+  composition. Move large i18n dictionaries, repeated table-cell render logic,
+  and reusable display helpers into focused message, component, or presentation
+  modules.
 - Add shared components when a pattern appears on multiple screens or carries a
   product meaning such as parse status, pricing status, source agent, or model.
 - Keep component APIs narrow and data-shaped. Presentation components should not

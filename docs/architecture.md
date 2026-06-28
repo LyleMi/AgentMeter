@@ -194,6 +194,28 @@ Web and TUI modes stay synchronized by design:
 - Documentation for commands, capabilities, and validation should be updated
   with the implementation state.
 
+## Code Organization Conventions
+
+Keep large files from becoming catch-all implementation surfaces:
+
+- Vue view files should orchestrate screen state and composition, not carry
+  large i18n dictionaries or repeated label maps. Move reusable copy,
+  localization data, and option metadata into focused modules when it grows
+  beyond a single view concern.
+- Frontend views should delegate presentation, formatting, and table-cell logic
+  to focused components or helper modules. Shared display rules for durations,
+  money, tokens, status labels, source identity, and drill-down cells should be
+  reusable rather than reimplemented in each view.
+- Large backend files should be split by responsibility when distinct concerns
+  emerge, such as routing, request parsing, persistence, indexing, privacy
+  config adaptation, query shaping, and view-model presentation.
+- Repeated config and file-write flows should share one well-tested path for
+  loading, validation, backup or atomic-write behavior, error reporting, and
+  persistence semantics instead of duplicating near-identical write code.
+- Validation expectations should reference [Validation](validation.md) rather
+  than duplicating command lists. Update that document when the source of truth
+  for smoke or build checks changes.
+
 ## Command Line
 
 Recommended local Web command:
