@@ -1,12 +1,16 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, type AgentUsage, type ToolCall, type ToolCallFilters, type ToolStat } from '../../api'
-import { isShellToolName } from './shellTool'
+import { invokedCommand, isShellToolName } from './shellTool'
 
 export const DEFAULT_SORT = 'recent'
 export const TOOL_CALL_LIMIT = 500
 export type ToolCallExplorerMode = 'all' | 'shell'
 export type ToolCallSort = typeof DEFAULT_SORT | 'duration_desc' | 'duration_asc'
+export interface ShellCommandStat {
+  command: string
+  calls: number
+}
 
 export function useToolCallExplorer(mode: ToolCallExplorerMode) {
   const route = useRoute()
@@ -17,7 +21,9 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
   const tools = ref<ToolStat[]>([])
   const agents = ref<AgentUsage[]>([])
   const toolCalls = ref<ToolCall[]>([])
+  const commandOptions = ref<ShellCommandStat[]>([])
   const toolFilter = ref<string | undefined>(routeStringQuery(route, 'tool'))
+  const commandFilter = ref<string | undefined>(mode === 'shell' ? routeStringQuery(route, 'command') : undefined)
   const agentFilter = ref<string | undefined>(routeStringQuery(route, 'agent'))
   const fromFilter = ref(routeDateTimeQuery(route, 'from'))
   const toFilter = ref(routeDateTimeQuery(route, 'to'))
@@ -53,7 +59,9 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
   }
 
   async function fetchToolCalls() {
-    return mode === 'shell' ? fetchShellToolCalls() : (await api.listToolCalls(currentToolCallFilters())) || []
+    if (mode === 'shell') return fetchShellToolCalls()
+    commandOptions.value = []
+    return (await api.listToolCalls(currentToolCallFilters())) || []
   }
 
   async function fetchShellToolCalls() {
@@ -69,7 +77,9 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
         })
       )
     )
-    return sortedCalls(uniqueCalls(callGroups.flat()).filter((call) => isShellToolName(call.toolName)), sortFilter.value).slice(0, TOOL_CALL_LIMIT)
+    const calls = sortedCalls(uniqueCalls(callGroups.flat()).filter((call) => isShellToolName(call.toolName)), sortFilter.value)
+    commandOptions.value = shellCommandStats(calls)
+    return filteredByCommand(calls, commandFilter.value).slice(0, TOOL_CALL_LIMIT)
   }
 
   function currentToolCallFilters(): ToolCallFilters {
@@ -106,6 +116,7 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
       if (typeof value === 'string') query[key] = value
     }
     setQueryValue(query, 'tool', toolFilter.value)
+    setQueryValue(query, 'command', mode === 'shell' ? commandFilter.value : undefined)
     setQueryValue(query, 'agent', agentFilter.value)
     setQueryValue(query, 'from', fromFilter.value || undefined)
     setQueryValue(query, 'to', toFilter.value || undefined)
@@ -130,6 +141,7 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
 
   function syncFiltersFromRoute() {
     toolFilter.value = routeStringQuery(route, 'tool')
+    commandFilter.value = mode === 'shell' ? routeStringQuery(route, 'command') : undefined
     agentFilter.value = routeStringQuery(route, 'agent')
     fromFilter.value = routeDateTimeQuery(route, 'from')
     toFilter.value = routeDateTimeQuery(route, 'to')
@@ -138,6 +150,7 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
 
   function resetFilters() {
     toolFilter.value = undefined
+    commandFilter.value = undefined
     agentFilter.value = undefined
     fromFilter.value = ''
     toFilter.value = ''
@@ -158,7 +171,7 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
   }
 
   watch(
-    () => [route.query.tool, route.query.agent, route.query.from, route.query.to, route.query.sort],
+    () => [route.query.tool, route.query.command, route.query.agent, route.query.from, route.query.to, route.query.sort],
     async () => {
       if (applyingRouteUpdate) return
       syncFiltersFromRoute()
@@ -178,7 +191,9 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
     availableTools,
     agents,
     toolCalls,
+    commandOptions,
     toolFilter,
+    commandFilter,
     agentFilter,
     fromFilter,
     toFilter,
@@ -205,6 +220,23 @@ function sortedCalls(calls: ToolCall[], sort: ToolCallSort) {
     if (sort === 'duration_asc') return (left.durationMs || 0) - (right.durationMs || 0)
     return timestampMs(right.startedAt) - timestampMs(left.startedAt)
   })
+}
+
+function filteredByCommand(calls: ToolCall[], command?: string) {
+  if (!command) return calls
+  return calls.filter((call) => invokedCommand(call) === command)
+}
+
+function shellCommandStats(calls: ToolCall[]): ShellCommandStat[] {
+  const counts = new Map<string, number>()
+  for (const call of calls) {
+    const command = invokedCommand(call)
+    if (!command) continue
+    counts.set(command, (counts.get(command) || 0) + 1)
+  }
+  return [...counts.entries()]
+    .map(([command, calls]) => ({ command, calls }))
+    .sort((left, right) => right.calls - left.calls || left.command.localeCompare(right.command))
 }
 
 function timestampMs(value?: string) {

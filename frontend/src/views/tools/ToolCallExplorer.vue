@@ -17,6 +17,7 @@ import { statusClass, statusColor } from '../../presentation/status'
 import {
   commandSummary,
   commandTooltip,
+  invokedCommand,
   inputContext,
   projectContext,
   projectTooltip,
@@ -54,6 +55,7 @@ const { t } = useMessages({
     'column.output': 'Output',
     'column.project': 'Project',
     'filter.agent': 'Source',
+    'filter.command': 'Invoked command',
     'filter.tool.all': 'Tool',
     'filter.tool.shell': 'Shell tool',
     'filter.from': 'From',
@@ -96,6 +98,7 @@ const { t } = useMessages({
     'column.output': '输出',
     'column.project': '项目',
     'filter.agent': '来源',
+    'filter.command': '调用命令',
     'filter.tool.all': '工具',
     'filter.tool.shell': 'Shell 工具',
     'filter.from': '从',
@@ -149,6 +152,12 @@ const toolOptions = computed(() => {
     label: props.mode === 'shell' ? `${item.toolName || t('fallback.unknown')} (${formatNumber(item.calls)})` : item.toolName || t('fallback.unknown')
   }))
 })
+const commandOptions = computed(() =>
+  explorer.commandOptions.value.map((item) => ({
+    value: item.command,
+    label: `${item.command} (${formatNumber(item.calls)})`
+  }))
+)
 const agentOptions = computed(() => sourceFilterOptions(explorer.agents.value, t('fallback.unknown')))
 const sortOptions = computed(() => [
   { value: DEFAULT_SORT, label: t('sort.recent') },
@@ -156,7 +165,7 @@ const sortOptions = computed(() => [
   { value: 'duration_asc', label: t('sort.durationAsc') }
 ])
 const tableLocale = computed(() => ({ emptyText: explorer.callLoading.value ? t(`empty.${modeKey.value}.loading`) : t(`empty.${modeKey.value}.none`) }))
-const hasActiveFilters = computed(() => Boolean(explorer.toolFilter.value || explorer.agentFilter.value || explorer.fromFilter.value || explorer.toFilter.value))
+const hasActiveFilters = computed(() => Boolean(explorer.toolFilter.value || explorer.commandFilter.value || explorer.agentFilter.value || explorer.fromFilter.value || explorer.toFilter.value))
 const countText = computed(() => {
   const visible = formatNumber(explorer.toolCalls.value.length)
   if (hasActiveFilters.value) return t(`count.${modeKey.value}.matching`, { count: visible })
@@ -185,6 +194,10 @@ function callSessionTooltip(call: ToolCall) {
 
 function sourceInfo(call: ToolCall) {
   return sourceDisplay(call, t('fallback.unknown'))
+}
+
+function commandName(call: ToolCall) {
+  return invokedCommand(call)
 }
 </script>
 
@@ -216,6 +229,18 @@ function sourceInfo(call: ToolCall) {
             :placeholder="t(`filter.tool.${modeKey}`)"
             :options="toolOptions"
             :loading="explorer.loading.value || explorer.toolLoading.value"
+            @change="() => explorer.updateFilters()"
+          />
+          <a-select
+            v-if="mode === 'shell'"
+            v-model:value="explorer.commandFilter.value"
+            class="control-medium shell-command-filter"
+            allow-clear
+            show-search
+            option-filter-prop="label"
+            :placeholder="t('filter.command')"
+            :options="commandOptions"
+            :loading="explorer.callLoading.value"
             @change="() => explorer.updateFilters()"
           />
           <label class="inline-field tool-time-filter">
@@ -275,6 +300,9 @@ function sourceInfo(call: ToolCall) {
           </template>
 
           <template v-else-if="column.key === 'command'">
+            <div v-if="commandName(record)" class="tool-shell-command-label">
+              <a-tag class="tool-shell-command-tag">{{ commandName(record) }}</a-tag>
+            </div>
             <a-tooltip :title="commandTooltip(record, t('fallback.none'))" placement="topLeft">
               <pre class="tool-shell-command mono">{{ commandSummary(record) || t('fallback.none') }}</pre>
             </a-tooltip>
@@ -344,7 +372,26 @@ function sourceInfo(call: ToolCall) {
 </template>
 
 <style scoped>
+.shell-command-filter {
+  width: 170px;
+}
+
 .tool-shell-table :deep(.ant-table-tbody > tr > td) {
+  vertical-align: top;
+}
+
+.tool-shell-command-label {
+  margin-bottom: 4px;
+}
+
+.tool-shell-command-tag {
+  max-width: 100%;
+  margin-inline-end: 0;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  text-transform: none;
   vertical-align: top;
 }
 
