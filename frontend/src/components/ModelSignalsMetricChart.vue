@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import AButton from 'ant-design-vue/es/button'
 import ASegmented from 'ant-design-vue/es/segmented'
 import ASpin from 'ant-design-vue/es/spin'
 import ATag from 'ant-design-vue/es/tag'
 import ATooltip from 'ant-design-vue/es/tooltip'
-import { BarChartOutlined, LineChartOutlined } from '@ant-design/icons-vue'
+import { BarChartOutlined, LineChartOutlined, UndoOutlined } from '@ant-design/icons-vue'
 import {
   formatCost,
   formatNumber,
@@ -94,6 +95,7 @@ const { t, locale } = useMessages({
     'control.metrics': 'Metrics',
     'control.baseline': 'Compare baseline',
     'control.baselineUnavailable': 'No baseline values for the selected metrics',
+    'action.reset': 'Reset',
     'direction.lower': 'lower is better',
     'direction.higher': 'higher is better',
     'direction.mixed': 'mixed directions',
@@ -168,6 +170,7 @@ const { t, locale } = useMessages({
     'control.metrics': '指标',
     'control.baseline': '对比基线',
     'control.baselineUnavailable': '所选指标没有可用基线值',
+    'action.reset': '重置',
     'direction.lower': '越低越好',
     'direction.higher': '越高越好',
     'direction.mixed': '方向混合',
@@ -534,9 +537,10 @@ function renderDailyChart() {
     xAxis: {
       type: 'category',
       data: rows.map((row) => row.date.slice(5)),
+      boundaryGap: true,
       axisTick: { show: false },
       axisLine: { lineStyle: { color: chartPalette.border } },
-      axisLabel: { color: chartPalette.axis, fontSize: 11 }
+      axisLabel: { color: chartPalette.axis, fontSize: 11, hideOverlap: true }
     },
     yAxis: activeMetricKinds.value.map((kind, index) => valueAxisOptions(kind, index)),
     series: [
@@ -562,7 +566,7 @@ function renderProjectChart() {
       axisPointer: { type: 'shadow', shadowStyle: { color: chartPalette.pointer } },
       formatter: (params: unknown) => projectTooltipMarkup(params)
     },
-    grid: { left: 128, right: 42, top: 42, bottom: 34 },
+    grid: { left: 136, right: 56, top: 68, bottom: 38 },
     legend: legendOptions(),
     xAxis: {
       type: 'value',
@@ -761,23 +765,33 @@ function dailyGrid() {
   const leftCount = activeMetricKinds.value.filter((_, index) => index % 2 === 0).length
   const rightCount = activeMetricKinds.value.length - leftCount
   return {
-    left: 64 + Math.max(0, leftCount - 1) * 54,
-    right: 34 + Math.max(0, rightCount - 1) * 58,
-    top: 42,
-    bottom: 42
+    left: 76 + Math.max(0, leftCount - 1) * 54,
+    right: 50 + Math.max(0, rightCount - 1) * 58,
+    top: 68,
+    bottom: 44
   }
 }
 
 function legendOptions() {
   return {
     show: true,
-    top: 0,
+    top: 2,
+    left: 8,
     right: 8,
     type: 'scroll',
-    itemGap: 12,
+    orient: 'horizontal',
+    itemGap: 10,
     itemWidth: 10,
     itemHeight: 10,
-    textStyle: { color: chartPalette.axis, fontSize: 12 }
+    pageButtonPosition: 'end',
+    pageIconSize: 10,
+    textStyle: {
+      color: chartPalette.axis,
+      fontSize: 12,
+      width: 96,
+      overflow: 'truncate',
+      ellipsis: '...'
+    }
   }
 }
 
@@ -789,6 +803,11 @@ function toggleMetric(key: MetricKey) {
     return
   }
   selectedMetricKeys.value = [...selected, key]
+}
+
+function resetMetricSelection() {
+  selectedMetricKeys.value = defaultMetricsForMode(selectedMode.value)
+  showBaselineComparison.value = false
 }
 
 function isMetricSelected(key: MetricKey) {
@@ -929,6 +948,12 @@ function escapeHtml(value: string | number | undefined) {
           <span>{{ t('control.baseline') }}</span>
         </label>
       </a-tooltip>
+      <a-button class="model-signals-reset-button" @click="resetMetricSelection">
+        <template #icon>
+          <UndoOutlined />
+        </template>
+        {{ t('action.reset') }}
+      </a-button>
     </div>
 
     <div class="model-signals-metric-picker" role="group" :aria-label="t('control.metrics')">
@@ -996,7 +1021,8 @@ function escapeHtml(value: string | number | undefined) {
   flex-wrap: wrap;
   gap: 10px;
   min-width: 0;
-  margin: 2px 0 12px;
+  margin: 12px 0;
+  padding: 0 14px;
 }
 
 .model-signals-chart-segmented {
@@ -1034,11 +1060,16 @@ function escapeHtml(value: string | number | undefined) {
   cursor: not-allowed;
 }
 
+.model-signals-reset-button {
+  flex-shrink: 0;
+}
+
 .model-signals-metric-picker {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 14px;
+  padding: 0 14px;
 }
 
 .model-signals-metric-group {
