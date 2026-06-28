@@ -2,8 +2,8 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-cmd = "go build -o ./tmp/agentmeter-dev ."
-bin = "./tmp/agentmeter-dev -http 127.0.0.1:34115"
+cmd = "go build -o ./tmp/agentmeter-dev.exe ."
+entrypoint = ["./tmp/agentmeter-dev.exe", "-http", "127.0.0.1:34115"]
 delay = 500
 exclude_dir = ["build", "frontend", "tmp", ".git"]
 include_ext = ["go"]
