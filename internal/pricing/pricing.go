@@ -166,6 +166,10 @@ func Seed(ctx context.Context, conn *sql.DB) error {
 }
 
 func NormalizeModel(value string) string {
+	return normalizeModelAlias(normalizeModelName(value))
+}
+
+func normalizeModelName(value string) string {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	normalized = strings.TrimPrefix(normalized, "models/")
 	for _, prefix := range []string{
@@ -189,6 +193,49 @@ func NormalizeModel(value string) string {
 		normalized = "gpt-" + normalized[3:]
 	}
 	return normalized
+}
+
+func normalizeModelAlias(normalized string) string {
+	if alias, ok := modelAliases[normalized]; ok {
+		return alias
+	}
+	return normalized
+}
+
+func normalizedModelCandidates(value string) []string {
+	normalized := normalizeModelName(value)
+	candidates := make([]string, 0, 4)
+	seen := map[string]bool{}
+	add := func(candidate string) {
+		if candidate == "" || seen[candidate] {
+			return
+		}
+		seen[candidate] = true
+		candidates = append(candidates, candidate)
+	}
+
+	for {
+		add(normalizeModelAlias(normalized))
+		index := strings.LastIndex(normalized, "-")
+		if index <= 0 {
+			break
+		}
+		normalized = normalized[:index]
+	}
+	return candidates
+}
+
+var modelAliases = map[string]string{
+	"claude-4.5-haiku":   "claude-haiku-4.5",
+	"claude-4.6-opus":    "claude-opus-4.6",
+	"claude-4.6-sonnet":  "claude-sonnet-4.6",
+	"claude-4.7-opus":    "claude-opus-4.7",
+	"claude-opus-4-8":    "claude-opus-4.8",
+	"claude-opus-4.6-1m": "claude-opus-4.6",
+	"claude-sonnet-4-6":  "claude-sonnet-4.6",
+	"glm-5":              "glm-5.2",
+	"glm-5.1":            "glm-5.2",
+	"gpt-5.1-codex-mini": "gpt-5-mini",
 }
 
 func Compute(conn *sql.DB, usage model.Usage) (*float64, bool) {
@@ -224,7 +271,7 @@ func (c Calculator) Compute(usage model.Usage) (*float64, bool) {
 	if usage.Model == "" || normalized == "unknown" {
 		return nil, true
 	}
-	rate, ok := c.rates[normalized]
+	rate, ok := c.rateForModel(usage.Model)
 	return computeWithRate(usage, rate, ok)
 }
 
@@ -236,7 +283,7 @@ func (c Calculator) CacheSavings(usage model.Usage) *float64 {
 	if usage.Model == "" || normalized == "unknown" {
 		return nil
 	}
-	rate, ok := c.rates[normalized]
+	rate, ok := c.rateForModel(usage.Model)
 	if !ok || rate.InputPer1M <= rate.CachedInputPer1M {
 		return nil
 	}
@@ -247,6 +294,15 @@ func (c Calculator) CacheSavings(usage model.Usage) *float64 {
 	return &savings
 }
 
+func (c Calculator) rateForModel(value string) (Rate, bool) {
+	for _, candidate := range normalizedModelCandidates(value) {
+		if rate, ok := c.rates[candidate]; ok {
+			return rate, true
+		}
+	}
+	return Rate{}, false
+}
+
 func rateForUsage(conn *sql.DB, usage model.Usage) (Rate, bool) {
 	if !hasBillableUsage(usage) {
 		return Rate{}, false
@@ -255,16 +311,18 @@ func rateForUsage(conn *sql.DB, usage model.Usage) (Rate, bool) {
 	if usage.Model == "" || normalized == "unknown" {
 		return Rate{}, false
 	}
-	var rate Rate
-	err := conn.QueryRow(`SELECT input_per_1m, cached_input_per_1m, output_per_1m FROM pricing_models WHERE normalized_model = ?`, NormalizeModel(usage.Model)).
-		Scan(&rate.InputPer1M, &rate.CachedInputPer1M, &rate.OutputPer1M)
-	if err == sql.ErrNoRows {
-		return Rate{}, false
+	for _, candidate := range normalizedModelCandidates(usage.Model) {
+		var rate Rate
+		err := conn.QueryRow(`SELECT input_per_1m, cached_input_per_1m, output_per_1m FROM pricing_models WHERE normalized_model = ?`, candidate).
+			Scan(&rate.InputPer1M, &rate.CachedInputPer1M, &rate.OutputPer1M)
+		if err == nil {
+			return rate, true
+		}
+		if err != sql.ErrNoRows {
+			return Rate{}, false
+		}
 	}
-	if err != nil {
-		return Rate{}, false
-	}
-	return rate, true
+	return Rate{}, false
 }
 
 func computeWithRate(usage model.Usage, rate Rate, hasRate bool) (*float64, bool) {
@@ -274,12 +332,24 @@ func computeWithRate(usage model.Usage, rate Rate, hasRate bool) (*float64, bool
 	if usage.Model == "" || NormalizeModel(usage.Model) == "unknown" || !hasRate {
 		return nil, true
 	}
-	uncachedInput := usage.InputTokens - usage.CachedInputTokens
-	if uncachedInput < 0 {
-		uncachedInput = 0
-	}
-	cost := (float64(uncachedInput)*rate.InputPer1M + float64(usage.CachedInputTokens)*rate.CachedInputPer1M + float64(usage.OutputTokens)*rate.OutputPer1M) / 1_000_000
+	uncachedInput, cachedInput := billableInputTokens(usage)
+	cost := (float64(uncachedInput)*rate.InputPer1M + float64(cachedInput)*rate.CachedInputPer1M + float64(usage.OutputTokens)*rate.OutputPer1M) / 1_000_000
 	return &cost, false
+}
+
+func billableInputTokens(usage model.Usage) (int64, int64) {
+	inputTokens := usage.InputTokens
+	if inputTokens < 0 {
+		inputTokens = 0
+	}
+	cachedInputTokens := usage.CachedInputTokens
+	if cachedInputTokens < 0 {
+		cachedInputTokens = 0
+	}
+	if cachedInputTokens > inputTokens {
+		return inputTokens, cachedInputTokens
+	}
+	return inputTokens - cachedInputTokens, cachedInputTokens
 }
 
 func hasBillableUsage(usage model.Usage) bool {

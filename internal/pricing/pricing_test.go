@@ -40,6 +40,51 @@ func TestComputeKnownRegistryRows(t *testing.T) {
 			want: 3.372,
 		},
 		{
+			name: "glm alias",
+			usage: model.Usage{
+				Model:        "glm-5.1",
+				InputTokens:  1_000_000,
+				OutputTokens: 1_000_000,
+			},
+			want: 5.8,
+		},
+		{
+			name: "claude vendor order alias",
+			usage: model.Usage{
+				Model:        "claude-4.6-opus",
+				InputTokens:  1_000_000,
+				OutputTokens: 1_000_000,
+			},
+			want: 30,
+		},
+		{
+			name: "deepseek suffix fallback",
+			usage: model.Usage{
+				Model:        "deepseek-v4-flash-custom",
+				InputTokens:  1_000_000,
+				OutputTokens: 1_000_000,
+			},
+			want: 0.42,
+		},
+		{
+			name: "deepseek compound suffix fallback",
+			usage: model.Usage{
+				Model:        "deepseek-v4-flash-custom-tier",
+				InputTokens:  1_000_000,
+				OutputTokens: 1_000_000,
+			},
+			want: 0.42,
+		},
+		{
+			name: "registered suffix wins before fallback",
+			usage: model.Usage{
+				Model:        "gpt-5.4-long-context-variant",
+				InputTokens:  1_000_000,
+				OutputTokens: 1_000_000,
+			},
+			want: 27.5,
+		},
+		{
 			name: "kimi",
 			usage: model.Usage{
 				Model:             "kimi-k2.6",
@@ -64,6 +109,33 @@ func TestComputeKnownRegistryRows(t *testing.T) {
 				t.Fatalf("cost = %f, want %f", *cost, tt.want)
 			}
 		})
+	}
+}
+
+func TestNormalizeModelPreservesUnregisteredQualifiers(t *testing.T) {
+	if got := NormalizeModel("deepseek-v4-flash-custom"); got != "deepseek-v4-flash-custom" {
+		t.Fatalf("NormalizeModel() = %q, want %q", got, "deepseek-v4-flash-custom")
+	}
+}
+
+func TestComputeHandlesCacheReadSeparateFromInput(t *testing.T) {
+	conn := openSeededPricingDB(t)
+	defer conn.Close()
+
+	cost, unpriced := Compute(conn, model.Usage{
+		Model:             "claude-4.6-opus",
+		InputTokens:       1_000,
+		CachedInputTokens: 10_000,
+		OutputTokens:      1_000,
+	})
+	if unpriced {
+		t.Fatal("usage marked unpriced")
+	}
+	if cost == nil {
+		t.Fatal("cost is nil")
+	}
+	if math.Abs(*cost-0.035) > 0.000001 {
+		t.Fatalf("cost = %f, want %f", *cost, 0.035)
 	}
 }
 
@@ -126,6 +198,17 @@ func TestCalculatorCacheSavings(t *testing.T) {
 	}
 	if math.Abs(*savings-0.9) > 0.000001 {
 		t.Fatalf("savings = %f, want %f", *savings, 0.9)
+	}
+	savings = calculator.CacheSavings(model.Usage{
+		Model:             "openai/gpt5.5-custom",
+		CachedInputTokens: 200_000,
+		TotalTokens:       200_000,
+	})
+	if savings == nil {
+		t.Fatal("suffix fallback savings is nil")
+	}
+	if math.Abs(*savings-0.9) > 0.000001 {
+		t.Fatalf("suffix fallback savings = %f, want %f", *savings, 0.9)
 	}
 	if got := calculator.CacheSavings(model.Usage{Model: "unknown-model", CachedInputTokens: 200_000, TotalTokens: 200_000}); got != nil {
 		t.Fatalf("unknown model savings = %v", got)

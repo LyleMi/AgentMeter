@@ -241,7 +241,7 @@ const dailyCacheSignal = computed<OverviewSignalMetric | null>(() => {
   const cachedInputTokens = day.cachedInputTokens || 0
   const rate = Number.isFinite(day.cacheUtilizationRate)
     ? day.cacheUtilizationRate
-    : cachedInputTokens / Math.max(day.inputTokens || 0, 1)
+    : cacheUtilizationRate(day.inputTokens || 0, cachedInputTokens)
   return {
     label: t('efficiency.dayCache'),
     value: formatPercent(rate),
@@ -292,7 +292,7 @@ const efficiencyMetrics = computed<OverviewSignalMetric[]>(() => {
     },
     {
       label: t('efficiency.cacheHit'),
-      value: formatPercent((item.totalCachedInputTokens || 0) / Math.max(inputTokens, 1)),
+      value: formatPercent(cacheUtilizationRate(inputTokens, item.totalCachedInputTokens || 0)),
       note: t('efficiency.cacheHitNote', { count: formatNumber(item.totalCachedInputTokens) })
     }
   ]
@@ -376,7 +376,15 @@ watch(
 
 function formatPercent(value: number) {
   if (!Number.isFinite(value)) return '0%'
-  return `${Math.round(Math.max(0, value) * 100)}%`
+  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`
+}
+
+function cacheUtilizationRate(inputTokens: number, cachedInputTokens: number) {
+  const input = Math.max(0, inputTokens || 0)
+  const cached = Math.max(0, cachedInputTokens || 0)
+  const denominator = cached > input ? input + cached : input
+  if (denominator <= 0 || cached <= 0) return 0
+  return cached / denominator
 }
 
 function formatRatio(value: number) {

@@ -133,7 +133,7 @@ func TestModelSignalsEmptyAndZeroDenominatorResponses(t *testing.T) {
 
 	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
 	sourceID := insertTimeSource(t, conn, "codex", "Codex", now)
-	insertModelSignalSession(t, conn, sourceID, now, "zero", "/workspace/project", "gpt-5", "gpt-5", 100, 200, 0, 10, 0, 0)
+	insertModelSignalSession(t, conn, sourceID, now, "zero", "/workspace/project", "gpt-5", "gpt-5", 0, 0, 0, 10, 0, 0)
 
 	signals, err := service.ModelSignals(ctx)
 	if err != nil {
@@ -147,6 +147,34 @@ func TestModelSignalsEmptyAndZeroDenominatorResponses(t *testing.T) {
 	}
 	if _, err := json.Marshal(signals); err != nil {
 		t.Fatalf("model signals should marshal without NaN/Inf: %v", err)
+	}
+}
+
+func TestModelSignalsHandlesSeparateCacheReadInput(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	sourceID := insertTimeSource(t, conn, "claude", "Claude Code", now)
+	sessionID := insertModelSignalSession(t, conn, sourceID, now, "claude-cache", "/workspace/project", "claude-4.6-opus", "claude-4.6-opus", 1_000, 10_000, 1_000, 0, 12_000, 1_000)
+	insertModelSignalCall(t, conn, sessionID, now, 1_000, "claude-4.6-opus", "completed")
+
+	signals, err := New(conn).ModelSignals(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFloat(t, signals.CacheMissRate, float64(1_000)/float64(11_000))
+	if len(signals.ModelBreakdown) != 1 {
+		t.Fatalf("model breakdown = %+v", signals.ModelBreakdown)
+	}
+	assertFloat(t, signals.ModelBreakdown[0].CacheMissRate, float64(1_000)/float64(11_000))
+	daily := findModelSignalsDailyMetric(t, signals.DailyMetrics, "2026-06-27")
+	if daily.UnpricedSessionCount != 0 || daily.EstimatedCostUSD == nil {
+		t.Fatalf("daily metric should be priced: %+v", daily)
 	}
 }
 

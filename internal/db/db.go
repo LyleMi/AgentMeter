@@ -130,6 +130,7 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			total_tokens INTEGER NOT NULL,
 			cost_usd REAL
 		)`,
+		`CREATE INDEX IF NOT EXISTS idx_model_calls_session ON model_calls(session_id)`,
 		`CREATE TABLE IF NOT EXISTS tool_calls (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,

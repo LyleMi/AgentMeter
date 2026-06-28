@@ -76,7 +76,7 @@ const tokenMix = computed(() => {
   }))
 })
 
-const cacheRatePercent = computed(() => Math.round(Math.max(0, analytics.value?.cacheUtilizationRate || 0) * 100))
+const cacheRatePercent = computed(() => Math.round(Math.max(0, Math.min(1, analytics.value?.cacheUtilizationRate || 0)) * 100))
 const metricCards = computed(() => {
   const item = analytics.value
   return [

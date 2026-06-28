@@ -67,7 +67,25 @@ func (s *Service) ModelSignalsWithFilters(ctx context.Context, filters model.Ana
 func (s *Service) modelSignalSessionMetrics(ctx context.Context, filters model.AnalyticsFilters) ([]modelSignalSessionMetric, error) {
 	where, args := analyticsSessionWhere(filters)
 	calculator := s.pricingCalculator(ctx)
-	rows, err := s.conn.QueryContext(ctx, `SELECT
+	rows, err := s.conn.QueryContext(ctx, `WITH model_call_stats AS (
+		SELECT
+			session_id,
+			COUNT(*) AS model_calls,
+			SUM(CASE WHEN status NOT IN ('completed', 'success') THEN 1 ELSE 0 END) AS failed_model_calls,
+			SUM(CASE WHEN duration_ms > 0 THEN duration_ms ELSE 0 END) AS model_duration_ms,
+			GROUP_CONCAT(CASE WHEN duration_ms > 0 AND output_tokens > 0 THEN (CAST(duration_ms AS REAL) * 1000.0 / CAST(output_tokens AS REAL)) END) AS latency_samples,
+			GROUP_CONCAT(CASE WHEN duration_ms > 0 AND total_tokens > 0 THEN (CAST(total_tokens AS REAL) / (CAST(duration_ms AS REAL) / 1000.0)) END) AS throughput_samples
+		FROM model_calls
+		GROUP BY session_id
+	), tool_call_stats AS (
+		SELECT
+			session_id,
+			COUNT(*) AS tool_calls,
+			SUM(CASE WHEN status NOT IN ('completed', 'success') THEN 1 ELSE 0 END) AS failed_tool_calls
+		FROM tool_calls
+		GROUP BY session_id
+	)
+	SELECT
 		s.id,
 		s.source_id,
 		src.root_path,
@@ -90,23 +108,24 @@ func (s *Service) modelSignalSessionMetrics(ctx context.Context, filters model.A
 		COALESCE(s.wall_duration_ms, 0),
 		COALESCE(s.active_duration_ms, 0),
 		CASE
-			WHEN COALESCE((SELECT COUNT(*) FROM model_calls mc WHERE mc.session_id = s.id), 0) > 0
-				THEN COALESCE((SELECT SUM(CASE WHEN mc.duration_ms > 0 THEN mc.duration_ms ELSE 0 END) FROM model_calls mc WHERE mc.session_id = s.id), 0)
+			WHEN COALESCE(mcs.model_calls, 0) > 0 THEN COALESCE(mcs.model_duration_ms, 0)
 			WHEN s.model_duration_ms > 0 THEN s.model_duration_ms
 			ELSE 0
 		END,
 		COALESCE(s.tool_duration_ms, 0),
 		COALESCE(s.idle_duration_ms, 0),
-		COALESCE((SELECT COUNT(*) FROM model_calls mc WHERE mc.session_id = s.id), 0),
-		COALESCE((SELECT COUNT(*) FROM model_calls mc WHERE mc.session_id = s.id AND mc.status NOT IN ('completed', 'success')), 0),
-		COALESCE((SELECT GROUP_CONCAT(CASE WHEN mc.duration_ms > 0 AND mc.output_tokens > 0 THEN (CAST(mc.duration_ms AS REAL) * 1000.0 / CAST(mc.output_tokens AS REAL)) END) FROM model_calls mc WHERE mc.session_id = s.id), ''),
-		COALESCE((SELECT GROUP_CONCAT(CASE WHEN mc.duration_ms > 0 AND mc.total_tokens > 0 THEN (CAST(mc.total_tokens AS REAL) / (CAST(mc.duration_ms AS REAL) / 1000.0)) END) FROM model_calls mc WHERE mc.session_id = s.id), ''),
-		COALESCE((SELECT COUNT(*) FROM tool_calls tc WHERE tc.session_id = s.id), 0),
-		COALESCE((SELECT COUNT(*) FROM tool_calls tc WHERE tc.session_id = s.id AND tc.status NOT IN ('completed', 'success')), 0)
+		COALESCE(mcs.model_calls, 0),
+		COALESCE(mcs.failed_model_calls, 0),
+		COALESCE(mcs.latency_samples, ''),
+		COALESCE(mcs.throughput_samples, ''),
+		COALESCE(tcs.tool_calls, 0),
+		COALESCE(tcs.failed_tool_calls, 0)
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
 		JOIN source_files sf ON sf.id = s.source_file_id
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
+		LEFT JOIN model_call_stats mcs ON mcs.session_id = s.id
+		LEFT JOIN tool_call_stats tcs ON tcs.session_id = s.id
 		WHERE `+strings.Join(where, " AND ")+`
 		ORDER BY s.started_at ASC, s.id ASC`, args...)
 	if err != nil {
@@ -1415,10 +1434,36 @@ func safeRateInt(numerator, denominator int) float64 {
 }
 
 func cacheMissRate(inputTokens, cachedInputTokens int64) float64 {
-	if inputTokens <= 0 {
+	denominator := cacheInputDenominator(inputTokens, cachedInputTokens)
+	if denominator <= 0 {
 		return 0
 	}
-	return clamp01(float64(inputTokens-cachedInputTokens) / float64(inputTokens))
+	uncachedInputTokens := inputTokens
+	if cachedInputTokens <= inputTokens {
+		uncachedInputTokens = inputTokens - cachedInputTokens
+	}
+	return clamp01(float64(uncachedInputTokens) / float64(denominator))
+}
+
+func cacheUtilizationRate(inputTokens, cachedInputTokens int64) float64 {
+	denominator := cacheInputDenominator(inputTokens, cachedInputTokens)
+	if denominator <= 0 || cachedInputTokens <= 0 {
+		return 0
+	}
+	return clamp01(float64(cachedInputTokens) / float64(denominator))
+}
+
+func cacheInputDenominator(inputTokens, cachedInputTokens int64) int64 {
+	if inputTokens <= 0 {
+		if cachedInputTokens > 0 {
+			return cachedInputTokens
+		}
+		return 0
+	}
+	if cachedInputTokens > inputTokens {
+		return inputTokens + cachedInputTokens
+	}
+	return inputTokens
 }
 
 func throughputPerSecond(tokens, durationMS int64) float64 {

@@ -148,7 +148,7 @@ function breakdownRowClass(record: UsageBreakdownBucket) {
 
 function formatRate(value: number | undefined) {
   if (!Number.isFinite(value)) return '0%'
-  return `${Math.round(Math.max(0, value || 0) * 100)}%`
+  return `${Math.round(Math.max(0, Math.min(1, value || 0)) * 100)}%`
 }
 
 function modelName(record: ModelUsage) {

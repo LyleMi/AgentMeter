@@ -280,6 +280,36 @@ func TestTokenAnalyticsAggregatesUsageCostsAndSessions(t *testing.T) {
 	}
 }
 
+func TestTokenAnalyticsHandlesSeparateCacheReadInput(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	sourceID := insertTimeSource(t, conn, "claude", "Claude Code", now)
+	insertTokenAnalyticsSession(t, conn, sourceID, now, "claude-cache", "claude-4.6-opus", "claude-4.6-opus", "actual", 1_000, 10_000, 1_000, 0, 12_000)
+
+	analytics, err := New(conn).TokenAnalytics(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(analytics.CacheUtilizationRate-(float64(10_000)/float64(11_000))) > 0.000001 {
+		t.Fatalf("cache utilization = %f", analytics.CacheUtilizationRate)
+	}
+	assertCostUSD(t, analytics.EstimatedCostUSD, 0.035)
+
+	agentUsage := findAgentUsage(t, analytics.AgentUsage, "claude", "Claude Code")
+	if agentUsage.InputTokens != 1_000 || agentUsage.CachedInputTokens != 10_000 {
+		t.Fatalf("agent usage tokens = %+v", agentUsage)
+	}
+	if agentUsage.Unpriced {
+		t.Fatalf("agent usage should be priced: %+v", agentUsage)
+	}
+}
+
 func TestTokenAnalyticsWithFiltersScopesTotalsAndSlices(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))

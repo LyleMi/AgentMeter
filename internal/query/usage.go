@@ -89,9 +89,7 @@ func (s *Service) TokenAnalyticsWithFilters(ctx context.Context, filters model.A
 	result.TotalOutputTokens = usage.OutputTokens
 	result.TotalReasoningTokens = usage.ReasoningOutputTokens
 	result.TotalTokens = usage.TotalTokens
-	if result.TotalInputTokens > 0 {
-		result.CacheUtilizationRate = float64(result.TotalCachedInputTokens) / float64(result.TotalInputTokens)
-	}
+	result.CacheUtilizationRate = cacheUtilizationRate(result.TotalInputTokens, result.TotalCachedInputTokens)
 	result.EstimatedCostUSD, result.UnpricedCount, err = s.totalCostWithFilters(ctx, filters)
 	if err != nil {
 		return result, err
@@ -216,9 +214,7 @@ func (s *Service) dailyUsageWithFilters(ctx context.Context, filters model.Analy
 		if err := rows.Scan(&item.Date, &item.SessionCount, &item.TotalTokens, &item.InputTokens, &item.CachedInputTokens, &item.OutputTokens, &item.ToolCalls); err != nil {
 			return nil, err
 		}
-		if item.InputTokens > 0 {
-			item.CacheUtilizationRate = float64(item.CachedInputTokens) / float64(item.InputTokens)
-		}
+		item.CacheUtilizationRate = cacheUtilizationRate(item.InputTokens, item.CachedInputTokens)
 		result = append(result, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -263,12 +259,8 @@ func cacheHitTrendFromDailyUsage(daily []model.DailyUsage) []model.CacheHitTrend
 			HasUsage:          item.SessionCount > 0 || item.TotalTokens > 0 || item.InputTokens > 0 || item.CachedInputTokens > 0,
 			LowInputVolume:    item.InputTokens > 0 && lowVolumeThreshold > 0 && item.InputTokens < lowVolumeThreshold,
 		}
-		if item.InputTokens > 0 {
-			point.CacheUtilizationRate = float64(item.CachedInputTokens) / float64(item.InputTokens)
-		}
-		if rollingInput > 0 {
-			point.RollingCacheUtilizationRate = float64(rollingCached) / float64(rollingInput)
-		}
+		point.CacheUtilizationRate = cacheUtilizationRate(item.InputTokens, item.CachedInputTokens)
+		point.RollingCacheUtilizationRate = cacheUtilizationRate(rollingInput, rollingCached)
 		result = append(result, point)
 	}
 	return result
@@ -633,9 +625,7 @@ func (s *Service) UsageBreakdown(ctx context.Context, groupBy string, filters mo
 
 	result := model.UsageBreakdown{GroupBy: shape.groupBy, Buckets: []model.UsageBreakdownBucket{}}
 	for _, bucket := range bucketsByKey {
-		if bucket.InputTokens > 0 {
-			bucket.CacheUtilizationRate = float64(bucket.CachedInputTokens) / float64(bucket.InputTokens)
-		}
+		bucket.CacheUtilizationRate = cacheUtilizationRate(bucket.InputTokens, bucket.CachedInputTokens)
 		result.Buckets = append(result.Buckets, *bucket)
 	}
 	sortUsageBreakdownBuckets(result.Buckets, shape.groupBy)
