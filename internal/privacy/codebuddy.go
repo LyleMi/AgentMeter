@@ -1,11 +1,9 @@
 package privacy
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -38,58 +36,14 @@ func (a CodeBuddyAdapter) Apply(settingIDs []string) (model.PrivacyConfigApplyRe
 	if err != nil {
 		return model.PrivacyConfigApplyResult{}, err
 	}
-	original, exists, err := readOptionalFile(path)
-	if err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-	root, err := parseJSONSettings(original)
-	if err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-
-	selected, warnings := selectedCodeBuddySettingDefinitions(settingIDs)
-	changes := plannedJSONChanges(root, selected)
-	result := model.PrivacyConfigApplyResult{
-		Changed:  changes,
-		Warnings: warnings,
-	}
-	if len(changes) == 0 {
-		result.Status = buildCodeBuddyStatus(path, exists, original, warnings)
-		return result, nil
-	}
-
-	applyJSONSettings(root, selected)
-	updated, err := marshalJSONSettings(root)
-	if err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-	if bytes.Equal(updated, original) {
-		result.Status = buildCodeBuddyStatus(path, exists, original, warnings)
-		return result, nil
-	}
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-	perm := os.FileMode(0o644)
-	if exists {
-		stat, err := os.Stat(path)
-		if err != nil {
-			return model.PrivacyConfigApplyResult{}, err
+	return applyJSONSettingsMutation(path, a.now, buildCodeBuddyStatus, func(root map[string]any) ([]model.PrivacyConfigChange, []string, error) {
+		selected, warnings := selectedJSONSettingDefinitions(settingIDs, codeBuddySettingDefinitions, "CodeBuddy")
+		changes := plannedJSONChanges(root, selected)
+		if len(changes) > 0 {
+			applyJSONSettings(root, selected)
 		}
-		perm = stat.Mode().Perm()
-		backupPath := backupConfigPath(path, a.now())
-		if err := os.WriteFile(backupPath, original, perm); err != nil {
-			return model.PrivacyConfigApplyResult{}, err
-		}
-		result.BackupPath = backupPath
-	}
-	if err := os.WriteFile(path, updated, perm); err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-
-	result.Status = buildCodeBuddyStatus(path, true, updated, warnings)
-	return result, nil
+		return changes, warnings, nil
+	})
 }
 
 func (a CodeBuddyAdapter) ApplyChanges(edits []model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error) {
@@ -97,59 +51,9 @@ func (a CodeBuddyAdapter) ApplyChanges(edits []model.PrivacyConfigEdit) (model.P
 	if err != nil {
 		return model.PrivacyConfigApplyResult{}, err
 	}
-	original, exists, err := readOptionalFile(path)
-	if err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-	root, err := parseJSONSettings(original)
-	if err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-
-	changes, warnings, err := applyCodeBuddyEdits(root, edits)
-	if err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-	result := model.PrivacyConfigApplyResult{
-		Changed:  changes,
-		Warnings: warnings,
-	}
-	if len(changes) == 0 {
-		result.Status = buildCodeBuddyStatus(path, exists, original, warnings)
-		return result, nil
-	}
-
-	updated, err := marshalJSONSettings(root)
-	if err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-	if bytes.Equal(updated, original) {
-		result.Status = buildCodeBuddyStatus(path, exists, original, warnings)
-		return result, nil
-	}
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-	perm := os.FileMode(0o644)
-	if exists {
-		stat, err := os.Stat(path)
-		if err != nil {
-			return model.PrivacyConfigApplyResult{}, err
-		}
-		perm = stat.Mode().Perm()
-		backupPath := backupConfigPath(path, a.now())
-		if err := os.WriteFile(backupPath, original, perm); err != nil {
-			return model.PrivacyConfigApplyResult{}, err
-		}
-		result.BackupPath = backupPath
-	}
-	if err := os.WriteFile(path, updated, perm); err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-
-	result.Status = buildCodeBuddyStatus(path, true, updated, warnings)
-	return result, nil
+	return applyJSONSettingsMutation(path, a.now, buildCodeBuddyStatus, func(root map[string]any) ([]model.PrivacyConfigChange, []string, error) {
+		return applyJSONEdits(root, edits, codeBuddySettingDefinitions, "CodeBuddy")
+	})
 }
 
 func (a CodeBuddyAdapter) now() time.Time {
@@ -245,153 +149,6 @@ func buildCodeBuddyStatus(path string, exists bool, content []byte, warnings []s
 		Summary:    summary,
 		Settings:   settings,
 		Warnings:   warnings,
-	}
-}
-
-func selectedCodeBuddySettingDefinitions(settingIDs []string) ([]jsonSettingDefinition, []string) {
-	if len(settingIDs) == 0 {
-		return append([]jsonSettingDefinition(nil), codeBuddySettingDefinitions...), nil
-	}
-	ids := map[string]struct{}{}
-	for _, id := range settingIDs {
-		id = strings.TrimSpace(id)
-		if id != "" {
-			ids[id] = struct{}{}
-		}
-	}
-	if len(ids) == 0 {
-		return append([]jsonSettingDefinition(nil), codeBuddySettingDefinitions...), nil
-	}
-
-	var selected []jsonSettingDefinition
-	for _, definition := range codeBuddySettingDefinitions {
-		if _, ok := ids[definition.ID]; ok {
-			selected = append(selected, definition)
-			delete(ids, definition.ID)
-		}
-	}
-	return selected, unknownCodeBuddySettingWarnings(ids)
-}
-
-func unknownCodeBuddySettingWarnings(ids map[string]struct{}) []string {
-	if len(ids) == 0 {
-		return nil
-	}
-	unknown := make([]string, 0, len(ids))
-	for id := range ids {
-		unknown = append(unknown, id)
-	}
-	sort.Strings(unknown)
-	warnings := make([]string, 0, len(unknown))
-	for _, id := range unknown {
-		warnings = append(warnings, fmt.Sprintf("unknown CodeBuddy privacy setting %q was ignored", id))
-	}
-	return warnings
-}
-
-func applyCodeBuddyEdits(root map[string]any, edits []model.PrivacyConfigEdit) ([]model.PrivacyConfigChange, []string, error) {
-	changes := make([]model.PrivacyConfigChange, 0, len(edits))
-	unknown := map[string]struct{}{}
-	definitions := codeBuddyDefinitionByID()
-
-	for _, edit := range edits {
-		id := strings.TrimSpace(edit.ID)
-		definition, ok := definitions[id]
-		if !ok {
-			if id != "" {
-				unknown[id] = struct{}{}
-			}
-			continue
-		}
-
-		op := strings.TrimSpace(strings.ToLower(edit.Op))
-		if op != "set" && op != "unset" {
-			return nil, nil, fmt.Errorf("invalid CodeBuddy privacy change op %q for %q", edit.Op, edit.ID)
-		}
-
-		current, configured := nestedJSONValue(root, definition.Key)
-		var before any
-		if configured {
-			before = current
-		}
-
-		switch op {
-		case "set":
-			value, err := editableCodeBuddyJSONValue(definition, edit.Value)
-			if err != nil {
-				return nil, nil, err
-			}
-			if configured && jsonValuesEqual(current, value) {
-				continue
-			}
-			setNestedJSONValue(root, definition.Key, value)
-			changes = append(changes, model.PrivacyConfigChange{
-				ID:     definition.ID,
-				Key:    definition.Key,
-				Before: before,
-				After:  cloneJSONValue(value),
-			})
-		case "unset":
-			if !configured {
-				continue
-			}
-			unsetNestedJSONValue(root, definition.Key)
-			changes = append(changes, model.PrivacyConfigChange{
-				ID:     definition.ID,
-				Key:    definition.Key,
-				Before: before,
-				After:  nil,
-			})
-		}
-	}
-
-	return changes, unknownCodeBuddySettingWarnings(unknown), nil
-}
-
-func codeBuddyDefinitionByID() map[string]jsonSettingDefinition {
-	definitions := make(map[string]jsonSettingDefinition, len(codeBuddySettingDefinitions))
-	for _, definition := range codeBuddySettingDefinitions {
-		definitions[definition.ID] = definition
-	}
-	return definitions
-}
-
-func editableCodeBuddyJSONValue(definition jsonSettingDefinition, value any) (any, error) {
-	switch jsonValueType(definition.Desired) {
-	case "bool":
-		typed, ok := value.(bool)
-		if !ok {
-			return nil, fmt.Errorf("CodeBuddy privacy setting %q requires a bool value", definition.ID)
-		}
-		return typed, nil
-	case "string":
-		typed, ok := value.(string)
-		if !ok {
-			return nil, fmt.Errorf("CodeBuddy privacy setting %q requires a string value", definition.ID)
-		}
-		return typed, nil
-	case "number":
-		typed, ok := editableJSONNumber(value)
-		if !ok {
-			return nil, fmt.Errorf("CodeBuddy privacy setting %q requires a number value", definition.ID)
-		}
-		return typed, nil
-	case "stringArray":
-		typed, ok := value.([]any)
-		if !ok {
-			return nil, fmt.Errorf("CodeBuddy privacy setting %q requires a stringArray value", definition.ID)
-		}
-		result := make([]any, 0, len(typed))
-		for _, item := range typed {
-			text, ok := item.(string)
-			if !ok {
-				return nil, fmt.Errorf("CodeBuddy privacy setting %q requires a stringArray value", definition.ID)
-			}
-			result = append(result, text)
-		}
-		return result, nil
-	default:
-		return nil, fmt.Errorf("CodeBuddy privacy setting %q does not support editable values", definition.ID)
 	}
 }
 

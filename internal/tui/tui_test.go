@@ -10,16 +10,13 @@ import (
 )
 
 type fakeService struct {
-	overview  agentmodel.Overview
-	sessions  []agentmodel.Session
-	detail    agentmodel.SessionDetail
-	tools     []agentmodel.ToolStat
-	settings  agentmodel.Settings
-	codex     agentmodel.PrivacyConfigStatus
-	gemini    agentmodel.PrivacyConfigStatus
-	claude    agentmodel.PrivacyConfigStatus
-	codeBuddy agentmodel.PrivacyConfigStatus
-	index     agentmodel.IndexResult
+	overview agentmodel.Overview
+	sessions []agentmodel.Session
+	detail   agentmodel.SessionDetail
+	tools    []agentmodel.ToolStat
+	settings agentmodel.Settings
+	privacy  []agentmodel.PrivacyConfigStatus
+	index    agentmodel.IndexResult
 
 	indexCalls []bool
 }
@@ -44,20 +41,8 @@ func (f *fakeService) GetSettings() (agentmodel.Settings, error) {
 	return f.settings, nil
 }
 
-func (f *fakeService) GetCodexPrivacyConfig() (agentmodel.PrivacyConfigStatus, error) {
-	return f.codex, nil
-}
-
-func (f *fakeService) GetGeminiPrivacyConfig() (agentmodel.PrivacyConfigStatus, error) {
-	return f.gemini, nil
-}
-
-func (f *fakeService) GetClaudePrivacyConfig() (agentmodel.PrivacyConfigStatus, error) {
-	return f.claude, nil
-}
-
-func (f *fakeService) GetCodeBuddyPrivacyConfig() (agentmodel.PrivacyConfigStatus, error) {
-	return f.codeBuddy, nil
+func (f *fakeService) GetPrivacyConfigs() ([]agentmodel.PrivacyConfigStatus, error) {
+	return f.privacy, nil
 }
 
 func (f *fakeService) IndexNow(rebuild bool) (agentmodel.IndexResult, error) {
@@ -264,7 +249,7 @@ func sampleService() *fakeService {
 				return &value
 			}(),
 		},
-		codex: agentmodel.PrivacyConfigStatus{
+		privacy: []agentmodel.PrivacyConfigStatus{{
 			Target:     "codex",
 			Name:       "Codex",
 			ConfigPath: `C:\Users\agent\.codex\config.toml`,
@@ -282,8 +267,7 @@ func sampleService() *fakeService {
 				{ID: "web_search", Title: "Web search", Key: "tools.web_search", DesiredValue: false, StrictValue: false, CurrentValue: true, Configured: true, CanApply: true, Status: "attention"},
 			},
 			Warnings: []string{"Codex warning"},
-		},
-		gemini: agentmodel.PrivacyConfigStatus{
+		}, {
 			Target:     "gemini",
 			Name:       "Gemini CLI",
 			ConfigPath: `C:\Users\agent\.gemini\settings.json`,
@@ -299,8 +283,7 @@ func sampleService() *fakeService {
 				{ID: "tools.exclude.web", Title: "Web tools", Key: "tools.exclude", DesiredValue: []string{"web_fetch"}, StrictValue: []string{"web_search", "web_fetch"}, SupportsUnset: true, CanApply: true, Status: "attention"},
 				{ID: "settings.parse", Title: "Broken JSON", Key: "settings.json", DesiredValue: nil, StrictValue: nil, CanApply: false, Status: "attention"},
 			},
-		},
-		claude: agentmodel.PrivacyConfigStatus{
+		}, {
 			Target:     "claude",
 			Name:       "Claude Code",
 			ConfigPath: `C:\Users\agent\.claude\settings.json`,
@@ -314,8 +297,7 @@ func sampleService() *fakeService {
 			Settings: []agentmodel.PrivacyConfigSetting{
 				{ID: "env.DISABLE_TELEMETRY", Title: "Telemetry", Key: "env.DISABLE_TELEMETRY", DesiredValue: "1", StrictValue: "1", CurrentValue: "1", Configured: true, CanApply: true, Status: "hardened"},
 			},
-		},
-		codeBuddy: agentmodel.PrivacyConfigStatus{
+		}, {
 			Target:     "codebuddy",
 			Name:       "CodeBuddy",
 			ConfigPath: `C:\Users\agent\.codebuddy\settings.json`,
@@ -329,7 +311,7 @@ func sampleService() *fakeService {
 			Settings: []agentmodel.PrivacyConfigSetting{
 				{ID: "env.OTEL_TRACES_EXPORTER", Title: "OTel exporter", Key: "env.OTEL_TRACES_EXPORTER", DesiredValue: "none", StrictValue: "none", CanApply: true, Status: "implicit"},
 			},
-		},
+		}},
 		index: index,
 	}
 }

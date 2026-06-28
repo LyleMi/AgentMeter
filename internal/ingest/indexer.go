@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -20,6 +19,7 @@ import (
 	"AgentMeter/internal/platform"
 	"AgentMeter/internal/pricing"
 	"AgentMeter/internal/sessionjsonl"
+	"AgentMeter/internal/sourcepath"
 )
 
 type Indexer struct {
@@ -41,7 +41,7 @@ func New(conn *sql.DB, dbPath string) *Indexer {
 
 func (i *Indexer) IndexPaths(ctx context.Context, sourcePaths []string, rebuild bool) (model.IndexResult, error) {
 	start := time.Now()
-	paths := normalizeSourcePaths(sourcePaths)
+	paths := sourcepath.NormalizeList(sourcePaths)
 	result := model.IndexResult{
 		SourcePath:  strings.Join(paths, "\n"),
 		SourcePaths: paths,
@@ -244,6 +244,10 @@ func (i *Indexer) markSourceFile(ctx context.Context, sourceFileID int64, status
 }
 
 func (i *Indexer) replaceParsedSession(ctx context.Context, source model.Source, sourceFileID int64, parsed model.ParsedSession) error {
+	calculator, err := pricing.LoadCalculator(ctx, i.conn)
+	if err != nil {
+		calculator = pricing.Calculator{}
+	}
 	modelCallCosts := make([]*float64, len(parsed.ModelCall))
 	for index, call := range parsed.ModelCall {
 		usage := model.Usage{
@@ -255,7 +259,7 @@ func (i *Indexer) replaceParsedSession(ctx context.Context, source model.Source,
 			TotalTokens:           call.TotalTokens,
 			Source:                "actual",
 		}
-		cost, _ := pricing.Compute(i.conn, usage)
+		cost, _ := calculator.Compute(usage)
 		modelCallCosts[index] = cost
 	}
 
@@ -538,7 +542,7 @@ func usageFileKey(source agent.UsageSource, path string) string {
 	if err != nil {
 		relative = path
 	}
-	return filepath.Clean(source.DedupeScope) + "\x00" + filepath.Clean(relative)
+	return sourcepath.DedupeKey(source.DedupeScope, relative)
 }
 
 func isDir(path string) bool {
@@ -586,30 +590,4 @@ func firstNonEmptyString(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func normalizeSourcePaths(paths []string) []string {
-	seen := map[string]struct{}{}
-	var result []string
-	for _, path := range paths {
-		cleaned := strings.TrimSpace(path)
-		if cleaned == "" {
-			continue
-		}
-		cleaned = filepath.Clean(cleaned)
-		key := sourcePathKey(cleaned)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		result = append(result, cleaned)
-	}
-	return result
-}
-
-func sourcePathKey(path string) string {
-	if runtime.GOOS == "windows" {
-		return strings.ToLower(path)
-	}
-	return path
 }

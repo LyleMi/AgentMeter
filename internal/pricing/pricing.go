@@ -19,6 +19,10 @@ type Rate struct {
 	EffectiveFrom    time.Time
 }
 
+type Calculator struct {
+	rates map[string]Rate
+}
+
 func Seed(ctx context.Context, conn *sql.DB) error {
 	// These are API list-price estimates used only when a local Codex model name
 	// can be matched. Codex subscription usage may not map one-to-one to API cost.
@@ -188,26 +192,74 @@ func NormalizeModel(value string) string {
 }
 
 func Compute(conn *sql.DB, usage model.Usage) (*float64, bool) {
+	rate, ok := rateForUsage(conn, usage)
+	return computeWithRate(usage, rate, ok)
+}
+
+func LoadCalculator(ctx context.Context, conn *sql.DB) (Calculator, error) {
+	rows, err := conn.QueryContext(ctx, `SELECT model, normalized_model, input_per_1m, cached_input_per_1m, output_per_1m, source, effective_from FROM pricing_models`)
+	if err != nil {
+		return Calculator{}, err
+	}
+	defer rows.Close()
+
+	calc := Calculator{rates: map[string]Rate{}}
+	for rows.Next() {
+		var rate Rate
+		var effective string
+		if err := rows.Scan(&rate.Model, &rate.NormalizedModel, &rate.InputPer1M, &rate.CachedInputPer1M, &rate.OutputPer1M, &rate.Source, &effective); err != nil {
+			return Calculator{}, err
+		}
+		rate.EffectiveFrom, _ = time.Parse(time.RFC3339Nano, effective)
+		calc.rates[rate.NormalizedModel] = rate
+	}
+	return calc, rows.Err()
+}
+
+func (c Calculator) Compute(usage model.Usage) (*float64, bool) {
 	if !hasBillableUsage(usage) {
 		return nil, false
 	}
-	if usage.Model == "" || NormalizeModel(usage.Model) == "unknown" {
+	normalized := NormalizeModel(usage.Model)
+	if usage.Model == "" || normalized == "unknown" {
 		return nil, true
 	}
-	var inputRate, cachedRate, outputRate float64
+	rate, ok := c.rates[normalized]
+	return computeWithRate(usage, rate, ok)
+}
+
+func rateForUsage(conn *sql.DB, usage model.Usage) (Rate, bool) {
+	if !hasBillableUsage(usage) {
+		return Rate{}, false
+	}
+	normalized := NormalizeModel(usage.Model)
+	if usage.Model == "" || normalized == "unknown" {
+		return Rate{}, false
+	}
+	var rate Rate
 	err := conn.QueryRow(`SELECT input_per_1m, cached_input_per_1m, output_per_1m FROM pricing_models WHERE normalized_model = ?`, NormalizeModel(usage.Model)).
-		Scan(&inputRate, &cachedRate, &outputRate)
+		Scan(&rate.InputPer1M, &rate.CachedInputPer1M, &rate.OutputPer1M)
 	if err == sql.ErrNoRows {
-		return nil, true
+		return Rate{}, false
 	}
 	if err != nil {
+		return Rate{}, false
+	}
+	return rate, true
+}
+
+func computeWithRate(usage model.Usage, rate Rate, hasRate bool) (*float64, bool) {
+	if !hasBillableUsage(usage) {
+		return nil, false
+	}
+	if usage.Model == "" || NormalizeModel(usage.Model) == "unknown" || !hasRate {
 		return nil, true
 	}
 	uncachedInput := usage.InputTokens - usage.CachedInputTokens
 	if uncachedInput < 0 {
 		uncachedInput = 0
 	}
-	cost := (float64(uncachedInput)*inputRate + float64(usage.CachedInputTokens)*cachedRate + float64(usage.OutputTokens)*outputRate) / 1_000_000
+	cost := (float64(uncachedInput)*rate.InputPer1M + float64(usage.CachedInputTokens)*rate.CachedInputPer1M + float64(usage.OutputTokens)*rate.OutputPer1M) / 1_000_000
 	return &cost, false
 }
 

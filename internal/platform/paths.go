@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"AgentMeter/internal/sourcepath"
 )
 
 func DefaultCodexRoot() string {
@@ -56,9 +58,9 @@ func DefaultAgentSourcePaths() []string {
 		}
 	}
 	if len(existing) > 0 {
-		return existing
+		return sourcepath.NormalizeList(existing)
 	}
-	return candidates[:1]
+	return sourcepath.NormalizeList(candidates[:1])
 }
 
 func DefaultAgentSourcePath() string {

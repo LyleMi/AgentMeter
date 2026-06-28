@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +17,7 @@ import (
 	"AgentMeter/internal/pricing"
 	"AgentMeter/internal/privacy"
 	"AgentMeter/internal/query"
+	"AgentMeter/internal/sourcepath"
 )
 
 type App struct {
@@ -204,13 +203,13 @@ func getAutoDefaultSourcePaths(ctx context.Context, conn *sql.DB) ([]string, boo
 	}
 	var paths []string
 	if err := json.Unmarshal([]byte(encoded), &paths); err == nil {
-		return normalizeSourcePaths(paths), true, nil
+		return sourcepath.NormalizeList(paths), true, nil
 	}
 	return nil, true, nil
 }
 
 func setAutoDefaultSourcePaths(ctx context.Context, conn *sql.DB, paths []string) error {
-	encoded, err := json.Marshal(normalizeSourcePaths(paths))
+	encoded, err := json.Marshal(sourcepath.NormalizeList(paths))
 	if err != nil {
 		return err
 	}
@@ -218,9 +217,9 @@ func setAutoDefaultSourcePaths(ctx context.Context, conn *sql.DB, paths []string
 }
 
 func mergeAutoDefaultSourcePaths(sourcePaths, defaultSourcePaths, autoDefaults, candidates []string) ([]string, []string, bool) {
-	merged := normalizeSourcePaths(sourcePaths)
-	defaults := normalizeSourcePaths(defaultSourcePaths)
-	nextAutoDefaults := normalizeSourcePaths(autoDefaults)
+	merged := sourcepath.NormalizeList(sourcePaths)
+	defaults := sourcepath.NormalizeList(defaultSourcePaths)
+	nextAutoDefaults := sourcepath.NormalizeList(autoDefaults)
 	if len(merged) == 0 {
 		return defaults, defaults, len(defaults) > 0
 	}
@@ -246,7 +245,7 @@ func mergeAutoDefaultSourcePaths(sourcePaths, defaultSourcePaths, autoDefaults, 
 
 func configuredDefaultSourcePaths(sourcePaths, candidates []string) []string {
 	var result []string
-	for _, path := range normalizeSourcePaths(sourcePaths) {
+	for _, path := range sourcepath.NormalizeList(sourcePaths) {
 		if containsSourcePath(candidates, path) {
 			result = appendSourcePath(result, path)
 		}
@@ -255,7 +254,7 @@ func configuredDefaultSourcePaths(sourcePaths, candidates []string) []string {
 }
 
 func hasSourcePathOverlap(left, right []string) bool {
-	for _, path := range normalizeSourcePaths(left) {
+	for _, path := range sourcepath.NormalizeList(left) {
 		if containsSourcePath(right, path) {
 			return true
 		}
@@ -265,7 +264,7 @@ func hasSourcePathOverlap(left, right []string) bool {
 
 func containsSourcePath(paths []string, path string) bool {
 	key := comparableSourcePathKey(path)
-	for _, candidate := range normalizeSourcePaths(paths) {
+	for _, candidate := range sourcepath.NormalizeList(paths) {
 		if comparableSourcePathKey(candidate) == key {
 			return true
 		}
@@ -274,11 +273,11 @@ func containsSourcePath(paths []string, path string) bool {
 }
 
 func appendSourcePath(paths []string, path string) []string {
-	return normalizeSourcePaths(append(paths, path))
+	return sourcepath.NormalizeList(append(paths, path))
 }
 
 func sourceEntriesFromPaths(paths []string, enabled bool) []model.SourceEntry {
-	normalized := normalizeSourcePaths(paths)
+	normalized := sourcepath.NormalizeList(paths)
 	entries := make([]model.SourceEntry, 0, len(normalized))
 	for _, path := range normalized {
 		entries = append(entries, model.SourceEntry{Path: path, Enabled: enabled})
@@ -290,12 +289,11 @@ func normalizeSourceEntries(entries []model.SourceEntry) []model.SourceEntry {
 	seen := map[string]struct{}{}
 	result := make([]model.SourceEntry, 0, len(entries))
 	for _, entry := range entries {
-		cleaned := strings.TrimSpace(entry.Path)
+		cleaned := sourcepath.Normalize(entry.Path)
 		if cleaned == "" {
 			continue
 		}
-		cleaned = filepath.Clean(cleaned)
-		key := sourcePathKey(cleaned)
+		key := sourcepath.Key(cleaned)
 		if _, ok := seen[key]; ok {
 			continue
 		}
@@ -320,12 +318,12 @@ func enabledSourceEntryPaths(entries []model.SourceEntry) []string {
 			paths = append(paths, entry.Path)
 		}
 	}
-	return normalizeSourcePaths(paths)
+	return sourcepath.NormalizeList(paths)
 }
 
 func mergeSourceEntriesForPaths(entries []model.SourceEntry, paths []string) []model.SourceEntry {
 	merged := normalizeSourceEntries(entries)
-	for _, path := range normalizeSourcePaths(paths) {
+	for _, path := range sourcepath.NormalizeList(paths) {
 		if !containsSourcePath(sourceEntryPaths(merged), path) {
 			merged = append(merged, model.SourceEntry{Path: path, Enabled: true})
 		}
@@ -334,13 +332,13 @@ func mergeSourceEntriesForPaths(entries []model.SourceEntry, paths []string) []m
 }
 
 func sameSourcePaths(left, right []string) bool {
-	left = normalizeSourcePaths(left)
-	right = normalizeSourcePaths(right)
+	left = sourcepath.NormalizeList(left)
+	right = sourcepath.NormalizeList(right)
 	if len(left) != len(right) {
 		return false
 	}
 	for index := range left {
-		if sourcePathKey(left[index]) != sourcePathKey(right[index]) {
+		if sourcepath.Key(left[index]) != sourcepath.Key(right[index]) {
 			return false
 		}
 	}
@@ -354,45 +352,19 @@ func parseSourcePathList(value string) []string {
 	}) {
 		raw = append(raw, line)
 	}
-	return normalizeSourcePaths(raw)
-}
-
-func normalizeSourcePaths(paths []string) []string {
-	seen := map[string]struct{}{}
-	var result []string
-	for _, path := range paths {
-		cleaned := strings.TrimSpace(path)
-		if cleaned == "" {
-			continue
-		}
-		cleaned = filepath.Clean(cleaned)
-		key := sourcePathKey(cleaned)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		result = append(result, cleaned)
-	}
-	return result
-}
-
-func sourcePathKey(path string) string {
-	if runtime.GOOS == "windows" {
-		return strings.ToLower(path)
-	}
-	return path
+	return sourcepath.NormalizeList(raw)
 }
 
 func comparableSourcePathKey(path string) string {
-	cleaned := filepath.Clean(strings.TrimSpace(path))
+	cleaned := sourcepath.Normalize(path)
 	if cleaned == "." || cleaned == "" {
-		return sourcePathKey(cleaned)
+		return sourcepath.Key(cleaned)
 	}
 	spec := agent.ResolveSource(cleaned)
 	if spec.Kind != "jsonl" && spec.RootPath != "" {
-		return sourcePathKey(filepath.Clean(spec.RootPath))
+		return sourcepath.Key(sourcepath.Normalize(spec.RootPath))
 	}
-	return sourcePathKey(cleaned)
+	return sourcepath.Key(cleaned)
 }
 
 func (a *App) GetOverview() (model.Overview, error) {
@@ -455,52 +427,76 @@ func (a *App) GetPricingModels() ([]model.PricingModel, error) {
 	return pricing.List(a.ctx, a.conn)
 }
 
+func (a *App) PrivacyTargets() []string {
+	return privacy.DefaultRegistry().Targets()
+}
+
+func (a *App) SupportsPrivacyTarget(target string) bool {
+	return privacy.DefaultRegistry().Supports(target)
+}
+
+func (a *App) GetPrivacyConfigs() ([]model.PrivacyConfigStatus, error) {
+	return privacy.DefaultRegistry().Statuses()
+}
+
+func (a *App) GetPrivacyConfig(target string) (model.PrivacyConfigStatus, error) {
+	return privacy.DefaultRegistry().Status(target)
+}
+
+func (a *App) ApplyPrivacyConfig(target string, settingIDs []string) (model.PrivacyConfigApplyResult, error) {
+	return privacy.DefaultRegistry().Apply(target, settingIDs)
+}
+
+func (a *App) ApplyPrivacyConfigChanges(target string, changes []model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error) {
+	return privacy.DefaultRegistry().ApplyChanges(target, changes)
+}
+
 func (a *App) GetCodexPrivacyConfig() (model.PrivacyConfigStatus, error) {
-	return privacy.NewCodexAdapter().Status()
+	return a.GetPrivacyConfig("codex")
 }
 
 func (a *App) ApplyCodexPrivacyConfig(settingIDs []string) (model.PrivacyConfigApplyResult, error) {
-	return privacy.NewCodexAdapter().Apply(settingIDs)
+	return a.ApplyPrivacyConfig("codex", settingIDs)
 }
 
 func (a *App) ApplyCodexPrivacyConfigChanges(changes []model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error) {
-	return privacy.NewCodexAdapter().ApplyChanges(changes)
+	return a.ApplyPrivacyConfigChanges("codex", changes)
 }
 
 func (a *App) GetGeminiPrivacyConfig() (model.PrivacyConfigStatus, error) {
-	return privacy.NewGeminiAdapter().Status()
+	return a.GetPrivacyConfig("gemini")
 }
 
 func (a *App) ApplyGeminiPrivacyConfig(settingIDs []string) (model.PrivacyConfigApplyResult, error) {
-	return privacy.NewGeminiAdapter().Apply(settingIDs)
+	return a.ApplyPrivacyConfig("gemini", settingIDs)
 }
 
 func (a *App) ApplyGeminiPrivacyConfigChanges(changes []model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error) {
-	return privacy.NewGeminiAdapter().ApplyChanges(changes)
+	return a.ApplyPrivacyConfigChanges("gemini", changes)
 }
 
 func (a *App) GetClaudePrivacyConfig() (model.PrivacyConfigStatus, error) {
-	return privacy.NewClaudeAdapter().Status()
+	return a.GetPrivacyConfig("claude")
 }
 
 func (a *App) ApplyClaudePrivacyConfig(settingIDs []string) (model.PrivacyConfigApplyResult, error) {
-	return privacy.NewClaudeAdapter().Apply(settingIDs)
+	return a.ApplyPrivacyConfig("claude", settingIDs)
 }
 
 func (a *App) ApplyClaudePrivacyConfigChanges(changes []model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error) {
-	return privacy.NewClaudeAdapter().ApplyChanges(changes)
+	return a.ApplyPrivacyConfigChanges("claude", changes)
 }
 
 func (a *App) GetCodeBuddyPrivacyConfig() (model.PrivacyConfigStatus, error) {
-	return privacy.NewCodeBuddyAdapter().Status()
+	return a.GetPrivacyConfig("codebuddy")
 }
 
 func (a *App) ApplyCodeBuddyPrivacyConfig(settingIDs []string) (model.PrivacyConfigApplyResult, error) {
-	return privacy.NewCodeBuddyAdapter().Apply(settingIDs)
+	return a.ApplyPrivacyConfig("codebuddy", settingIDs)
 }
 
 func (a *App) ApplyCodeBuddyPrivacyConfigChanges(changes []model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error) {
-	return privacy.NewCodeBuddyAdapter().ApplyChanges(changes)
+	return a.ApplyPrivacyConfigChanges("codebuddy", changes)
 }
 
 func (a *App) ensureReady() error {

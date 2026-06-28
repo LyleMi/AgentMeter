@@ -13,6 +13,7 @@ import (
 
 	"AgentMeter/internal/db"
 	"AgentMeter/internal/model"
+	"AgentMeter/internal/sourcepath"
 )
 
 func TestStartupAddsDetectedAgentDefaultsToExistingSourceEntries(t *testing.T) {
@@ -515,9 +516,9 @@ func TestUnknownAPIRouteDoesNotServeFrontendIndex(t *testing.T) {
 }
 
 func containsExactSourcePath(paths []string, path string) bool {
-	key := sourcePathKey(filepath.Clean(path))
-	for _, candidate := range normalizeSourcePaths(paths) {
-		if sourcePathKey(candidate) == key {
+	key := sourcepath.Key(sourcepath.Normalize(path))
+	for _, candidate := range sourcepath.NormalizeList(paths) {
+		if sourcepath.Key(candidate) == key {
 			return true
 		}
 	}

@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"AgentMeter/internal/sourcepath"
 )
 
 type SourceSpec struct {
@@ -19,7 +21,10 @@ type UsageSource struct {
 }
 
 func ResolveSource(path string) SourceSpec {
-	cleaned := filepath.Clean(path)
+	cleaned := sourcepath.Normalize(path)
+	if cleaned == "" {
+		cleaned = filepath.Clean(path)
+	}
 	parent := filepath.Dir(cleaned)
 	base := strings.ToLower(filepath.Base(cleaned))
 
@@ -53,7 +58,7 @@ func ResolveSource(path string) SourceSpec {
 func UsageSources(spec SourceSpec) []UsageSource {
 	switch spec.Kind {
 	case "codex":
-		if filepath.Clean(spec.RootPath) != filepath.Clean(spec.SessionsPath) {
+		if !sourcepath.Equal(spec.RootPath, spec.SessionsPath) {
 			return []UsageSource{{Dir: spec.SessionsPath, DedupeScope: spec.SessionsPath}}
 		}
 		sessions := filepath.Join(spec.RootPath, "sessions")
@@ -69,21 +74,21 @@ func UsageSources(spec SourceSpec) []UsageSource {
 			return sources
 		}
 	case "claude":
-		if filepath.Clean(spec.RootPath) == filepath.Clean(spec.SessionsPath) {
+		if sourcepath.Equal(spec.RootPath, spec.SessionsPath) {
 			projects := filepath.Join(spec.RootPath, "projects")
 			if isDir(projects) {
 				return []UsageSource{{Dir: projects, DedupeScope: spec.RootPath}}
 			}
 		}
 	case "codebuddy":
-		if filepath.Clean(spec.RootPath) == filepath.Clean(spec.SessionsPath) {
+		if sourcepath.Equal(spec.RootPath, spec.SessionsPath) {
 			projects := filepath.Join(spec.RootPath, "projects")
 			if isDir(projects) {
 				return []UsageSource{{Dir: projects, DedupeScope: spec.RootPath}}
 			}
 		}
 	case "workbuddy":
-		if filepath.Clean(spec.RootPath) == filepath.Clean(spec.SessionsPath) ||
+		if sourcepath.Equal(spec.RootPath, spec.SessionsPath) ||
 			strings.EqualFold(filepath.Base(spec.SessionsPath), "sessions") {
 			projects := filepath.Join(spec.RootPath, "projects")
 			if isDir(projects) {

@@ -82,6 +82,31 @@ func TestComputeDoesNotMarkEmptyUsageUnpriced(t *testing.T) {
 	}
 }
 
+func TestCalculatorReusesLoadedRates(t *testing.T) {
+	conn := openSeededPricingDB(t)
+	defer conn.Close()
+
+	calculator, err := LoadCalculator(context.Background(), conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cost, unpriced := calculator.Compute(model.Usage{
+		Model:             "openai/gpt5.5",
+		InputTokens:       1_000_000,
+		CachedInputTokens: 200_000,
+		OutputTokens:      500_000,
+	})
+	if unpriced {
+		t.Fatal("usage marked unpriced")
+	}
+	if cost == nil {
+		t.Fatal("cost is nil")
+	}
+	if math.Abs(*cost-19.1) > 0.000001 {
+		t.Fatalf("cost = %f, want %f", *cost, 19.1)
+	}
+}
+
 func openSeededPricingDB(t *testing.T) *sql.DB {
 	t.Helper()
 	conn, err := sql.Open("sqlite", ":memory:")

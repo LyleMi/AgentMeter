@@ -13,10 +13,7 @@ type appService interface {
 	GetSessionDetail(id int64) (agentmodel.SessionDetail, error)
 	GetTools() ([]agentmodel.ToolStat, error)
 	GetSettings() (agentmodel.Settings, error)
-	GetCodexPrivacyConfig() (agentmodel.PrivacyConfigStatus, error)
-	GetGeminiPrivacyConfig() (agentmodel.PrivacyConfigStatus, error)
-	GetClaudePrivacyConfig() (agentmodel.PrivacyConfigStatus, error)
-	GetCodeBuddyPrivacyConfig() (agentmodel.PrivacyConfigStatus, error)
+	GetPrivacyConfigs() ([]agentmodel.PrivacyConfigStatus, error)
 	IndexNow(rebuild bool) (agentmodel.IndexResult, error)
 }
 
@@ -341,27 +338,7 @@ func (s *state) load(target page) command {
 		case pageSettings:
 			msg.settings, msg.err = s.service.GetSettings()
 		case pagePrivacy:
-			codex, err := s.service.GetCodexPrivacyConfig()
-			if err != nil {
-				msg.err = err
-				break
-			}
-			gemini, err := s.service.GetGeminiPrivacyConfig()
-			if err != nil {
-				msg.err = err
-				break
-			}
-			claude, err := s.service.GetClaudePrivacyConfig()
-			if err != nil {
-				msg.err = err
-				break
-			}
-			codeBuddy, err := s.service.GetCodeBuddyPrivacyConfig()
-			if err != nil {
-				msg.err = err
-				break
-			}
-			msg.privacy = []agentmodel.PrivacyConfigStatus{codex, gemini, claude, codeBuddy}
+			msg.privacy, msg.err = s.service.GetPrivacyConfigs()
 		default:
 			msg.err = fmt.Errorf("unsupported page: %s", target.title())
 		}
