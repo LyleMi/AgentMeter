@@ -564,6 +564,92 @@ func TestOverviewPricingIgnoresZeroTokenUnknownUsage(t *testing.T) {
 	}
 }
 
+func TestEstimatedCostsUseRowPricingAcrossBreakdowns(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	sourceID := insertTimeSource(t, conn, "codex", "Codex", now)
+	insertTokenAnalyticsSession(t, conn, sourceID, now, "priced-fallback", "gpt-5", "", "actual", 1_000_000, 200_000, 500_000, 0, 1_500_000)
+	insertTokenAnalyticsSession(t, conn, sourceID, now.Add(time.Minute), "unpriced-fallback", "unknown-model", "", "unknown", 100_000, 0, 50_000, 0, 150_000)
+
+	const wantCost = 6.025
+	service := New(conn)
+	analytics, err := service.TokenAnalytics(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCostUSD(t, analytics.EstimatedCostUSD, wantCost)
+	if analytics.UnpricedCount != 1 {
+		t.Fatalf("token analytics unpriced count = %d", analytics.UnpricedCount)
+	}
+	assertCostUSD(t, findModelUsage(t, analytics.ModelUsage, "gpt-5").EstimatedCostUSD, wantCost)
+	unknownModel := findModelUsage(t, analytics.ModelUsage, "unknown-model")
+	if !unknownModel.Unpriced || unknownModel.EstimatedCostUSD != nil {
+		t.Fatalf("unknown model usage = %+v", unknownModel)
+	}
+	agentUsage := findAgentUsageBySource(t, analytics.AgentUsage, sourceID)
+	assertCostUSD(t, agentUsage.EstimatedCostUSD, wantCost)
+	if !agentUsage.Unpriced {
+		t.Fatalf("agent usage should retain unpriced marker: %+v", agentUsage)
+	}
+
+	overview, err := service.Overview(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCostUSD(t, overview.EstimatedCostUSD, wantCost)
+	if overview.UnpricedSessions != 1 {
+		t.Fatalf("overview unpriced sessions = %d", overview.UnpricedSessions)
+	}
+	if len(overview.DailyUsage) != 1 {
+		t.Fatalf("daily usage = %+v", overview.DailyUsage)
+	}
+	assertCostUSD(t, overview.DailyUsage[0].EstimatedCostUSD, wantCost)
+	assertCostUSD(t, findModelUsage(t, overview.ModelUsage, "gpt-5").EstimatedCostUSD, wantCost)
+	assertCostUSD(t, findAgentUsageBySource(t, overview.AgentUsage, sourceID).EstimatedCostUSD, wantCost)
+
+	agentBreakdown, err := service.UsageBreakdown(ctx, "agent", model.AnalyticsFilters{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentBucket := findUsageBreakdownBucket(t, agentBreakdown.Buckets, sourceID, "", "")
+	assertCostUSD(t, agentBucket.EstimatedCostUSD, wantCost)
+	if !agentBucket.Unpriced {
+		t.Fatalf("agent breakdown should retain unpriced marker: %+v", agentBucket)
+	}
+
+	modelBreakdown, err := service.UsageBreakdown(ctx, "model", model.AnalyticsFilters{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCostUSD(t, findUsageBreakdownBucket(t, modelBreakdown.Buckets, 0, "gpt-5", "").EstimatedCostUSD, wantCost)
+	unknownBucket := findUsageBreakdownBucket(t, modelBreakdown.Buckets, 0, "unknown-model", "")
+	if !unknownBucket.Unpriced || unknownBucket.EstimatedCostUSD != nil {
+		t.Fatalf("unknown model breakdown = %+v", unknownBucket)
+	}
+
+	agentModelBreakdown, err := service.UsageBreakdown(ctx, "agent,model", model.AnalyticsFilters{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCostUSD(t, findUsageBreakdownBucket(t, agentModelBreakdown.Buckets, sourceID, "gpt-5", "").EstimatedCostUSD, wantCost)
+
+	dayBreakdown, err := service.UsageBreakdown(ctx, "day", model.AnalyticsFilters{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dayBucket := findUsageBreakdownBucket(t, dayBreakdown.Buckets, 0, "", "2026-06-27")
+	assertCostUSD(t, dayBucket.EstimatedCostUSD, wantCost)
+	if !dayBucket.Unpriced {
+		t.Fatalf("day breakdown should retain unpriced marker: %+v", dayBucket)
+	}
+}
+
 func TestUsageBreakdownGroupsByAgentModelAndDay(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
@@ -860,6 +946,13 @@ func findUsageBreakdownBucket(t *testing.T, items []model.UsageBreakdownBucket, 
 	}
 	t.Fatalf("usage breakdown bucket source=%d model=%q date=%q missing: %+v", sourceID, modelName, date, items)
 	return model.UsageBreakdownBucket{}
+}
+
+func assertCostUSD(t *testing.T, got *float64, want float64) {
+	t.Helper()
+	if got == nil || math.Abs(*got-want) > 0.000001 {
+		t.Fatalf("estimated cost = %v, want %.6f", got, want)
+	}
 }
 
 func findModelUsage(t *testing.T, items []model.ModelUsage, modelName string) model.ModelUsage {

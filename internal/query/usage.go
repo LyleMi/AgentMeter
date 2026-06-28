@@ -33,6 +33,10 @@ func analyticsUsageWhere(filters model.AnalyticsFilters) ([]string, []any) {
 	return appendAnalyticsFilters(where, args, filters, "src", usageSessionModelExpr, "s.started_at")
 }
 
+func appendBillableUsageFilter(where []string) []string {
+	return append(where, `(tu.input_tokens > 0 OR tu.cached_input_tokens > 0 OR tu.output_tokens > 0 OR tu.reasoning_output_tokens > 0 OR tu.total_tokens > 0)`)
+}
+
 func (s *Service) totalCost(ctx context.Context) (*float64, int, error) {
 	return s.totalCostWithFilters(ctx, model.AnalyticsFilters{})
 }
@@ -40,7 +44,7 @@ func (s *Service) totalCost(ctx context.Context) (*float64, int, error) {
 func (s *Service) totalCostWithFilters(ctx context.Context, filters model.AnalyticsFilters) (*float64, int, error) {
 	calculator := s.pricingCalculator(ctx)
 	where, args := analyticsUsageWhere(filters)
-	rows, err := s.conn.QueryContext(ctx, `SELECT tu.model, tu.input_tokens, tu.cached_input_tokens, tu.output_tokens, tu.reasoning_output_tokens, tu.total_tokens, tu.source
+	rows, err := s.conn.QueryContext(ctx, `SELECT `+usageSessionModelExpr+`, tu.input_tokens, tu.cached_input_tokens, tu.output_tokens, tu.reasoning_output_tokens, tu.total_tokens, tu.source
 		FROM token_usage tu
 		LEFT JOIN sessions s ON s.id = tu.owner_id
 		LEFT JOIN sources src ON src.id = s.source_id
@@ -240,14 +244,12 @@ func (s *Service) dailyCosts(ctx context.Context, calculator pricing.Calculator)
 
 func (s *Service) dailyCostsWithFilters(ctx context.Context, calculator pricing.Calculator, filters model.AnalyticsFilters) (map[string]float64, error) {
 	where, args := analyticsUsageWhere(filters)
-	rows, err := s.conn.QueryContext(ctx, `SELECT substr(s.started_at, 1, 10) AS day, tu.model,
-		COALESCE(SUM(tu.input_tokens), 0), COALESCE(SUM(tu.cached_input_tokens), 0), COALESCE(SUM(tu.output_tokens), 0),
-		COALESCE(SUM(tu.reasoning_output_tokens), 0), COALESCE(SUM(tu.total_tokens), 0), COALESCE(MAX(tu.source), 'unknown')
+	rows, err := s.conn.QueryContext(ctx, `SELECT substr(s.started_at, 1, 10) AS day, `+usageSessionModelExpr+`,
+		tu.input_tokens, tu.cached_input_tokens, tu.output_tokens, tu.reasoning_output_tokens, tu.total_tokens, tu.source
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
 		JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
-		WHERE `+strings.Join(where, " AND ")+`
-		GROUP BY day, tu.model`, args...)
+		WHERE `+strings.Join(where, " AND "), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -272,17 +274,21 @@ func (s *Service) modelUsage(ctx context.Context) ([]model.ModelUsage, error) {
 
 func (s *Service) modelUsageWithFilters(ctx context.Context, filters model.AnalyticsFilters) ([]model.ModelUsage, error) {
 	calculator := s.pricingCalculator(ctx)
+	costs, unpriced, err := s.modelCostsWithFilters(ctx, calculator, filters)
+	if err != nil {
+		return nil, err
+	}
 	where, args := analyticsUsageWhere(filters)
-	where = append(where, `(tu.input_tokens > 0 OR tu.cached_input_tokens > 0 OR tu.output_tokens > 0 OR tu.reasoning_output_tokens > 0 OR tu.total_tokens > 0)`)
-	rows, err := s.conn.QueryContext(ctx, `SELECT tu.model, COUNT(*),
+	where = appendBillableUsageFilter(where)
+	rows, err := s.conn.QueryContext(ctx, `SELECT `+usageSessionModelExpr+`, COUNT(*),
 		COALESCE(SUM(tu.total_tokens), 0), COALESCE(SUM(tu.input_tokens), 0), COALESCE(SUM(tu.cached_input_tokens), 0),
-		COALESCE(SUM(tu.output_tokens), 0), COALESCE(SUM(tu.reasoning_output_tokens), 0), COALESCE(MAX(tu.source), 'unknown')
+		COALESCE(SUM(tu.output_tokens), 0), COALESCE(SUM(tu.reasoning_output_tokens), 0)
 		FROM token_usage tu
 		LEFT JOIN sessions s ON s.id = tu.owner_id
 		LEFT JOIN sources src ON src.id = s.source_id
 		WHERE `+strings.Join(where, " AND ")+`
-		GROUP BY tu.model
-		ORDER BY SUM(tu.total_tokens) DESC`, args...)
+		GROUP BY `+usageSessionModelExpr+`
+		ORDER BY SUM(tu.total_tokens) DESC, `+usageSessionModelExpr+` ASC`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +296,6 @@ func (s *Service) modelUsageWithFilters(ctx context.Context, filters model.Analy
 	var result []model.ModelUsage
 	for rows.Next() {
 		var item model.ModelUsage
-		var source string
 		if err := rows.Scan(
 			&item.Model,
 			&item.SessionCount,
@@ -299,23 +304,45 @@ func (s *Service) modelUsageWithFilters(ctx context.Context, filters model.Analy
 			&item.CachedInputTokens,
 			&item.OutputTokens,
 			&item.ReasoningOutputTokens,
-			&source,
 		); err != nil {
 			return nil, err
 		}
-		usage := model.Usage{
-			Model:                 item.Model,
-			InputTokens:           item.InputTokens,
-			CachedInputTokens:     item.CachedInputTokens,
-			OutputTokens:          item.OutputTokens,
-			ReasoningOutputTokens: item.ReasoningOutputTokens,
-			TotalTokens:           item.TotalTokens,
-			Source:                source,
+		if cost, ok := costs[item.Model]; ok {
+			item.EstimatedCostUSD = &cost
 		}
-		item.EstimatedCostUSD, item.Unpriced = calculator.Compute(usage)
+		item.Unpriced = unpriced[item.Model]
 		result = append(result, item)
 	}
 	return result, rows.Err()
+}
+
+func (s *Service) modelCostsWithFilters(ctx context.Context, calculator pricing.Calculator, filters model.AnalyticsFilters) (map[string]float64, map[string]bool, error) {
+	where, args := analyticsUsageWhere(filters)
+	where = appendBillableUsageFilter(where)
+	rows, err := s.conn.QueryContext(ctx, `SELECT `+usageSessionModelExpr+`,
+		tu.input_tokens, tu.cached_input_tokens, tu.output_tokens, tu.reasoning_output_tokens, tu.total_tokens, tu.source
+		FROM token_usage tu
+		LEFT JOIN sessions s ON s.id = tu.owner_id
+		LEFT JOIN sources src ON src.id = s.source_id
+		WHERE `+strings.Join(where, " AND "), args...)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	costs := map[string]float64{}
+	unpriced := map[string]bool{}
+	for rows.Next() {
+		var usage model.Usage
+		if err := rows.Scan(&usage.Model, &usage.InputTokens, &usage.CachedInputTokens, &usage.OutputTokens, &usage.ReasoningOutputTokens, &usage.TotalTokens, &usage.Source); err != nil {
+			return nil, nil, err
+		}
+		if cost, isUnpriced := calculator.Compute(usage); isUnpriced {
+			unpriced[usage.Model] = true
+		} else if cost != nil {
+			costs[usage.Model] += *cost
+		}
+	}
+	return costs, unpriced, rows.Err()
 }
 
 func (s *Service) agentUsage(ctx context.Context) ([]model.AgentUsage, error) {
@@ -385,14 +412,12 @@ func (s *Service) agentCosts(ctx context.Context, calculator pricing.Calculator)
 
 func (s *Service) agentCostsWithFilters(ctx context.Context, calculator pricing.Calculator, filters model.AnalyticsFilters) (map[int64]float64, map[int64]bool, error) {
 	where, args := analyticsUsageWhere(filters)
-	rows, err := s.conn.QueryContext(ctx, `SELECT src.id, tu.model,
-		COALESCE(SUM(tu.input_tokens), 0), COALESCE(SUM(tu.cached_input_tokens), 0), COALESCE(SUM(tu.output_tokens), 0),
-		COALESCE(SUM(tu.reasoning_output_tokens), 0), COALESCE(SUM(tu.total_tokens), 0), COALESCE(MAX(tu.source), 'unknown')
+	rows, err := s.conn.QueryContext(ctx, `SELECT src.id, `+usageSessionModelExpr+`,
+		tu.input_tokens, tu.cached_input_tokens, tu.output_tokens, tu.reasoning_output_tokens, tu.total_tokens, tu.source
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
 		JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
-		WHERE `+strings.Join(where, " AND ")+`
-		GROUP BY src.id, tu.model`, args...)
+		WHERE `+strings.Join(where, " AND "), args...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -439,7 +464,7 @@ func (s *Service) UsageBreakdown(ctx context.Context, groupBy string, filters mo
 		JOIN sources src ON src.id = s.source_id
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
 		WHERE ` + strings.Join(where, " AND ") + `
-		GROUP BY ` + shape.groupSQL + `
+		GROUP BY ` + shape.groupSQL + `, s.id, tu.id
 		ORDER BY ` + shape.orderSQL
 	rows, err := s.conn.QueryContext(ctx, query, args...)
 	if err != nil {
