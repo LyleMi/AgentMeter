@@ -116,6 +116,7 @@ Delivered:
   derived metrics, and Tools summary.
 - Implement TUI navigation, table browsing, and session detail panes.
 - Support an index trigger and visible indexing/parse status in TUI mode.
+- Add a read-only TUI Agent Privacy status screen for supported targets.
 - Add terminal resize and narrow-width behavior.
 - Document TUI keyboard behavior and README examples.
 

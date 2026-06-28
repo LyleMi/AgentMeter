@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -54,6 +55,7 @@ func (s *state) navLine() string {
 		{"2", pageSessions, "Sessions"},
 		{"3", pageTools, "Tools"},
 		{"4", pageSettings, "Settings"},
+		{"5", pagePrivacy, "Agent Privacy"},
 	}
 	parts := make([]string, 0, len(items))
 	for _, item := range items {
@@ -86,7 +88,7 @@ func (s *state) footerLine() string {
 	if s.page == pageSessionDetail {
 		return dim("Keys: b/esc back  up/down scroll  r refresh  i update index  I rebuild index  q quit")
 	}
-	return dim("Keys: 1-4 switch  tab cycle  up/down select  enter detail  r refresh  i update index  I rebuild index  q quit")
+	return dim("Keys: 1-5 switch  tab cycle  up/down select/scroll  enter detail  r refresh  i update index  I rebuild index  q quit")
 }
 
 func (s *state) contentHeight() int {
@@ -113,6 +115,8 @@ func (s *state) content() []string {
 		return s.toolLines()
 	case pageSettings:
 		return s.settingsViewportLines()
+	case pagePrivacy:
+		return s.privacyViewportLines()
 	default:
 		return []string{"Unknown page"}
 	}
@@ -238,6 +242,22 @@ func (s *state) toolLines() []string {
 
 func (s *state) settingsViewportLines() []string {
 	lines := settingsLines(s.settings, s.width)
+	height := s.contentHeight()
+	if s.scroll >= len(lines) {
+		s.scroll = len(lines) - 1
+	}
+	if s.scroll < 0 {
+		s.scroll = 0
+	}
+	end := s.scroll + height
+	if end > len(lines) {
+		end = len(lines)
+	}
+	return lines[s.scroll:end]
+}
+
+func (s *state) privacyViewportLines() []string {
+	lines := privacyLines(s.privacy, s.width)
 	height := s.contentHeight()
 	if s.scroll >= len(lines) {
 		s.scroll = len(lines) - 1
@@ -388,6 +408,85 @@ func settingsLines(settings agentmodel.Settings, width int) []string {
 	return lines
 }
 
+func privacyLines(statuses []agentmodel.PrivacyConfigStatus, width int) []string {
+	lines := []string{bold("Agent Privacy")}
+	if len(statuses) == 0 {
+		return append(lines, "No privacy targets loaded.")
+	}
+	for i, status := range statuses {
+		if i > 0 {
+			lines = append(lines, "")
+		}
+		summary := status.Summary
+		exists := "missing"
+		if status.Exists {
+			exists = "exists"
+		}
+		lines = append(lines,
+			bold(empty(status.Name, status.Target)),
+			fmt.Sprintf("Target: %s  Config: %s  Score: %d/%d (%d%%)  Hardened: %d  Implicit: %d  Attention: %d",
+				empty(status.Target, "unknown"),
+				exists,
+				summary.Hardened+summary.Implicit,
+				summary.Total,
+				summary.Score,
+				summary.Hardened,
+				summary.Implicit,
+				summary.Attention,
+			),
+			"Path: "+empty(status.ConfigPath, "unknown"),
+		)
+		if len(status.Warnings) > 0 {
+			lines = append(lines, "Warnings:")
+			for _, warning := range status.Warnings {
+				lines = append(lines, fit("- "+warning, width))
+			}
+		}
+		lines = append(lines, "Settings:")
+		if len(status.Settings) == 0 {
+			lines = append(lines, "  No settings reported.")
+			continue
+		}
+		for _, setting := range status.Settings {
+			lines = append(lines, fit(fmt.Sprintf("  [%s] %-28s %-14s %s",
+				empty(setting.Status, "unknown"),
+				truncate(empty(setting.Title, setting.ID), 28),
+				privacyConfigState(setting),
+				empty(setting.Key, setting.ID),
+			), width))
+			valueLine := fmt.Sprintf("      current=%s  strict=%s",
+				formatPrivacyValue(setting.CurrentValue),
+				formatPrivacyValue(privacyStrictValue(setting)),
+			)
+			if setting.Impact != "" {
+				valueLine += "  impact=" + setting.Impact
+			}
+			lines = append(lines, fit(valueLine, width))
+		}
+	}
+	return lines
+}
+
+func privacyConfigState(setting agentmodel.PrivacyConfigSetting) string {
+	if setting.Configured {
+		return "configured"
+	}
+	if setting.Status == "implicit" {
+		return "default-safe"
+	}
+	if !setting.CanApply {
+		return "read-only"
+	}
+	return "not configured"
+}
+
+func privacyStrictValue(setting agentmodel.PrivacyConfigSetting) any {
+	if setting.StrictValue != nil {
+		return setting.StrictValue
+	}
+	return setting.DesiredValue
+}
+
 func separator(width int) string {
 	if width < 20 {
 		width = 20
@@ -458,6 +557,26 @@ func shortPath(value string, width int) string {
 
 func sessionLabel(session agentmodel.Session) string {
 	return viewmodel.SessionLabel(session)
+}
+
+func formatPrivacyValue(value any) string {
+	if value == nil {
+		return "unset"
+	}
+	switch typed := value.(type) {
+	case string:
+		if typed == "" {
+			return `""`
+		}
+		return typed
+	case fmt.Stringer:
+		return typed.String()
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Sprint(value)
+	}
+	return string(encoded)
 }
 
 func limitSlice[T any](items []T, limit int) []T {

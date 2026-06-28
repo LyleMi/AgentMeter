@@ -59,6 +59,7 @@ Implemented MVP TUI screens:
 - Sessions
 - Session Detail
 - Tools
+- Agent Privacy
 - Settings
 
 Implemented TUI actions:
@@ -67,7 +68,8 @@ Implemented TUI actions:
 - trigger incremental indexing;
 - trigger rebuild indexing;
 - open a selected session detail from the session list;
-- navigate back from detail to the session list.
+- navigate back from detail to the session list;
+- inspect supported agent privacy configuration status read-only.
 
 The TUI may present data differently from the Web UI. For example, charts can be
 replaced by tables or compact sparklines. The underlying numbers, filters,
@@ -109,6 +111,7 @@ Flag behavior:
 2 / s      Sessions
 3 / t      Tools
 4 / g      Settings
+5 / p      Agent Privacy
 tab/right  next screen
 left       previous screen
 up/down    select or scroll
@@ -128,8 +131,8 @@ q / ctrl-c quit
 - Shared calculations: token totals, cost estimates, durations, status labels,
   and model normalization must come from shared backend logic.
 - Shared query contracts: Web and TUI should consume the same read-model
-  semantics for Overview, Sessions, Session Detail, Tools, Settings, and
-  Pricing data.
+  semantics for Overview, Sessions, Session Detail, Tools, Agent Privacy,
+  Settings, and Pricing data.
 - No UI-only business rules: filtering, sorting defaults, pricing visibility,
   parse-status handling, and source-root behavior should not be reimplemented
   differently in each interface.

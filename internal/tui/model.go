@@ -13,6 +13,10 @@ type appService interface {
 	GetSessionDetail(id int64) (agentmodel.SessionDetail, error)
 	GetTools() ([]agentmodel.ToolStat, error)
 	GetSettings() (agentmodel.Settings, error)
+	GetCodexPrivacyConfig() (agentmodel.PrivacyConfigStatus, error)
+	GetGeminiPrivacyConfig() (agentmodel.PrivacyConfigStatus, error)
+	GetClaudePrivacyConfig() (agentmodel.PrivacyConfigStatus, error)
+	GetCodeBuddyPrivacyConfig() (agentmodel.PrivacyConfigStatus, error)
 	IndexNow(rebuild bool) (agentmodel.IndexResult, error)
 }
 
@@ -24,6 +28,7 @@ const (
 	pageSessionDetail
 	pageTools
 	pageSettings
+	pagePrivacy
 )
 
 func (p page) title() string {
@@ -38,6 +43,8 @@ func (p page) title() string {
 		return "Tools"
 	case pageSettings:
 		return "Settings"
+	case pagePrivacy:
+		return "Agent Privacy"
 	default:
 		return "Unknown"
 	}
@@ -76,6 +83,7 @@ type loadMsg struct {
 	detail   agentmodel.SessionDetail
 	tools    []agentmodel.ToolStat
 	settings agentmodel.Settings
+	privacy  []agentmodel.PrivacyConfigStatus
 	err      error
 }
 
@@ -116,6 +124,7 @@ type state struct {
 	detail   *agentmodel.SessionDetail
 	tools    []agentmodel.ToolStat
 	settings agentmodel.Settings
+	privacy  []agentmodel.PrivacyConfigStatus
 
 	indexing  bool
 	lastIndex *agentmodel.IndexResult
@@ -169,6 +178,8 @@ func (s *state) update(msg message) (command, bool) {
 			s.clampSelection(len(s.tools))
 		case pageSettings:
 			s.settings = m.settings
+		case pagePrivacy:
+			s.privacy = m.privacy
 		}
 	case indexMsg:
 		s.indexing = false
@@ -215,6 +226,8 @@ func (s *state) handleKey(k keyMsg) (command, bool) {
 			return s.switchPage(pageTools), false
 		case '4', 'g', 'G':
 			return s.switchPage(pageSettings), false
+		case '5', 'p', 'P':
+			return s.switchPage(pagePrivacy), false
 		case 'r', 'R':
 			return s.load(s.page), false
 		case 'i':
@@ -289,6 +302,8 @@ func (s *state) nextPage() page {
 		return pageTools
 	case pageTools:
 		return pageSettings
+	case pageSettings:
+		return pagePrivacy
 	default:
 		return pageOverview
 	}
@@ -297,13 +312,15 @@ func (s *state) nextPage() page {
 func (s *state) previousPage() page {
 	switch s.page {
 	case pageOverview:
-		return pageSettings
+		return pagePrivacy
 	case pageSessions, pageSessionDetail:
 		return pageOverview
 	case pageTools:
 		return pageSessions
-	default:
+	case pageSettings:
 		return pageTools
+	default:
+		return pageSettings
 	}
 }
 
@@ -323,6 +340,28 @@ func (s *state) load(target page) command {
 			msg.tools, msg.err = s.service.GetTools()
 		case pageSettings:
 			msg.settings, msg.err = s.service.GetSettings()
+		case pagePrivacy:
+			codex, err := s.service.GetCodexPrivacyConfig()
+			if err != nil {
+				msg.err = err
+				break
+			}
+			gemini, err := s.service.GetGeminiPrivacyConfig()
+			if err != nil {
+				msg.err = err
+				break
+			}
+			claude, err := s.service.GetClaudePrivacyConfig()
+			if err != nil {
+				msg.err = err
+				break
+			}
+			codeBuddy, err := s.service.GetCodeBuddyPrivacyConfig()
+			if err != nil {
+				msg.err = err
+				break
+			}
+			msg.privacy = []agentmodel.PrivacyConfigStatus{codex, gemini, claude, codeBuddy}
 		default:
 			msg.err = fmt.Errorf("unsupported page: %s", target.title())
 		}
@@ -383,6 +422,8 @@ func (s *state) itemCount() int {
 		return len(sessionDetailLines(*s.detail, s.width))
 	case pageSettings:
 		return len(settingsLines(s.settings, s.width))
+	case pagePrivacy:
+		return len(privacyLines(s.privacy, s.width))
 	default:
 		return 0
 	}
@@ -400,7 +441,7 @@ func (s *state) move(delta int) {
 	if delta == 0 {
 		return
 	}
-	if s.page == pageSessionDetail || s.page == pageSettings {
+	if s.page == pageSessionDetail || s.page == pageSettings || s.page == pagePrivacy {
 		maxScroll := s.maxScroll()
 		s.scroll += delta
 		if s.scroll < 0 {
@@ -447,7 +488,7 @@ func (s *state) clampSelection(count int) {
 }
 
 func (s *state) ensureVisible() {
-	if s.page == pageSessionDetail || s.page == pageSettings {
+	if s.page == pageSessionDetail || s.page == pageSettings || s.page == pagePrivacy {
 		maxScroll := s.maxScroll()
 		if s.scroll > maxScroll {
 			s.scroll = maxScroll

@@ -10,12 +10,16 @@ import (
 )
 
 type fakeService struct {
-	overview agentmodel.Overview
-	sessions []agentmodel.Session
-	detail   agentmodel.SessionDetail
-	tools    []agentmodel.ToolStat
-	settings agentmodel.Settings
-	index    agentmodel.IndexResult
+	overview  agentmodel.Overview
+	sessions  []agentmodel.Session
+	detail    agentmodel.SessionDetail
+	tools     []agentmodel.ToolStat
+	settings  agentmodel.Settings
+	codex     agentmodel.PrivacyConfigStatus
+	gemini    agentmodel.PrivacyConfigStatus
+	claude    agentmodel.PrivacyConfigStatus
+	codeBuddy agentmodel.PrivacyConfigStatus
+	index     agentmodel.IndexResult
 
 	indexCalls []bool
 }
@@ -38,6 +42,22 @@ func (f *fakeService) GetTools() ([]agentmodel.ToolStat, error) {
 
 func (f *fakeService) GetSettings() (agentmodel.Settings, error) {
 	return f.settings, nil
+}
+
+func (f *fakeService) GetCodexPrivacyConfig() (agentmodel.PrivacyConfigStatus, error) {
+	return f.codex, nil
+}
+
+func (f *fakeService) GetGeminiPrivacyConfig() (agentmodel.PrivacyConfigStatus, error) {
+	return f.gemini, nil
+}
+
+func (f *fakeService) GetClaudePrivacyConfig() (agentmodel.PrivacyConfigStatus, error) {
+	return f.claude, nil
+}
+
+func (f *fakeService) GetCodeBuddyPrivacyConfig() (agentmodel.PrivacyConfigStatus, error) {
+	return f.codeBuddy, nil
 }
 
 func (f *fakeService) IndexNow(rebuild bool) (agentmodel.IndexResult, error) {
@@ -121,6 +141,48 @@ func TestIndexNowRefreshesCurrentPage(t *testing.T) {
 	assertContains(t, view, "Indexed: 3")
 }
 
+func TestPrivacyPageLoadsAndRenders(t *testing.T) {
+	svc := sampleService()
+	st := newState(svc, 100, 40)
+
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '5'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+
+	view := st.view()
+	assertContains(t, view, "Agent Privacy")
+	assertContains(t, view, "Codex")
+	assertContains(t, view, "Claude Code")
+	assertContains(t, view, "CodeBuddy")
+	assertContains(t, view, "Target: codex  Config: exists  Score: 2/3 (66%)")
+	assertContains(t, view, "[attention] Web search")
+	assertContains(t, view, "default-safe")
+	assertContains(t, view, `strict=["web_search","web_fetch"]`)
+	assertContains(t, view, "Broken JSON")
+	assertContains(t, view, "read-only")
+	assertContains(t, view, "Codex warning")
+
+	cmd, quit = st.update(keyMsg{typ: keyShiftTab})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if st.page != pageSettings {
+		t.Fatalf("page = %v, want settings after shift-tab from privacy", st.page)
+	}
+
+	cmd, quit = st.update(keyMsg{typ: keyTab})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if st.page != pagePrivacy {
+		t.Fatalf("page = %v, want privacy after tab from settings", st.page)
+	}
+}
+
 func runCommand(t *testing.T, cmd command) message {
 	t.Helper()
 	if cmd == nil {
@@ -201,6 +263,72 @@ func sampleService() *fakeService {
 				value := started
 				return &value
 			}(),
+		},
+		codex: agentmodel.PrivacyConfigStatus{
+			Target:     "codex",
+			Name:       "Codex",
+			ConfigPath: `C:\Users\agent\.codex\config.toml`,
+			Exists:     true,
+			Summary: agentmodel.PrivacyConfigSummary{
+				Score:     66,
+				Total:     3,
+				Hardened:  1,
+				Implicit:  1,
+				Attention: 1,
+			},
+			Settings: []agentmodel.PrivacyConfigSetting{
+				{ID: "analytics.enabled", Title: "Analytics", Key: "analytics.enabled", DesiredValue: false, StrictValue: false, CurrentValue: false, Configured: true, CanApply: true, Status: "hardened", Impact: "limits telemetry"},
+				{ID: "history.persistence", Title: "Conversation history", Key: "history.persistence", DesiredValue: "none", StrictValue: "none", SupportsUnset: true, CanApply: true, Status: "implicit"},
+				{ID: "web_search", Title: "Web search", Key: "tools.web_search", DesiredValue: false, StrictValue: false, CurrentValue: true, Configured: true, CanApply: true, Status: "attention"},
+			},
+			Warnings: []string{"Codex warning"},
+		},
+		gemini: agentmodel.PrivacyConfigStatus{
+			Target:     "gemini",
+			Name:       "Gemini CLI",
+			ConfigPath: `C:\Users\agent\.gemini\settings.json`,
+			Exists:     false,
+			Summary: agentmodel.PrivacyConfigSummary{
+				Score:     33,
+				Total:     3,
+				Hardened:  1,
+				Attention: 2,
+			},
+			Settings: []agentmodel.PrivacyConfigSetting{
+				{ID: "privacy.usageStatisticsEnabled", Title: "Usage statistics", Key: "privacy.usageStatisticsEnabled", DesiredValue: false, StrictValue: false, CurrentValue: false, Configured: true, CanApply: true, Status: "hardened"},
+				{ID: "tools.exclude.web", Title: "Web tools", Key: "tools.exclude", DesiredValue: []string{"web_fetch"}, StrictValue: []string{"web_search", "web_fetch"}, SupportsUnset: true, CanApply: true, Status: "attention"},
+				{ID: "settings.parse", Title: "Broken JSON", Key: "settings.json", DesiredValue: nil, StrictValue: nil, CanApply: false, Status: "attention"},
+			},
+		},
+		claude: agentmodel.PrivacyConfigStatus{
+			Target:     "claude",
+			Name:       "Claude Code",
+			ConfigPath: `C:\Users\agent\.claude\settings.json`,
+			Exists:     true,
+			Summary: agentmodel.PrivacyConfigSummary{
+				Score:     100,
+				Total:     1,
+				Hardened:  1,
+				Attention: 0,
+			},
+			Settings: []agentmodel.PrivacyConfigSetting{
+				{ID: "env.DISABLE_TELEMETRY", Title: "Telemetry", Key: "env.DISABLE_TELEMETRY", DesiredValue: "1", StrictValue: "1", CurrentValue: "1", Configured: true, CanApply: true, Status: "hardened"},
+			},
+		},
+		codeBuddy: agentmodel.PrivacyConfigStatus{
+			Target:     "codebuddy",
+			Name:       "CodeBuddy",
+			ConfigPath: `C:\Users\agent\.codebuddy\settings.json`,
+			Exists:     true,
+			Summary: agentmodel.PrivacyConfigSummary{
+				Score:     100,
+				Total:     1,
+				Implicit:  1,
+				Attention: 0,
+			},
+			Settings: []agentmodel.PrivacyConfigSetting{
+				{ID: "env.OTEL_TRACES_EXPORTER", Title: "OTel exporter", Key: "env.OTEL_TRACES_EXPORTER", DesiredValue: "none", StrictValue: "none", CanApply: true, Status: "implicit"},
+			},
 		},
 		index: index,
 	}
