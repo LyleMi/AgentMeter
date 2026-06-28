@@ -1,41 +1,40 @@
 <script setup lang="ts">
 import { FieldTimeOutlined } from '@ant-design/icons-vue'
+import { formatDuration } from '../../api'
+import { useMessages } from '../../i18n'
+import { useTimeContext } from './timeContext'
 
-interface TimeSegment {
-  key: string
-  label: string
-  value: number
-  share: number
-  width: string
-  tone: string
-}
+const { t } = useMessages({
+  en: {
+    'title': 'Wall-time composition',
+    'kicker': 'How indexed session wall time splits between model, tools, and idle gaps',
+    'total': 'Total wall time'
+  },
+  'zh-CN': {
+    'title': '墙钟耗时构成',
+    'kicker': '已索引会话的墙钟时间在模型、工具和空闲间隙之间的拆分',
+    'total': '总墙钟时间'
+  }
+})
 
-defineProps<{
-  title: string
-  kicker: string
-  totalLabel: string
-  totalValue: string
-  segments: TimeSegment[]
-  formatDuration: (value: number) => string
-  formatPercent: (value: number) => string
-}>()
+const { compositionSegments: segments, wallDurationMs, formatPercent } = useTimeContext()
 </script>
 
 <template>
   <section class="panel overview-time-composition">
     <div class="panel-header">
       <div>
-        <h2 class="panel-title">{{ title }}</h2>
-        <div class="panel-kicker">{{ kicker }}</div>
+        <h2 class="panel-title">{{ t('title') }}</h2>
+        <div class="panel-kicker">{{ t('kicker') }}</div>
       </div>
       <FieldTimeOutlined class="panel-header-icon" />
     </div>
     <div class="overview-time-composition-body">
       <div class="overview-time-total">
-        <span class="metric-label">{{ totalLabel }}</span>
-        <strong>{{ totalValue }}</strong>
+        <span class="metric-label">{{ t('total') }}</span>
+        <strong>{{ formatDuration(wallDurationMs) }}</strong>
       </div>
-      <div class="overview-time-bar" :aria-label="title">
+      <div class="overview-time-bar" :aria-label="t('title')">
         <span
           v-for="item in segments"
           :key="item.key"

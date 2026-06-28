@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, type Component } from 'vue'
-import { useRouter } from 'vue-router'
-import AButton from 'ant-design-vue/es/button'
-import ASpin from 'ant-design-vue/es/spin'
+import { computed, onMounted, provide, ref, type Component } from 'vue'
+import { RouterView, useRoute } from 'vue-router'
+import AAlert from 'ant-design-vue/es/alert'
 import {
+  BarChartOutlined,
   ClockCircleOutlined,
   FieldTimeOutlined,
-  ReloadOutlined,
+  ProfileOutlined,
   ToolOutlined
 } from '@ant-design/icons-vue'
 import {
@@ -15,32 +15,42 @@ import {
   formatNumber,
   sessionLabel,
   type Overview,
-  type Session,
-  type ToolTimeUsage
+  type UsageBreakdownBucket
 } from '../api'
 import PageHeader from '../components/PageHeader.vue'
+import PageTabs from '../components/PageTabs.vue'
+import UsageScopeBar from '../components/UsageScopeBar.vue'
+import { useAsyncResource } from '../composables/useAsyncResource'
 import { useMessages } from '../i18n'
-import SlowSessionsTable from './time/SlowSessionsTable.vue'
-import TimeAttributionTables from './time/TimeAttributionTables.vue'
-import TimeComposition from './time/TimeComposition.vue'
-import TimeKpiGrid from './time/TimeKpiGrid.vue'
-import ToolDurationLeaders from './time/ToolDurationLeaders.vue'
+import { applyUsageScopeToQuery, useUsageScopeRoute, type UsageScopeForm } from './useUsageScope'
+import { buildUsageAgentOptions, buildUsageModelOptions, buildUsageProjectOptions } from './useUsageScopeOptions'
+import { timeContextKey, type TimeContext, type TimeKpiCard, type TimeSegment } from './time/timeContext'
 
-const router = useRouter()
-const loading = ref(true)
-const overview = ref<Overview | null>(null)
+const route = useRoute()
+const resource = useAsyncResource<Overview | null>(null)
+const overview = computed(() => resource.data.value)
+const loading = resource.loading
+const error = resource.error
+const optionOverview = ref<Overview | null>(null)
+const projectOptionRows = ref<UsageBreakdownBucket[]>([])
+const scope = useUsageScopeRoute(() => {
+  void load()
+})
+let loadRequestId = 0
+
 const { t, createNumberFormatter } = useMessages({
   en: {
     'title': 'Time',
     'subtitle': 'Wall-time attribution across model, tool, source, and slow session activity',
     'action.refresh': 'Refresh',
-    'composition.title': 'Time Composition',
-    'composition.kicker': 'Exclusive wall-time split. Network-likely tool time is inferred from tool name/input, not network telemetry.',
+    'tab.summary': 'Summary',
+    'tab.sources': 'Sources',
+    'tab.tools': 'Tools',
+    'tab.sessions': 'Slow Sessions',
     'composition.model': 'Model',
     'composition.network': 'Suspected network tools',
     'composition.tools': 'Other tools',
     'composition.idle': 'Idle / unclassified',
-    'composition.total': 'Wall total',
     'kpi.wall': 'Wall Time',
     'kpi.wallNote': '{count} indexed sessions',
     'kpi.activeShare': 'Active Share',
@@ -51,56 +61,24 @@ const { t, createNumberFormatter } = useMessages({
     'kpi.networkShareNote': '{duration} across {count} calls',
     'kpi.slowest': 'Slowest Session',
     'kpi.slowestNote': '{duration} wall time',
-    'tools.title': 'Tool Duration Leaders',
-    'tools.kicker': 'Ranked by total tool duration',
-    'tools.networkHint': 'Network-likely marker uses inferred tool name/input signals.',
-    'agent.title': 'Source Time Attribution',
-    'agent.kicker': 'Wall, active, model, tool, idle, and inferred network time by source',
-    'model.title': 'Model Time Attribution',
-    'model.kicker': 'Wall, active, and token volume by model',
-    'sessions.title': 'Slow Sessions',
-    'sessions.kicker': 'Sorted by wall duration; open a row for the session timeline',
-    'column.tool': 'Tool',
-    'column.calls': 'Calls',
-    'column.success': 'Success',
-    'column.failed': 'Failed / Pending',
-    'column.total': 'Total',
-    'column.average': 'Avg',
-    'column.max': 'Max',
-    'column.network': 'Network',
-    'column.agent': 'Source',
-    'column.model': 'Model',
-    'column.sessions': 'Sessions',
-    'column.tokens': 'Tokens',
-    'column.wall': 'Wall',
-    'column.active': 'Active',
-    'column.modelTime': 'Model',
-    'column.toolTime': 'Tools',
-    'column.idle': 'Idle',
-    'column.project': 'Project',
-    'column.started': 'Started',
-    'column.open': 'Open',
-    'status.networkLikely': 'likely',
-    'status.notNetwork': 'no',
+    'empty.sessions': 'No slow sessions yet',
     'empty.title': 'No time analysis yet',
     'empty.text': 'Time attribution appears after sessions with model, tool, and wall durations are indexed.',
-    'empty.tools': 'No tool duration leaders yet',
-    'empty.agents': 'No source time attribution yet',
-    'empty.models': 'No model time attribution yet',
-    'empty.sessions': 'No slow sessions yet',
-    'fallback.unknown': 'unknown'
+    'fallback.unknown': 'unknown',
+    'error.title': 'Time analytics failed to load'
   },
   'zh-CN': {
     'title': '耗时',
     'subtitle': '按模型、工具、来源和慢会话归因墙钟耗时',
     'action.refresh': '刷新',
-    'composition.title': '时间构成',
-    'composition.kicker': '按墙钟时间互斥拆分。疑似网络工具耗时由工具名/输入推断，不是网络遥测。',
+    'tab.summary': '汇总',
+    'tab.sources': '来源对比',
+    'tab.tools': '工具耗时',
+    'tab.sessions': '慢会话',
     'composition.model': '模型',
     'composition.network': '疑似网络工具',
     'composition.tools': '其他工具',
     'composition.idle': '空闲 / 未分类',
-    'composition.total': '墙钟总计',
     'kpi.wall': '墙钟时间',
     'kpi.wallNote': '{count} 个已索引会话',
     'kpi.activeShare': '活跃占比',
@@ -111,62 +89,27 @@ const { t, createNumberFormatter } = useMessages({
     'kpi.networkShareNote': '{duration}，共 {count} 次调用',
     'kpi.slowest': '最慢会话',
     'kpi.slowestNote': '墙钟时间 {duration}',
-    'tools.title': '工具耗时排行',
-    'tools.kicker': '按工具总耗时排序',
-    'tools.networkHint': '疑似网络标记来自工具名/输入信号推断。',
-    'agent.title': '来源时间归因',
-    'agent.kicker': '按来源展示墙钟、活跃、模型、工具、空闲和疑似网络时间',
-    'model.title': '模型时间归因',
-    'model.kicker': '按模型展示墙钟、活跃和 Token 规模',
-    'sessions.title': '慢会话',
-    'sessions.kicker': '按墙钟耗时排序；打开行查看会话时间线',
-    'column.tool': '工具',
-    'column.calls': '调用',
-    'column.success': '成功',
-    'column.failed': '失败 / 未完成',
-    'column.total': '总计',
-    'column.average': '平均',
-    'column.max': '最大',
-    'column.network': '网络',
-    'column.agent': '来源',
-    'column.model': '模型',
-    'column.sessions': '会话',
-    'column.tokens': 'Token',
-    'column.wall': '墙钟',
-    'column.active': '活跃',
-    'column.modelTime': '模型',
-    'column.toolTime': '工具',
-    'column.idle': '空闲',
-    'column.project': '项目',
-    'column.started': '开始时间',
-    'column.open': '打开',
-    'status.networkLikely': '疑似',
-    'status.notNetwork': '否',
+    'empty.sessions': '暂无慢会话',
     'empty.title': '暂无时间分析',
     'empty.text': '索引包含模型、工具和墙钟时长的会话后，会显示时间归因。',
-    'empty.tools': '暂无工具耗时排行',
-    'empty.agents': '暂无来源时间归因',
-    'empty.models': '暂无模型时间归因',
-    'empty.sessions': '暂无慢会话',
-    'fallback.unknown': '未知'
+    'fallback.unknown': '未知',
+    'error.title': '耗时分析加载失败'
   }
 })
 
-interface TimeSegment {
-  key: string
-  label: string
-  value: number
-  share: number
-  width: string
-  tone: string
-}
+const tabs = computed(() => [
+  { key: 'summary', label: t('tab.summary'), path: timePath('/time'), icon: FieldTimeOutlined },
+  { key: 'sources', label: t('tab.sources'), path: timePath('/time/sources'), icon: BarChartOutlined },
+  { key: 'tools', label: t('tab.tools'), path: timePath('/time/tools'), icon: ToolOutlined },
+  { key: 'sessions', label: t('tab.sessions'), path: timePath('/time/sessions'), icon: ProfileOutlined }
+])
 
-interface TimeKpiCard {
-  label: string
-  value: string
-  note: string
-  icon: Component
-}
+const activeKey = computed(() => {
+  if (route.path.startsWith('/time/sources')) return 'sources'
+  if (route.path.startsWith('/time/tools')) return 'tools'
+  if (route.path.startsWith('/time/sessions')) return 'sessions'
+  return 'summary'
+})
 
 const hasIndexedData = computed(() => (overview.value?.totalSessions || 0) > 0)
 const wallDurationMs = computed(() => Math.max(0, overview.value?.totalWallDurationMs || 0))
@@ -202,19 +145,19 @@ const kpiCards = computed<TimeKpiCard[]>(() => [
     label: t('kpi.wall'),
     value: formatDuration(wallDurationMs.value),
     note: t('kpi.wallNote', { count: formatNumber(overview.value?.totalSessions) }),
-    icon: FieldTimeOutlined
+    icon: FieldTimeOutlined as Component
   },
   {
     label: t('kpi.activeShare'),
     value: formatPercent(activeDurationMs.value / Math.max(wallDurationMs.value, 1)),
     note: t('kpi.activeShareNote', { duration: formatDuration(activeDurationMs.value) }),
-    icon: ClockCircleOutlined
+    icon: ClockCircleOutlined as Component
   },
   {
     label: t('kpi.toolShare'),
     value: formatPercent(toolDurationMs.value / Math.max(wallDurationMs.value, 1)),
     note: t('kpi.toolShareNote', { duration: formatDuration(toolDurationMs.value) }),
-    icon: ToolOutlined
+    icon: ToolOutlined as Component
   },
   {
     label: t('kpi.networkShare'),
@@ -223,13 +166,13 @@ const kpiCards = computed<TimeKpiCard[]>(() => [
       duration: formatDuration(suspectedNetworkDurationMs.value),
       count: formatNumber(overview.value?.suspectedNetworkToolCalls)
     }),
-    icon: ToolOutlined
+    icon: ToolOutlined as Component
   },
   {
     label: t('kpi.slowest'),
     value: slowestSession.value ? sessionLabel(slowestSession.value) : '-',
     note: slowestSession.value ? t('kpi.slowestNote', { duration: formatDuration(slowestSession.value.wallDurationMs) }) : t('empty.sessions'),
-    icon: ClockCircleOutlined
+    icon: ClockCircleOutlined as Component
   }
 ])
 
@@ -243,56 +186,61 @@ const rankedModelTimeUsage = computed(() =>
   [...(overview.value?.modelTimeUsage || [])].sort((left, right) => right.wallDurationMs - left.wallDurationMs)
 )
 
-const hasToolLeaders = computed(() => rankedToolLeaders.value.length > 0)
-const hasAgentTimeUsage = computed(() => rankedAgentTimeUsage.value.length > 0)
-const hasModelTimeUsage = computed(() => rankedModelTimeUsage.value.length > 0)
-const hasSlowSessions = computed(() => slowSessions.value.length > 0)
+const agentOptions = computed(() =>
+  buildUsageAgentOptions({
+    sources: [
+      overview.value?.agentTimeUsage,
+      overview.value?.agentUsage,
+      optionOverview.value?.agentTimeUsage,
+      optionOverview.value?.agentUsage,
+      overview.value?.slowSessions,
+      optionOverview.value?.slowSessions,
+      overview.value?.recentSessions,
+      optionOverview.value?.recentSessions
+    ],
+    selected: scope.filters.value.agent,
+    fallback: t('fallback.unknown')
+  })
+)
 
-const toolColumns = computed(() => [
-  { title: t('column.tool'), dataIndex: 'toolName', key: 'toolName', width: 210 },
-  { title: t('column.calls'), dataIndex: 'calls', key: 'calls', width: 86, align: 'right' },
-  { title: t('column.success'), dataIndex: 'successCalls', key: 'success', width: 92, align: 'right' },
-  { title: t('column.failed'), dataIndex: 'failedCalls', key: 'failed', width: 120, align: 'right' },
-  { title: t('column.total'), dataIndex: 'totalDurationMs', key: 'total', width: 110, align: 'right' },
-  { title: t('column.average'), dataIndex: 'avgDurationMs', key: 'average', width: 110, align: 'right' },
-  { title: t('column.max'), dataIndex: 'maxDurationMs', key: 'max', width: 110, align: 'right' },
-  { title: t('column.network'), dataIndex: 'suspectedNetwork', key: 'network', width: 104 }
-])
+const modelOptions = computed(() =>
+  buildUsageModelOptions({
+    modelUsage: [
+      overview.value?.modelUsage,
+      optionOverview.value?.modelUsage,
+      overview.value?.modelTimeUsage,
+      optionOverview.value?.modelTimeUsage
+    ],
+    sessions: [
+      overview.value?.slowSessions,
+      optionOverview.value?.slowSessions,
+      overview.value?.recentSessions,
+      optionOverview.value?.recentSessions
+    ],
+    selected: scope.filters.value.model
+  })
+)
 
-const agentColumns = computed(() => [
-  { title: t('column.agent'), dataIndex: 'sourceLabel', key: 'agent', width: 190 },
-  { title: t('column.sessions'), dataIndex: 'sessionCount', key: 'sessions', width: 86, align: 'right' },
-  { title: t('column.calls'), dataIndex: 'toolCalls', key: 'calls', width: 80, align: 'right' },
-  { title: t('column.wall'), dataIndex: 'wallDurationMs', key: 'wall', width: 104, align: 'right' },
-  { title: t('column.active'), dataIndex: 'activeDurationMs', key: 'active', width: 104, align: 'right' },
-  { title: t('column.modelTime'), dataIndex: 'modelDurationMs', key: 'modelTime', width: 104, align: 'right' },
-  { title: t('column.toolTime'), dataIndex: 'toolDurationMs', key: 'toolTime', width: 104, align: 'right' },
-  { title: t('column.network'), dataIndex: 'suspectedNetworkToolDurationMs', key: 'network', width: 104, align: 'right' },
-  { title: t('column.idle'), dataIndex: 'idleDurationMs', key: 'idle', width: 104, align: 'right' }
-])
+const projectOptions = computed(() =>
+  buildUsageProjectOptions({
+    projects: [
+      projectOptionRows.value,
+      overview.value?.slowSessions,
+      optionOverview.value?.slowSessions,
+      overview.value?.recentSessions,
+      optionOverview.value?.recentSessions
+    ],
+    selected: scope.filters.value.project,
+    fallback: t('fallback.unknown')
+  })
+)
 
-const modelColumns = computed(() => [
-  { title: t('column.model'), dataIndex: 'model', key: 'model', width: 190 },
-  { title: t('column.sessions'), dataIndex: 'sessionCount', key: 'sessions', width: 86, align: 'right' },
-  { title: t('column.tokens'), dataIndex: 'totalTokens', key: 'tokens', width: 110, align: 'right' },
-  { title: t('column.wall'), dataIndex: 'wallDurationMs', key: 'wall', width: 104, align: 'right' },
-  { title: t('column.active'), dataIndex: 'activeDurationMs', key: 'active', width: 104, align: 'right' },
-  { title: t('column.modelTime'), dataIndex: 'modelDurationMs', key: 'modelTime', width: 104, align: 'right' },
-  { title: t('column.toolTime'), dataIndex: 'toolDurationMs', key: 'toolTime', width: 104, align: 'right' },
-  { title: t('column.idle'), dataIndex: 'idleDurationMs', key: 'idle', width: 104, align: 'right' }
-])
-
-const slowSessionColumns = computed(() => [
-  { title: t('column.project'), dataIndex: 'projectPath', key: 'project', width: 260 },
-  { title: t('column.agent'), dataIndex: 'sourceLabel', key: 'agent', width: 170 },
-  { title: t('column.model'), dataIndex: 'model', key: 'model', width: 140 },
-  { title: t('column.wall'), dataIndex: 'wallDurationMs', key: 'wall', width: 104, align: 'right' },
-  { title: t('column.active'), dataIndex: 'activeDurationMs', key: 'active', width: 104, align: 'right' },
-  { title: t('column.modelTime'), dataIndex: 'modelDurationMs', key: 'modelTime', width: 104, align: 'right' },
-  { title: t('column.toolTime'), dataIndex: 'toolDurationMs', key: 'toolTime', width: 104, align: 'right' },
-  { title: t('column.started'), dataIndex: 'startedAt', key: 'started', width: 150 },
-  { title: '', key: 'open', width: 52, align: 'right' }
-])
+function timePath(path: string) {
+  const query = applyUsageScopeToQuery(route.query, scope.filters.value)
+  const params = new URLSearchParams(query)
+  const encoded = params.toString()
+  return encoded ? `${path}?${encoded}` : path
+}
 
 function takeDuration(value: number, remaining: number) {
   return Math.min(Math.max(0, value), Math.max(0, remaining))
@@ -316,130 +264,106 @@ function formatPercent(value: number) {
   return createNumberFormatter({ style: 'percent', maximumFractionDigits: 0 }).format(value)
 }
 
-function toolRowKey(record: ToolTimeUsage) {
-  return record.toolName || t('fallback.unknown')
+function load() {
+  const requestId = ++loadRequestId
+  return resource.run(async () => {
+    const optionOverviewRequest = scope.hasActiveFilters.value ? api.getOverview() : Promise.resolve<Overview | null>(null)
+    const projectOptionsRequest = api.getUsageBreakdown({ groupBy: 'project' }).catch(() => null)
+    const [nextOverview, nextOptionOverview, projectBreakdown] = await Promise.all([
+      api.getOverview(scope.apiFilters.value),
+      optionOverviewRequest,
+      projectOptionsRequest
+    ])
+    if (requestId === loadRequestId) {
+      optionOverview.value = nextOptionOverview || nextOverview
+      projectOptionRows.value = projectBreakdown?.buckets || []
+    }
+    return nextOverview
+  }, { onErrorData: null })
 }
 
-function openSession(id: number) {
-  router.push(`/sessions/${id}`)
+async function updateScopeFilters(nextFilters: UsageScopeForm) {
+  await scope.updateFilters(nextFilters)
+  await load()
 }
 
-function slowSessionRow(record: Session) {
-  return { class: 'overview-session-row is-clickable-row', onClick: () => openSession(record.id) }
+async function clearScopeFilters() {
+  await scope.clearFilters()
+  await load()
 }
 
-async function load() {
-  loading.value = true
-  try {
-    overview.value = await api.getOverview()
-  } finally {
-    loading.value = false
-  }
+const context: TimeContext = {
+  overview,
+  optionOverview,
+  loading,
+  error,
+  hasIndexedData,
+  wallDurationMs,
+  activeDurationMs,
+  toolDurationMs,
+  suspectedNetworkDurationMs,
+  slowSessions,
+  compositionSegments,
+  kpiCards,
+  rankedToolLeaders,
+  rankedAgentTimeUsage,
+  rankedModelTimeUsage,
+  agentOptions,
+  modelOptions,
+  projectOptions,
+  formatPercent,
+  load,
+  updateScopeFilters,
+  clearScopeFilters
 }
+
+provide(timeContextKey, context)
 
 onMounted(load)
 </script>
 
 <template>
-  <div class="page">
-    <PageHeader :title="t('title')" :subtitle="t('subtitle')">
-      <template #actions>
-        <a-button :loading="loading" @click="load">
-          <template #icon>
-            <ReloadOutlined />
-          </template>
-          {{ t('action.refresh') }}
-        </a-button>
-      </template>
-    </PageHeader>
+  <div class="page time-page">
+    <PageHeader :title="t('title')" :subtitle="t('subtitle')" />
 
-    <a-spin :spinning="loading">
-      <div v-if="hasIndexedData" class="overview-time-view">
-        <section class="overview-time-top">
-          <TimeComposition
-            :title="t('composition.title')"
-            :kicker="t('composition.kicker')"
-            :total-label="t('composition.total')"
-            :total-value="formatDuration(wallDurationMs)"
-            :segments="compositionSegments"
-            :format-duration="formatDuration"
-            :format-percent="formatPercent"
-          />
+    <UsageScopeBar
+      :filters="scope.filters.value"
+      :agent-options="agentOptions"
+      :model-options="modelOptions"
+      :project-options="projectOptions"
+      :loading="loading"
+      @update:filters="updateScopeFilters"
+      @refresh="load"
+      @clear="clearScopeFilters"
+    />
 
-          <TimeKpiGrid :cards="kpiCards" />
-        </section>
+    <PageTabs class="time-subnav" :tabs="tabs" :active-key="activeKey" />
 
-        <ToolDurationLeaders
-          :title="t('tools.title')"
-          :kicker="t('tools.kicker')"
-          :network-hint="t('tools.networkHint')"
-          :empty-title="t('empty.tools')"
-          :empty-text="t('empty.text')"
-          :fallback-unknown="t('fallback.unknown')"
-          :network-likely-label="t('status.networkLikely')"
-          :not-network-label="t('status.notNetwork')"
-          :columns="toolColumns"
-          :rows="rankedToolLeaders"
-          :has-rows="hasToolLeaders"
-          :row-key="toolRowKey"
-        />
+    <a-alert
+      v-if="error"
+      class="time-error"
+      type="error"
+      show-icon
+      :message="t('error.title')"
+      :description="error"
+    />
 
-        <TimeAttributionTables
-          :agent-title="t('agent.title')"
-          :agent-kicker="t('agent.kicker')"
-          :model-title="t('model.title')"
-          :model-kicker="t('model.kicker')"
-          :empty-agent-title="t('empty.agents')"
-          :empty-model-title="t('empty.models')"
-          :empty-text="t('empty.text')"
-          :agent-columns="agentColumns"
-          :model-columns="modelColumns"
-          :agent-rows="rankedAgentTimeUsage"
-          :model-rows="rankedModelTimeUsage"
-          :has-agent-rows="hasAgentTimeUsage"
-          :has-model-rows="hasModelTimeUsage"
-          :fallback-unknown="t('fallback.unknown')"
-        />
-
-        <SlowSessionsTable
-          :title="t('sessions.title')"
-          :kicker="t('sessions.kicker')"
-          :empty-title="t('empty.sessions')"
-          :empty-text="t('empty.text')"
-          :open-label="t('column.open')"
-          :columns="slowSessionColumns"
-          :rows="slowSessions"
-          :has-rows="hasSlowSessions"
-          :fallback-unknown="t('fallback.unknown')"
-          :open-session="openSession"
-          :row-props="slowSessionRow"
-        />
-      </div>
-
-      <div v-else-if="!loading" class="empty-state">
-        <FieldTimeOutlined class="empty-state-icon" />
-        <div class="empty-state-title">{{ t('empty.title') }}</div>
-        <div class="empty-state-text">{{ t('empty.text') }}</div>
-      </div>
-    </a-spin>
+    <RouterView />
   </div>
 </template>
 
 <style scoped>
-.overview-time-view {
-  display: grid;
-  gap: var(--am-section-gap);
+.time-page {
+  max-width: 1560px;
 }
 
-.overview-time-top {
-  display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(420px, 0.92fr);
-  gap: var(--am-section-gap);
+.time-error {
+  margin-bottom: var(--am-section-gap);
 }
 
-@media (max-width: 1180px) {
-  .overview-time-top {
-    grid-template-columns: 1fr;
-  }
+.time-subnav {
+  margin-bottom: var(--am-section-gap);
 }
 </style>
+
+

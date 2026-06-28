@@ -1,16 +1,7 @@
 <script setup lang="ts">
-import type { Component } from 'vue'
+import { useTimeContext } from './timeContext'
 
-export interface TimeKpiCard {
-  label: string
-  value: string
-  note: string
-  icon: Component
-}
-
-defineProps<{
-  cards: TimeKpiCard[]
-}>()
+const { kpiCards: cards } = useTimeContext()
 </script>
 
 <template>

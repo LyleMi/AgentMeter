@@ -16,7 +16,17 @@ const router = createRouter({
         { path: 'recent', component: () => import('./views/OverviewRecent.vue') }
       ]
     },
-    { path: '/time', component: () => import('./views/OverviewTime.vue') },
+    {
+      path: '/time',
+      component: () => import('./views/OverviewTime.vue'),
+      children: [
+        { path: '', component: () => import('./views/time/TimeSummary.vue') },
+        { path: 'summary', redirect: (to) => ({ path: '/time', query: to.query }) },
+        { path: 'sources', component: () => import('./views/time/TimeSources.vue') },
+        { path: 'tools', component: () => import('./views/time/ToolDurationLeaders.vue') },
+        { path: 'sessions', component: () => import('./views/time/SlowSessionsTable.vue') }
+      ]
+    },
     {
       path: '/tokens',
       component: () => import('./views/Tokens.vue'),
@@ -68,3 +78,4 @@ const router = createRouter({
 })
 
 export default router
+
