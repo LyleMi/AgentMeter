@@ -22,6 +22,7 @@ import {
 } from '@ant-design/icons-vue'
 import ToolCallDetailDrawer from '../components/ToolCallDetailDrawer.vue'
 import { useMessages } from '../i18n'
+import { sourceDisplay } from '../presentation/sourceIdentity'
 import { statusClass, statusColor } from '../presentation/status'
 import {
   api,
@@ -57,7 +58,7 @@ const { t } = useMessages({
     'fallback.unknown': 'unknown',
     'fallback.indexMessage': 'No index message recorded',
     'fallback.noRawJson': 'No raw JSON recorded',
-    'metric.agent': 'Agent',
+    'metric.agent': 'Source',
     'metric.model': 'Model',
     'metric.started': 'Started',
     'metric.ended': 'Ended',
@@ -123,8 +124,8 @@ const { t } = useMessages({
     'tooltip.viewDetails': 'View details',
     'metadata.sessionRow': 'Session row',
     'metadata.sessionKey': 'Session key',
-    'metadata.agent': 'Agent',
-    'metadata.agentKind': 'Agent kind',
+    'metadata.agent': 'Source',
+    'metadata.agentKind': 'Family',
     'metadata.started': 'Started',
     'metadata.ended': 'Ended',
     'metadata.model': 'Model',
@@ -159,7 +160,7 @@ const { t } = useMessages({
     'fallback.unknown': '未知',
     'fallback.indexMessage': '没有记录索引消息',
     'fallback.noRawJson': '没有记录原始 JSON',
-    'metric.agent': 'Agent',
+    'metric.agent': '来源',
     'metric.model': '模型',
     'metric.started': '开始',
     'metric.ended': '结束',
@@ -225,8 +226,8 @@ const { t } = useMessages({
     'tooltip.viewDetails': '查看详情',
     'metadata.sessionRow': '会话行',
     'metadata.sessionKey': '会话 key',
-    'metadata.agent': 'Agent',
-    'metadata.agentKind': 'Agent 类型',
+    'metadata.agent': '来源',
+    'metadata.agentKind': '系列',
     'metadata.started': '开始',
     'metadata.ended': '结束',
     'metadata.model': '模型',
@@ -289,6 +290,7 @@ const rawColumns = computed(() => [
 ])
 
 const events = computed<EventItem[]>(() => detail.value?.events || [])
+const sessionSource = computed(() => (detail.value ? sourceDisplay(detail.value.session, t('fallback.unknown')) : null))
 const rawEventsExpandable = {
   rowExpandable: (record: EventItem) => Boolean(record.rawJson)
 }
@@ -604,7 +606,8 @@ onMounted(load)
           <div class="session-summary-meta">
             <div class="session-summary-item">
               <span class="metric-label">{{ t('metric.agent') }}</span>
-              <strong>{{ detail.session.agentName || detail.session.agentKind || t('fallback.unknown') }}</strong>
+              <strong>{{ sessionSource?.label || t('fallback.unknown') }}</strong>
+              <div v-if="sessionSource?.secondary" class="source-identity-meta">{{ sessionSource.secondary }}</div>
             </div>
             <div class="session-summary-item">
               <span class="metric-label">{{ t('metric.model') }}</span>
@@ -893,7 +896,10 @@ onMounted(load)
                 </div>
                 <div class="metadata-item">
                   <div class="metadata-label">{{ t('metadata.agent') }}</div>
-                  <div class="metadata-value">{{ detail.session.agentName || detail.session.agentKind || '-' }}</div>
+                  <div class="metadata-value">
+                    {{ sessionSource?.label || '-' }}
+                    <div v-if="sessionSource?.secondary" class="source-identity-meta">{{ sessionSource.secondary }}</div>
+                  </div>
                 </div>
                 <div class="metadata-item">
                   <div class="metadata-label">{{ t('metadata.agentKind') }}</div>
@@ -979,8 +985,8 @@ onMounted(load)
                 </div>
                 <div class="metadata-item is-wide">
                   <div class="metadata-label">{{ t('metadata.rawSource') }}</div>
-                  <a-typography-text class="metadata-value detail-path mono" :ellipsis="{ tooltip: detail.session.rawSourcePath }">
-                    {{ detail.session.rawSourcePath }}
+                  <a-typography-text class="metadata-value detail-path mono" :ellipsis="{ tooltip: detail.session.sourceSessionsPath || detail.session.rawSourcePath }">
+                    {{ detail.session.sourceSessionsPath || detail.session.rawSourcePath }}
                   </a-typography-text>
                 </div>
                 <div v-if="detail.session.lastIndexedScanMessage" class="metadata-item is-wide">

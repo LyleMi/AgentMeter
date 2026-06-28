@@ -20,37 +20,32 @@ type UsageSource struct {
 	DedupeScope string
 }
 
+type familyRule struct {
+	Kind      string
+	Name      string
+	ExactRoot string
+	Token     string
+	Children  []string
+}
+
+var familyRules = []familyRule{
+	{Kind: "codebuddy", Name: "CodeBuddy", ExactRoot: ".codebuddy", Token: "codebuddy", Children: []string{"projects", "sessions"}},
+	{Kind: "workbuddy", Name: "WorkBuddy", ExactRoot: ".workbuddy", Token: "workbuddy", Children: []string{"projects", "sessions"}},
+	{Kind: "claude", Name: "Claude Code", ExactRoot: ".claude", Token: "claude", Children: []string{"projects"}},
+	{Kind: "codex", Name: "Codex", ExactRoot: ".codex", Token: "codex", Children: []string{"sessions", "archived_sessions"}},
+}
+
 func ResolveSource(path string) SourceSpec {
 	cleaned := sourcepath.Normalize(path)
 	if cleaned == "" {
 		cleaned = filepath.Clean(path)
 	}
-	parent := filepath.Dir(cleaned)
-	base := strings.ToLower(filepath.Base(cleaned))
-
-	if isCodeBuddyRoot(cleaned) {
-		return SourceSpec{Kind: "codebuddy", Name: "CodeBuddy", RootPath: cleaned, SessionsPath: cleaned}
+	if rule, ok := matchingChildRule(cleaned); ok {
+		root := filepath.Dir(cleaned)
+		return SourceSpec{Kind: rule.Kind, Name: displayName(rule, root), RootPath: root, SessionsPath: cleaned}
 	}
-	if (base == "projects" || base == "sessions") && isCodeBuddyRoot(parent) {
-		return SourceSpec{Kind: "codebuddy", Name: "CodeBuddy", RootPath: parent, SessionsPath: cleaned}
-	}
-	if isWorkBuddyRoot(cleaned) {
-		return SourceSpec{Kind: "workbuddy", Name: "WorkBuddy", RootPath: cleaned, SessionsPath: cleaned}
-	}
-	if (base == "projects" || base == "sessions") && isWorkBuddyRoot(parent) {
-		return SourceSpec{Kind: "workbuddy", Name: "WorkBuddy", RootPath: parent, SessionsPath: cleaned}
-	}
-	if isCodexRoot(cleaned) {
-		return SourceSpec{Kind: "codex", Name: "Codex", RootPath: cleaned, SessionsPath: cleaned}
-	}
-	if (base == "sessions" || base == "archived_sessions") && isCodexRoot(parent) {
-		return SourceSpec{Kind: "codex", Name: "Codex", RootPath: parent, SessionsPath: cleaned}
-	}
-	if isClaudeRoot(cleaned) {
-		return SourceSpec{Kind: "claude", Name: "Claude Code", RootPath: cleaned, SessionsPath: cleaned}
-	}
-	if base == "projects" && isClaudeRoot(parent) {
-		return SourceSpec{Kind: "claude", Name: "Claude Code", RootPath: parent, SessionsPath: cleaned}
+	if rule, ok := matchingRootRule(cleaned); ok {
+		return SourceSpec{Kind: rule.Kind, Name: displayName(rule, cleaned), RootPath: cleaned, SessionsPath: cleaned}
 	}
 	return SourceSpec{Kind: "jsonl", Name: "Generic JSONL", RootPath: cleaned, SessionsPath: cleaned}
 }
@@ -86,6 +81,10 @@ func UsageSources(spec SourceSpec) []UsageSource {
 			if isDir(projects) {
 				return []UsageSource{{Dir: projects, DedupeScope: spec.RootPath}}
 			}
+			sessions := filepath.Join(spec.RootPath, "sessions")
+			if isDir(sessions) {
+				return []UsageSource{{Dir: sessions, DedupeScope: spec.RootPath}}
+			}
 		}
 	case "workbuddy":
 		if sourcepath.Equal(spec.RootPath, spec.SessionsPath) ||
@@ -94,29 +93,71 @@ func UsageSources(spec SourceSpec) []UsageSource {
 			if isDir(projects) {
 				return []UsageSource{{Dir: projects, DedupeScope: spec.RootPath}}
 			}
+			sessions := filepath.Join(spec.RootPath, "sessions")
+			if isDir(sessions) {
+				return []UsageSource{{Dir: sessions, DedupeScope: spec.RootPath}}
+			}
 		}
 	}
 	return []UsageSource{{Dir: spec.SessionsPath, DedupeScope: spec.SessionsPath}}
 }
 
-func isCodexRoot(path string) bool {
+func matchingChildRule(path string) (familyRule, bool) {
+	parent := filepath.Dir(path)
 	base := strings.ToLower(filepath.Base(path))
-	return base == ".codex" || isDir(filepath.Join(path, "sessions")) || isDir(filepath.Join(path, "archived_sessions"))
+	for _, rule := range familyRules {
+		if !containsString(rule.Children, base) {
+			continue
+		}
+		if rootNameMatches(parent, rule) {
+			return rule, true
+		}
+	}
+	return familyRule{}, false
 }
 
-func isClaudeRoot(path string) bool {
-	base := strings.ToLower(filepath.Base(path))
-	return base == ".claude" || isDir(filepath.Join(path, "projects"))
+func matchingRootRule(path string) (familyRule, bool) {
+	for _, rule := range familyRules {
+		if !rootNameMatches(path, rule) {
+			continue
+		}
+		if hasFamilyStructure(path, rule) {
+			return rule, true
+		}
+	}
+	return familyRule{}, false
 }
 
-func isCodeBuddyRoot(path string) bool {
+func rootNameMatches(path string, rule familyRule) bool {
 	base := strings.ToLower(filepath.Base(path))
-	return base == ".codebuddy"
+	trimmed := strings.TrimPrefix(base, ".")
+	return base == rule.ExactRoot || strings.Contains(trimmed, rule.Token)
 }
 
-func isWorkBuddyRoot(path string) bool {
-	base := strings.ToLower(filepath.Base(path))
-	return base == ".workbuddy"
+func hasFamilyStructure(path string, rule familyRule) bool {
+	for _, child := range rule.Children {
+		if isDir(filepath.Join(path, child)) {
+			return true
+		}
+	}
+	return false
+}
+
+func displayName(rule familyRule, rootPath string) string {
+	base := filepath.Base(rootPath)
+	if strings.EqualFold(base, rule.ExactRoot) {
+		return rule.Name
+	}
+	return rule.Name + " (" + base + ")"
+}
+
+func containsString(values []string, value string) bool {
+	for _, candidate := range values {
+		if strings.EqualFold(candidate, value) {
+			return true
+		}
+	}
+	return false
 }
 
 func isDir(path string) bool {

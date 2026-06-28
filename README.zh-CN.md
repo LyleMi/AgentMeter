@@ -40,7 +40,8 @@ AgentMeter 将这些数据整理成可以直接回答的问题：
 - 终端 UI 模式复用同一套数据库、索引流水线、计价规则和查询行为。
 - 支持检测 Codex、Claude Code、CodeBuddy、WorkBuddy 以及通用 JSONL
   数据源。
-- 支持多个数据源根目录，适合同时运行多个本地 coding agent 的开发者。
+- 支持多个带标签的数据源实例，适合同时运行多个本地 coding agent，或同一
+  agent family 的多个根目录。
 - 使用 SQLite 增量索引，保留源路径可追溯性和解析状态。
 - 内置价格注册表，未知模型会清晰标记为 `unpriced`。
 
@@ -69,7 +70,9 @@ http://127.0.0.1:34115
 
 首次启动后，在应用中点击 **Update Index**。AgentMeter 默认会检测本地
 agent 主目录，例如 `~/.codex` 和 `~/.claude`；你也可以在 **Settings**
-中添加更多数据源根目录。
+中添加更多数据源根目录，并在路径不够清晰时添加手动标签。一个 source
+instance 表示一个本地根目录；agent family（例如 `codex`、`claude`）
+用于解析行为和 family 级过滤。
 
 **Update Index** 只扫描新增或变更过的 JSONL 文件；**Rebuild Index**
 会清空已启用数据源的已索引文件记录，并重新解析全部文件。
@@ -97,7 +100,8 @@ go run . privacy apply gemini strict
 
 `privacy apply <target>` 默认使用 recommended 配置档。支持的目标包括
 `codex`、`gemini`、`claude` 和 `codebuddy`；写入已有配置文件前，
-AgentMeter 会先创建备份。
+AgentMeter 会先创建备份。隐私目标是用户级 agent 配置，不是已索引的
+source instance，因此写入不会只作用于某一个手动数据源标签。
 
 ## 隐私模型
 

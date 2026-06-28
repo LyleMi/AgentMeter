@@ -12,6 +12,7 @@ import ToolCallDetailDrawer from '../components/ToolCallDetailDrawer.vue'
 import ToolInputInline from '../components/ToolInputInline.vue'
 import { api, formatDateTime, formatDuration, formatNumber, sessionLabel, type AgentUsage, type ToolCall, type ToolStat } from '../api'
 import { useMessages } from '../i18n'
+import { sourceDisplay, sourceFilterOptions } from '../presentation/sourceIdentity'
 import { statusClass, statusColor } from '../presentation/status'
 
 const ATable = AntTable as unknown as DefineComponent
@@ -35,7 +36,7 @@ const { t } = useMessages({
     'column.session': 'Session',
     'column.input': 'Input',
     'column.output': 'Output',
-    'filter.agent': 'Agent type',
+    'filter.agent': 'Source',
     'filter.tool': 'Tool',
     'filter.from': 'From',
     'filter.to': 'To',
@@ -64,7 +65,7 @@ const { t } = useMessages({
     'column.session': '会话',
     'column.input': '输入',
     'column.output': '输出',
-    'filter.agent': 'Agent 类型',
+    'filter.agent': '来源',
     'filter.tool': '工具',
     'filter.from': '从',
     'filter.to': '到',
@@ -108,11 +109,7 @@ const callColumns = computed(() => [
 
 const toolOptions = computed(() => tools.value.map((item) => ({ value: item.toolName, label: item.toolName || t('fallback.unknown') })))
 const agentOptions = computed(() => {
-  const values = new Map<string, string>()
-  for (const item of agents.value) {
-    if (item.agentKind) values.set(item.agentKind, item.agentName || item.agentKind)
-  }
-  return [...values.entries()].sort((left, right) => left[1].localeCompare(right[1])).map(([value, label]) => ({ value, label }))
+  return sourceFilterOptions(agents.value, t('fallback.unknown'))
 })
 const sortOptions = computed(() => [
   { value: DEFAULT_SORT, label: t('sort.recent') },
@@ -286,6 +283,10 @@ function callSessionTooltip(call: ToolCall) {
   return context ? `${callSessionLabel(call)}\n${context}` : callSessionLabel(call)
 }
 
+function sourceInfo(call: ToolCall) {
+  return sourceDisplay(call, t('fallback.unknown'))
+}
+
 function openToolCall(call: ToolCall) {
   selectedToolCall.value = call
 }
@@ -401,7 +402,7 @@ onMounted(load)
                 {{ callSessionShort(record) }}
               </a-button>
             </a-tooltip>
-            <div class="tool-call-session-meta">{{ record.agentName || record.agentKind || '-' }}</div>
+            <div class="tool-call-session-meta">{{ sourceInfo(record).label }}</div>
           </template>
           <template v-else-if="column.key === 'input'">
             <ToolInputInline :call="record" />

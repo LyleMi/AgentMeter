@@ -10,7 +10,15 @@ export interface Usage {
   unpriced: boolean
 }
 
-export interface Session {
+export interface SourceIdentity {
+  sourceId?: number
+  sourceKey?: string
+  sourceLabel?: string
+  sourceRootPath?: string
+  sourceSessionsPath?: string
+}
+
+export interface Session extends SourceIdentity {
   id: number
   agentKind: string
   agentName: string
@@ -61,7 +69,7 @@ export interface ModelUsage {
   unpriced: boolean
 }
 
-export interface AgentUsage {
+export interface AgentUsage extends SourceIdentity {
   agentKind: string
   agentName: string
   sessionCount: number
@@ -86,7 +94,7 @@ export interface ToolTimeUsage {
   suspectedNetwork: boolean
 }
 
-export interface AgentTimeUsage {
+export interface AgentTimeUsage extends SourceIdentity {
   agentKind: string
   agentName: string
   sessionCount: number
@@ -180,7 +188,7 @@ export interface ModelCall {
   unpriced: boolean
 }
 
-export interface ToolCall {
+export interface ToolCall extends SourceIdentity {
   id: number
   sessionId: number
   startedAt: string
@@ -212,7 +220,7 @@ export interface ToolCall {
   rawSourcePath?: string
 }
 
-export interface AuditFinding {
+export interface AuditFinding extends SourceIdentity {
   id: number
   sessionId: number
   toolCallId: number
@@ -276,6 +284,7 @@ export interface PricingModel {
 export interface SourceEntry {
   path: string
   enabled: boolean
+  label?: string
 }
 
 export interface IndexResult {

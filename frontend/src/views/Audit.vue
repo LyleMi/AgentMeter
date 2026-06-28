@@ -11,17 +11,18 @@ import { api } from '../api/client'
 import PageHeader from '../components/PageHeader.vue'
 import PageTabs from '../components/PageTabs.vue'
 import { useMessages } from '../i18n'
+import { sourceFilterOptions, type SourceFilterOption } from '../presentation/sourceIdentity'
 import { auditPath, cleanQueryValue, cleanRouteQuery } from './auditSupport'
 
 const route = useRoute()
 const router = useRouter()
-const agentOptions = ref<Array<{ value: string; label: string }>>([])
+const agentOptions = ref<SourceFilterOption[]>([])
 const agentLoading = ref(false)
 const { t } = useMessages({
   en: {
     'title': 'Audit',
     'subtitle': 'Command and privacy findings split by summary, finding list, and session-linked detail',
-    'filter.agent': 'Agent',
+    'filter.agent': 'Source',
     'tab.summary': 'Summary',
     'tab.list': 'Findings',
     'tab.detail': 'Detail'
@@ -29,7 +30,7 @@ const { t } = useMessages({
   'zh-CN': {
     'title': '审计',
     'subtitle': '按汇总、发现列表和会话关联详情拆分命令与隐私发现',
-    'filter.agent': 'Agent',
+    'filter.agent': '来源',
     'tab.summary': '汇总',
     'tab.list': '发现',
     'tab.detail': '详情'
@@ -41,7 +42,7 @@ const visibleAgentOptions = computed(() => {
   if (!selectedAgent.value || agentOptions.value.some((item) => item.value === selectedAgent.value)) {
     return agentOptions.value
   }
-  return [{ value: selectedAgent.value, label: selectedAgent.value }, ...agentOptions.value]
+  return [{ value: selectedAgent.value, label: selectedAgent.value, title: selectedAgent.value }, ...agentOptions.value]
 })
 
 const activeKey = computed(() => {
@@ -65,14 +66,7 @@ async function loadAgents() {
   agentLoading.value = true
   try {
     const overview = await api.getOverview()
-    const options = new Map<string, string>()
-    const usage = overview.agentUsage || []
-    usage.forEach((item) => {
-      if (item.agentKind) options.set(item.agentKind, item.agentName || item.agentKind)
-    })
-    agentOptions.value = [...options.entries()]
-      .sort((left, right) => left[1].localeCompare(right[1]))
-      .map(([value, label]) => ({ value, label }))
+    agentOptions.value = sourceFilterOptions(overview.agentUsage || [])
   } finally {
     agentLoading.value = false
   }

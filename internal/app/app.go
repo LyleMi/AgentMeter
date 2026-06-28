@@ -124,7 +124,7 @@ func (a *App) IndexNow(rebuild bool) (model.IndexResult, error) {
 	}
 	start := time.Now().UTC()
 	a.lastStart = &start
-	result, err := a.indexer.IndexPaths(a.ctx, settings.SourcePaths, rebuild)
+	result, err := a.indexer.IndexEntries(a.ctx, enabledSourceEntries(settings.SourceEntries), rebuild)
 	if err != nil {
 		return result, err
 	}
@@ -298,7 +298,7 @@ func normalizeSourceEntries(entries []model.SourceEntry) []model.SourceEntry {
 			continue
 		}
 		seen[key] = struct{}{}
-		result = append(result, model.SourceEntry{Path: cleaned, Enabled: entry.Enabled})
+		result = append(result, model.SourceEntry{Path: cleaned, Enabled: entry.Enabled, Label: strings.TrimSpace(entry.Label)})
 	}
 	return result
 }
@@ -319,6 +319,16 @@ func enabledSourceEntryPaths(entries []model.SourceEntry) []string {
 		}
 	}
 	return sourcepath.NormalizeList(paths)
+}
+
+func enabledSourceEntries(entries []model.SourceEntry) []model.SourceEntry {
+	var result []model.SourceEntry
+	for _, entry := range normalizeSourceEntries(entries) {
+		if entry.Enabled {
+			result = append(result, entry)
+		}
+	}
+	return result
 }
 
 func mergeSourceEntriesForPaths(entries []model.SourceEntry, paths []string) []model.SourceEntry {
@@ -343,6 +353,15 @@ func sameSourcePaths(left, right []string) bool {
 		}
 	}
 	return true
+}
+
+func containsString(values []string, value string) bool {
+	for _, candidate := range values {
+		if candidate == value {
+			return true
+		}
+	}
+	return false
 }
 
 func parseSourcePathList(value string) []string {
@@ -454,23 +473,95 @@ func (a *App) SupportsPrivacyTarget(target string) bool {
 }
 
 func (a *App) GetPrivacyConfigs() ([]model.PrivacyConfigStatus, error) {
-	return privacy.DefaultRegistry().Statuses()
+	statuses, err := privacy.DefaultRegistry().Statuses()
+	if err != nil {
+		return nil, err
+	}
+	for index := range statuses {
+		statuses[index] = a.addPrivacySourceWarning(statuses[index])
+	}
+	return statuses, nil
 }
 
 func (a *App) GetPrivacyConfig(target string) (model.PrivacyConfigStatus, error) {
-	return privacy.DefaultRegistry().Status(target)
+	status, err := privacy.DefaultRegistry().Status(target)
+	if err != nil {
+		return status, err
+	}
+	return a.addPrivacySourceWarning(status), nil
 }
 
 func (a *App) ApplyPrivacyConfig(target string, settingIDs []string) (model.PrivacyConfigApplyResult, error) {
-	return privacy.DefaultRegistry().Apply(target, settingIDs)
+	result, err := privacy.DefaultRegistry().Apply(target, settingIDs)
+	if err != nil {
+		return result, err
+	}
+	return a.addPrivacySourceWarningToResult(result), nil
 }
 
 func (a *App) ApplyPrivacyConfigChanges(target string, changes []model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error) {
-	return privacy.DefaultRegistry().ApplyChanges(target, changes)
+	result, err := privacy.DefaultRegistry().ApplyChanges(target, changes)
+	if err != nil {
+		return result, err
+	}
+	return a.addPrivacySourceWarningToResult(result), nil
 }
 
 func (a *App) ApplyPrivacyProfile(target, profile string) (model.PrivacyConfigApplyResult, error) {
-	return privacy.DefaultRegistry().ApplyProfile(target, profile)
+	result, err := privacy.DefaultRegistry().ApplyProfile(target, profile)
+	if err != nil {
+		return result, err
+	}
+	return a.addPrivacySourceWarningToResult(result), nil
+}
+
+func (a *App) addPrivacySourceWarningToResult(result model.PrivacyConfigApplyResult) model.PrivacyConfigApplyResult {
+	result.Status = a.addPrivacySourceWarning(result.Status)
+	for _, warning := range result.Status.Warnings {
+		if !containsString(result.Warnings, warning) {
+			result.Warnings = append(result.Warnings, warning)
+		}
+	}
+	return result
+}
+
+func (a *App) addPrivacySourceWarning(status model.PrivacyConfigStatus) model.PrivacyConfigStatus {
+	if a.conn == nil {
+		return status
+	}
+	kind := strings.TrimSpace(status.Target)
+	if kind == "" {
+		return status
+	}
+	var count int
+	if err := a.conn.QueryRowContext(a.ctx, `SELECT COUNT(*) FROM sources WHERE kind = ?`, kind).Scan(&count); err != nil || count <= 1 {
+		return status
+	}
+	label := privacyTargetLabel(kind)
+	path := strings.TrimSpace(status.ConfigPath)
+	if path == "" {
+		path = "the configured target path"
+	}
+	warning := "Multiple " + label + "-like sources are indexed. This privacy target manages only " + path + ". Source-specific privacy writes are not enabled yet."
+	if !containsString(status.Warnings, warning) {
+		status.Warnings = append(status.Warnings, warning)
+	}
+	return status
+}
+
+func privacyTargetLabel(target string) string {
+	switch strings.ToLower(strings.TrimSpace(target)) {
+	case "codex":
+		return "Codex"
+	case "claude":
+		return "Claude"
+	case "codebuddy":
+		return "CodeBuddy"
+	case "gemini":
+		return "Gemini"
+	default:
+		return target
+	}
 }
 
 func (a *App) GetCodexPrivacyConfig() (model.PrivacyConfigStatus, error) {

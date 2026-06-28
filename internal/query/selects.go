@@ -1,7 +1,7 @@
 package query
 
 const sessionSelect = `SELECT
-		s.id, s.source_id, s.source_file_id, src.kind, src.name, COALESCE(NULLIF(s.session_key, ''), s.codex_session_id), s.codex_session_id, s.project_path, s.model, s.model_provider, s.originator, s.thread_source,
+		s.id, s.source_id, src.root_path, src.sessions_path, s.source_file_id, src.kind, src.name, COALESCE(NULLIF(s.session_key, ''), s.codex_session_id), s.codex_session_id, s.project_path, s.model, s.model_provider, s.originator, s.thread_source,
 		s.agent_nickname, s.agent_role, s.started_at, s.ended_at, s.wall_duration_ms, s.active_duration_ms, s.model_duration_ms,
 		s.tool_duration_ms, s.idle_duration_ms, s.event_count, s.parse_status,
 		COALESCE(tu.model, s.model), COALESCE(tu.input_tokens, 0), COALESCE(tu.cached_input_tokens, 0), COALESCE(tu.output_tokens, 0),
@@ -14,7 +14,8 @@ const sessionSelect = `SELECT
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id`
 
 const toolCallSelect = `SELECT
-		tc.id, tc.session_id, tc.started_at, tc.ended_at, tc.duration_ms, tc.tool_name, tc.status, tc.input_summary, tc.output_summary, tc.error,
+		tc.id, tc.session_id, src.id, src.root_path, src.sessions_path,
+		tc.started_at, tc.ended_at, tc.duration_ms, tc.tool_name, tc.status, tc.input_summary, tc.output_summary, tc.error,
 		tc.raw_event_id, tc.call_id, tc.raw_start_event_id, tc.raw_end_event_id,
 		COALESCE(start_event.source_line, 0), COALESCE(end_event.source_line, 0),
 		COALESCE(start_event.raw_type, ''), COALESCE(end_event.raw_type, ''),
@@ -30,7 +31,8 @@ const toolCallSelect = `SELECT
 	LEFT JOIN events end_event ON end_event.id = tc.raw_end_event_id`
 
 const auditFindingSelect = `SELECT
-		af.id, af.session_id, af.tool_call_id, af.source_file_id, af.raw_event_id, af.source_line, af.timestamp,
+		af.id, af.session_id, src.id, src.root_path, src.sessions_path,
+		af.tool_call_id, af.source_file_id, af.raw_event_id, af.source_line, af.timestamp,
 		af.source, af.event_type, af.category, af.severity, af.rule_id, af.title, af.description, af.evidence,
 		af.command, af.shell_family, af.platform, af.decision, af.created_at,
 		COALESCE(NULLIF(sess.session_key, ''), sess.codex_session_id), sess.codex_session_id, sess.project_path,

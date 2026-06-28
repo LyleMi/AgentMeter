@@ -29,6 +29,7 @@ import {
 } from '../api'
 import PageHeader from '../components/PageHeader.vue'
 import { useMessages } from '../i18n'
+import { sourceDisplay, sourceInstanceKey } from '../presentation/sourceIdentity'
 
 const ATable = AntTable as unknown as DefineComponent
 const ATypographyText = Typography.Text
@@ -39,7 +40,7 @@ const overview = ref<Overview | null>(null)
 const { t, createNumberFormatter } = useMessages({
   en: {
     'title': 'Time',
-    'subtitle': 'Wall-time attribution across model, tool, agent, and slow session activity',
+    'subtitle': 'Wall-time attribution across model, tool, source, and slow session activity',
     'action.refresh': 'Refresh',
     'composition.title': 'Time Composition',
     'composition.kicker': 'Exclusive wall-time split. Network-likely tool time is inferred from tool name/input, not network telemetry.',
@@ -61,8 +62,8 @@ const { t, createNumberFormatter } = useMessages({
     'tools.title': 'Tool Duration Leaders',
     'tools.kicker': 'Ranked by total tool duration',
     'tools.networkHint': 'Network-likely marker uses inferred tool name/input signals.',
-    'agent.title': 'Agent Time Attribution',
-    'agent.kicker': 'Wall, active, model, tool, idle, and inferred network time by agent',
+    'agent.title': 'Source Time Attribution',
+    'agent.kicker': 'Wall, active, model, tool, idle, and inferred network time by source',
     'model.title': 'Model Time Attribution',
     'model.kicker': 'Wall, active, and token volume by model',
     'sessions.title': 'Slow Sessions',
@@ -75,7 +76,7 @@ const { t, createNumberFormatter } = useMessages({
     'column.average': 'Avg',
     'column.max': 'Max',
     'column.network': 'Network',
-    'column.agent': 'Agent',
+    'column.agent': 'Source',
     'column.model': 'Model',
     'column.sessions': 'Sessions',
     'column.tokens': 'Tokens',
@@ -92,14 +93,14 @@ const { t, createNumberFormatter } = useMessages({
     'empty.title': 'No time analysis yet',
     'empty.text': 'Time attribution appears after sessions with model, tool, and wall durations are indexed.',
     'empty.tools': 'No tool duration leaders yet',
-    'empty.agents': 'No agent time attribution yet',
+    'empty.agents': 'No source time attribution yet',
     'empty.models': 'No model time attribution yet',
     'empty.sessions': 'No slow sessions yet',
     'fallback.unknown': 'unknown'
   },
   'zh-CN': {
     'title': '耗时',
-    'subtitle': '按模型、工具、Agent 和慢会话归因墙钟耗时',
+    'subtitle': '按模型、工具、来源和慢会话归因墙钟耗时',
     'action.refresh': '刷新',
     'composition.title': '时间构成',
     'composition.kicker': '按墙钟时间互斥拆分。疑似网络工具耗时由工具名/输入推断，不是网络遥测。',
@@ -121,8 +122,8 @@ const { t, createNumberFormatter } = useMessages({
     'tools.title': '工具耗时排行',
     'tools.kicker': '按工具总耗时排序',
     'tools.networkHint': '疑似网络标记来自工具名/输入信号推断。',
-    'agent.title': 'Agent 时间归因',
-    'agent.kicker': '按 Agent 展示墙钟、活跃、模型、工具、空闲和疑似网络时间',
+    'agent.title': '来源时间归因',
+    'agent.kicker': '按来源展示墙钟、活跃、模型、工具、空闲和疑似网络时间',
     'model.title': '模型时间归因',
     'model.kicker': '按模型展示墙钟、活跃和 Token 规模',
     'sessions.title': '慢会话',
@@ -135,7 +136,7 @@ const { t, createNumberFormatter } = useMessages({
     'column.average': '平均',
     'column.max': '最大',
     'column.network': '网络',
-    'column.agent': 'Agent',
+    'column.agent': '来源',
     'column.model': '模型',
     'column.sessions': '会话',
     'column.tokens': 'Token',
@@ -152,7 +153,7 @@ const { t, createNumberFormatter } = useMessages({
     'empty.title': '暂无时间分析',
     'empty.text': '索引包含模型、工具和墙钟时长的会话后，会显示时间归因。',
     'empty.tools': '暂无工具耗时排行',
-    'empty.agents': '暂无 Agent 时间归因',
+    'empty.agents': '暂无来源时间归因',
     'empty.models': '暂无模型时间归因',
     'empty.sessions': '暂无慢会话',
     'fallback.unknown': '未知'
@@ -267,7 +268,7 @@ const toolColumns = computed(() => [
 ])
 
 const agentColumns = computed(() => [
-  { title: t('column.agent'), dataIndex: 'agentName', key: 'agent', width: 150 },
+  { title: t('column.agent'), dataIndex: 'sourceLabel', key: 'agent', width: 190 },
   { title: t('column.sessions'), dataIndex: 'sessionCount', key: 'sessions', width: 86, align: 'right' },
   { title: t('column.calls'), dataIndex: 'toolCalls', key: 'calls', width: 80, align: 'right' },
   { title: t('column.wall'), dataIndex: 'wallDurationMs', key: 'wall', width: 104, align: 'right' },
@@ -291,7 +292,7 @@ const modelColumns = computed(() => [
 
 const slowSessionColumns = computed(() => [
   { title: t('column.project'), dataIndex: 'projectPath', key: 'project', width: 260 },
-  { title: t('column.agent'), dataIndex: 'agentName', key: 'agent', width: 132 },
+  { title: t('column.agent'), dataIndex: 'sourceLabel', key: 'agent', width: 170 },
   { title: t('column.model'), dataIndex: 'model', key: 'model', width: 140 },
   { title: t('column.wall'), dataIndex: 'wallDurationMs', key: 'wall', width: 104, align: 'right' },
   { title: t('column.active'), dataIndex: 'activeDurationMs', key: 'active', width: 104, align: 'right' },
@@ -328,7 +329,7 @@ function toolRowKey(record: ToolTimeUsage) {
 }
 
 function agentRowKey(record: AgentTimeUsage) {
-  return `${record.agentKind || t('fallback.unknown')}:${record.agentName || ''}`
+  return sourceInstanceKey(record, t('fallback.unknown'))
 }
 
 function modelRowKey(record: ModelTimeUsage) {
@@ -341,6 +342,10 @@ function openSession(id: number) {
 
 function slowSessionRow(record: Session) {
   return { class: 'overview-session-row is-clickable-row', onClick: () => openSession(record.id) }
+}
+
+function sourceInfo(record: AgentTimeUsage | Session) {
+  return sourceDisplay(record, t('fallback.unknown'))
 }
 
 async function load() {
@@ -499,10 +504,10 @@ onMounted(load)
             >
               <template #bodyCell="{ column, record }">
                 <template v-if="column.key === 'agent'">
-                  <div class="model-rank-cell">
-                    <span class="model-name">{{ record.agentName || record.agentKind || t('fallback.unknown') }}</span>
+                  <div class="source-identity-cell">
+                    <span class="source-identity-name">{{ sourceInfo(record).label }}</span>
                   </div>
-                  <div class="timeline-event-raw">{{ record.agentKind || '-' }}</div>
+                  <div class="source-identity-meta">{{ sourceInfo(record).secondary || '-' }}</div>
                 </template>
                 <template v-else-if="column.key === 'sessions'">
                   <span class="number-cell">{{ formatNumber(record.sessionCount) }}</span>
@@ -594,7 +599,10 @@ onMounted(load)
                 </div>
               </template>
               <template v-else-if="column.key === 'agent'">
-                <a-tag class="model-lite-tag">{{ record.agentName || record.agentKind || t('fallback.unknown') }}</a-tag>
+                <div class="source-identity-cell">
+                  <span class="source-identity-name">{{ sourceInfo(record).label }}</span>
+                </div>
+                <div class="source-identity-meta">{{ sourceInfo(record).secondary || '-' }}</div>
               </template>
               <template v-else-if="column.key === 'model'">
                 <a-typography-text class="model-name" :ellipsis="{ tooltip: record.model }">

@@ -15,6 +15,7 @@ import PageHeader from '../components/PageHeader.vue'
 import { useAsyncResource } from '../composables/useAsyncResource'
 import { useMessages } from '../i18n'
 import { formatCost, formatDateTime, formatDuration, formatNumber, sessionLabel, shortPath } from '../presentation/formatters'
+import { sourceDisplay, sourceFilterOptions } from '../presentation/sourceIdentity'
 import { statusClass, statusColor } from '../presentation/status'
 
 const ATable = AntTable as unknown as DefineComponent
@@ -29,7 +30,7 @@ const { t } = useMessages({
     'action.apply': 'Apply',
     'action.reset': 'Reset',
     'filter.searchPlaceholder': 'Search project, model or file',
-    'filter.agentPlaceholder': 'Agent',
+    'filter.agentPlaceholder': 'Source',
     'filter.modelPlaceholder': 'Model',
     'rowCount.matching': 'matching',
     'rowCount.indexed': 'indexed',
@@ -37,7 +38,7 @@ const { t } = useMessages({
     'empty.filtered': 'No sessions match the current filters',
     'empty.unindexed': 'No indexed sessions yet. Configure a source and run indexing to populate local history.',
     'column.session': 'Session',
-    'column.agent': 'Agent',
+    'column.agent': 'Source',
     'column.project': 'Project',
     'column.model': 'Model',
     'column.tokens': 'Tokens',
@@ -58,7 +59,7 @@ const { t } = useMessages({
     'action.apply': '应用',
     'action.reset': '重置',
     'filter.searchPlaceholder': '搜索项目、模型或文件',
-    'filter.agentPlaceholder': 'Agent',
+    'filter.agentPlaceholder': '来源',
     'filter.modelPlaceholder': '模型',
     'rowCount.matching': '个匹配',
     'rowCount.indexed': '个已索引',
@@ -66,7 +67,7 @@ const { t } = useMessages({
     'empty.filtered': '没有会话符合当前筛选条件',
     'empty.unindexed': '还没有已索引的会话。请配置来源并运行索引以填充本地历史。',
     'column.session': '会话',
-    'column.agent': 'Agent',
+    'column.agent': '来源',
     'column.project': '项目',
     'column.model': '模型',
     'column.tokens': 'Token',
@@ -94,7 +95,7 @@ const agent = ref<string | undefined>()
 
 const columns = computed(() => [
   { title: t('column.session'), dataIndex: 'sessionKey', key: 'identity', width: 250 },
-  { title: t('column.agent'), dataIndex: 'agentName', key: 'agent', width: 132 },
+  { title: t('column.agent'), dataIndex: 'sourceLabel', key: 'agent', width: 178 },
   { title: t('column.project'), dataIndex: 'projectPath', key: 'projectPath' },
   { title: t('column.model'), dataIndex: 'model', key: 'model', width: 90 },
   { title: t('column.tokens'), dataIndex: ['tokenUsage', 'totalTokens'], key: 'tokens', width: 100, align: 'right' },
@@ -115,11 +116,7 @@ const modelOptions = computed(() => {
 
 const agentOptions = computed(() => {
   const source = catalogSessions.value.length ? catalogSessions.value : sessions.value
-  const values = new Map<string, string>()
-  for (const item of source) {
-    if (item.agentKind) values.set(item.agentKind, item.agentName || item.agentKind)
-  }
-  return [...values.entries()].sort((left, right) => left[1].localeCompare(right[1])).map(([value, label]) => ({ value, label }))
+  return sourceFilterOptions(source, t('fallback.unknown'))
 })
 
 const rowCountText = computed(() => {
@@ -162,6 +159,10 @@ function openSession(id: number) {
 
 function sessionRow(record: Session) {
   return { class: 'sessions-table-row', onClick: () => openSession(record.id) }
+}
+
+function sourceInfo(record: Session) {
+  return sourceDisplay(record, t('fallback.unknown'))
 }
 
 onMounted(load)
@@ -238,8 +239,10 @@ onMounted(load)
               <div class="timeline-event-raw">{{ formatDateTime(record.startedAt) }}</div>
             </template>
             <template v-else-if="column.key === 'agent'">
-              <a-tag class="model-lite-tag">{{ record.agentName || record.agentKind || t('fallback.unknown') }}</a-tag>
-              <div class="timeline-event-raw">{{ record.agentKind || '-' }}</div>
+              <div class="source-identity-cell">
+                <span class="source-identity-name">{{ sourceInfo(record).label }}</span>
+              </div>
+              <div class="source-identity-meta">{{ sourceInfo(record).secondary || '-' }}</div>
             </template>
             <template v-else-if="column.key === 'projectPath'">
               <a-tooltip :title="record.projectPath" placement="topLeft">

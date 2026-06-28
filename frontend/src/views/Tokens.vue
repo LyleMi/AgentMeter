@@ -21,6 +21,7 @@ import { api, formatCost, formatDateTime, formatNumber, sessionLabel, shortPath,
 import PageHeader from '../components/PageHeader.vue'
 import { useAsyncResource } from '../composables/useAsyncResource'
 import { useMessages } from '../i18n'
+import { sourceDisplay, sourceInstanceKey } from '../presentation/sourceIdentity'
 
 const ATable = AntTable as unknown as DefineComponent
 const ATypographyText = Typography.Text
@@ -52,12 +53,12 @@ const { t } = useMessages({
     'token.reasoning': 'Reasoning',
     'model.title': 'Model Breakdown',
     'model.kicker': 'Token and cost distribution by model',
-    'agent.title': 'Agent Breakdown',
-    'agent.kicker': 'Token and cost distribution by local agent source',
+    'agent.title': 'Source Breakdown',
+    'agent.kicker': 'Token and cost distribution by local source instance',
     'sessions.title': 'High Token Sessions',
     'sessions.kicker': 'Sessions ranked by total token volume',
     'column.model': 'Model',
-    'column.agent': 'Agent',
+    'column.agent': 'Source',
     'column.session': 'Session',
     'column.project': 'Project',
     'column.started': 'Started',
@@ -96,12 +97,12 @@ const { t } = useMessages({
     'token.reasoning': '推理',
     'model.title': '模型拆分',
     'model.kicker': '按模型展示 Token 和费用分布',
-    'agent.title': 'Agent 拆分',
-    'agent.kicker': '按本地 Agent 来源展示 Token 和费用分布',
+    'agent.title': '来源拆分',
+    'agent.kicker': '按本地来源实例展示 Token 和费用分布',
     'sessions.title': '高 Token 会话',
     'sessions.kicker': '按总 Token 用量排序的会话',
     'column.model': '模型',
-    'column.agent': 'Agent',
+    'column.agent': '来源',
     'column.session': '会话',
     'column.project': '项目',
     'column.started': '开始',
@@ -180,7 +181,7 @@ const modelColumns = computed(() => [
   { title: t('column.cost'), dataIndex: 'estimatedCostUsd', key: 'cost', width: 110, align: 'right' }
 ])
 const agentColumns = computed(() => [
-  { title: t('column.agent'), dataIndex: 'agentName', key: 'agent' },
+  { title: t('column.agent'), dataIndex: 'sourceLabel', key: 'agent' },
   { title: t('column.sessions'), dataIndex: 'sessionCount', key: 'sessions', width: 90, align: 'right' },
   { title: t('column.tokens'), dataIndex: 'totalTokens', key: 'tokens', width: 120, align: 'right' },
   { title: t('column.cached'), dataIndex: 'cachedInputTokens', key: 'cached', width: 110, align: 'right' },
@@ -223,8 +224,8 @@ function modelName(record: ModelUsage) {
   return record.model || t('fallback.unknown')
 }
 
-function agentName(record: AgentUsage) {
-  return record.agentName || record.agentKind || t('fallback.unknown')
+function sourceInfo(record: AgentUsage | Session) {
+  return sourceDisplay(record, t('fallback.unknown'))
 }
 
 onMounted(load)
@@ -340,15 +341,15 @@ onMounted(load)
               :loading="loading"
               :locale="tableLocale"
               :pagination="{ pageSize: 10 }"
-              row-key="agentKind"
+              :row-key="sourceInstanceKey"
               size="small"
               :custom-row="rowClass"
               :scroll="{ x: 760 }"
             >
               <template #bodyCell="{ column, record }">
                 <template v-if="column.key === 'agent'">
-                  <span class="model-name">{{ agentName(record) }}</span>
-                  <div class="timeline-event-raw">{{ record.agentKind || '-' }}</div>
+                  <span class="source-identity-name">{{ sourceInfo(record).label }}</span>
+                  <div class="source-identity-meta">{{ sourceInfo(record).secondary || '-' }}</div>
                 </template>
                 <template v-else-if="column.key === 'sessions'"><span class="number-cell">{{ formatNumber(record.sessionCount) }}</span></template>
                 <template v-else-if="column.key === 'tokens'"><span class="number-cell">{{ formatNumber(record.totalTokens) }}</span></template>
@@ -383,7 +384,7 @@ onMounted(load)
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'session'">
                 <span class="mono">{{ sessionLabel(record) }}</span>
-                <div class="timeline-event-raw">{{ record.agentName || record.agentKind || t('fallback.unknown') }}</div>
+                <div class="source-identity-meta">{{ sourceInfo(record).label }}</div>
               </template>
               <template v-else-if="column.key === 'project'">
                 <a-typography-text :ellipsis="{ tooltip: record.projectPath || record.rawSourcePath }">

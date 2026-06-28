@@ -22,6 +22,7 @@ const { t } = useMessages({
     'source.action.save': 'Save',
     'source.action.useDefaults': 'Use Defaults',
     'source.action.remove': 'Remove',
+    'source.placeholder.label': 'Optional label',
     'source.placeholder.path': 'Source path',
     'source.meta.sources': 'Sources',
     'source.meta.enabled': 'Enabled',
@@ -47,6 +48,7 @@ const { t } = useMessages({
     'source.action.save': '保存',
     'source.action.useDefaults': '使用默认值',
     'source.action.remove': '移除',
+    'source.placeholder.label': '可选标签',
     'source.placeholder.path': '来源路径',
     'source.meta.sources': '来源',
     'source.meta.enabled': '已启用',
@@ -100,17 +102,20 @@ function normalizeEntries(entries: SourceEntry[]) {
     const key = entryKey(path)
     if (seen.has(key)) continue
     seen.add(key)
-    result.push({ path, enabled: Boolean(entry.enabled) })
+    const normalized: SourceEntry = { path, enabled: Boolean(entry.enabled) }
+    const label = entry.label?.trim()
+    if (label) normalized.label = label
+    result.push(normalized)
   }
   return result
 }
 
 function copyEntries(entries: SourceEntry[]) {
-  return entries.map((entry) => ({ path: entry.path, enabled: Boolean(entry.enabled) }))
+  return entries.map((entry) => ({ path: entry.path, enabled: Boolean(entry.enabled), label: entry.label || '' }))
 }
 
 function entriesFromPaths(paths: string[], enabled = true) {
-  return paths.map((path) => ({ path, enabled }))
+  return paths.map((path) => ({ path, enabled, label: '' }))
 }
 
 async function load() {
@@ -146,7 +151,7 @@ function addSource() {
     message.warning(t('source.message.duplicate'))
     return
   }
-  sourceEntries.value.push({ path, enabled: true })
+  sourceEntries.value.push({ path, enabled: true, label: '' })
   newSourcePath.value = ''
 }
 
@@ -219,7 +224,8 @@ onMounted(load)
                     {{ entry.enabled ? t('source.meta.enabled') : t('source.meta.disabled') }}
                   </a-tag>
                 </div>
-                <a-input v-model:value="entry.path" class="source-entry-input" />
+                <a-input v-model:value="entry.label" class="source-entry-label" :placeholder="t('source.placeholder.label')" />
+                <a-input v-model:value="entry.path" class="source-entry-input" :placeholder="t('source.placeholder.path')" />
                 <a-button type="text" danger :title="t('source.action.remove')" @click="removeSource(index)">
                   <template #icon>
                     <DeleteOutlined />

@@ -40,8 +40,13 @@ func New(conn *sql.DB, dbPath string) *Indexer {
 }
 
 func (i *Indexer) IndexPaths(ctx context.Context, sourcePaths []string, rebuild bool) (model.IndexResult, error) {
+	return i.IndexEntries(ctx, sourceEntriesFromPaths(sourcePaths), rebuild)
+}
+
+func (i *Indexer) IndexEntries(ctx context.Context, sourceEntries []model.SourceEntry, rebuild bool) (model.IndexResult, error) {
 	start := time.Now()
-	paths := sourcepath.NormalizeList(sourcePaths)
+	entries := enabledSourceEntries(sourceEntries)
+	paths := sourceEntryPaths(entries)
 	result := model.IndexResult{
 		SourcePath:  strings.Join(paths, "\n"),
 		SourcePaths: paths,
@@ -52,21 +57,21 @@ func (i *Indexer) IndexPaths(ctx context.Context, sourcePaths []string, rebuild 
 		return result, errors.New("source path is empty")
 	}
 	var indexedAny bool
-	for _, sourcePath := range paths {
-		stat, err := os.Stat(sourcePath)
+	for _, entry := range entries {
+		stat, err := os.Stat(entry.Path)
 		if err != nil {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("%s: %v", sourcePath, err))
+			result.Warnings = append(result.Warnings, fmt.Sprintf("%s: %v", entry.Path, err))
 			result.Failed++
 			continue
 		}
 		if !stat.IsDir() {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("%s is not a directory", sourcePath))
+			result.Warnings = append(result.Warnings, fmt.Sprintf("%s is not a directory", entry.Path))
 			result.Failed++
 			continue
 		}
-		next, err := i.Index(ctx, sourcePath, rebuild)
+		next, err := i.IndexSource(ctx, entry.Path, entry.Label, rebuild)
 		if err != nil {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("%s: %v", sourcePath, err))
+			result.Warnings = append(result.Warnings, fmt.Sprintf("%s: %v", entry.Path, err))
 			result.Failed++
 			continue
 		}
@@ -86,8 +91,15 @@ func (i *Indexer) IndexPaths(ctx context.Context, sourcePaths []string, rebuild 
 }
 
 func (i *Indexer) Index(ctx context.Context, sessionsPath string, rebuild bool) (model.IndexResult, error) {
+	return i.IndexSource(ctx, sessionsPath, "", rebuild)
+}
+
+func (i *Indexer) IndexSource(ctx context.Context, sessionsPath, label string, rebuild bool) (model.IndexResult, error) {
 	start := time.Now()
 	spec := agent.ResolveSource(sessionsPath)
+	if cleanedLabel := strings.TrimSpace(label); cleanedLabel != "" {
+		spec.Name = cleanedLabel
+	}
 	result := model.IndexResult{
 		SourcePath:  spec.SessionsPath,
 		SourcePaths: []string{spec.SessionsPath},
@@ -130,6 +142,55 @@ func (i *Indexer) Index(ctx context.Context, sessionsPath string, rebuild bool) 
 	}
 	result.DurationMS = time.Since(start).Milliseconds()
 	return result, nil
+}
+
+func sourceEntriesFromPaths(paths []string) []model.SourceEntry {
+	normalized := sourcepath.NormalizeList(paths)
+	entries := make([]model.SourceEntry, 0, len(normalized))
+	for _, path := range normalized {
+		entries = append(entries, model.SourceEntry{Path: path, Enabled: true})
+	}
+	return entries
+}
+
+func normalizeSourceEntries(entries []model.SourceEntry) []model.SourceEntry {
+	seen := map[string]struct{}{}
+	result := make([]model.SourceEntry, 0, len(entries))
+	for _, entry := range entries {
+		cleaned := sourcepath.Normalize(entry.Path)
+		if cleaned == "" {
+			continue
+		}
+		key := sourcepath.Key(cleaned)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, model.SourceEntry{
+			Path:    cleaned,
+			Enabled: entry.Enabled,
+			Label:   strings.TrimSpace(entry.Label),
+		})
+	}
+	return result
+}
+
+func sourceEntryPaths(entries []model.SourceEntry) []string {
+	paths := make([]string, 0, len(entries))
+	for _, entry := range normalizeSourceEntries(entries) {
+		paths = append(paths, entry.Path)
+	}
+	return sourcepath.NormalizeList(paths)
+}
+
+func enabledSourceEntries(entries []model.SourceEntry) []model.SourceEntry {
+	var result []model.SourceEntry
+	for _, entry := range normalizeSourceEntries(entries) {
+		if entry.Enabled {
+			result = append(result, entry)
+		}
+	}
+	return result
 }
 
 func (i *Indexer) indexFile(ctx context.Context, source model.Source, path string, force bool) (indexed, skipped, failed, sessions int, warnings []string) {

@@ -8,6 +8,21 @@ kept local and treated as non-fatal parse warnings where possible.
 The source JSONL files remain read-only source data. SQLite stores normalized
 records and selected raw event JSON for local traceability.
 
+## Source Identity
+
+AgentMeter separates source instances from agent families:
+
+- A source instance is one configured or discovered local root, such as a
+  specific `~/.codex`, `~/.claude`, or custom JSONL directory. It has a stable
+  `sourceId`/`sourceKey`, source label, root path, and sessions path.
+- An agent family is the parser family, such as `codex`, `claude`,
+  `codebuddy`, `workbuddy`, or `jsonl`. It remains available as
+  `agentKind`/`agentName`.
+
+This distinction matters when the same family has multiple local instances. For
+example, two Codex homes should be shown as two source instances while both keep
+the `codex` family for parser behavior and family-level filtering.
+
 ## Supported Source Kinds
 
 Current source kinds:
@@ -41,6 +56,19 @@ Other default agent homes:
 
 If the configured source path is a direct JSONL directory rather than a known
 agent home, AgentMeter scans that directory recursively as `jsonl`.
+
+Source discovery also recognizes common family variants when a configured root
+or sessions child has a known structure. For example, a root whose name contains
+`codex` and has `sessions` or `archived_sessions` is treated as a Codex source
+instance; roots containing `claude`, `codebuddy`, or `workbuddy` are matched
+when their expected child directories exist. Startup auto-adds detected default
+agent homes while the source list is still auto-managed; custom source roots can
+be added manually.
+
+Manual source labels are optional display names on configured source entries.
+They do not change parser family detection, raw file paths, or indexing
+semantics. When present, UI surfaces should prefer the label for compact source
+identity and keep family/path context nearby.
 
 ## Codex Shape
 

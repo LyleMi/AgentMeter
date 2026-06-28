@@ -161,6 +161,45 @@ func TestFindJSONLFilesUsesWorkBuddyProjectsWhenSessionsDirectorySelected(t *tes
 	}
 }
 
+func TestIndexEntriesUsesConfiguredSourceLabel(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "agentmeter.sqlite")
+	conn, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	root := filepath.Join(dir, ".ycodex")
+	sessions := filepath.Join(root, "sessions")
+	run := filepath.Join(sessions, "project", "run.jsonl")
+	if err := os.MkdirAll(filepath.Dir(run), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := `{"timestamp":"2026-06-26T10:00:00Z","type":"session_meta","payload":{"session_id":"label_sess","cwd":"D:\\workspace\\project","originator":"codex_cli","thread_source":"local","model_provider":"openai"}}
+{"timestamp":"2026-06-26T10:00:01Z","type":"turn_context","payload":{"model":"gpt-5.5","cwd":"D:\\workspace\\project"}}
+`
+	if err := os.WriteFile(run, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := New(conn, dbPath).IndexEntries(ctx, []model.SourceEntry{{Path: sessions, Enabled: true, Label: "Codex nightly"}}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Sessions != 1 {
+		t.Fatalf("index result = %+v", result)
+	}
+	var name string
+	if err := conn.QueryRowContext(ctx, `SELECT name FROM sources WHERE sessions_path = ?`, sessions).Scan(&name); err != nil {
+		t.Fatal(err)
+	}
+	if name != "Codex nightly" {
+		t.Fatalf("source name = %q", name)
+	}
+}
+
 func TestIndexWritesAuditFindings(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()

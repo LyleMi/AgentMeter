@@ -89,6 +89,8 @@ func TestOverviewLoadsAndRenders(t *testing.T) {
 	assertContains(t, view, "Overview")
 	assertContains(t, view, "Sessions: 2")
 	assertContains(t, view, "gpt-5-codex")
+	assertContains(t, view, "Work Codex")
+	assertContains(t, view, "codex @")
 	assertContains(t, view, "Recent Sessions")
 }
 
@@ -110,6 +112,9 @@ func TestSessionsOpenDetail(t *testing.T) {
 
 	view := st.view()
 	assertContains(t, view, "Session Detail")
+	assertContains(t, view, "Source: Work Codex  Family: codex  Agent: Codex")
+	assertContains(t, view, `Source root: D:\sessions\codex-work`)
+	assertContains(t, view, `Raw source: D:\sessions\codex-work\sessions\2026\06\27\session-42.jsonl`)
 	assertContains(t, view, "Tool Calls")
 	assertContains(t, view, "shell_command")
 	assertContains(t, view, "loaded repository")
@@ -148,6 +153,7 @@ func TestIndexNowRefreshesCurrentPage(t *testing.T) {
 	view := st.view()
 	assertContains(t, view, "Settings")
 	assertContains(t, view, "Database:")
+	assertContains(t, view, `Work Codex -> D:\sessions\codex-work`)
 	assertContains(t, view, "Indexed: 3")
 }
 
@@ -346,15 +352,20 @@ func sampleService() *fakeService {
 	started := time.Date(2026, 6, 27, 9, 30, 0, 0, time.Local)
 	cost := 0.0123
 	session := agentmodel.Session{
-		ID:             42,
-		AgentKind:      "codex",
-		AgentName:      "Codex",
-		SessionKey:     "session-42",
-		ProjectPath:    `D:\tools\custom\AgentMeter`,
-		Model:          "gpt-5-codex",
-		StartedAt:      started,
-		EndedAt:        started.Add(15 * time.Minute),
-		WallDurationMS: 900000,
+		ID:                 42,
+		SourceID:           7,
+		SourceKey:          "source:7",
+		SourceLabel:        "Work Codex",
+		SourceRootPath:     `D:\sessions\codex-work`,
+		SourceSessionsPath: `D:\sessions\codex-work\sessions`,
+		AgentKind:          "codex",
+		AgentName:          "Codex",
+		SessionKey:         "session-42",
+		ProjectPath:        `D:\tools\custom\AgentMeter`,
+		Model:              "gpt-5-codex",
+		StartedAt:          started,
+		EndedAt:            started.Add(15 * time.Minute),
+		WallDurationMS:     900000,
 		TokenUsage: agentmodel.Usage{
 			TotalTokens:  12345,
 			InputTokens:  8000,
@@ -362,6 +373,7 @@ func sampleService() *fakeService {
 		},
 		EstimatedCostUSD: &cost,
 		ToolCallCount:    2,
+		RawSourcePath:    `D:\sessions\codex-work\sessions\2026\06\27\session-42.jsonl`,
 	}
 	index := agentmodel.IndexResult{FilesSeen: 4, Indexed: 3, Skipped: 1, Sessions: 2, DurationMS: 1200}
 	return &fakeService{
@@ -376,6 +388,9 @@ func sampleService() *fakeService {
 			TotalToolCalls:        2,
 			ModelUsage: []agentmodel.ModelUsage{
 				{Model: "gpt-5-codex", SessionCount: 2, TotalTokens: 12345, EstimatedCostUSD: &cost},
+			},
+			AgentUsage: []agentmodel.AgentUsage{
+				{SourceID: 7, SourceKey: "source:7", SourceLabel: "Work Codex", SourceRootPath: `D:\sessions\codex-work`, SourceSessionsPath: `D:\sessions\codex-work\sessions`, AgentKind: "codex", AgentName: "Codex", SessionCount: 2, TotalTokens: 12345, ToolCalls: 2, EstimatedCostUSD: &cost},
 			},
 			RecentSessions: []agentmodel.Session{session},
 		},
@@ -397,7 +412,7 @@ func sampleService() *fakeService {
 		},
 		settings: agentmodel.Settings{
 			DatabasePath:    `D:\tools\custom\AgentMeter\agentmeter.sqlite`,
-			SourceEntries:   []agentmodel.SourceEntry{{Path: `D:\sessions`, Enabled: true}},
+			SourceEntries:   []agentmodel.SourceEntry{{Path: `D:\sessions\codex-work`, Label: "Work Codex", Enabled: true}},
 			LastIndexResult: &index,
 			PricingModels:   []agentmodel.PricingModel{{Model: "gpt-5-codex", InputPer1M: 1.25, CachedInputPer1M: 0.25, OutputPer1M: 10}},
 			LastIndexStartedAt: func() *time.Time {

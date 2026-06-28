@@ -1,5 +1,6 @@
 import type { AuditFinding, Session } from '../api/types'
 import { api } from '../api/client'
+import { matchesSourceFilter, type SourceIdentityLike } from '../presentation/sourceIdentity'
 
 export interface AuditFindingQuery {
   agent?: string
@@ -107,8 +108,6 @@ export function categoryColor(value?: string | null) {
   return 'default'
 }
 
-export function matchesAgent(record: Pick<AuditFinding, 'agentKind' | 'agentName'>, agent?: string) {
-  const filter = normalized(agent)
-  if (!filter) return true
-  return [record.agentKind, record.agentName].some((value) => normalized(value) === filter)
+export function matchesAgent(record: SourceIdentityLike, agent?: string) {
+  return matchesSourceFilter(record, agent)
 }

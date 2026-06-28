@@ -3,10 +3,42 @@ package query
 import (
 	"context"
 	"database/sql"
+	"strconv"
 
 	"AgentMeter/internal/db"
 	"AgentMeter/internal/model"
 )
+
+func sourceInstanceKey(id int64) string {
+	if id <= 0 {
+		return ""
+	}
+	return "source:" + strconv.FormatInt(id, 10)
+}
+
+func fillSessionSourceIdentity(item *model.Session) {
+	item.SourceKey = sourceInstanceKey(item.SourceID)
+	item.SourceLabel = item.AgentName
+	if item.SourceLabel == "" {
+		item.SourceLabel = item.AgentKind
+	}
+}
+
+func fillToolCallSourceIdentity(item *model.ToolCall) {
+	item.SourceKey = sourceInstanceKey(item.SourceID)
+	item.SourceLabel = item.AgentName
+	if item.SourceLabel == "" {
+		item.SourceLabel = item.AgentKind
+	}
+}
+
+func fillAuditFindingSourceIdentity(item *model.AuditFinding) {
+	item.SourceKey = sourceInstanceKey(item.SourceID)
+	item.SourceLabel = item.AgentName
+	if item.SourceLabel == "" {
+		item.SourceLabel = item.AgentKind
+	}
+}
 
 func (s *Service) events(ctx context.Context, sessionID int64) ([]model.Event, error) {
 	rows, err := s.conn.QueryContext(ctx, `SELECT id, session_id, source_file_id, source_line, timestamp, kind, raw_type, summary, raw_json
@@ -74,6 +106,9 @@ func (s *Service) scanToolCalls(ctx context.Context, query string, args ...any) 
 		if err := rows.Scan(
 			&item.ID,
 			&item.SessionID,
+			&item.SourceID,
+			&item.SourceRootPath,
+			&item.SourceSessionsPath,
 			&started,
 			&ended,
 			&item.DurationMS,
@@ -105,6 +140,7 @@ func (s *Service) scanToolCalls(ctx context.Context, query string, args ...any) 
 		}
 		item.StartedAt = db.ParseTime(started)
 		item.EndedAt = db.ParseTime(ended)
+		fillToolCallSourceIdentity(&item)
 		item.RawEventLine = item.RawStartEventLine
 		result = append(result, item)
 	}
@@ -124,6 +160,9 @@ func (s *Service) scanAuditFindings(ctx context.Context, query string, args ...a
 		if err := rows.Scan(
 			&item.ID,
 			&item.SessionID,
+			&item.SourceID,
+			&item.SourceRootPath,
+			&item.SourceSessionsPath,
 			&item.ToolCallID,
 			&item.SourceFileID,
 			&item.RawEventID,
@@ -156,6 +195,7 @@ func (s *Service) scanAuditFindings(ctx context.Context, query string, args ...a
 		if item.AgentName == "" {
 			item.AgentName = item.AgentKind
 		}
+		fillAuditFindingSourceIdentity(&item)
 		result = append(result, item)
 	}
 	return result, rows.Err()
@@ -177,6 +217,8 @@ func (s *Service) scanSessions(ctx context.Context, query string, args ...any) (
 		if err := rows.Scan(
 			&item.ID,
 			&item.SourceID,
+			&item.SourceRootPath,
+			&item.SourceSessionsPath,
 			&item.SourceFileID,
 			&item.AgentKind,
 			&item.AgentName,
@@ -220,6 +262,7 @@ func (s *Service) scanSessions(ctx context.Context, query string, args ...any) (
 		if item.AgentName == "" {
 			item.AgentName = item.AgentKind
 		}
+		fillSessionSourceIdentity(&item)
 		cost, unpriced := calculator.Compute(item.TokenUsage)
 		item.TokenUsage.CostUSD = cost
 		item.TokenUsage.Unpriced = unpriced

@@ -6,6 +6,7 @@ import ATag from 'ant-design-vue/es/tag'
 import { TableOutlined } from '@ant-design/icons-vue'
 import { formatCost, formatNumber, type AgentUsage, type ModelUsage } from '../api'
 import { useMessages } from '../i18n'
+import { sourceDisplay, sourceInstanceKey } from '../presentation/sourceIdentity'
 import { useOverviewContext } from './overviewContext'
 
 const ATable = AntTable as unknown as DefineComponent
@@ -14,7 +15,7 @@ const { overview, loading } = useOverviewContext()
 const { t } = useMessages({
   en: {
     'column.model': 'Model',
-    'column.agent': 'Agent',
+    'column.agent': 'Source',
     'column.sessions': 'Sessions',
     'column.tokens': 'Tokens',
     'column.tools': 'Tools',
@@ -24,16 +25,16 @@ const { t } = useMessages({
     'model.emptyTitle': 'No model usage yet',
     'model.emptyText': 'Model rankings will appear after at least one session is indexed.',
     'model.unpricedNote': '{count} model entries need pricing coverage.',
-    'agent.title': 'Agent Usage',
-    'agent.kicker': 'Sessions grouped by local agent source',
-    'agent.emptyTitle': 'No agent usage yet',
-    'agent.emptyText': 'Agent rankings will appear after at least one session is indexed.',
+    'agent.title': 'Source Usage',
+    'agent.kicker': 'Sessions grouped by local source instance',
+    'agent.emptyTitle': 'No source usage yet',
+    'agent.emptyText': 'Source rankings will appear after at least one session is indexed.',
     'fallback.unknown': 'unknown',
     'fallback.unpriced': 'unpriced'
   },
   'zh-CN': {
     'column.model': '模型',
-    'column.agent': 'Agent',
+    'column.agent': '来源',
     'column.sessions': '会话',
     'column.tokens': 'Token',
     'column.tools': '工具',
@@ -43,10 +44,10 @@ const { t } = useMessages({
     'model.emptyTitle': '暂无模型用量',
     'model.emptyText': '至少索引一个会话后会显示模型排行。',
     'model.unpricedNote': '{count} 个模型条目需要价格覆盖。',
-    'agent.title': 'Agent 用量',
-    'agent.kicker': '按本地代理来源分组的会话',
-    'agent.emptyTitle': '暂无 Agent 用量',
-    'agent.emptyText': '至少索引一个会话后会显示 Agent 排行。',
+    'agent.title': '来源用量',
+    'agent.kicker': '按本地来源实例分组的会话',
+    'agent.emptyTitle': '暂无来源用量',
+    'agent.emptyText': '至少索引一个会话后会显示来源排行。',
     'fallback.unknown': '未知',
     'fallback.unpriced': '未定价'
   }
@@ -70,7 +71,7 @@ const modelColumns = computed(() => [
 ])
 
 const agentColumns = computed(() => [
-  { title: t('column.agent'), dataIndex: 'agentName', key: 'agent' },
+  { title: t('column.agent'), dataIndex: 'sourceLabel', key: 'agent' },
   { title: t('column.sessions'), dataIndex: 'sessionCount', key: 'sessionCount', width: 96, align: 'right' },
   { title: t('column.tokens'), dataIndex: 'totalTokens', key: 'totalTokens', width: 132, align: 'right' },
   { title: t('column.tools'), dataIndex: 'toolCalls', key: 'tools', width: 90, align: 'right' },
@@ -83,6 +84,10 @@ function modelRow(record: ModelUsage) {
 
 function agentRow(record: AgentUsage) {
   return { class: record.unpriced ? 'overview-model-row is-unpriced-row' : 'overview-model-row' }
+}
+
+function agentSource(record: AgentUsage) {
+  return sourceDisplay(record, t('fallback.unknown'))
 }
 </script>
 
@@ -151,16 +156,16 @@ function agentRow(record: AgentUsage) {
           :columns="agentColumns"
           :data-source="rankedAgentUsage"
           :pagination="false"
-          row-key="agentKind"
+          :row-key="sourceInstanceKey"
           :custom-row="agentRow"
         >
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'agent'">
-              <div class="model-rank-cell">
-                <span class="model-name">{{ record.agentName || record.agentKind || t('fallback.unknown') }}</span>
+              <div class="source-identity-cell">
+                <span class="source-identity-name">{{ agentSource(record).label }}</span>
                 <a-tag v-if="record.unpriced" class="model-status-tag" color="warning">{{ t('fallback.unpriced') }}</a-tag>
               </div>
-              <div class="timeline-event-raw">{{ record.agentKind || '-' }}</div>
+              <div class="source-identity-meta">{{ agentSource(record).secondary || '-' }}</div>
             </template>
             <template v-else-if="column.key === 'sessionCount'">
               <span class="number-cell">{{ formatNumber(record.sessionCount) }}</span>

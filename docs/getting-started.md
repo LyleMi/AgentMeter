@@ -23,9 +23,17 @@ http://127.0.0.1:34115
 `go run . -start` serves built frontend assets through the Go server. It is not
 the Vite hot module reload workflow.
 
-On first launch, click **Update Index** in the app. AgentMeter defaults to detected
-local agent homes such as `~/.codex` and `~/.claude`. In **Settings**, enter one
-source root per line when you use multiple agents or keep session logs elsewhere.
+On first launch, click **Update Index** in the app. AgentMeter defaults to
+detected local agent homes such as `~/.codex` and `~/.claude`. In **Settings**,
+enter one source root per line when you use multiple agents, keep session logs
+elsewhere, or run more than one instance of the same agent family.
+
+Each configured root is a source instance. The agent family, such as `codex` or
+`claude`, controls parsing and family-level filters; the source instance keeps a
+separate source label, root path, and sessions path so multiple Codex or Claude
+installations stay distinguishable. Add a manual source label when the path
+alone is not clear, for example `Work Codex` or `Personal Claude`.
+
 **Update Index** skips unchanged JSONL files; **Rebuild Index** clears indexed
 files for enabled sources and parses every JSONL file again.
 
@@ -47,6 +55,13 @@ Default source roots are detected from local agent homes when they exist:
 ~/.codebuddy
 ~/.workbuddy
 ```
+
+AgentMeter also classifies configured variants with known agent structure, such
+as alternate Codex roots containing `sessions` or `archived_sessions`, Claude
+roots containing `projects`, and CodeBuddy/WorkBuddy roots containing
+`projects` or `sessions`. Startup can add newly detected default homes while the
+source list is still auto-managed; once you save Settings, manually removed
+sources stay removed.
 
 ## Manual Web Startup
 
@@ -116,6 +131,10 @@ go run . -ui tui
 For mode behavior, command flags, and TUI keyboard bindings, see
 [UI Modes](ui-modes.md).
 
+The TUI uses the same source identity as Web mode. Overview top agents show
+source labels with family/path context, session rows use the source label or
+agent name, and Session Detail includes the source root and raw JSONL file path.
+
 ## Privacy Config CLI
 
 AgentMeter can inspect and edit supported user-level privacy config files
@@ -133,6 +152,9 @@ go run . privacy apply gemini strict
 write every managed hardening setting, or `default` to unset AgentMeter-managed
 keys and return to vendor defaults. Supported targets are `codex`, `gemini`,
 `claude`, and `codebuddy`. Existing config files are backed up before writes.
+Privacy config is target-based, not source-instance-based: applying a Codex
+profile changes the supported user-level Codex config for that target and does
+not scope the write to one indexed Codex source label.
 
 ## Development Checks
 

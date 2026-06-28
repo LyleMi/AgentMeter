@@ -197,10 +197,11 @@ func (s *state) overviewLines() []string {
 	}
 	if len(o.AgentUsage) > 0 {
 		lines = append(lines, "", bold("Top Agents"))
-		lines = append(lines, fmt.Sprintf("%-18s %8s %12s %8s %12s", "Agent", "Sessions", "Tokens", "Tools", "Cost"))
+		lines = append(lines, fmt.Sprintf("%-18s %-26s %8s %12s %7s %10s", "Source", "Family/Path", "Sessions", "Tokens", "Tools", "Cost"))
 		for _, item := range limitSlice(o.AgentUsage, 4) {
-			lines = append(lines, fmt.Sprintf("%-18s %8s %12s %8s %12s",
-				truncate(empty(item.AgentName, item.AgentKind), 18),
+			lines = append(lines, fmt.Sprintf("%-18s %-26s %8s %12s %7s %10s",
+				truncate(agentUsageSourceName(item), 18),
+				truncate(agentUsageContext(item), 26),
 				formatInt(int64(item.SessionCount)),
 				formatInt(item.TotalTokens),
 				formatInt(int64(item.ToolCalls)),
@@ -339,7 +340,7 @@ func (s *state) privacyViewportLines() []string {
 }
 
 func sessionHeader(width int) string {
-	return fit("  Started          Agent      Model              Tokens       Cost     Tools  Project", width)
+	return fit("  Started          Source     Model              Tokens       Cost     Tools  Project", width)
 }
 
 func sessionRow(item agentmodel.Session, selected bool, width int) string {
@@ -350,7 +351,7 @@ func sessionRow(item agentmodel.Session, selected bool, width int) string {
 	return fit(fmt.Sprintf("%s%-16s %-10s %-18s %10s %10s %5s  %s",
 		prefix,
 		formatTime(item.StartedAt),
-		truncate(empty(item.AgentName, item.AgentKind), 10),
+		truncate(sessionSourceName(item), 10),
 		truncate(empty(item.Model, "unknown"), 18),
 		formatInt(item.TokenUsage.TotalTokens),
 		formatCost(item.EstimatedCostUSD),
@@ -364,7 +365,11 @@ func sessionDetailLines(detail agentmodel.SessionDetail, width int) []string {
 	lines := []string{
 		bold("Session"),
 		"ID: " + strconv.FormatInt(session.ID, 10) + "  Label: " + sessionLabel(session),
-		"Agent: " + empty(session.AgentName, session.AgentKind) + "  Model: " + empty(session.Model, "unknown"),
+		"Source: " + sessionSourceName(session) + "  Family: " + empty(session.AgentKind, "unknown") + "  Agent: " + empty(session.AgentName, "unknown"),
+		"Source root: " + empty(session.SourceRootPath, "unknown"),
+		"Source sessions: " + empty(session.SourceSessionsPath, "unknown"),
+		"Raw source: " + empty(session.RawSourcePath, "unknown"),
+		"Model: " + empty(session.Model, "unknown"),
 		"Project: " + empty(session.ProjectPath, "unknown"),
 		"Started: " + formatFullTime(session.StartedAt) + "  Ended: " + formatFullTime(session.EndedAt),
 		"Wall: " + formatDuration(session.WallDurationMS) + "  Active: " + formatDuration(session.ActiveDurationMS) + "  Model: " + formatDuration(session.ModelDurationMS) + "  Tools: " + formatDuration(session.ToolDurationMS),
@@ -431,7 +436,12 @@ func settingsLines(settings agentmodel.Settings, width int) []string {
 			if entry.Enabled {
 				state = "enabled "
 			}
-			lines = append(lines, fmt.Sprintf("[%s] %s", state, entry.Path))
+			label := strings.TrimSpace(entry.Label)
+			if label == "" {
+				lines = append(lines, fmt.Sprintf("[%s] %s", state, entry.Path))
+				continue
+			}
+			lines = append(lines, fmt.Sprintf("[%s] %s -> %s", state, label, entry.Path))
 		}
 	}
 	lines = append(lines, "", bold("Last Index"))
@@ -513,7 +523,7 @@ func privacySummaryLines(statuses []agentmodel.PrivacyConfigStatus, selected int
 	lines = append(lines,
 		"",
 		bold("Targets"),
-		fmt.Sprintf("  %-18s %-13s %7s %9s %9s %s", "Agent", "State", "Score", "Attention", "Config", "Path"),
+		fmt.Sprintf("  %-18s %-13s %7s %9s %4s %9s %s", "Agent", "State", "Score", "Attention", "Warn", "Config", "Path"),
 	)
 	for i, status := range statuses {
 		summary := status.Summary
@@ -521,14 +531,15 @@ func privacySummaryLines(statuses []agentmodel.PrivacyConfigStatus, selected int
 		if i == selected {
 			prefix = "> "
 		}
-		lines = append(lines, fit(fmt.Sprintf("%s%-18s %-13s %7s %9d %9s %s",
+		lines = append(lines, fit(fmt.Sprintf("%s%-18s %-13s %7s %9d %4d %9s %s",
 			prefix,
 			truncate(privacyDisplayName(status), 18),
 			privacyStateLabel(status),
 			fmt.Sprintf("%d%%", summary.Score),
 			summary.Attention,
+			len(status.Warnings),
 			privacyConfigExistsLabel(status),
-			shortPath(status.ConfigPath, width-65),
+			shortPath(status.ConfigPath, width-72),
 		), width))
 	}
 	return lines
@@ -606,6 +617,9 @@ func (s *state) privacyMaxScroll() int {
 func privacyStateLabel(status agentmodel.PrivacyConfigStatus) string {
 	if status.Summary.Attention > 0 {
 		return "needs review"
+	}
+	if len(status.Warnings) > 0 {
+		return "warning"
 	}
 	if status.Summary.Total == 0 {
 		return "no status"
@@ -782,6 +796,45 @@ func shortPath(value string, width int) string {
 
 func sessionLabel(session agentmodel.Session) string {
 	return viewmodel.SessionLabel(session)
+}
+
+func sessionSourceName(session agentmodel.Session) string {
+	return sourceDisplayName(session.SourceLabel, session.AgentName, session.AgentKind, session.SourceKey)
+}
+
+func agentUsageSourceName(item agentmodel.AgentUsage) string {
+	return sourceDisplayName(item.SourceLabel, item.AgentName, item.AgentKind, item.SourceKey)
+}
+
+func agentUsageContext(item agentmodel.AgentUsage) string {
+	return sourceContext(item.AgentKind, item.AgentName, item.SourceRootPath, item.SourceSessionsPath)
+}
+
+func sourceDisplayName(sourceLabel, agentName, agentKind, sourceKey string) string {
+	for _, value := range []string{sourceLabel, agentName, agentKind, sourceKey} {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return "unknown"
+}
+
+func sourceContext(agentKind, agentName, rootPath, sessionsPath string) string {
+	family := strings.TrimSpace(agentKind)
+	if family == "" {
+		family = strings.TrimSpace(agentName)
+	}
+	if family == "" {
+		family = "unknown"
+	}
+	path := strings.TrimSpace(rootPath)
+	if path == "" {
+		path = strings.TrimSpace(sessionsPath)
+	}
+	if path == "" {
+		return family
+	}
+	return family + " @ " + viewmodel.ShortPath(path)
 }
 
 func formatPrivacyValue(value any) string {

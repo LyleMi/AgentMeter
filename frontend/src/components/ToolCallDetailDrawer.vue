@@ -7,6 +7,7 @@ import Typography from 'ant-design-vue/es/typography'
 import { ArrowRightOutlined } from '@ant-design/icons-vue'
 import { formatDateTime, formatDuration, formatNumber, shortPath, type ToolCall } from '../api'
 import { useMessages } from '../i18n'
+import { sourceDisplay } from '../presentation/sourceIdentity'
 import { statusClass, statusColor } from '../presentation/status'
 import { parseToolInput } from '../toolInput'
 
@@ -36,7 +37,7 @@ const { t } = useMessages({
     'label.ended': 'Ended',
     'label.duration': 'Duration',
     'label.session': 'Session',
-    'label.agent': 'Agent',
+    'label.agent': 'Source',
     'label.rawEvents': 'Raw Events',
     'label.project': 'Project',
     'label.rawSource': 'Raw Source',
@@ -59,7 +60,7 @@ const { t } = useMessages({
     'label.ended': '结束',
     'label.duration': '耗时',
     'label.session': '会话',
-    'label.agent': 'Agent',
+    'label.agent': '来源',
     'label.rawEvents': '原始事件',
     'label.project': '项目',
     'label.rawSource': '原始来源',
@@ -82,6 +83,7 @@ const drawerTitle = computed(() => {
 })
 
 const parsedInput = computed(() => parseToolInput(props.call))
+const callSource = computed(() => (props.call ? sourceDisplay(props.call, t('fallback.unknown')) : null))
 
 function sessionName(call: ToolCall) {
   return call.sessionKey || call.codexSessionId || `#${call.sessionId}`
@@ -148,7 +150,10 @@ function hasDistinctEndRaw(call: ToolCall) {
         </div>
         <div class="metadata-item">
           <div class="metadata-label">{{ t('label.agent') }}</div>
-          <div class="metadata-value">{{ props.call.agentName || props.call.agentKind || '-' }}</div>
+          <div class="metadata-value">
+            {{ callSource?.label || '-' }}
+            <div v-if="callSource?.secondary" class="source-identity-meta">{{ callSource.secondary }}</div>
+          </div>
         </div>
         <div class="metadata-item">
           <div class="metadata-label">{{ t('label.rawEvents') }}</div>

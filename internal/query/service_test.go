@@ -280,6 +280,65 @@ func TestTokenAnalyticsAggregatesUsageCostsAndSessions(t *testing.T) {
 	}
 }
 
+func TestSourceInstanceAggregationAndFilters(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	codexStable := insertSource(t, conn, "codex", "Codex", "/home/me/.codex", "/home/me/.codex/sessions", now)
+	codexNightly := insertSource(t, conn, "codex", "Codex nightly", "/home/me/.ycodex", "/home/me/.ycodex/sessions", now)
+	claude := insertSource(t, conn, "claude", "Claude Code", "/home/me/.claude", "/home/me/.claude/projects", now)
+
+	stableSession := insertTokenAnalyticsSession(t, conn, codexStable, now, "stable", "gpt-5", "gpt-5", "actual", 100, 0, 20, 0, 120)
+	nightlySession := insertTokenAnalyticsSession(t, conn, codexNightly, now.Add(time.Minute), "nightly", "gpt-5", "gpt-5", "actual", 300, 0, 40, 0, 340)
+	insertTokenAnalyticsSession(t, conn, claude, now.Add(2*time.Minute), "claude", "gpt-5", "gpt-5", "actual", 500, 0, 60, 0, 560)
+	insertOverviewToolCall(t, conn, stableSession, now, 100, "shell_command", "completed", "go test ./...")
+	insertOverviewToolCall(t, conn, nightlySession, now.Add(time.Minute), 200, "read_file", "completed", "file")
+
+	service := New(conn)
+	analytics, err := service.TokenAnalytics(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stableUsage := findAgentUsageBySource(t, analytics.AgentUsage, codexStable)
+	if stableUsage.SourceKey != "source:1" && stableUsage.SourceKey != sourceInstanceKey(codexStable) {
+		t.Fatalf("stable source key = %+v", stableUsage)
+	}
+	if stableUsage.SourceLabel != "Codex" || stableUsage.SourceRootPath != "/home/me/.codex" || stableUsage.SessionCount != 1 {
+		t.Fatalf("stable usage = %+v", stableUsage)
+	}
+	nightlyUsage := findAgentUsageBySource(t, analytics.AgentUsage, codexNightly)
+	if nightlyUsage.SourceLabel != "Codex nightly" || nightlyUsage.TotalTokens != 340 || nightlyUsage.SessionCount != 1 {
+		t.Fatalf("nightly usage = %+v", nightlyUsage)
+	}
+
+	sessions, err := service.Sessions(ctx, model.SessionFilters{Agent: sourceInstanceKey(codexNightly), Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || sessions[0].SourceID != codexNightly || sessions[0].SourceLabel != "Codex nightly" {
+		t.Fatalf("source filtered sessions = %+v", sessions)
+	}
+	sessions, err = service.Sessions(ctx, model.SessionFilters{Agent: "codex", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("family filtered sessions = %+v", sessions)
+	}
+	tools, err := service.Tools(ctx, model.ToolFilters{Agent: sourceInstanceKey(codexNightly)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tools) != 1 || tools[0].ToolName != "read_file" {
+		t.Fatalf("source filtered tools = %+v", tools)
+	}
+}
+
 func TestOverviewPricingIgnoresZeroTokenUnknownUsage(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
@@ -555,6 +614,25 @@ func findAgentUsage(t *testing.T, items []model.AgentUsage, agentKind, agentName
 	}
 	t.Fatalf("agent usage for %s/%s missing: %+v", agentKind, agentName, items)
 	return model.AgentUsage{}
+}
+
+func findAgentUsageBySource(t *testing.T, items []model.AgentUsage, sourceID int64) model.AgentUsage {
+	t.Helper()
+	for _, item := range items {
+		if item.SourceID == sourceID {
+			return item
+		}
+	}
+	t.Fatalf("agent usage for source %d missing: %+v", sourceID, items)
+	return model.AgentUsage{}
+}
+
+func insertSource(t *testing.T, conn *sql.DB, kind, name, rootPath, sessionsPath string, now time.Time) int64 {
+	t.Helper()
+	return insertRow(t, conn, `INSERT INTO sources
+		(kind, name, root_path, sessions_path, platform, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		kind, name, rootPath, sessionsPath, "test", db.FormatTime(now), db.FormatTime(now))
 }
 
 func insertAuditSession(t *testing.T, conn *sql.DB, kind, name string, started time.Time, key string) (int64, int64) {

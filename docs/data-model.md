@@ -3,6 +3,21 @@
 The database stores normalized records derived from local coding-agent JSONL. Raw
 source files remain the source of truth.
 
+## Source Identity Terms
+
+A source instance is one configured or discovered local agent root or sessions
+directory. It is identified in read models by `sourceId` and `sourceKey`
+(`source:<id>`), and carries display/path context through `sourceLabel`,
+`sourceRootPath`, and `sourceSessionsPath`.
+
+An agent family is the parser family for that source, exposed as `agentKind`
+and `agentName`. Family values include `codex`, `claude`, `codebuddy`,
+`workbuddy`, and `jsonl`. Multiple source instances can share one family.
+
+Use source identity when the user needs to distinguish local installations or
+work/personal roots. Use family identity when the behavior is parser-specific or
+when a filter intentionally spans every source of the same family.
+
 ## Core Entities
 
 ### sources
@@ -19,6 +34,10 @@ Fields:
 - `platform`
 - `created_at`
 - `updated_at`
+
+`name` is the detected family display name for the source instance. Manual
+labels live in `app_config.source_entries` and are surfaced through read models
+as `sourceLabel` where available.
 
 ### source_files
 
@@ -44,9 +63,16 @@ Fields:
 
 - `id`
 - `source_id`
+- `source_key` in read models
+- `source_label` in read models
+- `source_root_path` in read models
+- `source_sessions_path` in read models
 - `source_file_id`
+- `raw_source_path` in read models
 - `session_key`
 - `codex_session_id`
+- `agent_kind`
+- `agent_name`
 - `project_path`
 - `model`
 - `model_provider`
@@ -64,8 +90,11 @@ Fields:
 - `event_count`
 - `parse_status`
 
-`session_key` is the generic identity shown in the UI. `codex_session_id` is
-kept for backward compatibility with older databases and API clients.
+`session_key` is the stable session identity shown in the UI. `codex_session_id`
+is kept for backward compatibility with older databases and API clients.
+Session rows should use the source label or agent name for compact source
+identity, not only the family kind. Session detail should expose the source
+root, sessions path, and raw source file path for traceability.
 
 ### events
 
@@ -116,6 +145,11 @@ Fields:
 
 - `id`
 - `session_id`
+- `source_id` in read models
+- `source_key` in read models
+- `source_label` in read models
+- `source_root_path` in read models
+- `source_sessions_path` in read models
 - `started_at`
 - `ended_at`
 - `duration_ms`
@@ -183,6 +217,11 @@ Fields:
 
 - `id`
 - `session_id`
+- `source_id` in read models
+- `source_key` in read models
+- `source_label` in read models
+- `source_root_path` in read models
+- `source_sessions_path` in read models
 - `tool_call_id`
 - `source_file_id`
 - `raw_event_id`
@@ -234,8 +273,9 @@ Fields:
 Known keys:
 
 - `source_entries`: JSON array of configured source entries. Each entry has a
-  `path` and `enabled` flag. This is the Settings source of truth for which
-  local agent roots are indexed.
+  `path`, `enabled` flag, and optional `label`. This is the Settings source of
+  truth for which local agent roots are indexed and which manual display labels
+  should be used.
 - `source_entries_auto_defaults`: JSON array tracking default source roots that
   were auto-added by AgentMeter. This lets startup merge newly discovered
   default roots without treating every user-edited source as auto-managed.
@@ -299,23 +339,28 @@ Current read models:
 
 - Overview: session totals, token totals, estimated cost, unpriced session
   count, wall/active duration totals, tool-call total, daily usage, model usage,
-  agent usage, and recent sessions.
-- Sessions: filtered list by search, model, agent, limit, and offset, ordered by
-  newest `started_at` first.
+  source-aware agent usage, and recent sessions.
+- Sessions: filtered list by search, model, agent/source, limit, and offset,
+  ordered by newest `started_at` first.
 - Session Detail: one session with normalized events, model calls, and tool
   calls.
 - Tools: aggregate tool stats by name with success/failure counts, total
   duration, and average duration.
-- Tool Calls: filtered list by tool, agent, start range, sort, limit, and offset.
+- Tool Calls: filtered list by tool, agent/source, start range, sort, limit,
+  and offset.
 - Audit Summary: finding counts by severity/category and recent findings.
-- Audit Findings: filtered list by category, severity, shell family, search,
-  limit, and offset.
+- Audit Findings: filtered list by category, severity, shell family,
+  agent/source, search, limit, and offset.
 - Pricing Models: seeded pricing rows returned from the local registry.
 
 Contract rules:
 
 - Web and TUI should show the same totals, filters, status labels, cost
   semantics, and session identity for the same database.
+- Source filters use `source:<id>` when the intent is one source instance.
+  Family filters use the family kind, such as `codex`, when the intent is every
+  source in that parser family. Existing API fields named `agent` may carry
+  either value until the API surface is renamed.
 - UI-specific presentation may differ, but token, cost, duration, parse-status,
   pricing-status, and audit-status definitions must remain shared.
 - `internal/model/types.go` defines the JSON/API field shape. Documentation

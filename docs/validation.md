@@ -99,6 +99,14 @@ Manually cover:
 - refresh key behavior;
 - narrow and wide terminal resize behavior;
 - visible parse/index/pricing status labels;
+- source-aware Overview top agents, including source label and family/path
+  context when multiple source instances exist;
+- session rows showing source label or agent name, not only family kind;
+- Session Detail showing source label, family kind, source root, sessions path,
+  and raw JSONL file path;
+- Settings source entries showing configured labels when labels are present;
+- Agent Privacy staying target-based while clearly showing backend status
+  warnings for the selected target;
 - Overview totals, Session Detail values, and Tools aggregates compared against
   Web mode for the same database.
 
@@ -112,10 +120,13 @@ TUI expectations where relevant:
 
 - totals and filters;
 - session identity and source path display;
+- source instance filters using `source:<id>` and family filters using values
+  such as `codex` or `claude`;
 - parse-status labels;
 - pricing and `unpriced` behavior;
 - audit summary and finding filters;
 - Settings source entries and last index status;
+- privacy status warnings and the target-based scope of privacy writes;
 - README command examples;
 - [UI Modes](ui-modes.md);
 - [Architecture](architecture.md);

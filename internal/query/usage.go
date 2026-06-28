@@ -225,14 +225,14 @@ func (s *Service) modelUsage(ctx context.Context) ([]model.ModelUsage, error) {
 }
 
 func (s *Service) agentUsage(ctx context.Context) ([]model.AgentUsage, error) {
-	rows, err := s.conn.QueryContext(ctx, `SELECT src.kind, src.name, COUNT(*),
+	rows, err := s.conn.QueryContext(ctx, `SELECT src.id, src.root_path, src.sessions_path, src.kind, src.name, COUNT(*),
 		COALESCE(SUM(tu.total_tokens), 0), COALESCE(SUM(tu.input_tokens), 0), COALESCE(SUM(tu.cached_input_tokens), 0),
 		COALESCE(SUM(tu.output_tokens), 0), COALESCE(SUM(tu.reasoning_output_tokens), 0),
 		COALESCE(SUM((SELECT COUNT(*) FROM tool_calls tc WHERE tc.session_id = s.id)), 0)
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
-		GROUP BY src.kind, src.name
+		GROUP BY src.id
 		ORDER BY COUNT(*) DESC, src.name ASC`)
 	if err != nil {
 		return nil, err
@@ -242,6 +242,9 @@ func (s *Service) agentUsage(ctx context.Context) ([]model.AgentUsage, error) {
 	for rows.Next() {
 		var item model.AgentUsage
 		if err := rows.Scan(
+			&item.SourceID,
+			&item.SourceRootPath,
+			&item.SourceSessionsPath,
 			&item.AgentKind,
 			&item.AgentName,
 			&item.SessionCount,
@@ -254,6 +257,8 @@ func (s *Service) agentUsage(ctx context.Context) ([]model.AgentUsage, error) {
 		); err != nil {
 			return nil, err
 		}
+		item.SourceKey = sourceInstanceKey(item.SourceID)
+		item.SourceLabel = item.AgentName
 		result = append(result, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -265,7 +270,7 @@ func (s *Service) agentUsage(ctx context.Context) ([]model.AgentUsage, error) {
 		return nil, err
 	}
 	for index := range result {
-		key := sourceKey(result[index].AgentKind, result[index].AgentName)
+		key := result[index].SourceID
 		if cost, ok := costs[key]; ok {
 			result[index].EstimatedCostUSD = &cost
 		}
@@ -274,36 +279,31 @@ func (s *Service) agentUsage(ctx context.Context) ([]model.AgentUsage, error) {
 	return result, nil
 }
 
-func (s *Service) agentCosts(ctx context.Context, calculator pricing.Calculator) (map[string]float64, map[string]bool, error) {
-	rows, err := s.conn.QueryContext(ctx, `SELECT src.kind, src.name, tu.model,
+func (s *Service) agentCosts(ctx context.Context, calculator pricing.Calculator) (map[int64]float64, map[int64]bool, error) {
+	rows, err := s.conn.QueryContext(ctx, `SELECT src.id, tu.model,
 		COALESCE(SUM(tu.input_tokens), 0), COALESCE(SUM(tu.cached_input_tokens), 0), COALESCE(SUM(tu.output_tokens), 0),
 		COALESCE(SUM(tu.reasoning_output_tokens), 0), COALESCE(SUM(tu.total_tokens), 0), COALESCE(MAX(tu.source), 'unknown')
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
 		JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
-		GROUP BY src.kind, src.name, tu.model`)
+		GROUP BY src.id, tu.model`)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer rows.Close()
-	costs := map[string]float64{}
-	unpriced := map[string]bool{}
+	costs := map[int64]float64{}
+	unpriced := map[int64]bool{}
 	for rows.Next() {
-		var kind, name string
+		var sourceID int64
 		var usage model.Usage
-		if err := rows.Scan(&kind, &name, &usage.Model, &usage.InputTokens, &usage.CachedInputTokens, &usage.OutputTokens, &usage.ReasoningOutputTokens, &usage.TotalTokens, &usage.Source); err != nil {
+		if err := rows.Scan(&sourceID, &usage.Model, &usage.InputTokens, &usage.CachedInputTokens, &usage.OutputTokens, &usage.ReasoningOutputTokens, &usage.TotalTokens, &usage.Source); err != nil {
 			return nil, nil, err
 		}
-		key := sourceKey(kind, name)
 		if cost, isUnpriced := calculator.Compute(usage); isUnpriced {
-			unpriced[key] = true
+			unpriced[sourceID] = true
 		} else if cost != nil {
-			costs[key] += *cost
+			costs[sourceID] += *cost
 		}
 	}
 	return costs, unpriced, rows.Err()
-}
-
-func sourceKey(kind, name string) string {
-	return kind + "\x00" + name
 }

@@ -14,6 +14,7 @@ import type { AuditFinding } from '../api/types'
 import { useAsyncResource } from '../composables/useAsyncResource'
 import { useMessages } from '../i18n'
 import { formatDateTime, formatNumber, shortPath } from '../presentation/formatters'
+import { sourceDisplay } from '../presentation/sourceIdentity'
 import {
   auditPath,
   categoryColor,
@@ -59,7 +60,7 @@ const { t } = useMessages({
     'column.evidence': 'Evidence',
     'column.command': 'Command',
     'column.runtime': 'Shell / Platform',
-    'column.source': 'Session / Source',
+    'column.source': 'Source / Session',
     'column.time': 'Time',
     'category.command': 'Command',
     'category.privacy': 'Privacy',
@@ -103,7 +104,7 @@ const { t } = useMessages({
     'column.evidence': '证据',
     'column.command': '命令',
     'column.runtime': 'Shell / 平台',
-    'column.source': '会话 / 来源',
+    'column.source': '来源 / 会话',
     'column.time': '时间',
     'category.command': '命令',
     'category.privacy': '隐私',
@@ -286,6 +287,10 @@ function sourceContext(record: AuditFinding) {
   return parts.join(' · ')
 }
 
+function sourceInfo(record: AuditFinding) {
+  return sourceDisplay(record, t('fallback.unknown'))
+}
+
 function safeDateTime(value?: string | null) {
   if (!value) return t('fallback.none')
   const date = new Date(value)
@@ -434,16 +439,16 @@ onMounted(load)
                 <a-tag class="model-lite-tag">{{ shellLabel(record.shellFamily) }}</a-tag>
                 <a-tag class="model-lite-tag">{{ record.platform || t('fallback.unknown') }}</a-tag>
               </div>
-              <div class="timeline-event-raw">{{ record.agentName || record.agentKind || t('fallback.unknown') }}</div>
             </template>
 
             <template v-else-if="column.key === 'source'">
-              <a-button type="link" size="small" class="audit-session-link" @click="openFinding(record)">
-                {{ sessionDisplay(record) }}
+              <a-button type="link" size="small" class="audit-session-link source-identity-name" @click="openFinding(record)">
+                {{ sourceInfo(record).label }}
               </a-button>
-              <a-tooltip :title="record.projectPath || record.rawSourcePath || ''" placement="topLeft">
-                <div class="audit-source-path">{{ shortPath(record.projectPath || record.rawSourcePath || '') }}</div>
+              <a-tooltip :title="sourceInfo(record).title || record.projectPath || record.rawSourcePath || ''" placement="topLeft">
+                <div class="source-identity-meta">{{ sourceInfo(record).secondary || shortPath(record.projectPath || record.rawSourcePath || '') }}</div>
               </a-tooltip>
+              <div class="timeline-event-raw mono">{{ sessionDisplay(record) }}</div>
               <div v-if="sourceContext(record)" class="timeline-event-raw mono">{{ sourceContext(record) }}</div>
             </template>
 

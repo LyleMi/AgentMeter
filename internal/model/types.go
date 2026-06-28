@@ -16,6 +16,17 @@ type Source struct {
 type SourceEntry struct {
 	Path    string `json:"path"`
 	Enabled bool   `json:"enabled"`
+	Label   string `json:"label,omitempty"`
+}
+
+type SourceIdentity struct {
+	SourceID           int64  `json:"sourceId"`
+	SourceKey          string `json:"sourceKey"`
+	SourceLabel        string `json:"sourceLabel"`
+	SourceRootPath     string `json:"sourceRootPath"`
+	SourceSessionsPath string `json:"sourceSessionsPath"`
+	AgentKind          string `json:"agentKind"`
+	AgentName          string `json:"agentName"`
 }
 
 type SourceFile struct {
@@ -33,6 +44,10 @@ type SourceFile struct {
 type Session struct {
 	ID                     int64     `json:"id"`
 	SourceID               int64     `json:"sourceId"`
+	SourceKey              string    `json:"sourceKey"`
+	SourceLabel            string    `json:"sourceLabel"`
+	SourceRootPath         string    `json:"sourceRootPath"`
+	SourceSessionsPath     string    `json:"sourceSessionsPath"`
 	SourceFileID           int64     `json:"sourceFileId"`
 	AgentKind              string    `json:"agentKind"`
 	AgentName              string    `json:"agentName"`
@@ -108,6 +123,11 @@ type ModelCall struct {
 type ToolCall struct {
 	ID                   int64     `json:"id"`
 	SessionID            int64     `json:"sessionId"`
+	SourceID             int64     `json:"sourceId"`
+	SourceKey            string    `json:"sourceKey,omitempty"`
+	SourceLabel          string    `json:"sourceLabel,omitempty"`
+	SourceRootPath       string    `json:"sourceRootPath,omitempty"`
+	SourceSessionsPath   string    `json:"sourceSessionsPath,omitempty"`
 	StartedAt            time.Time `json:"startedAt"`
 	EndedAt              time.Time `json:"endedAt"`
 	DurationMS           int64     `json:"durationMs"`
@@ -171,6 +191,11 @@ type ModelUsage struct {
 }
 
 type AgentUsage struct {
+	SourceID              int64    `json:"sourceId"`
+	SourceKey             string   `json:"sourceKey"`
+	SourceLabel           string   `json:"sourceLabel"`
+	SourceRootPath        string   `json:"sourceRootPath"`
+	SourceSessionsPath    string   `json:"sourceSessionsPath"`
 	AgentKind             string   `json:"agentKind"`
 	AgentName             string   `json:"agentName"`
 	SessionCount          int      `json:"sessionCount"`
@@ -196,6 +221,11 @@ type ToolTimeUsage struct {
 }
 
 type AgentTimeUsage struct {
+	SourceID                       int64  `json:"sourceId"`
+	SourceKey                      string `json:"sourceKey"`
+	SourceLabel                    string `json:"sourceLabel"`
+	SourceRootPath                 string `json:"sourceRootPath"`
+	SourceSessionsPath             string `json:"sourceSessionsPath"`
 	AgentKind                      string `json:"agentKind"`
 	AgentName                      string `json:"agentName"`
 	SessionCount                   int    `json:"sessionCount"`
@@ -272,32 +302,37 @@ type ToolStat struct {
 }
 
 type AuditFinding struct {
-	ID             int64     `json:"id"`
-	SessionID      int64     `json:"sessionId"`
-	ToolCallID     int64     `json:"toolCallId"`
-	SourceFileID   int64     `json:"sourceFileId"`
-	RawEventID     int64     `json:"rawEventId"`
-	SourceLine     int       `json:"sourceLine"`
-	Timestamp      time.Time `json:"timestamp"`
-	Source         string    `json:"source"`
-	EventType      string    `json:"eventType"`
-	Category       string    `json:"category"`
-	Severity       string    `json:"severity"`
-	RuleID         string    `json:"ruleId"`
-	Title          string    `json:"title"`
-	Description    string    `json:"description"`
-	Evidence       string    `json:"evidence"`
-	Command        string    `json:"command"`
-	ShellFamily    string    `json:"shellFamily"`
-	Platform       string    `json:"platform"`
-	Decision       string    `json:"decision"`
-	CreatedAt      time.Time `json:"createdAt"`
-	SessionKey     string    `json:"sessionKey,omitempty"`
-	CodexSessionID string    `json:"codexSessionId,omitempty"`
-	ProjectPath    string    `json:"projectPath,omitempty"`
-	AgentKind      string    `json:"agentKind,omitempty"`
-	AgentName      string    `json:"agentName,omitempty"`
-	RawSourcePath  string    `json:"rawSourcePath,omitempty"`
+	ID                 int64     `json:"id"`
+	SessionID          int64     `json:"sessionId"`
+	SourceID           int64     `json:"sourceId"`
+	SourceKey          string    `json:"sourceKey,omitempty"`
+	SourceLabel        string    `json:"sourceLabel,omitempty"`
+	SourceRootPath     string    `json:"sourceRootPath,omitempty"`
+	SourceSessionsPath string    `json:"sourceSessionsPath,omitempty"`
+	ToolCallID         int64     `json:"toolCallId"`
+	SourceFileID       int64     `json:"sourceFileId"`
+	RawEventID         int64     `json:"rawEventId"`
+	SourceLine         int       `json:"sourceLine"`
+	Timestamp          time.Time `json:"timestamp"`
+	Source             string    `json:"source"`
+	EventType          string    `json:"eventType"`
+	Category           string    `json:"category"`
+	Severity           string    `json:"severity"`
+	RuleID             string    `json:"ruleId"`
+	Title              string    `json:"title"`
+	Description        string    `json:"description"`
+	Evidence           string    `json:"evidence"`
+	Command            string    `json:"command"`
+	ShellFamily        string    `json:"shellFamily"`
+	Platform           string    `json:"platform"`
+	Decision           string    `json:"decision"`
+	CreatedAt          time.Time `json:"createdAt"`
+	SessionKey         string    `json:"sessionKey,omitempty"`
+	CodexSessionID     string    `json:"codexSessionId,omitempty"`
+	ProjectPath        string    `json:"projectPath,omitempty"`
+	AgentKind          string    `json:"agentKind,omitempty"`
+	AgentName          string    `json:"agentName,omitempty"`
+	RawSourcePath      string    `json:"rawSourcePath,omitempty"`
 }
 
 type AuditSummary struct {

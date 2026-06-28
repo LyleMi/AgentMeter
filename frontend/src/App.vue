@@ -196,11 +196,11 @@ onBeforeUnmount(() => {
     :locale="antDesignLocale"
     :theme="{
       token: {
-        colorPrimary: '#1d4ed8',
-        colorInfo: '#0891b2',
-        colorSuccess: '#0f766e',
-        colorWarning: '#b45309',
-        colorError: '#b91c1c',
+        colorPrimary: '#285957',
+        colorInfo: '#5b5f97',
+        colorSuccess: '#2f7d51',
+        colorWarning: '#a96619',
+        colorError: '#b42318',
         borderRadius: 8,
         fontFamily:
           'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif'

@@ -17,7 +17,7 @@ normalized records into SQLite, and exposes private local views over that data.
 
 ```text
 local agent JSONL files
-  -> source discovery
+  -> source discovery and source identity
   -> JSONL parser
   -> ingestion and offline audit
   -> SQLite
@@ -52,7 +52,7 @@ AgentMeter
   backend
     app service and HTTP routes
     startup asset preparation
-    source discovery
+    source discovery and identity
     agent source adapters
     JSONL parser
     ingestion pipeline
@@ -111,7 +111,7 @@ Current Go package responsibilities:
 
 ```text
 discover configured source roots
-  -> classify source kind and sessions path
+  -> classify source instance, agent family, and sessions path
   -> scan JSONL files recursively
   -> compare path, size, modified time, and content hash
   -> parse raw events into normalized sessions, usage, model calls, and tools
@@ -122,6 +122,15 @@ discover configured source roots
 
 Indexing is incremental by default. Rebuild indexing clears indexed files for
 enabled sources and parses them again.
+
+Source identity is instance-aware. A source instance is one configured or
+discovered root with `sourceId`, `sourceKey`, label, root path, and sessions
+path. An agent family is the parser family stored as `agentKind`/`agentName`,
+such as `codex` or `claude`. Multiple source instances can share one family.
+Startup auto-adds detected default agent homes while the Settings list is still
+auto-managed, and configured roots with known child directories are classified
+as family variants where possible. Manual source labels are display metadata and
+do not change parsing or indexing.
 
 ## UI Shape
 
@@ -148,11 +157,21 @@ The implemented TUI product areas are:
 - Agent Privacy status and profile apply
 - Settings
 
+Overview, Sessions, Session Detail, and Settings should be source-aware in both
+interfaces. Compact tables should prefer source labels when present and keep
+family/path context available so repeated Codex, Claude, CodeBuddy, or
+WorkBuddy instances do not collapse into one ambiguous family label.
+
 The TUI Agent Privacy screen shows all supported targets in a compact summary,
 lets users select a target, and can apply supported privacy profiles only after
 an explicit confirmation step. Web Agent Privacy supports the richer per-setting
 editing flow for Codex `config.toml` and Gemini CLI, Claude Code, and CodeBuddy
 Code/IDE `settings.json`.
+
+Agent Privacy is target-based rather than source-instance-based. Privacy
+targets are supported external agent config files, not indexed source labels.
+Applying a profile to `codex`, for example, changes the supported user-level
+Codex config and is not scoped to one Codex source instance.
 
 ## Interface Synchronization
 
@@ -162,6 +181,9 @@ Web and TUI modes stay synchronized by design:
   labels come from shared backend logic.
 - Overview, Sessions, Session Detail, Tools, Settings, Pricing, and implemented
   Agent Privacy status data use shared query or app-service semantics.
+- Source filters use `source:<id>` for one source instance; family filters use
+  values such as `codex` or `claude` when all sources of that family should
+  match. Existing API fields named `agent` may carry either form.
 - Filtering and sorting rules should not be reimplemented with different
   behavior in each UI.
 - New shared user-visible behavior should update both interface expectations in

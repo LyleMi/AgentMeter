@@ -41,7 +41,8 @@ inspect directly. AgentMeter turns that data into answers you can use:
 - Terminal UI mode over the same database, indexing pipeline, pricing rules, and
   query behavior.
 - Codex, Claude Code, CodeBuddy, WorkBuddy, and generic JSONL source detection.
-- Multiple source roots for developers running several local coding agents.
+- Multiple labeled source instances for developers running several local coding
+  agents or several roots from the same agent family.
 - Incremental SQLite indexing with source path traceability and parse status.
 - Built-in pricing registry with unknown models clearly marked as `unpriced`.
 
@@ -66,11 +67,13 @@ Open:
 http://127.0.0.1:34115
 ```
 
-On first launch, click **Update Index** in the app. AgentMeter defaults to detected
-local agent homes such as `~/.codex` and `~/.claude`; you can add more source
-roots in **Settings**. **Update Index** scans only new or changed JSONL files;
-**Rebuild Index** clears indexed files for enabled sources and parses them all
-again.
+On first launch, click **Update Index** in the app. AgentMeter defaults to
+detected local agent homes such as `~/.codex` and `~/.claude`; you can add more
+source roots in **Settings** and label them when paths alone are ambiguous. A
+source instance is one local root, while the agent family (`codex`, `claude`,
+and so on) controls parser behavior and family-level filters. **Update Index**
+scans only new or changed JSONL files; **Rebuild Index** clears indexed files
+for enabled sources and parses them all again.
 
 For manual startup, frontend HMR, TUI mode, data locations, and development
 checks, see [Getting Started](docs/getting-started.md).
@@ -95,7 +98,9 @@ go run . privacy apply gemini strict
 
 `privacy apply <target>` uses the recommended profile by default. Supported
 targets are `codex`, `gemini`, `claude`, and `codebuddy`; existing config files
-are backed up before AgentMeter writes changes.
+are backed up before AgentMeter writes changes. Privacy targets are user-level
+agent configs, not indexed source instances, so a write is not scoped to one
+manual source label.
 
 ## Privacy Model
 

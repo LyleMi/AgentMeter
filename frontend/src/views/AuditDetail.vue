@@ -16,6 +16,7 @@ import { api, formatDateTime, formatNumber, sessionLabel, shortPath, type Sessio
 import type { AuditFinding } from '../api/types'
 import { useAsyncResource } from '../composables/useAsyncResource'
 import { useMessages } from '../i18n'
+import { sourceDisplay } from '../presentation/sourceIdentity'
 import {
   auditPath,
   categoryColor,
@@ -64,7 +65,7 @@ const { t } = useMessages({
     'label.rawEvent': 'Raw event',
     'label.toolCall': 'Tool call',
     'label.session': 'Session',
-    'label.agent': 'Agent',
+    'label.agent': 'Source',
     'label.project': 'Project',
     'label.model': 'Model',
     'label.tokens': 'Tokens',
@@ -104,7 +105,7 @@ const { t } = useMessages({
     'label.rawEvent': '原始事件',
     'label.toolCall': '工具调用',
     'label.session': '会话',
-    'label.agent': 'Agent',
+    'label.agent': '来源',
     'label.project': '项目',
     'label.model': '模型',
     'label.tokens': 'Token',
@@ -131,6 +132,10 @@ const sessionName = computed(() => {
   const record = finding.value
   if (!record) return t('fallback.none')
   return record.sessionKey || record.codexSessionId || `#${formatNumber(record.sessionId)}`
+})
+const linkedSource = computed(() => {
+  const record = sessionDetail.value?.session || finding.value
+  return record ? sourceDisplay(record, t('fallback.unknown')) : null
 })
 
 function load() {
@@ -316,7 +321,8 @@ onMounted(load)
             </div>
             <div class="audit-session-field">
               <span>{{ t('label.agent') }}</span>
-              <strong>{{ sessionDetail?.session.agentName || finding.agentName || finding.agentKind || t('fallback.unknown') }}</strong>
+              <strong>{{ linkedSource?.label || t('fallback.unknown') }}</strong>
+              <div v-if="linkedSource?.secondary" class="source-identity-meta">{{ linkedSource.secondary }}</div>
             </div>
             <div class="audit-session-field">
               <span>{{ t('label.model') }}</span>
@@ -334,8 +340,8 @@ onMounted(load)
             </div>
             <div class="audit-session-field audit-session-field-wide">
               <span>{{ t('label.source') }}</span>
-              <a-tooltip :title="sessionDetail?.session.rawSourcePath || finding.rawSourcePath || ''" placement="topLeft">
-                <strong>{{ shortPath(sessionDetail?.session.rawSourcePath || finding.rawSourcePath || '') }}</strong>
+              <a-tooltip :title="sessionDetail?.session.sourceSessionsPath || sessionDetail?.session.rawSourcePath || finding.sourceSessionsPath || finding.rawSourcePath || ''" placement="topLeft">
+                <strong>{{ shortPath(sessionDetail?.session.sourceSessionsPath || sessionDetail?.session.rawSourcePath || finding.sourceSessionsPath || finding.rawSourcePath || '') }}</strong>
               </a-tooltip>
             </div>
           </div>

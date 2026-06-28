@@ -174,7 +174,7 @@ func TestSaveSourceSettingsKeepsDisabledEntriesOutOfActivePaths(t *testing.T) {
 	defer app.Shutdown(ctx)
 
 	settings, err := app.SaveSourceSettings([]model.SourceEntry{
-		{Path: enabled, Enabled: true},
+		{Path: enabled, Enabled: true, Label: "Nightly"},
 		{Path: disabled, Enabled: false},
 	})
 	if err != nil {
@@ -187,11 +187,53 @@ func TestSaveSourceSettingsKeepsDisabledEntriesOutOfActivePaths(t *testing.T) {
 	if !containsSourcePath(settings.SourcePaths, enabled) {
 		t.Fatalf("enabled source should be active: %v", settings.SourcePaths)
 	}
+	if settings.SourceEntries[0].Label != "Nightly" {
+		t.Fatalf("source label was not preserved: %+v", settings.SourceEntries)
+	}
 	if containsSourcePath(settings.SourcePaths, disabled) {
 		t.Fatalf("disabled source should not be active: %v", settings.SourcePaths)
 	}
 	if strings.Contains(settings.SourcePath, disabled) {
 		t.Fatalf("disabled source leaked into sourcePath: %q", settings.SourcePath)
+	}
+}
+
+func TestPrivacyStatusWarnsWhenMultipleFamilySourcesAreIndexed(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "agentmeter.sqlite")
+	codexHome := filepath.Join(dir, ".codex")
+	t.Setenv("CODEX_HOME", codexHome)
+
+	conn, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.EnsureSource(ctx, conn, "codex", "Codex", filepath.Join(dir, ".codex"), filepath.Join(dir, ".codex", "sessions"), "test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.EnsureSource(ctx, conn, "codex", "Codex nightly", filepath.Join(dir, ".ycodex"), filepath.Join(dir, ".ycodex", "sessions"), "test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	app := &App{dbPath: dbPath}
+	if err := app.Startup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer app.Shutdown(ctx)
+
+	status, err := app.GetPrivacyConfig("codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(status.Warnings) == 0 {
+		t.Fatalf("expected multi-source privacy warning: %+v", status)
+	}
+	if !strings.Contains(status.Warnings[0], "Multiple Codex-like sources") {
+		t.Fatalf("warning = %q", status.Warnings[0])
 	}
 }
 

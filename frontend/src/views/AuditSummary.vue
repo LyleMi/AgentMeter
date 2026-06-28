@@ -18,6 +18,7 @@ import type { AuditFinding, AuditSummary } from '../api/types'
 import { useAsyncResource } from '../composables/useAsyncResource'
 import { useMessages } from '../i18n'
 import { formatDateTime, formatNumber, shortPath } from '../presentation/formatters'
+import { sourceDisplay } from '../presentation/sourceIdentity'
 import { auditPath, categoryColor, cleanQueryValue, getAuditSummary, severityColor, titleCaseFallback } from './auditSupport'
 
 const ATable = AntTable as unknown as DefineComponent
@@ -48,7 +49,7 @@ const { t } = useMessages({
     'recent.kicker': 'Latest local audit findings with session context',
     'column.severity': 'Severity',
     'column.finding': 'Finding',
-    'column.session': 'Session',
+    'column.session': 'Source',
     'column.time': 'Time',
     'severity.critical': 'Critical',
     'severity.high': 'High',
@@ -82,7 +83,7 @@ const { t } = useMessages({
     'recent.kicker': '包含会话上下文的最新本地审计发现',
     'column.severity': '严重性',
     'column.finding': '发现',
-    'column.session': '会话',
+    'column.session': '来源',
     'column.time': '时间',
     'severity.critical': '严重',
     'severity.high': '高危',
@@ -184,6 +185,10 @@ function sessionDisplay(record: AuditFinding) {
   return record.sessionKey || record.codexSessionId || `#${formatNumber(record.sessionId)}`
 }
 
+function sourceInfo(record: AuditFinding) {
+  return sourceDisplay(record, t('fallback.unknown'))
+}
+
 function openFinding(record: AuditFinding) {
   router.push(auditPath(`/audit/findings/${record.id}`, { agent: selectedAgent.value }))
 }
@@ -264,10 +269,11 @@ onMounted(load)
             <div class="timeline-event-raw mono">{{ record.ruleId || t('fallback.unknown') }}</div>
           </template>
           <template v-else-if="column.key === 'session'">
-            <div class="mono">{{ sessionDisplay(record) }}</div>
-            <a-tooltip :title="record.projectPath || record.rawSourcePath || ''" placement="topLeft">
-              <div class="audit-source-path">{{ shortPath(record.projectPath || record.rawSourcePath || '') }}</div>
+            <div class="source-identity-name">{{ sourceInfo(record).label }}</div>
+            <a-tooltip :title="sourceInfo(record).title || record.projectPath || record.rawSourcePath || ''" placement="topLeft">
+              <div class="source-identity-meta">{{ sourceInfo(record).secondary || shortPath(record.projectPath || record.rawSourcePath || '') }}</div>
             </a-tooltip>
+            <div class="timeline-event-raw mono">{{ sessionDisplay(record) }}</div>
           </template>
           <template v-else-if="column.key === 'time'">
             <span class="audit-time">{{ formatDateTime(record.timestamp) }}</span>

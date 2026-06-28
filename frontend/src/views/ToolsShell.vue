@@ -11,6 +11,7 @@ import { EyeOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import ToolCallDetailDrawer from '../components/ToolCallDetailDrawer.vue'
 import { api, formatDateTime, formatDuration, formatNumber, sessionLabel, shortPath, type AgentUsage, type ToolCall, type ToolStat } from '../api'
 import { useMessages } from '../i18n'
+import { sourceDisplay, sourceFilterOptions } from '../presentation/sourceIdentity'
 import { statusClass, statusColor } from '../presentation/status'
 import { parseToolInput, type ToolInputField } from '../toolInput'
 
@@ -41,18 +42,18 @@ const router = useRouter()
 const { t } = useMessages({
   en: {
     'title': 'Shell Commands',
-    'kicker': 'Shell and terminal tool calls by agent, command, session and project',
+    'kicker': 'Shell and terminal tool calls by source, command, session and project',
     'count.matching': '{count} matching shell commands',
     'count.sorted': '{count} sorted shell commands',
     'count.recent': '{count} recent shell commands',
     'column.started': 'Started',
-    'column.agentTool': 'Agent / Tool',
+    'column.agentTool': 'Source / Tool',
     'column.command': 'Command / Input',
     'column.status': 'Status',
     'column.duration': 'Duration',
     'column.session': 'Session',
     'column.project': 'Project',
-    'filter.agent': 'Agent type',
+    'filter.agent': 'Source',
     'filter.tool': 'Shell tool',
     'filter.from': 'From',
     'filter.to': 'To',
@@ -72,18 +73,18 @@ const { t } = useMessages({
   },
   'zh-CN': {
     'title': 'Shell \u547d\u4ee4',
-    'kicker': '\u6309 Agent\u3001\u547d\u4ee4\u3001\u4f1a\u8bdd\u548c\u9879\u76ee\u67e5\u770b Shell \u4e0e\u7ec8\u7aef\u5de5\u5177\u8c03\u7528',
+    'kicker': '\u6309来源\u3001\u547d\u4ee4\u3001\u4f1a\u8bdd\u548c\u9879\u76ee\u67e5\u770b Shell \u4e0e\u7ec8\u7aef\u5de5\u5177\u8c03\u7528',
     'count.matching': '{count} \u4e2a\u5339\u914d Shell \u547d\u4ee4',
     'count.sorted': '{count} \u4e2a\u5df2\u6392\u5e8f Shell \u547d\u4ee4',
     'count.recent': '{count} \u4e2a\u6700\u8fd1 Shell \u547d\u4ee4',
     'column.started': '\u5f00\u59cb',
-    'column.agentTool': 'Agent / \u5de5\u5177',
+    'column.agentTool': '来源 / \u5de5\u5177',
     'column.command': '\u547d\u4ee4 / \u8f93\u5165',
     'column.status': '\u72b6\u6001',
     'column.duration': '\u8017\u65f6',
     'column.session': '\u4f1a\u8bdd',
     'column.project': '\u9879\u76ee',
-    'filter.agent': 'Agent \u7c7b\u578b',
+    'filter.agent': '来源',
     'filter.tool': 'Shell \u5de5\u5177',
     'filter.from': '\u4ece',
     'filter.to': '\u5230',
@@ -138,11 +139,7 @@ const toolOptions = computed(() =>
     }))
 )
 const agentOptions = computed(() => {
-  const values = new Map<string, string>()
-  for (const item of agents.value) {
-    if (item.agentKind) values.set(item.agentKind, item.agentName || item.agentKind)
-  }
-  return [...values.entries()].sort((left, right) => left[1].localeCompare(right[1])).map(([value, label]) => ({ value, label }))
+  return sourceFilterOptions(agents.value, t('fallback.unknown'))
 })
 const sortOptions = computed(() => [
   { value: DEFAULT_SORT, label: t('sort.recent') },
@@ -402,6 +399,10 @@ function rawSourceContext(call: ToolCall) {
   return `${t('label.rawSource')}: ${shortPath(call.rawSourcePath)}`
 }
 
+function sourceInfo(call: ToolCall) {
+  return sourceDisplay(call, t('fallback.unknown'))
+}
+
 function openToolCall(call: ToolCall) {
   selectedToolCall.value = call
 }
@@ -499,9 +500,10 @@ onMounted(load)
           <template v-if="column.key === 'startedAt'">{{ formatDateTime(record.startedAt) }}</template>
 
           <template v-else-if="column.key === 'agentTool'">
-            <a-typography-text :ellipsis="{ tooltip: record.agentName || record.agentKind || t('fallback.unknown') }">
-              {{ record.agentName || record.agentKind || t('fallback.unknown') }}
+            <a-typography-text class="source-identity-name" :ellipsis="{ tooltip: sourceInfo(record).title }">
+              {{ sourceInfo(record).label }}
             </a-typography-text>
+            <div class="source-identity-meta">{{ sourceInfo(record).secondary || '-' }}</div>
             <div class="tool-shell-meta">
               <a-tag class="model-lite-tag">{{ record.toolName || t('fallback.unknown') }}</a-tag>
             </div>

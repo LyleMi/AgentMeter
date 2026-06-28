@@ -235,6 +235,9 @@ func (s *Service) toolTimeLeaders(ctx context.Context) ([]model.ToolTimeUsage, e
 func (s *Service) agentTimeUsage(ctx context.Context) ([]model.AgentTimeUsage, error) {
 	networkCondition := suspectedNetworkToolCondition("tc")
 	rows, err := s.conn.QueryContext(ctx, fmt.Sprintf(`SELECT
+		src.id,
+		src.root_path,
+		src.sessions_path,
 		src.kind,
 		src.name,
 		COUNT(*),
@@ -251,7 +254,7 @@ func (s *Service) agentTimeUsage(ctx context.Context) ([]model.AgentTimeUsage, e
 		)), 0)
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
-		GROUP BY src.kind, src.name
+		GROUP BY src.id
 		ORDER BY SUM(s.wall_duration_ms) DESC, src.name ASC`, networkCondition))
 	if err != nil {
 		return nil, err
@@ -261,6 +264,9 @@ func (s *Service) agentTimeUsage(ctx context.Context) ([]model.AgentTimeUsage, e
 	for rows.Next() {
 		var item model.AgentTimeUsage
 		if err := rows.Scan(
+			&item.SourceID,
+			&item.SourceRootPath,
+			&item.SourceSessionsPath,
 			&item.AgentKind,
 			&item.AgentName,
 			&item.SessionCount,
@@ -274,6 +280,8 @@ func (s *Service) agentTimeUsage(ctx context.Context) ([]model.AgentTimeUsage, e
 		); err != nil {
 			return nil, err
 		}
+		item.SourceKey = sourceInstanceKey(item.SourceID)
+		item.SourceLabel = item.AgentName
 		if item.SuspectedNetworkToolDurationMS < 0 || item.ToolDurationMS < 0 {
 			item.SuspectedNetworkToolDurationMS = 0
 		} else if item.SuspectedNetworkToolDurationMS > item.ToolDurationMS {
@@ -331,17 +339,14 @@ func (s *Service) Sessions(ctx context.Context, filters model.SessionFilters) ([
 	args := []any{}
 	if strings.TrimSpace(filters.Search) != "" {
 		search := "%" + strings.TrimSpace(filters.Search) + "%"
-		where = append(where, `(s.session_key LIKE ? OR s.codex_session_id LIKE ? OR s.project_path LIKE ? OR s.model LIKE ? OR sf.path LIKE ? OR src.kind LIKE ? OR src.name LIKE ?)`)
-		args = append(args, search, search, search, search, search, search, search)
+		where = append(where, `(s.session_key LIKE ? OR s.codex_session_id LIKE ? OR s.project_path LIKE ? OR s.model LIKE ? OR sf.path LIKE ? OR src.kind LIKE ? OR src.name LIKE ? OR src.root_path LIKE ? OR src.sessions_path LIKE ?)`)
+		args = append(args, search, search, search, search, search, search, search, search, search)
 	}
 	if strings.TrimSpace(filters.Model) != "" {
 		where = append(where, `s.model = ?`)
 		args = append(args, strings.TrimSpace(filters.Model))
 	}
-	if strings.TrimSpace(filters.Agent) != "" {
-		where = append(where, `src.kind = ?`)
-		args = append(args, strings.TrimSpace(filters.Agent))
-	}
+	where, args = appendSourceFilter(where, args, filters.Agent)
 	limit, offset := clampLimitOffset(filters.Limit, filters.Offset, 200, 500)
 	args = append(args, limit, offset)
 	query := fmt.Sprintf(`%s
@@ -379,10 +384,7 @@ func (s *Service) SessionDetail(ctx context.Context, id int64) (model.SessionDet
 func (s *Service) Tools(ctx context.Context, filters model.ToolFilters) ([]model.ToolStat, error) {
 	where := []string{"1 = 1"}
 	args := []any{}
-	if strings.TrimSpace(filters.Agent) != "" {
-		where = append(where, "src.kind = ?")
-		args = append(args, strings.TrimSpace(filters.Agent))
-	}
+	where, args = appendSourceFilter(where, args, filters.Agent)
 	query := fmt.Sprintf(`SELECT
 		tc.tool_name,
 		COUNT(*),
@@ -419,10 +421,7 @@ func (s *Service) ToolCalls(ctx context.Context, filters model.ToolCallFilters) 
 		where = append(where, "tc.tool_name = ?")
 		args = append(args, strings.TrimSpace(filters.ToolName))
 	}
-	if strings.TrimSpace(filters.Agent) != "" {
-		where = append(where, "src.kind = ?")
-		args = append(args, strings.TrimSpace(filters.Agent))
-	}
+	where, args = appendSourceFilter(where, args, filters.Agent)
 	if strings.TrimSpace(filters.StartedFrom) != "" {
 		where = append(where, "tc.started_at >= ?")
 		args = append(args, strings.TrimSpace(filters.StartedFrom))
@@ -455,10 +454,7 @@ func (s *Service) AuditSummaryWithFilters(ctx context.Context, filters model.Aud
 	var summary model.AuditSummary
 	where := []string{"1 = 1"}
 	args := []any{}
-	if strings.TrimSpace(filters.Agent) != "" {
-		where = append(where, "src.kind = ?")
-		args = append(args, strings.TrimSpace(filters.Agent))
-	}
+	where, args = appendSourceFilter(where, args, filters.Agent)
 	query := fmt.Sprintf(`SELECT
 		COUNT(*),
 		COALESCE(SUM(CASE WHEN af.severity = 'critical' THEN 1 ELSE 0 END), 0),
@@ -511,14 +507,11 @@ func (s *Service) AuditFindings(ctx context.Context, filters model.AuditFindingF
 		where = append(where, "af.shell_family = ?")
 		args = append(args, strings.TrimSpace(filters.ShellFamily))
 	}
-	if strings.TrimSpace(filters.Agent) != "" {
-		where = append(where, "src.kind = ?")
-		args = append(args, strings.TrimSpace(filters.Agent))
-	}
+	where, args = appendSourceFilter(where, args, filters.Agent)
 	if strings.TrimSpace(filters.Search) != "" {
 		search := "%" + strings.TrimSpace(filters.Search) + "%"
-		where = append(where, `(af.title LIKE ? OR af.description LIKE ? OR af.evidence LIKE ? OR af.command LIKE ? OR af.rule_id LIKE ? OR sess.session_key LIKE ? OR sess.project_path LIKE ? OR sf.path LIKE ?)`)
-		args = append(args, search, search, search, search, search, search, search, search)
+		where = append(where, `(af.title LIKE ? OR af.description LIKE ? OR af.evidence LIKE ? OR af.command LIKE ? OR af.rule_id LIKE ? OR sess.session_key LIKE ? OR sess.project_path LIKE ? OR sf.path LIKE ? OR src.root_path LIKE ? OR src.sessions_path LIKE ?)`)
+		args = append(args, search, search, search, search, search, search, search, search, search, search)
 	}
 	limit, offset := clampLimitOffset(filters.Limit, filters.Offset, 500, 1000)
 	args = append(args, limit, offset)
