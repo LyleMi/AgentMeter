@@ -177,7 +177,7 @@ func (a *parseAccumulator) handleCompactMetadata(raw rawRecord) {
 }
 
 func (a *parseAccumulator) handleCodexCompacted(raw rawRecord) {
-	if raw.Type != "compacted" || replacementHistoryCount(raw.Payload) == 0 {
+	if raw.Type != "compacted" || codexReplacementHistoryCount(raw) == 0 {
 		return
 	}
 	a.pendingCompaction = &pendingContextCompaction{

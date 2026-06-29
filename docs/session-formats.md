@@ -142,12 +142,16 @@ folded into input, output, cached input, or reasoning subtotals.
 
 Observed Codex rollout compaction appears as two related records:
 
-- top-level `type = "compacted"` with `payload.replacement_history`
+- top-level `type = "compacted"` with `replacement_history` either directly
+  on the record or inside `payload`
 - `type = "event_msg"` with `payload.type = "context_compacted"`
 
 The `compacted` record is the checkpoint that writes the replacement history
 snapshot into the rollout. The `context_compacted` event is treated as a marker
 for replay, UI, and compatibility flows.
+Local Codex compaction may put the summary text in `message`; remote Codex
+compaction may leave `message` empty and put the replacement content in
+`replacement_history`. AgentMeter treats both as the same compaction checkpoint.
 
 When Codex emits a snapshot `token_count` after `compacted`, its
 `last_token_usage.total_tokens` is interpreted as the replacement snapshot size

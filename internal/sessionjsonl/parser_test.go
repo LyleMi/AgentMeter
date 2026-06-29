@@ -104,6 +104,59 @@ func TestParseFileAddsCodexCompactedSnapshotToContextCompression(t *testing.T) {
 	}
 }
 
+func TestParseFileSupportsTopLevelCodexCompactedLocalAndRemotePayloads(t *testing.T) {
+	cases := []struct {
+		name          string
+		compactedLine string
+	}{
+		{
+			name:          "local message summary",
+			compactedLine: `{"timestamp":"2026-06-26T10:00:03Z","type":"compacted","message":"Codex local summary","replacement_history":[{"type":"message","role":"user","content":[{"type":"input_text","text":"continue"}]},{"type":"message","role":"assistant","content":[{"type":"output_text","text":"summary"}]}],"window_number":2,"first_window_id":"win_1","previous_window_id":"win_1","window_id":"win_2"}`,
+		},
+		{
+			name:          "remote empty message",
+			compactedLine: `{"timestamp":"2026-06-26T10:00:03Z","type":"compacted","message":"","replacement_history":[{"type":"message","role":"user","content":[{"type":"input_text","text":"continue"}]},{"type":"compaction","id":"comp_1","encrypted_content":"opaque"}],"window_number":2,"first_window_id":"win_1","previous_window_id":"win_1","window_id":"win_2"}`,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "rollout-compacted.jsonl")
+			content := `{"timestamp":"2026-06-26T10:00:00Z","type":"session_meta","payload":{"session_id":"codex_compact_sess","cwd":"D:\\workspace\\project","originator":"codex_cli","thread_source":"local","model_provider":"openai"}}
+{"timestamp":"2026-06-26T10:00:01Z","type":"turn_context","payload":{"model":"gpt-5.5","cwd":"D:\\workspace\\project"}}
+{"timestamp":"2026-06-26T10:00:02Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100000,"cached_input_tokens":0,"output_tokens":100,"reasoning_output_tokens":0,"total_tokens":100100},"last_token_usage":{"input_tokens":100000,"cached_input_tokens":0,"output_tokens":100,"reasoning_output_tokens":0,"total_tokens":100100},"model_context_window":258400}}}
+` + tt.compactedLine + `
+{"timestamp":"2026-06-26T10:00:04Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100000,"cached_input_tokens":0,"output_tokens":100,"reasoning_output_tokens":0,"total_tokens":100100},"last_token_usage":{"input_tokens":0,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":10000},"model_context_window":258400}}}
+{"timestamp":"2026-06-26T10:00:05Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":105000,"cached_input_tokens":0,"output_tokens":150,"reasoning_output_tokens":0,"total_tokens":105150},"last_token_usage":{"input_tokens":5000,"cached_input_tokens":0,"output_tokens":50,"reasoning_output_tokens":0,"total_tokens":5050},"model_context_window":258400}}}
+`
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			parsed, err := ParseFile(path, 10, 20)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if parsed.Usage.ContextCompressionTokens != 90000 {
+				t.Fatalf("context compression tokens = %d", parsed.Usage.ContextCompressionTokens)
+			}
+			if parsed.Usage.InputTokens != 105000 || parsed.Usage.OutputTokens != 150 || parsed.Usage.TotalTokens != 105150 {
+				t.Fatalf("usage = %+v", parsed.Usage)
+			}
+			if len(parsed.ModelCall) != 2 {
+				t.Fatalf("model calls = %d", len(parsed.ModelCall))
+			}
+			if parsed.Events[3].Kind != "session" || parsed.Events[3].Summary != "Context compacted" {
+				t.Fatalf("compacted event = %+v", parsed.Events[3])
+			}
+			if parsed.Session.ParseStatus != "ok" {
+				t.Fatalf("parse status = %q, warnings: %v", parsed.Session.ParseStatus, parsed.Warnings)
+			}
+		})
+	}
+}
+
 func TestParseFileWithHashMatchesHashFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "run.jsonl")

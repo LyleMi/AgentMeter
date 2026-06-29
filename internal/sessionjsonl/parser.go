@@ -692,11 +692,15 @@ func contextCompressionTokensFromCompactMetadata(raw map[string]any) int64 {
 	return saturatingSubtract(preTokens, postTokens)
 }
 
-func replacementHistoryCount(payload map[string]any) int {
-	if payload == nil {
-		return 0
+func codexReplacementHistoryCount(raw rawRecord) int {
+	if count := replacementHistoryCount(raw.Payload["replacement_history"]); count > 0 {
+		return count
 	}
-	switch value := payload["replacement_history"].(type) {
+	return replacementHistoryCount(raw.ReplacementHistory)
+}
+
+func replacementHistoryCount(value any) int {
+	switch value := value.(type) {
 	case []any:
 		return len(value)
 	case nil:
