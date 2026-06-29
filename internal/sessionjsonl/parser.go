@@ -86,15 +86,34 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 	}
 	defer file.Close()
 
-	accumulator := newParseAccumulator(path, sourceID, sourceFileID)
-	reader := newRawRecordReader(path, file)
-	for reader.Next() {
-		accumulator.handleRecord(reader.Record())
+	return parseFromReader(path, file, sourceID, sourceFileID)
+}
+
+func ParseFileWithHash(path string, sourceID, sourceFileID int64) (model.ParsedSession, string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return model.ParsedSession{}, "", err
 	}
-	if err := reader.Err(); err != nil {
+	defer file.Close()
+
+	hash := sha256.New()
+	parsed, err := parseFromReader(path, io.TeeReader(file, hash), sourceID, sourceFileID)
+	if err != nil {
+		return parsed, "", err
+	}
+	return parsed, hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func parseFromReader(path string, reader io.Reader, sourceID, sourceFileID int64) (model.ParsedSession, error) {
+	accumulator := newParseAccumulator(path, sourceID, sourceFileID)
+	records := newRawRecordReader(path, reader)
+	for records.Next() {
+		accumulator.handleRecord(records.Record())
+	}
+	if err := records.Err(); err != nil {
 		return accumulator.parsed, err
 	}
-	accumulator.addWarnings(reader.Warnings())
+	accumulator.addWarnings(records.Warnings())
 	return accumulator.finalize(), nil
 }
 

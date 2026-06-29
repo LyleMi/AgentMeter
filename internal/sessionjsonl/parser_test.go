@@ -63,6 +63,32 @@ func TestParseFileExtractsSessionUsageAndTools(t *testing.T) {
 	}
 }
 
+func TestParseFileWithHashMatchesHashFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "run.jsonl")
+	content := `{"timestamp":"2026-06-26T10:00:00Z","type":"session_meta","payload":{"session_id":"hash_sess","cwd":"D:\\workspace\\project","originator":"codex_cli","thread_source":"local","model_provider":"openai"}}
+{"timestamp":"2026-06-26T10:00:01Z","type":"turn_context","payload":{"model":"gpt-5","cwd":"D:\\workspace\\project"}}
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	parsed, hash, err := ParseFileWithHash(path, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantHash, err := HashFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hash != wantHash {
+		t.Fatalf("hash = %q, want %q", hash, wantHash)
+	}
+	if parsed.Session.SessionKey != "hash_sess" {
+		t.Fatalf("session key = %q", parsed.Session.SessionKey)
+	}
+}
+
 func TestParseFileSupportsClaudeStyleMessages(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "claude-session.jsonl")

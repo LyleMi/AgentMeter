@@ -33,6 +33,14 @@ type existingFile struct {
 	ModifiedAt  time.Time
 	ContentHash string
 	ScanStatus  string
+	Message     string
+	HasAuditRun bool
+}
+
+type indexRun struct {
+	indexer       *Indexer
+	calculator    pricing.Calculator
+	existingFiles map[string]existingFile
 }
 
 func New(conn *sql.DB, dbPath string) *Indexer {
@@ -131,9 +139,22 @@ func (i *Indexer) IndexSource(ctx context.Context, sessionsPath, label string, r
 	if err != nil {
 		return result, err
 	}
+	calculator, err := pricing.LoadCalculator(ctx, i.conn)
+	if err != nil {
+		calculator = pricing.Calculator{}
+	}
+	existingFiles, err := i.loadExistingFiles(ctx, source.ID)
+	if err != nil {
+		return result, err
+	}
+	run := indexRun{
+		indexer:       i,
+		calculator:    calculator,
+		existingFiles: existingFiles,
+	}
 	result.FilesSeen = len(files)
 	for _, path := range files {
-		indexed, skipped, failed, sessions, warnings := i.indexFile(ctx, source, path, rebuild)
+		indexed, skipped, failed, sessions, warnings := run.indexFile(ctx, source, path, rebuild)
 		result.Indexed += indexed
 		result.Skipped += skipped
 		result.Failed += failed
@@ -193,51 +214,51 @@ func enabledSourceEntries(entries []model.SourceEntry) []model.SourceEntry {
 	return result
 }
 
-func (i *Indexer) indexFile(ctx context.Context, source model.Source, path string, force bool) (indexed, skipped, failed, sessions int, warnings []string) {
+func (r *indexRun) indexFile(ctx context.Context, source model.Source, path string, force bool) (indexed, skipped, failed, sessions int, warnings []string) {
+	i := r.indexer
 	stat, err := os.Stat(path)
 	if err != nil {
 		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
 	}
 	modified := stat.ModTime().UTC()
-	existing, err := i.getExistingFile(ctx, path)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
+	existing, hasExisting := r.existingFiles[path]
+	knownHash := ""
+	if hasExisting && existing.SizeBytes == stat.Size() && existing.ModifiedAt.Equal(modified) {
+		knownHash = existing.ContentHash
 	}
-	hash := ""
-	if !force && err == nil && existing.SizeBytes == stat.Size() && existing.ModifiedAt.Equal(modified) && existing.ScanStatus == "indexed" {
-		hasAuditRun, auditErr := i.sourceFileHasAuditRun(ctx, existing.ID)
-		if auditErr != nil {
-			return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, auditErr)}
-		}
-		if hasAuditRun {
+	if !force && hasExisting && existing.SizeBytes == stat.Size() && existing.HasAuditRun && isCompleteScanStatus(existing.ScanStatus) {
+		if existing.ModifiedAt.Equal(modified) {
 			return 0, 1, 0, 0, nil
 		}
-	}
-	hash, err = sessionjsonl.HashFile(path)
-	if err != nil {
-		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
-	}
-	if !force && err == nil && existing.ContentHash == hash && existing.ScanStatus == "indexed" {
-		hasAuditRun, auditErr := i.sourceFileHasAuditRun(ctx, existing.ID)
-		if auditErr != nil {
-			return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, auditErr)}
+		hash, err := sessionjsonl.HashFile(path)
+		if err != nil {
+			return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
 		}
-		if hasAuditRun {
+		if existing.ContentHash != "" && existing.ContentHash == hash {
+			if _, err := i.upsertSourceFile(ctx, source.ID, path, stat.Size(), modified, hash, existing.ScanStatus, existing.Message); err != nil {
+				return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
+			}
 			return 0, 1, 0, 0, nil
 		}
+		knownHash = hash
 	}
 
-	sourceFileID, err := i.upsertSourceFile(ctx, source.ID, path, stat.Size(), modified, hash, "scanning", "")
+	sourceFileID, err := i.upsertSourceFile(ctx, source.ID, path, stat.Size(), modified, knownHash, "scanning", "")
 	if err != nil {
 		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
 	}
-	parsed, err := sessionjsonl.ParseFile(path, source.ID, sourceFileID)
+	parsed, hash, err := r.parseFile(path, source.ID, sourceFileID, knownHash)
 	if err != nil {
-		_ = i.markSourceFile(ctx, sourceFileID, "error", err.Error())
+		if hash == "" {
+			if fallbackHash, hashErr := sessionjsonl.HashFile(path); hashErr == nil {
+				hash = fallbackHash
+			}
+		}
+		_ = i.finishSourceFile(ctx, sourceFileID, hash, "error", err.Error())
 		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
 	}
-	if err := i.replaceParsedSession(ctx, source, sourceFileID, parsed); err != nil {
-		_ = i.markSourceFile(ctx, sourceFileID, "error", err.Error())
+	if err := i.replaceParsedSession(ctx, source, sourceFileID, parsed, r.calculator); err != nil {
+		_ = i.finishSourceFile(ctx, sourceFileID, hash, "error", err.Error())
 		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
 	}
 	status := "indexed"
@@ -246,34 +267,48 @@ func (i *Indexer) indexFile(ctx context.Context, source model.Source, path strin
 		status = "warning"
 		message = joinWarnings(parsed.Warnings)
 	}
-	if err := i.markSourceFile(ctx, sourceFileID, status, message); err != nil {
+	if err := i.finishSourceFile(ctx, sourceFileID, hash, status, message); err != nil {
 		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
 	}
 	return 1, 0, 0, 1, parsed.Warnings
 }
 
-func (i *Indexer) getExistingFile(ctx context.Context, path string) (existingFile, error) {
-	var item existingFile
-	var modified string
-	err := i.conn.QueryRowContext(ctx, `SELECT id, size_bytes, modified_at, content_hash, scan_status FROM source_files WHERE path = ?`, path).
-		Scan(&item.ID, &item.SizeBytes, &modified, &item.ContentHash, &item.ScanStatus)
-	if err != nil {
-		return item, err
+func (r *indexRun) parseFile(path string, sourceID, sourceFileID int64, knownHash string) (model.ParsedSession, string, error) {
+	if knownHash != "" {
+		parsed, err := sessionjsonl.ParseFile(path, sourceID, sourceFileID)
+		return parsed, knownHash, err
 	}
-	item.ModifiedAt = db.ParseTime(modified)
-	return item, nil
+	return sessionjsonl.ParseFileWithHash(path, sourceID, sourceFileID)
 }
 
-func (i *Indexer) sourceFileHasAuditRun(ctx context.Context, sourceFileID int64) (bool, error) {
-	var id int64
-	err := i.conn.QueryRowContext(ctx, `SELECT id FROM audit_runs WHERE source_file_id = ?`, sourceFileID).Scan(&id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
+func isCompleteScanStatus(status string) bool {
+	return status == "indexed" || status == "warning"
+}
+
+func (i *Indexer) loadExistingFiles(ctx context.Context, sourceID int64) (map[string]existingFile, error) {
+	rows, err := i.conn.QueryContext(ctx, `SELECT sf.id, sf.path, sf.size_bytes, sf.modified_at, sf.content_hash, sf.scan_status, sf.error, ar.id
+		FROM source_files sf
+		LEFT JOIN audit_runs ar ON ar.source_file_id = sf.id
+		WHERE sf.source_id = ?`, sourceID)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	return true, nil
+	defer rows.Close()
+
+	result := map[string]existingFile{}
+	for rows.Next() {
+		var item existingFile
+		var path string
+		var modified string
+		var auditRunID sql.NullInt64
+		if err := rows.Scan(&item.ID, &path, &item.SizeBytes, &modified, &item.ContentHash, &item.ScanStatus, &item.Message, &auditRunID); err != nil {
+			return nil, err
+		}
+		item.ModifiedAt = db.ParseTime(modified)
+		item.HasAuditRun = auditRunID.Valid
+		result[path] = item
+	}
+	return result, rows.Err()
 }
 
 func (i *Indexer) upsertSourceFile(ctx context.Context, sourceID int64, path string, size int64, modified time.Time, hash, status, message string) (int64, error) {
@@ -298,9 +333,9 @@ func (i *Indexer) upsertSourceFile(ctx context.Context, sourceID int64, path str
 	return id, err
 }
 
-func (i *Indexer) markSourceFile(ctx context.Context, sourceFileID int64, status, message string) error {
-	_, err := i.conn.ExecContext(ctx, `UPDATE source_files SET scan_status = ?, error = ?, last_scanned_at = ? WHERE id = ?`,
-		status, message, db.FormatTime(time.Now().UTC()), sourceFileID)
+func (i *Indexer) finishSourceFile(ctx context.Context, sourceFileID int64, hash, status, message string) error {
+	_, err := i.conn.ExecContext(ctx, `UPDATE source_files SET content_hash = ?, scan_status = ?, error = ?, last_scanned_at = ? WHERE id = ?`,
+		hash, status, message, db.FormatTime(time.Now().UTC()), sourceFileID)
 	return err
 }
 
@@ -327,11 +362,7 @@ func (i *Indexer) deleteSourceFilesForRebuild(ctx context.Context, sourceID int6
 	return tx.Commit()
 }
 
-func (i *Indexer) replaceParsedSession(ctx context.Context, source model.Source, sourceFileID int64, parsed model.ParsedSession) error {
-	calculator, err := pricing.LoadCalculator(ctx, i.conn)
-	if err != nil {
-		calculator = pricing.Calculator{}
-	}
+func (i *Indexer) replaceParsedSession(ctx context.Context, source model.Source, sourceFileID int64, parsed model.ParsedSession, calculator pricing.Calculator) error {
 	modelCallCosts := make([]*float64, len(parsed.ModelCall))
 	for index, call := range parsed.ModelCall {
 		usage := model.Usage{
@@ -398,13 +429,19 @@ func (i *Indexer) replaceParsedSession(ctx context.Context, source model.Source,
 	session.ID = sessionID
 	session.SourceFileID = sourceFileID
 
+	insertEvent, err := tx.PrepareContext(ctx, `INSERT INTO events
+		(session_id, source_file_id, source_line, timestamp, kind, raw_type, summary, raw_json)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer insertEvent.Close()
+
 	rawEventIDs := map[int]int64{}
 	eventsByLine := map[int]model.Event{}
 	indexedEvents := make([]model.Event, 0, len(parsed.Events))
 	for _, event := range parsed.Events {
-		res, err := tx.ExecContext(ctx, `INSERT INTO events
-			(session_id, source_file_id, source_line, timestamp, kind, raw_type, summary, raw_json)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		res, err := insertEvent.ExecContext(ctx,
 			sessionID, sourceFileID, event.SourceLine, db.FormatTime(event.Timestamp), event.Kind, event.RawType, event.Summary, event.RawJSON)
 		if err != nil {
 			return err
@@ -433,10 +470,16 @@ func (i *Indexer) replaceParsedSession(ctx context.Context, source model.Source,
 		return err
 	}
 
+	insertModelCall, err := tx.PrepareContext(ctx, `INSERT INTO model_calls
+		(session_id, started_at, ended_at, duration_ms, model, provider, status, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, context_compression_tokens, total_tokens, cost_usd)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer insertModelCall.Close()
+
 	for index, call := range parsed.ModelCall {
-		_, err := tx.ExecContext(ctx, `INSERT INTO model_calls
-			(session_id, started_at, ended_at, duration_ms, model, provider, status, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, context_compression_tokens, total_tokens, cost_usd)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		_, err := insertModelCall.ExecContext(ctx,
 			sessionID, db.FormatTime(call.StartedAt), db.FormatTime(call.EndedAt), call.DurationMS, call.Model, call.Provider, call.Status,
 			call.InputTokens, call.CachedInputTokens, call.OutputTokens, call.ReasoningOutputTokens, call.ContextCompressionTokens, call.TotalTokens, nullableFloat(modelCallCosts[index]))
 		if err != nil {
@@ -444,14 +487,20 @@ func (i *Indexer) replaceParsedSession(ctx context.Context, source model.Source,
 		}
 	}
 
+	insertToolCall, err := tx.PrepareContext(ctx, `INSERT INTO tool_calls
+		(session_id, started_at, ended_at, duration_ms, tool_name, status, input_summary, output_summary, error, raw_event_id, call_id, raw_start_event_id, raw_end_event_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer insertToolCall.Close()
+
 	indexedToolCalls := make([]model.ToolCall, 0, len(parsed.ToolCall))
 	for _, call := range parsed.ToolCall {
 		rawStartEventLine := firstNonZero(call.RawStartEventLine, call.RawEventLine)
 		rawStartEventID := rawEventIDs[rawStartEventLine]
 		rawEndEventID := rawEventIDs[call.RawEndEventLine]
-		res, err := tx.ExecContext(ctx, `INSERT INTO tool_calls
-			(session_id, started_at, ended_at, duration_ms, tool_name, status, input_summary, output_summary, error, raw_event_id, call_id, raw_start_event_id, raw_end_event_id)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		res, err := insertToolCall.ExecContext(ctx,
 			sessionID, db.FormatTime(call.StartedAt), db.FormatTime(call.EndedAt), call.DurationMS,
 			call.ToolName, call.Status, call.InputSummary, call.OutputSummary, call.Error, rawStartEventID, call.CallID, rawStartEventID, rawEndEventID)
 		if err != nil {
@@ -496,6 +545,14 @@ func (i *Indexer) replaceAuditFindings(ctx context.Context, tx *sql.Tx, source m
 		eventIDsByLine[event.SourceLine] = event.ID
 	}
 	now := db.FormatTime(time.Now().UTC())
+	insertFinding, err := tx.PrepareContext(ctx, `INSERT INTO audit_findings
+		(session_id, tool_call_id, source_file_id, raw_event_id, source_line, timestamp, source, event_type, category, severity, rule_id, title, description, evidence, command, shell_family, platform, decision, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer insertFinding.Close()
+
 	for _, finding := range findings {
 		timestamp := finding.StartedAt
 		if timestamp.IsZero() {
@@ -509,9 +566,7 @@ func (i *Indexer) replaceAuditFindings(ctx context.Context, tx *sql.Tx, source m
 			rawEventID = eventIDsByLine[finding.SourceLine]
 		}
 		description := auditDescription(finding)
-		_, err := tx.ExecContext(ctx, `INSERT INTO audit_findings
-			(session_id, tool_call_id, source_file_id, raw_event_id, source_line, timestamp, source, event_type, category, severity, rule_id, title, description, evidence, command, shell_family, platform, decision, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		_, err := insertFinding.ExecContext(ctx,
 			session.ID,
 			finding.ToolCallID,
 			sourceFileID,
@@ -535,7 +590,7 @@ func (i *Indexer) replaceAuditFindings(ctx context.Context, tx *sql.Tx, source m
 			return err
 		}
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO audit_runs
+	_, err = tx.ExecContext(ctx, `INSERT INTO audit_runs
 		(source_file_id, session_id, source, status, finding_count, audited_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(source_file_id) DO UPDATE SET

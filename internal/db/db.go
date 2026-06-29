@@ -58,6 +58,7 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			scan_status TEXT NOT NULL,
 			error TEXT NOT NULL DEFAULT ''
 		)`,
+		`CREATE INDEX IF NOT EXISTS idx_source_files_source ON source_files(source_id)`,
 		`CREATE TABLE IF NOT EXISTS sessions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
