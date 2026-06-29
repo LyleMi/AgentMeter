@@ -172,10 +172,10 @@ editing flow for Codex `config.toml` and Gemini CLI, Claude Code, and CodeBuddy
 Code/IDE `settings.json`.
 
 Agent Privacy is target-based by default. Privacy targets are supported
-external agent config files, not parser families alone. Codex adds a
-source-aware Web flow: when multiple indexed Codex-like sources exist, the Web
-API and UI can target a selected source root's `config.toml`; other targets and
-the CLI remain target-level writes.
+external agent config files, not parser families alone. The Web API and UI add
+a source-aware flow for supported targets: when multiple indexed source roots
+exist for that target, writes can be scoped to the selected root's `config.toml`
+or `settings.json`. The CLI remains target-level.
 
 ## Interface Synchronization
 

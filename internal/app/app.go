@@ -637,13 +637,30 @@ func (a *App) privacyAdapterForSource(target, sourceKey string) (privacy.Adapter
 	switch normalized {
 	case "codex":
 		return privacy.NewCodexAdapterForConfigPath(codexPrivacyConfigPathForRoot(source.RootPath)), nil
+	case "gemini":
+		adapter := privacy.NewGeminiAdapter()
+		adapter.ConfigPath = settingsJSONPrivacyConfigPathForRoot(source.RootPath)
+		return adapter, nil
+	case "claude":
+		adapter := privacy.NewClaudeAdapter()
+		adapter.ConfigPath = settingsJSONPrivacyConfigPathForRoot(source.RootPath)
+		return adapter, nil
+	case "codebuddy":
+		adapter := privacy.NewCodeBuddyAdapter()
+		adapter.ConfigPath = settingsJSONPrivacyConfigPathForRoot(source.RootPath)
+		return adapter, nil
 	default:
 		return nil, privacySourceUnsupportedError{Target: normalized}
 	}
 }
 
 func privacySupportsSourceWrites(target string) bool {
-	return strings.EqualFold(strings.TrimSpace(target), "codex")
+	switch strings.ToLower(strings.TrimSpace(target)) {
+	case "codex", "gemini", "claude", "codebuddy":
+		return true
+	default:
+		return false
+	}
 }
 
 type privacySourceUnsupportedError struct {
@@ -761,6 +778,8 @@ func privacyConfigPathForSource(source model.Source) string {
 	switch strings.ToLower(strings.TrimSpace(source.Kind)) {
 	case "codex":
 		return codexPrivacyConfigPathForRoot(source.RootPath)
+	case "gemini", "claude", "codebuddy":
+		return settingsJSONPrivacyConfigPathForRoot(source.RootPath)
 	default:
 		return ""
 	}
@@ -771,6 +790,13 @@ func codexPrivacyConfigPathForRoot(root string) string {
 		return ""
 	}
 	return filepath.Join(filepath.Clean(root), "config.toml")
+}
+
+func settingsJSONPrivacyConfigPathForRoot(root string) string {
+	if strings.TrimSpace(root) == "" {
+		return ""
+	}
+	return filepath.Join(filepath.Clean(root), "settings.json")
 }
 
 func appContext(ctx context.Context) context.Context {
