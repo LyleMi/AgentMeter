@@ -127,6 +127,38 @@ func TestParseFileSupportsClaudeStyleMessages(t *testing.T) {
 	}
 }
 
+func TestParseFileAddsClaudeCompactMetadataToContextCompression(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "claude-compact-session.jsonl")
+	content := `{"type":"user","sessionId":"claude_compact_sess","cwd":"/workspace/project","timestamp":"2026-06-26T10:00:00Z","message":{"role":"user","content":"run tests"}}
+{"type":"assistant","sessionId":"claude_compact_sess","cwd":"/workspace/project","timestamp":"2026-06-26T10:00:02Z","message":{"role":"assistant","model":"claude-sonnet-4","usage":{"input_tokens":100,"cache_creation_input_tokens":10,"cache_read_input_tokens":25,"output_tokens":40},"content":[{"type":"text","text":"working"}]}}
+{"type":"system","sessionId":"claude_compact_sess","cwd":"/workspace/project","timestamp":"2026-06-26T10:00:04Z","compactMetadata":{"trigger":"auto","preTokens":170000,"postTokens":12000,"durationMs":40000},"isCompactSummary":true}
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	parsed, err := ParseFile(path, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Usage.InputTokens != 110 || parsed.Usage.CachedInputTokens != 25 || parsed.Usage.OutputTokens != 40 || parsed.Usage.TotalTokens != 175 {
+		t.Fatalf("usage = %+v", parsed.Usage)
+	}
+	if parsed.Usage.ContextCompressionTokens != 158000 {
+		t.Fatalf("context compression tokens = %d", parsed.Usage.ContextCompressionTokens)
+	}
+	if parsed.Usage.Source != "actual" {
+		t.Fatalf("usage source = %q", parsed.Usage.Source)
+	}
+	if len(parsed.ModelCall) != 1 {
+		t.Fatalf("model calls = %d", len(parsed.ModelCall))
+	}
+	if parsed.ModelCall[0].ContextCompressionTokens != 0 {
+		t.Fatalf("model call context compression tokens = %d", parsed.ModelCall[0].ContextCompressionTokens)
+	}
+}
+
 func TestParseFileSupportsCodeBuddyMessagesAndTools(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "codebuddy-session.jsonl")

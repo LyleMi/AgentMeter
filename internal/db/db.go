@@ -54,6 +54,7 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			size_bytes INTEGER NOT NULL,
 			modified_at TEXT NOT NULL,
 			content_hash TEXT NOT NULL,
+			parser_version INTEGER NOT NULL DEFAULT 0,
 			last_scanned_at TEXT NOT NULL,
 			scan_status TEXT NOT NULL,
 			error TEXT NOT NULL DEFAULT ''
@@ -227,6 +228,9 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 		return err
 	}
 	if err := ensureColumn(ctx, conn, "model_calls", "context_compression_tokens", "context_compression_tokens INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := ensureColumn(ctx, conn, "source_files", "parser_version", "parser_version INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
 	if err := ensureColumn(ctx, conn, "pricing_models", "is_custom", "is_custom INTEGER NOT NULL DEFAULT 0"); err != nil {

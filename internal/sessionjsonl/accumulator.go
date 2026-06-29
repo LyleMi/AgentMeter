@@ -117,6 +117,8 @@ func (a *parseAccumulator) handleRecord(record parsedRawRecord) {
 		a.parsed.Session.Model = firstNonEmpty(a.parsed.Session.Model, rawModel)
 	}
 
+	a.handleCompactMetadata(raw)
+
 	switch payloadType {
 	case "task_started":
 		a.modelBoundary = timestampFromPayload(raw.Payload, "started_at")
@@ -151,6 +153,19 @@ func (a *parseAccumulator) handleRecord(record parsedRawRecord) {
 	if payloadType == "" {
 		a.handleHeadlessUsage(raw, ts)
 	}
+}
+
+func (a *parseAccumulator) handleCompactMetadata(raw rawRecord) {
+	tokens := contextCompressionTokensFromCompactMetadata(raw.CompactMetadata)
+	if tokens <= 0 {
+		return
+	}
+	usage := model.Usage{
+		Model:                    firstNonEmpty(modelFromRecord(raw), a.currentModel, a.parsed.Session.Model),
+		ContextCompressionTokens: tokens,
+		Source:                   "actual",
+	}
+	addUsage(&a.parsed.Usage, usage)
 }
 
 func (a *parseAccumulator) handleTokenCount(raw rawRecord, ts time.Time) {

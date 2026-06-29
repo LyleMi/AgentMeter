@@ -22,19 +22,22 @@ import (
 	"github.com/LyleMi/AgentMeter/internal/sourcepath"
 )
 
+const sourceFileParserVersion = 2
+
 type Indexer struct {
 	conn   *sql.DB
 	dbPath string
 }
 
 type existingFile struct {
-	ID          int64
-	SizeBytes   int64
-	ModifiedAt  time.Time
-	ContentHash string
-	ScanStatus  string
-	Message     string
-	HasAuditRun bool
+	ID            int64
+	SizeBytes     int64
+	ModifiedAt    time.Time
+	ContentHash   string
+	ParserVersion int
+	ScanStatus    string
+	Message       string
+	HasAuditRun   bool
 }
 
 type indexRun struct {
@@ -226,7 +229,8 @@ func (r *indexRun) indexFile(ctx context.Context, source model.Source, path stri
 	if hasExisting && existing.SizeBytes == stat.Size() && existing.ModifiedAt.Equal(modified) {
 		knownHash = existing.ContentHash
 	}
-	if !force && hasExisting && existing.SizeBytes == stat.Size() && existing.HasAuditRun && isCompleteScanStatus(existing.ScanStatus) {
+	hasCurrentParser := !hasExisting || existing.ParserVersion >= sourceFileParserVersion
+	if !force && hasCurrentParser && hasExisting && existing.SizeBytes == stat.Size() && existing.HasAuditRun && isCompleteScanStatus(existing.ScanStatus) {
 		if existing.ModifiedAt.Equal(modified) {
 			return 0, 1, 0, 0, nil
 		}
@@ -286,7 +290,7 @@ func isCompleteScanStatus(status string) bool {
 }
 
 func (i *Indexer) loadExistingFiles(ctx context.Context, sourceID int64) (map[string]existingFile, error) {
-	rows, err := i.conn.QueryContext(ctx, `SELECT sf.id, sf.path, sf.size_bytes, sf.modified_at, sf.content_hash, sf.scan_status, sf.error, ar.id
+	rows, err := i.conn.QueryContext(ctx, `SELECT sf.id, sf.path, sf.size_bytes, sf.modified_at, sf.content_hash, sf.parser_version, sf.scan_status, sf.error, ar.id
 		FROM source_files sf
 		LEFT JOIN audit_runs ar ON ar.source_file_id = sf.id
 		WHERE sf.source_id = ?`, sourceID)
@@ -301,7 +305,7 @@ func (i *Indexer) loadExistingFiles(ctx context.Context, sourceID int64) (map[st
 		var path string
 		var modified string
 		var auditRunID sql.NullInt64
-		if err := rows.Scan(&item.ID, &path, &item.SizeBytes, &modified, &item.ContentHash, &item.ScanStatus, &item.Message, &auditRunID); err != nil {
+		if err := rows.Scan(&item.ID, &path, &item.SizeBytes, &modified, &item.ContentHash, &item.ParserVersion, &item.ScanStatus, &item.Message, &auditRunID); err != nil {
 			return nil, err
 		}
 		item.ModifiedAt = db.ParseTime(modified)
@@ -334,8 +338,8 @@ func (i *Indexer) upsertSourceFile(ctx context.Context, sourceID int64, path str
 }
 
 func (i *Indexer) finishSourceFile(ctx context.Context, sourceFileID int64, hash, status, message string) error {
-	_, err := i.conn.ExecContext(ctx, `UPDATE source_files SET content_hash = ?, scan_status = ?, error = ?, last_scanned_at = ? WHERE id = ?`,
-		hash, status, message, db.FormatTime(time.Now().UTC()), sourceFileID)
+	_, err := i.conn.ExecContext(ctx, `UPDATE source_files SET content_hash = ?, parser_version = ?, scan_status = ?, error = ?, last_scanned_at = ? WHERE id = ?`,
+		hash, sourceFileParserVersion, status, message, db.FormatTime(time.Now().UTC()), sourceFileID)
 	return err
 }
 

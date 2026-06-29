@@ -183,9 +183,19 @@ The parser recognizes assistant message usage and tool-use content:
 - `message.usage.output_tokens`
 - `message.content[].type = "tool_use"`
 - `message.content[].type = "tool_result"`
+- `compactMetadata.preTokens`
+- `compactMetadata.postTokens`
+- `compactMetadata.durationMs`
+- `isCompactSummary`
 
 Cache creation tokens are counted as input tokens. Cache read tokens are counted
 as cached input tokens.
+
+Claude compact summary events report context size before and after compaction
+rather than a provider usage object. AgentMeter stores
+`max(preTokens - postTokens, 0)` as session-level
+`context_compression_tokens`. These events do not create `model_calls` rows
+because they are not ordinary model invocation usage records.
 
 ## CodeBuddy And WorkBuddy Shape
 

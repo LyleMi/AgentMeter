@@ -43,6 +43,7 @@ type rawRecord struct {
 	Response         map[string]any `json:"response"`
 	Message          map[string]any `json:"message"`
 	Usage            any            `json:"usage"`
+	CompactMetadata  map[string]any `json:"compactMetadata"`
 	Model            any            `json:"model"`
 	ModelName        any            `json:"model_name"`
 	Metadata         map[string]any `json:"metadata"`
@@ -665,6 +666,15 @@ func contextCompressionTokensFromUsage(raw map[string]any) int64 {
 		total += nestedInt64(value, keys...)
 	}
 	return total
+}
+
+func contextCompressionTokensFromCompactMetadata(raw map[string]any) int64 {
+	if raw == nil {
+		return 0
+	}
+	preTokens := firstInt64(raw, "preTokens", "pre_tokens", "preTokenCount", "pre_token_count")
+	postTokens := firstInt64(raw, "postTokens", "post_tokens", "postTokenCount", "post_token_count")
+	return saturatingSubtract(preTokens, postTokens)
 }
 
 func recordTimestamp(raw rawRecord) time.Time {

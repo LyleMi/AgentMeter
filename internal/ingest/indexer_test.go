@@ -318,6 +318,58 @@ func TestIndexSkipsTouchedUnchangedFileAndRefreshesMetadata(t *testing.T) {
 	}
 }
 
+func TestIndexReprocessesUnchangedFileWhenParserVersionIsOld(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "agentmeter.sqlite")
+	conn, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	sourceDir := filepath.Join(dir, "logs")
+	run := filepath.Join(sourceDir, "run.jsonl")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := `{"timestamp":"2026-06-26T10:00:00Z","type":"session_meta","payload":{"session_id":"parser_version_sess","cwd":"D:\\workspace\\project","originator":"codex_cli","thread_source":"local","model_provider":"openai"}}
+{"timestamp":"2026-06-26T10:00:01Z","type":"turn_context","payload":{"model":"gpt-5","cwd":"D:\\workspace\\project"}}
+`
+	if err := os.WriteFile(run, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	indexer := New(conn, dbPath)
+	result, err := indexer.Index(ctx, sourceDir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Indexed != 1 || result.Skipped != 0 {
+		t.Fatalf("initial index result = %+v", result)
+	}
+
+	if _, err := conn.ExecContext(ctx, `UPDATE source_files SET parser_version = 0 WHERE path = ?`, run); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err = indexer.Index(ctx, sourceDir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Indexed != 1 || result.Skipped != 0 {
+		t.Fatalf("old parser version should reprocess unchanged file: %+v", result)
+	}
+
+	var parserVersion int
+	if err := conn.QueryRowContext(ctx, `SELECT parser_version FROM source_files WHERE path = ?`, run).Scan(&parserVersion); err != nil {
+		t.Fatal(err)
+	}
+	if parserVersion != sourceFileParserVersion {
+		t.Fatalf("parser version = %d, want %d", parserVersion, sourceFileParserVersion)
+	}
+}
+
 func TestIndexSkipsUnchangedWarningFile(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()

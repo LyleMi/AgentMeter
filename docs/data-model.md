@@ -51,9 +51,15 @@ Fields:
 - `size_bytes`
 - `modified_at`
 - `content_hash`
+- `parser_version`
 - `last_scanned_at`
 - `scan_status`
 - `error`
+
+`parser_version` records the parser/indexer shape used for the last successful
+scan. Incremental indexing reparses unchanged files when this version is older
+than the current parser version so new derived metrics can be backfilled without
+a manual rebuild.
 
 ### sessions
 
