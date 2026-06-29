@@ -1,6 +1,13 @@
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, type LocationQuery } from 'vue-router'
 import { api, type AgentUsage, type ToolCall, type ToolCallFilters, type ToolStat } from '../../api'
+import {
+  copyStringRouteQuery,
+  dateTimeInputToQueryIso,
+  routeDateTimeInputValue,
+  setRouteQueryValue,
+  stringRouteQueryValue
+} from '../routeQuery'
 import { invokedCommand, isShellToolName } from './shellTool'
 
 export const DEFAULT_SORT = 'recent'
@@ -22,12 +29,12 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
   const agents = ref<AgentUsage[]>([])
   const toolCalls = ref<ToolCall[]>([])
   const commandOptions = ref<ShellCommandStat[]>([])
-  const toolFilter = ref<string | undefined>(routeStringQuery(route, 'tool'))
-  const commandFilter = ref<string | undefined>(mode === 'shell' ? routeStringQuery(route, 'command') : undefined)
-  const agentFilter = ref<string | undefined>(routeStringQuery(route, 'agent'))
-  const fromFilter = ref(routeDateTimeQuery(route, 'from'))
-  const toFilter = ref(routeDateTimeQuery(route, 'to'))
-  const sortFilter = ref<ToolCallSort>(routeSortQuery(route))
+  const toolFilter = ref<string | undefined>(stringRouteQueryValue(route.query.tool))
+  const commandFilter = ref<string | undefined>(mode === 'shell' ? stringRouteQueryValue(route.query.command) : undefined)
+  const agentFilter = ref<string | undefined>(stringRouteQueryValue(route.query.agent))
+  const fromFilter = ref(routeDateTimeInputValue(route.query, 'from'))
+  const toFilter = ref(routeDateTimeInputValue(route.query, 'to'))
+  const sortFilter = ref<ToolCallSort>(routeSortQuery(route.query))
   const selectedToolCall = ref<ToolCall | null>(null)
   const routePath = mode === 'shell' ? '/tools/shell' : '/tools/calls'
   const availableTools = computed(() => (mode === 'shell' ? tools.value.filter((item) => isShellToolName(item.toolName)) : tools.value))
@@ -86,8 +93,8 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
     return {
       tool: mode === 'all' ? toolFilter.value : undefined,
       agent: agentFilter.value,
-      from: toQueryDateTime(fromFilter.value),
-      to: toQueryDateTime(toFilter.value, 'end'),
+      from: dateTimeInputToQueryIso(fromFilter.value),
+      to: dateTimeInputToQueryIso(toFilter.value, 'end'),
       sort: sortFilter.value === DEFAULT_SORT ? undefined : sortFilter.value,
       limit: TOOL_CALL_LIMIT
     }
@@ -111,16 +118,13 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
   }
 
   function currentRouteQuery() {
-    const query: Record<string, string> = {}
-    for (const [key, value] of Object.entries(route.query)) {
-      if (typeof value === 'string') query[key] = value
-    }
-    setQueryValue(query, 'tool', toolFilter.value)
-    setQueryValue(query, 'command', mode === 'shell' ? commandFilter.value : undefined)
-    setQueryValue(query, 'agent', agentFilter.value)
-    setQueryValue(query, 'from', fromFilter.value || undefined)
-    setQueryValue(query, 'to', toFilter.value || undefined)
-    setQueryValue(query, 'sort', sortFilter.value === DEFAULT_SORT ? undefined : sortFilter.value)
+    const query = copyStringRouteQuery(route.query)
+    setRouteQueryValue(query, 'tool', toolFilter.value)
+    setRouteQueryValue(query, 'command', mode === 'shell' ? commandFilter.value : undefined)
+    setRouteQueryValue(query, 'agent', agentFilter.value)
+    setRouteQueryValue(query, 'from', fromFilter.value || undefined)
+    setRouteQueryValue(query, 'to', toFilter.value || undefined)
+    setRouteQueryValue(query, 'sort', sortFilter.value === DEFAULT_SORT ? undefined : sortFilter.value)
     return query
   }
 
@@ -140,12 +144,12 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
   }
 
   function syncFiltersFromRoute() {
-    toolFilter.value = routeStringQuery(route, 'tool')
-    commandFilter.value = mode === 'shell' ? routeStringQuery(route, 'command') : undefined
-    agentFilter.value = routeStringQuery(route, 'agent')
-    fromFilter.value = routeDateTimeQuery(route, 'from')
-    toFilter.value = routeDateTimeQuery(route, 'to')
-    sortFilter.value = routeSortQuery(route)
+    toolFilter.value = stringRouteQueryValue(route.query.tool)
+    commandFilter.value = mode === 'shell' ? stringRouteQueryValue(route.query.command) : undefined
+    agentFilter.value = stringRouteQueryValue(route.query.agent)
+    fromFilter.value = routeDateTimeInputValue(route.query, 'from')
+    toFilter.value = routeDateTimeInputValue(route.query, 'to')
+    sortFilter.value = routeSortQuery(route.query)
   }
 
   function resetFilters() {
@@ -245,41 +249,8 @@ function timestampMs(value?: string) {
   return Number.isNaN(parsed) ? 0 : parsed
 }
 
-function routeStringQuery(route: ReturnType<typeof useRoute>, key: string) {
-  const value = route.query[key]
-  return typeof value === 'string' && value ? value : undefined
-}
-
-function routeDateTimeQuery(route: ReturnType<typeof useRoute>, key: string) {
-  const value = routeStringQuery(route, key)
-  if (!value) return ''
-  return value.endsWith('Z') ? toLocalDateTimeInputValue(value) : value
-}
-
-function routeSortQuery(route: ReturnType<typeof useRoute>): ToolCallSort {
-  const value = routeStringQuery(route, 'sort')
+function routeSortQuery(query: LocationQuery): ToolCallSort {
+  const value = stringRouteQueryValue(query.sort)
   if (value === 'duration_desc' || value === 'duration_asc') return value
   return DEFAULT_SORT
-}
-
-function toLocalDateTimeInputValue(value: string) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  const pad = (part: number) => String(part).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
-}
-
-function toQueryDateTime(value: string, boundary: 'start' | 'end' = 'start') {
-  if (!value) return undefined
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return undefined
-  if (boundary === 'end' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) {
-    date.setSeconds(59, 999)
-  }
-  return date.toISOString()
-}
-
-function setQueryValue(query: Record<string, string>, key: string, value?: string) {
-  if (value) query[key] = value
-  else delete query[key]
 }

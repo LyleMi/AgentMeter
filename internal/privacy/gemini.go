@@ -32,37 +32,30 @@ func (a GeminiAdapter) ApplyProfile(profile string) (model.PrivacyConfigApplyRes
 }
 
 func (a GeminiAdapter) jsonAdapter() jsonPrivacyAdapter {
-	return geminiJSONAdapter(a.settingsPath, a.now)
+	return geminiJSONAdapter(geminiJSONSpec.settingsPathFunc(a.ConfigPath), a.Now)
 }
 
 func geminiJSONAdapter(settingsPath func() (string, error), now func() time.Time) jsonPrivacyAdapter {
-	return jsonPrivacyAdapter{
-		target:       "gemini",
-		name:         "Gemini CLI",
-		agentName:    "Gemini",
-		definitions:  geminiSettingDefinitions,
-		settingsPath: settingsPath,
-		now:          now,
-	}
-}
-
-func (a GeminiAdapter) now() time.Time {
-	if a.Now != nil {
-		return a.Now()
-	}
-	return time.Now()
-}
-
-func (a GeminiAdapter) settingsPath() (string, error) {
-	return jsonSettingsPath(a.ConfigPath, "AGENTMETER_GEMINI_SETTINGS_PATH", "", ".gemini")
+	return geminiJSONSpec.adapter(settingsPath, now)
 }
 
 func geminiSettingsPath() (string, error) {
-	return jsonSettingsPath("", "AGENTMETER_GEMINI_SETTINGS_PATH", "", ".gemini")
+	return geminiJSONSpec.settingsPath("")
 }
 
 func buildGeminiStatus(path string, exists bool, content []byte, warnings []string) model.PrivacyConfigStatus {
-	return geminiJSONAdapter(nil, nil).buildStatus(path, exists, content, warnings)
+	return geminiJSONSpec.buildStatus(path, exists, content, warnings)
+}
+
+var geminiJSONSpec = jsonAdapterSpec{
+	target:      "gemini",
+	name:        "Gemini CLI",
+	agentName:   "Gemini",
+	definitions: geminiSettingDefinitions,
+	path: jsonSettingsPathSpec{
+		overrideEnv: "AGENTMETER_GEMINI_SETTINGS_PATH",
+		homeDirName: ".gemini",
+	},
 }
 
 var geminiSettingDefinitions = []jsonSettingDefinition{

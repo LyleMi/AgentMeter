@@ -25,6 +25,7 @@ import {
   severityColor,
   titleCaseFallback
 } from './auditSupport'
+import { optionalFirstTrimmedRouteQueryValue } from './routeQuery'
 
 const ATable = AntTable as unknown as DefineComponent
 const ATypographyText = Typography.Text
@@ -35,10 +36,10 @@ const findingsResource = useAsyncResource<AuditFinding[]>([])
 const findings = computed(() => findingsResource.data.value)
 const loading = findingsResource.loading
 const error = findingsResource.error
-const categoryFilter = ref<string | undefined>(routeStringQuery('category'))
-const severityFilter = ref<string | undefined>(routeStringQuery('severity'))
-const shellFilter = ref<string | undefined>(routeStringQuery('shell'))
-const search = ref(routeStringQuery('search') || '')
+const categoryFilter = ref<string | undefined>(optionalFirstTrimmedRouteQueryValue(route.query.category))
+const severityFilter = ref<string | undefined>(optionalFirstTrimmedRouteQueryValue(route.query.severity))
+const shellFilter = ref<string | undefined>(optionalFirstTrimmedRouteQueryValue(route.query.shell))
+const search = ref(optionalFirstTrimmedRouteQueryValue(route.query.search) || '')
 const selectedAgent = computed(() => cleanQueryValue(route.query.agent) || undefined)
 let applyingRouteUpdate = false
 
@@ -173,11 +174,6 @@ const rowCountText = computed(() => {
   return hasActiveFilters.value ? t('count.filtered', { count }) : t('count.loaded', { count })
 })
 
-function routeStringQuery(key: string) {
-  const value = cleanQueryValue(route.query[key])
-  return value || undefined
-}
-
 function currentFindingFilters() {
   return {
     agent: selectedAgent.value,
@@ -220,10 +216,10 @@ async function applyFilters() {
 }
 
 function syncFiltersFromRoute() {
-  categoryFilter.value = routeStringQuery('category')
-  severityFilter.value = routeStringQuery('severity')
-  shellFilter.value = routeStringQuery('shell')
-  search.value = routeStringQuery('search') || ''
+  categoryFilter.value = optionalFirstTrimmedRouteQueryValue(route.query.category)
+  severityFilter.value = optionalFirstTrimmedRouteQueryValue(route.query.severity)
+  shellFilter.value = optionalFirstTrimmedRouteQueryValue(route.query.shell)
+  search.value = optionalFirstTrimmedRouteQueryValue(route.query.search) || ''
 }
 
 function resetFilters() {

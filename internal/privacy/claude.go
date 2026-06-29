@@ -32,37 +32,31 @@ func (a ClaudeAdapter) ApplyProfile(profile string) (model.PrivacyConfigApplyRes
 }
 
 func (a ClaudeAdapter) jsonAdapter() jsonPrivacyAdapter {
-	return claudeJSONAdapter(a.settingsPath, a.now)
+	return claudeJSONAdapter(claudeJSONSpec.settingsPathFunc(a.ConfigPath), a.Now)
 }
 
 func claudeJSONAdapter(settingsPath func() (string, error), now func() time.Time) jsonPrivacyAdapter {
-	return jsonPrivacyAdapter{
-		target:       "claude",
-		name:         "Claude Code",
-		agentName:    "Claude Code",
-		definitions:  claudeSettingDefinitions,
-		settingsPath: settingsPath,
-		now:          now,
-	}
-}
-
-func (a ClaudeAdapter) now() time.Time {
-	if a.Now != nil {
-		return a.Now()
-	}
-	return time.Now()
-}
-
-func (a ClaudeAdapter) settingsPath() (string, error) {
-	return jsonSettingsPath(a.ConfigPath, "AGENTMETER_CLAUDE_SETTINGS_PATH", "CLAUDE_CONFIG_DIR", ".claude")
+	return claudeJSONSpec.adapter(settingsPath, now)
 }
 
 func claudeSettingsPath() (string, error) {
-	return jsonSettingsPath("", "AGENTMETER_CLAUDE_SETTINGS_PATH", "CLAUDE_CONFIG_DIR", ".claude")
+	return claudeJSONSpec.settingsPath("")
 }
 
 func buildClaudeStatus(path string, exists bool, content []byte, warnings []string) model.PrivacyConfigStatus {
-	return claudeJSONAdapter(nil, nil).buildStatus(path, exists, content, warnings)
+	return claudeJSONSpec.buildStatus(path, exists, content, warnings)
+}
+
+var claudeJSONSpec = jsonAdapterSpec{
+	target:      "claude",
+	name:        "Claude Code",
+	agentName:   "Claude Code",
+	definitions: claudeSettingDefinitions,
+	path: jsonSettingsPathSpec{
+		overrideEnv:  "AGENTMETER_CLAUDE_SETTINGS_PATH",
+		configDirEnv: "CLAUDE_CONFIG_DIR",
+		homeDirName:  ".claude",
+	},
 }
 
 var claudeSettingDefinitions = []jsonSettingDefinition{

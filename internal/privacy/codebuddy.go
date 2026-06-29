@@ -32,37 +32,31 @@ func (a CodeBuddyAdapter) ApplyProfile(profile string) (model.PrivacyConfigApply
 }
 
 func (a CodeBuddyAdapter) jsonAdapter() jsonPrivacyAdapter {
-	return codeBuddyJSONAdapter(a.settingsPath, a.now)
+	return codeBuddyJSONAdapter(codeBuddyJSONSpec.settingsPathFunc(a.ConfigPath), a.Now)
 }
 
 func codeBuddyJSONAdapter(settingsPath func() (string, error), now func() time.Time) jsonPrivacyAdapter {
-	return jsonPrivacyAdapter{
-		target:       "codebuddy",
-		name:         "CodeBuddy Code/IDE",
-		agentName:    "CodeBuddy",
-		definitions:  codeBuddySettingDefinitions,
-		settingsPath: settingsPath,
-		now:          now,
-	}
-}
-
-func (a CodeBuddyAdapter) now() time.Time {
-	if a.Now != nil {
-		return a.Now()
-	}
-	return time.Now()
-}
-
-func (a CodeBuddyAdapter) settingsPath() (string, error) {
-	return jsonSettingsPath(a.ConfigPath, "AGENTMETER_CODEBUDDY_SETTINGS_PATH", "CODEBUDDY_CONFIG_DIR", ".codebuddy")
+	return codeBuddyJSONSpec.adapter(settingsPath, now)
 }
 
 func codeBuddySettingsPath() (string, error) {
-	return jsonSettingsPath("", "AGENTMETER_CODEBUDDY_SETTINGS_PATH", "CODEBUDDY_CONFIG_DIR", ".codebuddy")
+	return codeBuddyJSONSpec.settingsPath("")
 }
 
 func buildCodeBuddyStatus(path string, exists bool, content []byte, warnings []string) model.PrivacyConfigStatus {
-	return codeBuddyJSONAdapter(nil, nil).buildStatus(path, exists, content, warnings)
+	return codeBuddyJSONSpec.buildStatus(path, exists, content, warnings)
+}
+
+var codeBuddyJSONSpec = jsonAdapterSpec{
+	target:      "codebuddy",
+	name:        "CodeBuddy Code/IDE",
+	agentName:   "CodeBuddy",
+	definitions: codeBuddySettingDefinitions,
+	path: jsonSettingsPathSpec{
+		overrideEnv:  "AGENTMETER_CODEBUDDY_SETTINGS_PATH",
+		configDirEnv: "CODEBUDDY_CONFIG_DIR",
+		homeDirName:  ".codebuddy",
+	},
 }
 
 var codeBuddySettingDefinitions = []jsonSettingDefinition{

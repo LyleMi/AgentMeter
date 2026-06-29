@@ -1,6 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter, type LocationQuery } from 'vue-router'
 import type { UsageScopeFilters } from '../api'
+import { copyStringRouteQuery, setTrimmedRouteQueryValue, trimmedRouteQueryValue } from './routeQuery'
 
 export interface UsageScopeForm {
   agent?: string
@@ -19,16 +20,6 @@ const quickRangeDays: Record<string, number> = {
   month: 30
 }
 
-function cleanQueryValue(value: unknown) {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined
-}
-
-function setQueryValue(query: Record<string, string>, key: string, value?: string) {
-  const next = value?.trim()
-  if (next) query[key] = next
-  else delete query[key]
-}
-
 export function normalizeUsageScope(filters: Partial<UsageScopeForm>): UsageScopeForm {
   return {
     agent: filters.agent?.trim() || undefined,
@@ -42,12 +33,12 @@ export function normalizeUsageScope(filters: Partial<UsageScopeForm>): UsageScop
 
 export function readUsageScopeQuery(query: LocationQuery): UsageScopeForm {
   return normalizeUsageScope({
-    agent: cleanQueryValue(query.agent),
-    model: cleanQueryValue(query.model),
-    project: cleanQueryValue(query.project),
-    range: cleanQueryValue(query.range),
-    from: cleanQueryValue(query.from) || '',
-    to: cleanQueryValue(query.to) || ''
+    agent: trimmedRouteQueryValue(query.agent),
+    model: trimmedRouteQueryValue(query.model),
+    project: trimmedRouteQueryValue(query.project),
+    range: trimmedRouteQueryValue(query.range),
+    from: trimmedRouteQueryValue(query.from) || '',
+    to: trimmedRouteQueryValue(query.to) || ''
   })
 }
 
@@ -101,14 +92,11 @@ export function applyUsageScopeToQuery(
   filters: UsageScopeForm,
   extra: Record<string, string | undefined> = {}
 ) {
-  const query: Record<string, string> = {}
-  for (const [key, value] of Object.entries(sourceQuery)) {
-    if (typeof value === 'string') query[key] = value
-  }
+  const query = copyStringRouteQuery(sourceQuery)
 
   const normalized = normalizeUsageScope(filters)
-  for (const key of scopeKeys) setQueryValue(query, key, normalized[key])
-  for (const [key, value] of Object.entries(extra)) setQueryValue(query, key, value)
+  for (const key of scopeKeys) setTrimmedRouteQueryValue(query, key, normalized[key])
+  for (const [key, value] of Object.entries(extra)) setTrimmedRouteQueryValue(query, key, value)
   return query
 }
 
