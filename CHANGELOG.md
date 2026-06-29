@@ -4,6 +4,33 @@ All notable changes to AgentMeter are documented in this file.
 
 ## [Unreleased]
 
+## [v0.4.0] - 2026-06-29
+
+### Added
+
+- Added Model Signals analytics for performance, health drift, degradation risk, model quality risk, multi-metric charts, and source/model comparisons.
+- Added token cache-hit analytics with trend, day, project, and source comparison views.
+- Added TUI pages and navigation for model signals, model risk, token analytics, time analytics, and tool-call drilldowns.
+- Added custom model pricing support and startup behavior that works better with `go install` builds.
+- Added read-only API smoke coverage for overview, tokens, model signals, sessions, tools, audit, pricing, settings, and privacy status.
+
+### Changed
+
+- Split large frontend views, model-signal chart logic, token analytics, route query handling, and backend API helper code into focused modules.
+- Consolidated privacy adapters, shared usage-scope helpers, display formatting, and Web/TUI analytics presentation behavior.
+- Updated install, architecture, pricing, model-signal, validation, session-format, roadmap, and UI documentation for the expanded analytics surface.
+
+### Fixed
+
+- Fixed routed time-detail pages and improved responsive layout behavior.
+- Corrected reasoning-token accounting, token mix ratios, cache-input handling, and pricing suffix fallback behavior.
+- Improved Model Signals chart ordering and label overflow handling.
+
+### Release Notes
+
+- Release assets are packaged as `AgentMeter-windows-amd64.zip`, `AgentMeter-windows-arm64.zip`, `AgentMeter-linux-amd64.tar.gz`, `AgentMeter-linux-arm64.tar.gz`, `AgentMeter-darwin-amd64.tar.gz`, and `AgentMeter-darwin-arm64.tar.gz`.
+- Each release includes `checksums.txt`; archives include the executable, built Web assets, README files, license, and changelog.
+
 ## [v0.3.0] - 2026-06-28
 
 ### Added
@@ -76,7 +103,8 @@ All notable changes to AgentMeter are documented in this file.
 
 - Initial MVP release with the redesigned AgentMeter UI.
 
-[Unreleased]: https://github.com/LyleMi/AgentMeter/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/LyleMi/AgentMeter/compare/v0.4.0...HEAD
+[v0.4.0]: https://github.com/LyleMi/AgentMeter/compare/v0.3.0...v0.4.0
 [v0.3.0]: https://github.com/LyleMi/AgentMeter/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/LyleMi/AgentMeter/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://github.com/LyleMi/AgentMeter/releases/tag/v0.1.0
