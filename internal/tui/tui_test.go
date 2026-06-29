@@ -13,20 +13,36 @@ import (
 
 type fakeService struct {
 	overview  agentmodel.Overview
+	tokens    agentmodel.TokenAnalytics
+	breakdown map[string]agentmodel.UsageBreakdown
 	signals   agentmodel.ModelSignals
 	sessions  []agentmodel.Session
 	detail    agentmodel.SessionDetail
 	tools     []agentmodel.ToolStat
 	toolCalls []agentmodel.ToolCall
+	audit     agentmodel.AuditSummary
+	findings  []agentmodel.AuditFinding
 	settings  agentmodel.Settings
 	privacy   []agentmodel.PrivacyConfigStatus
 	index     agentmodel.IndexResult
 
-	indexCalls       []bool
-	toolCallFilters  []agentmodel.ToolCallFilters
-	privacyApply     agentmodel.PrivacyConfigApplyResult
-	privacyApplyErr  error
-	privacyApplyCall []privacyApplyCall
+	indexCalls          []bool
+	overviewFilters     []agentmodel.AnalyticsFilters
+	tokenFilters        []agentmodel.AnalyticsFilters
+	breakdownFilters    []breakdownFilterCall
+	signalFilters       []agentmodel.AnalyticsFilters
+	toolFilters         []agentmodel.ToolFilters
+	toolCallFilters     []agentmodel.ToolCallFilters
+	auditSummaryFilters []agentmodel.AuditFindingFilters
+	auditFindingFilters []agentmodel.AuditFindingFilters
+	privacyApply        agentmodel.PrivacyConfigApplyResult
+	privacyApplyErr     error
+	privacyApplyCall    []privacyApplyCall
+}
+
+type breakdownFilterCall struct {
+	groupBy string
+	filters agentmodel.AnalyticsFilters
 }
 
 type privacyApplyCall struct {
@@ -38,7 +54,28 @@ func (f *fakeService) GetOverview() (agentmodel.Overview, error) {
 	return f.overview, nil
 }
 
-func (f *fakeService) GetModelSignalsWithFilters(_ agentmodel.AnalyticsFilters) (agentmodel.ModelSignals, error) {
+func (f *fakeService) GetOverviewWithFilters(filters agentmodel.AnalyticsFilters) (agentmodel.Overview, error) {
+	f.overviewFilters = append(f.overviewFilters, filters)
+	return f.overview, nil
+}
+
+func (f *fakeService) GetTokenAnalyticsWithFilters(filters agentmodel.AnalyticsFilters) (agentmodel.TokenAnalytics, error) {
+	f.tokenFilters = append(f.tokenFilters, filters)
+	return f.tokens, nil
+}
+
+func (f *fakeService) GetUsageBreakdown(groupBy string, filters agentmodel.AnalyticsFilters) (agentmodel.UsageBreakdown, error) {
+	f.breakdownFilters = append(f.breakdownFilters, breakdownFilterCall{groupBy: groupBy, filters: filters})
+	if f.breakdown != nil {
+		if value, ok := f.breakdown[groupBy]; ok {
+			return value, nil
+		}
+	}
+	return agentmodel.UsageBreakdown{GroupBy: groupBy, Buckets: []agentmodel.UsageBreakdownBucket{}}, nil
+}
+
+func (f *fakeService) GetModelSignalsWithFilters(filters agentmodel.AnalyticsFilters) (agentmodel.ModelSignals, error) {
+	f.signalFilters = append(f.signalFilters, filters)
 	return f.signals, nil
 }
 
@@ -50,8 +87,48 @@ func (f *fakeService) GetSessionDetail(_ int64) (agentmodel.SessionDetail, error
 	return f.detail, nil
 }
 
-func (f *fakeService) GetTools() ([]agentmodel.ToolStat, error) {
-	return f.tools, nil
+func (f *fakeService) ListTools(filters agentmodel.ToolFilters) ([]agentmodel.ToolStat, error) {
+	f.toolFilters = append(f.toolFilters, filters)
+	if strings.TrimSpace(filters.Agent) == "" {
+		return f.tools, nil
+	}
+	stats := map[string]*agentmodel.ToolStat{}
+	for _, call := range f.toolCalls {
+		if !toolCallMatchesAgent(call, filters.Agent) {
+			continue
+		}
+		toolName := call.ToolName
+		if toolName == "" {
+			toolName = "unknown"
+		}
+		stat := stats[toolName]
+		if stat == nil {
+			stat = &agentmodel.ToolStat{ToolName: toolName}
+			stats[toolName] = stat
+		}
+		stat.Calls++
+		switch strings.ToLower(strings.TrimSpace(call.Status)) {
+		case "completed", "success":
+			stat.SuccessCalls++
+		default:
+			stat.FailedCalls++
+		}
+		stat.TotalDurationMS += call.DurationMS
+	}
+	result := make([]agentmodel.ToolStat, 0, len(stats))
+	for _, stat := range stats {
+		if stat.Calls > 0 {
+			stat.AvgDurationMS = float64(stat.TotalDurationMS) / float64(stat.Calls)
+		}
+		result = append(result, *stat)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Calls == result[j].Calls {
+			return result[i].ToolName < result[j].ToolName
+		}
+		return result[i].Calls > result[j].Calls
+	})
+	return result, nil
 }
 
 func (f *fakeService) ListToolCalls(filters agentmodel.ToolCallFilters) ([]agentmodel.ToolCall, error) {
@@ -59,6 +136,12 @@ func (f *fakeService) ListToolCalls(filters agentmodel.ToolCallFilters) ([]agent
 	result := make([]agentmodel.ToolCall, 0, len(f.toolCalls))
 	for _, call := range f.toolCalls {
 		if strings.TrimSpace(filters.ToolName) != "" && call.ToolName != filters.ToolName {
+			continue
+		}
+		if strings.TrimSpace(filters.Agent) != "" && !toolCallMatchesAgent(call, filters.Agent) {
+			continue
+		}
+		if strings.TrimSpace(filters.StartedFrom) != "" && call.StartedAt.Before(parseTestTime(filters.StartedFrom)) {
 			continue
 		}
 		result = append(result, call)
@@ -93,6 +176,87 @@ func (f *fakeService) ListToolCalls(filters agentmodel.ToolCallFilters) ([]agent
 		result = result[:filters.Limit]
 	}
 	return result, nil
+}
+
+func toolCallMatchesAgent(call agentmodel.ToolCall, filter string) bool {
+	filter = strings.ToLower(strings.TrimSpace(filter))
+	if filter == "" {
+		return true
+	}
+	values := []string{
+		call.SourceKey,
+		call.SourceLabel,
+		call.AgentKind,
+		call.AgentName,
+	}
+	if call.SourceID > 0 {
+		values = append(values, fmt.Sprintf("source:%d", call.SourceID))
+	}
+	for _, value := range values {
+		if strings.ToLower(strings.TrimSpace(value)) == filter {
+			return true
+		}
+	}
+	return false
+}
+
+func parseTestTime(value string) time.Time {
+	parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(value))
+	if err != nil {
+		return time.Time{}
+	}
+	return parsed
+}
+
+func (f *fakeService) GetAuditSummaryWithFilters(filters agentmodel.AuditFindingFilters) (agentmodel.AuditSummary, error) {
+	f.auditSummaryFilters = append(f.auditSummaryFilters, filters)
+	return f.audit, nil
+}
+
+func (f *fakeService) ListAuditFindings(filters agentmodel.AuditFindingFilters) ([]agentmodel.AuditFinding, error) {
+	f.auditFindingFilters = append(f.auditFindingFilters, filters)
+	result := make([]agentmodel.AuditFinding, 0, len(f.findings))
+	search := strings.ToLower(strings.TrimSpace(filters.Search))
+	for _, finding := range f.findings {
+		if strings.TrimSpace(filters.Agent) != "" && !auditFindingMatchesAgent(finding, filters.Agent) {
+			continue
+		}
+		if filters.Category != "" && !strings.EqualFold(finding.Category, filters.Category) {
+			continue
+		}
+		if filters.Severity != "" && !strings.EqualFold(finding.Severity, filters.Severity) {
+			continue
+		}
+		if filters.ShellFamily != "" && !strings.EqualFold(finding.ShellFamily, filters.ShellFamily) {
+			continue
+		}
+		if search != "" {
+			haystack := strings.ToLower(strings.Join([]string{finding.Title, finding.Command, finding.Evidence, finding.ProjectPath}, " "))
+			if !strings.Contains(haystack, search) {
+				continue
+			}
+		}
+		result = append(result, finding)
+	}
+	if filters.Offset > 0 && filters.Offset < len(result) {
+		result = result[filters.Offset:]
+	}
+	if filters.Offset >= len(result) {
+		result = []agentmodel.AuditFinding{}
+	}
+	if filters.Limit > 0 && filters.Limit < len(result) {
+		result = result[:filters.Limit]
+	}
+	return result, nil
+}
+
+func (f *fakeService) GetAuditFinding(id int64) (agentmodel.AuditFinding, error) {
+	for _, finding := range f.findings {
+		if finding.ID == id {
+			return finding, nil
+		}
+	}
+	return agentmodel.AuditFinding{}, fmt.Errorf("audit finding %d not found", id)
 }
 
 func (f *fakeService) GetSettings() (agentmodel.Settings, error) {
@@ -144,11 +308,86 @@ func TestOverviewLoadsAndRenders(t *testing.T) {
 	assertContains(t, view, "Recent Sessions")
 }
 
+func TestUsageScopeFiltersAreAppliedAcrossAnalyticsPages(t *testing.T) {
+	svc := sampleService()
+	st := newState(svc, 150, 40)
+
+	cmd := st.init()
+	st.update(runCommand(t, cmd))
+
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: 'u'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if got := lastAnalyticsFilter(t, svc.overviewFilters).Agent; got != "source:7" {
+		t.Fatalf("overview agent filter = %q, want source:7", got)
+	}
+	assertContains(t, st.view(), "scope source Work Codex")
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'v'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if got := lastAnalyticsFilter(t, svc.overviewFilters).Model; got != "gpt-5-codex" {
+		t.Fatalf("overview model filter = %q, want gpt-5-codex", got)
+	}
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'w'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if got := lastAnalyticsFilter(t, svc.overviewFilters).Project; got != `D:\tools\custom\AgentMeter` {
+		t.Fatalf("overview project filter = %q, want project path", got)
+	}
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'e'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if got := lastAnalyticsFilter(t, svc.overviewFilters).StartedFrom; got == "" {
+		t.Fatal("overview range filter StartedFrom is empty")
+	}
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: '3'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	tokenFilter := lastAnalyticsFilter(t, svc.tokenFilters)
+	if tokenFilter.Agent != "source:7" || tokenFilter.Model != "gpt-5-codex" || tokenFilter.Project == "" || tokenFilter.StartedFrom == "" {
+		t.Fatalf("token filters = %+v, want inherited usage scope", tokenFilter)
+	}
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: '4'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	signalFilter := lastAnalyticsFilter(t, svc.signalFilters)
+	if signalFilter.Agent != "source:7" || signalFilter.Model != "gpt-5-codex" || signalFilter.Project == "" || signalFilter.StartedFrom == "" {
+		t.Fatalf("signal filters = %+v, want inherited usage scope", signalFilter)
+	}
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'U'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	cleared := lastAnalyticsFilter(t, svc.signalFilters)
+	if cleared.Agent != "" || cleared.Model != "" || cleared.Project != "" || cleared.StartedFrom != "" {
+		t.Fatalf("cleared signal filters = %+v, want empty", cleared)
+	}
+}
+
 func TestSessionsOpenDetail(t *testing.T) {
 	svc := sampleService()
 	st := newState(svc, 100, 40)
 
-	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '2'})
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: 's'})
 	if quit {
 		t.Fatal("unexpected quit")
 	}
@@ -174,7 +413,7 @@ func TestIndexNowRefreshesCurrentPage(t *testing.T) {
 	svc := sampleService()
 	st := newState(svc, 100, 24)
 
-	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '4'})
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: 'g'})
 	if quit {
 		t.Fatal("unexpected quit")
 	}
@@ -211,7 +450,7 @@ func TestToolsOpenToolCallsAndDetail(t *testing.T) {
 	svc := sampleService()
 	st := newState(svc, 120, 30)
 
-	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '3'})
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: 't'})
 	if quit {
 		t.Fatal("unexpected quit")
 	}
@@ -272,6 +511,187 @@ func TestToolsOpenToolCallsAndDetail(t *testing.T) {
 	st.update(runCommand(t, cmd))
 	if st.page != pageToolCalls {
 		t.Fatalf("page = %v, want tool calls after back", st.page)
+	}
+}
+
+func TestToolsTabsAndFiltersRender(t *testing.T) {
+	svc := sampleService()
+	st := newState(svc, 140, 45)
+
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: 't'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+
+	view := st.view()
+	assertContains(t, view, "Tools")
+	assertContains(t, view, "Activity Summary")
+	assertContains(t, view, "Top Tools")
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: ']'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	view = st.view()
+	assertContains(t, view, "Tool Summary")
+	assertContains(t, view, "shell_command")
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: ']'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	view = st.view()
+	assertContains(t, view, "Shell Commands")
+	assertContains(t, view, "shell_command")
+	assertNotContains(t, view, "web_fetch")
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'd'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if got := lastToolCallFilter(t, svc.toolCallFilters).Sort; got != "duration_desc" {
+		t.Fatalf("tool sort filter = %q, want duration_desc", got)
+	}
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'v'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	assertContains(t, st.view(), "command rg")
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'u'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if got := lastToolFilter(t, svc.toolFilters).Agent; got != "source:7" {
+		t.Fatalf("tool summary source filter = %q, want source:7", got)
+	}
+	if got := lastToolCallFilter(t, svc.toolCallFilters).Agent; got != "source:7" {
+		t.Fatalf("tool source filter = %q, want source:7", got)
+	}
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'e'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if got := lastToolCallFilter(t, svc.toolCallFilters).StartedFrom; got == "" {
+		t.Fatal("tool range filter StartedFrom is empty")
+	}
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'U'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	cleared := lastToolCallFilter(t, svc.toolCallFilters)
+	if cleared.Agent != "" || cleared.StartedFrom != "" {
+		t.Fatalf("cleared tool filters = %+v, want empty agent/range", cleared)
+	}
+}
+
+func TestToolsShellTabFetchesShellToolsBeforeLocalLimit(t *testing.T) {
+	svc := sampleService()
+	base := time.Date(2026, 6, 27, 9, 30, 0, 0, time.UTC)
+	shellCall := svc.toolCalls[0]
+	shellCall.StartedAt = base
+	shellCall.EndedAt = base.Add(250 * time.Millisecond)
+	svc.toolCalls = []agentmodel.ToolCall{shellCall}
+	for i := 0; i < 600; i++ {
+		call := svc.toolCalls[0]
+		call.ID = int64(1000 + i)
+		call.ToolName = "web_fetch"
+		call.InputSummary = fmt.Sprintf("https://example.test/%d", i)
+		call.StartedAt = base.Add(time.Duration(i+1) * time.Minute)
+		call.EndedAt = call.StartedAt.Add(500 * time.Millisecond)
+		call.DurationMS = 500
+		svc.toolCalls = append(svc.toolCalls, call)
+	}
+
+	st := newState(svc, 140, 35)
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: 't'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: ']'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: ']'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+
+	view := st.view()
+	assertContains(t, view, "Shell Commands")
+	assertContains(t, view, "shell_command")
+	assertContains(t, view, "rg --files")
+	for _, filters := range svc.toolCallFilters {
+		if filters.ToolName == "shell_command" {
+			return
+		}
+	}
+	t.Fatalf("tool call filters = %+v, want per-shell-tool request", svc.toolCallFilters)
+}
+
+func TestToolsTabDetailReturnsToOriginTab(t *testing.T) {
+	svc := sampleService()
+	st := newState(svc, 140, 35)
+
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: 't'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	for i := 0; i < 2; i++ {
+		cmd, quit = st.update(keyMsg{typ: keyRune, ch: ']'})
+		if quit {
+			t.Fatal("unexpected quit")
+		}
+		st.update(runCommand(t, cmd))
+	}
+	if st.toolsTab != toolsTabShell {
+		t.Fatalf("tools tab = %v, want shell", st.toolsTab)
+	}
+
+	cmd, quit = st.update(keyMsg{typ: keyEnter})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	if cmd != nil {
+		t.Fatal("tool detail open from tools tab should not load")
+	}
+	if st.page != pageToolCallDetail {
+		t.Fatalf("page = %v, want tool call detail", st.page)
+	}
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'b'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if st.page != pageTools || st.toolsTab != toolsTabShell {
+		t.Fatalf("page/tab = %v/%v, want tools/shell", st.page, st.toolsTab)
+	}
+}
+
+func TestInvokedToolCommandMatchesStructuredShellInput(t *testing.T) {
+	call := agentmodel.ToolCall{
+		ToolName:          "shell_command",
+		InputSummary:      "fallback should not win",
+		RawStartEventJSON: `{"payload":{"type":"function_call","name":"shell_command","arguments":"{\"command\":\"cd src && sudo -u agent rg --files\"}"}}`,
+	}
+	if got := invokedToolCommand(call); got != "rg" {
+		t.Fatalf("invoked command = %q, want rg", got)
 	}
 }
 
@@ -394,6 +814,292 @@ func TestModelSignalsNarrowWidthViewsRender(t *testing.T) {
 	}
 }
 
+func TestTimePageTabsRender(t *testing.T) {
+	svc := sampleService()
+	st := newState(svc, 140, 50)
+
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '2'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+
+	view := st.view()
+	assertContains(t, view, "Time")
+	assertContains(t, view, "Composition")
+	assertContains(t, view, "Source Time Attribution")
+
+	st.update(keyMsg{typ: keyRune, ch: ']'})
+	view = st.view()
+	assertContains(t, view, "Source Time Comparison")
+	assertContains(t, view, "Work Codex")
+
+	st.update(keyMsg{typ: keyRune, ch: ']'})
+	view = st.view()
+	assertContains(t, view, "Tool Duration Leaders")
+	assertContains(t, view, "web_fetch")
+
+	st.update(keyMsg{typ: keyRune, ch: ']'})
+	view = st.view()
+	assertContains(t, view, "Slow Sessions")
+	assertContains(t, view, "gpt-5-codex")
+}
+
+func TestTokensPageTabsAndBreakdownGroupRender(t *testing.T) {
+	svc := sampleService()
+	st := newState(svc, 150, 60)
+
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '3'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+
+	view := st.view()
+	assertContains(t, view, "Tokens")
+	assertContains(t, view, "Token Mix")
+	assertContains(t, view, "Source Cache Hit Rate")
+
+	st.update(keyMsg{typ: keyRune, ch: ']'})
+	view = st.view()
+	assertContains(t, view, "Cache Hit Trend")
+	assertContains(t, view, "Latest hit rate")
+
+	st.update(keyMsg{typ: keyRune, ch: ']'})
+	view = st.view()
+	assertContains(t, view, "Usage Breakdown")
+	assertContains(t, view, "Group: Global")
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'd'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	view = st.view()
+	assertContains(t, view, "Group: Source")
+
+	for i := 0; i < 3; i++ {
+		cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'd'})
+		if quit {
+			t.Fatal("unexpected quit")
+		}
+		st.update(runCommand(t, cmd))
+	}
+	view = st.view()
+	assertContains(t, view, "Group: Project")
+	assertContains(t, view, "AgentMeter")
+
+	st.update(keyMsg{typ: keyRune, ch: ']'})
+	view = st.view()
+	assertContains(t, view, "High Token Sessions")
+	assertContains(t, view, "12,345")
+}
+
+func TestModelRiskLoadsAndRenders(t *testing.T) {
+	svc := sampleService()
+	st := newState(svc, 160, 40)
+
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '5'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+
+	view := st.view()
+	assertContains(t, view, "Model Risk")
+	assertContains(t, view, "Highest risk")
+	assertContains(t, view, "Score Drivers")
+	assertContains(t, view, "Risk Explanations")
+	assertContains(t, view, "gpt-5-codex")
+}
+
+func TestModelRiskReasonMatchesWebPriority(t *testing.T) {
+	rows := buildModelRiskRows(agentmodel.ModelSignals{
+		Matrix: []agentmodel.ModelSignalsMatrixRow{{
+			SourceKey:   "source:7",
+			SourceLabel: "Work Codex",
+			Cells: []agentmodel.ModelSignalsMatrixCell{{
+				ModelProvider: "openai",
+				Model:         "gpt-5-codex",
+				KeyReason:     "key reason should be fallback",
+				Current: agentmodel.ModelSignalsMetricSet{
+					SessionCount:         2,
+					ModelCalls:           3,
+					TotalTokens:          1000,
+					FailurePressure:      0.5,
+					DegradationRiskScore: 0.5,
+				},
+				Drift: agentmodel.ModelSignalsDrift{
+					Reasons: []string{"drift reason first"},
+				},
+			}},
+		}},
+	})
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want 1", len(rows))
+	}
+	if rows[0].Reason != "drift reason first" {
+		t.Fatalf("reason = %q, want drift reason first", rows[0].Reason)
+	}
+}
+
+func TestAuditSummaryFindingsAndDetailRender(t *testing.T) {
+	svc := sampleService()
+	st := newState(svc, 150, 55)
+
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '8'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+
+	view := st.view()
+	assertContains(t, view, "Audit")
+	assertContains(t, view, "Recent Findings")
+	assertContains(t, view, "shell.suspicious")
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'f'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if st.page != pageAuditFindings {
+		t.Fatalf("page = %v, want audit findings", st.page)
+	}
+	view = st.view()
+	assertContains(t, view, "Audit Findings")
+	assertContains(t, view, "shell.suspicious")
+
+	cmd, quit = st.update(keyMsg{typ: keyEnter})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if st.page != pageAuditDetail {
+		t.Fatalf("page = %v, want audit detail", st.page)
+	}
+	view = st.view()
+	assertContains(t, view, "Finding Detail")
+	assertContains(t, view, "rg --files")
+	assertContains(t, view, "Linked Session")
+	assertContains(t, view, "Session Tool Calls")
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'b'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if st.page != pageAuditFindings {
+		t.Fatalf("page = %v, want audit findings after back", st.page)
+	}
+}
+
+func TestAuditFiltersAreApplied(t *testing.T) {
+	svc := sampleService()
+	st := newState(svc, 150, 40)
+
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '8'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'u'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if got := lastAuditSummaryFilter(t, svc.auditSummaryFilters).Agent; got != "source:7" {
+		t.Fatalf("audit summary agent filter = %q, want source:7", got)
+	}
+	assertContains(t, st.view(), "filters source Work Codex")
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'f'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if got := lastAuditFindingFilter(t, svc.auditFindingFilters).Agent; got != "source:7" {
+		t.Fatalf("audit finding agent filter = %q, want source:7", got)
+	}
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'c'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if got := lastAuditFindingFilter(t, svc.auditFindingFilters).Category; got != "command" {
+		t.Fatalf("audit category filter = %q, want command", got)
+	}
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'v'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if got := lastAuditFindingFilter(t, svc.auditFindingFilters).Severity; got != "critical" {
+		t.Fatalf("audit severity filter = %q, want critical", got)
+	}
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'y'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if got := lastAuditFindingFilter(t, svc.auditFindingFilters).ShellFamily; got != "posix" {
+		t.Fatalf("audit shell filter = %q, want posix", got)
+	}
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'U'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	cleared := lastAuditFindingFilter(t, svc.auditFindingFilters)
+	if cleared.Agent != "" || cleared.Category != "" || cleared.Severity != "" || cleared.ShellFamily != "" {
+		t.Fatalf("cleared audit filters = %+v, want empty", cleared)
+	}
+}
+
+func TestAuditDetailReloadsWhenSourceFilterChanges(t *testing.T) {
+	svc := sampleService()
+	svc.overview.AgentUsage = append([]agentmodel.AgentUsage{{
+		SourceID:       99,
+		SourceKey:      "source:99",
+		SourceLabel:    "Archive Agent",
+		AgentKind:      "codex",
+		AgentName:      "Archive",
+		SourceRootPath: `D:\sessions\archive`,
+	}}, svc.overview.AgentUsage...)
+	st := newState(svc, 150, 45)
+
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '8'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	cmd, quit = st.update(keyMsg{typ: keyEnter})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if st.page != pageAuditDetail || st.finding == nil {
+		t.Fatalf("page/finding = %v/%v, want audit detail with finding", st.page, st.finding)
+	}
+
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'u'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if st.page != pageAuditDetail {
+		t.Fatalf("page = %v, want audit detail", st.page)
+	}
+	if st.err == nil || !strings.Contains(st.err.Error(), "does not match source filter") {
+		t.Fatalf("err = %v, want source filter mismatch", st.err)
+	}
+}
+
 func TestToolsAndToolCallsKeepSelectedRowVisible(t *testing.T) {
 	svc := sampleService()
 	started := time.Date(2026, 6, 27, 9, 30, 0, 0, time.Local)
@@ -415,7 +1121,7 @@ func TestToolsAndToolCallsKeepSelectedRowVisible(t *testing.T) {
 	}
 	st := newState(svc, 100, 12)
 
-	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '3'})
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: 't'})
 	if quit {
 		t.Fatal("unexpected quit")
 	}
@@ -452,7 +1158,7 @@ func TestPrivacyPageLoadsAndRenders(t *testing.T) {
 	svc := sampleService()
 	st := newState(svc, 100, 70)
 
-	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '5'})
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: 'p'})
 	if quit {
 		t.Fatal("unexpected quit")
 	}
@@ -485,22 +1191,22 @@ func TestPrivacyPageLoadsAndRenders(t *testing.T) {
 	assertContains(t, view, "Broken JSON")
 	assertContains(t, view, "read-only")
 
-	cmd, quit = st.update(keyMsg{typ: keyShiftTab})
-	if quit {
-		t.Fatal("unexpected quit")
-	}
-	st.update(runCommand(t, cmd))
-	if st.page != pageSettings {
-		t.Fatalf("page = %v, want settings after shift-tab from privacy", st.page)
-	}
-
 	cmd, quit = st.update(keyMsg{typ: keyTab})
 	if quit {
 		t.Fatal("unexpected quit")
 	}
 	st.update(runCommand(t, cmd))
+	if st.page != pageSettings {
+		t.Fatalf("page = %v, want settings after tab from privacy", st.page)
+	}
+
+	cmd, quit = st.update(keyMsg{typ: keyShiftTab})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
 	if st.page != pagePrivacy {
-		t.Fatalf("page = %v, want privacy after tab from settings", st.page)
+		t.Fatalf("page = %v, want privacy after shift-tab from settings", st.page)
 	}
 }
 
@@ -530,7 +1236,7 @@ func TestPrivacyProfileRequiresConfirmationBeforeApply(t *testing.T) {
 	}
 	st := newState(svc, 100, 60)
 
-	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '5'})
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: 'p'})
 	if quit {
 		t.Fatal("unexpected quit")
 	}
@@ -657,10 +1363,16 @@ func sampleService() *fakeService {
 		StartedAt:          started,
 		EndedAt:            started.Add(15 * time.Minute),
 		WallDurationMS:     900000,
+		ActiveDurationMS:   600000,
+		ModelDurationMS:    300000,
+		ToolDurationMS:     300000,
+		IdleDurationMS:     300000,
 		TokenUsage: agentmodel.Usage{
-			TotalTokens:  12345,
-			InputTokens:  8000,
-			OutputTokens: 4345,
+			TotalTokens:           12345,
+			InputTokens:           8000,
+			CachedInputTokens:     1200,
+			OutputTokens:          4345,
+			ReasoningOutputTokens: 745,
 		},
 		EstimatedCostUSD: &cost,
 		ToolCallCount:    2,
@@ -721,23 +1433,138 @@ func sampleService() *fakeService {
 		RawSourcePath:      session.RawSourcePath,
 	}
 	index := agentmodel.IndexResult{FilesSeen: 4, Indexed: 3, Skipped: 1, Sessions: 2, DurationMS: 1200}
+	auditFinding := agentmodel.AuditFinding{
+		ID:                 501,
+		SessionID:          session.ID,
+		SourceID:           session.SourceID,
+		SourceKey:          session.SourceKey,
+		SourceLabel:        session.SourceLabel,
+		SourceRootPath:     session.SourceRootPath,
+		SourceSessionsPath: session.SourceSessionsPath,
+		ToolCallID:         toolCall.ID,
+		RawEventID:         toolCall.RawEventID,
+		SourceLine:         17,
+		Timestamp:          started.Add(2 * time.Minute),
+		Source:             "offline",
+		EventType:          "tool_call",
+		Category:           "command",
+		Severity:           "high",
+		RuleID:             "shell.suspicious",
+		Title:              "Suspicious shell command",
+		Description:        "Shell command should be reviewed",
+		Evidence:           "rg --files listed repository paths",
+		Command:            "rg --files",
+		ShellFamily:        "powershell",
+		Platform:           "windows",
+		Decision:           "observed",
+		CreatedAt:          started.Add(2 * time.Minute),
+		SessionKey:         session.SessionKey,
+		ProjectPath:        session.ProjectPath,
+		AgentKind:          session.AgentKind,
+		AgentName:          session.AgentName,
+		RawSourcePath:      session.RawSourcePath,
+	}
 	return &fakeService{
 		overview: agentmodel.Overview{
-			TotalSessions:         2,
-			TotalTokens:           12345,
-			TotalInputTokens:      8000,
-			TotalOutputTokens:     4345,
-			EstimatedCostUSD:      &cost,
-			TotalWallDurationMS:   900000,
-			TotalActiveDurationMS: 600000,
-			TotalToolCalls:        2,
+			TotalSessions:                  2,
+			TotalTokens:                    12345,
+			TotalInputTokens:               8000,
+			TotalCachedInputTokens:         1200,
+			TotalOutputTokens:              4345,
+			TotalReasoningTokens:           745,
+			EstimatedCostUSD:               &cost,
+			TotalWallDurationMS:            900000,
+			TotalActiveDurationMS:          600000,
+			TotalModelDurationMS:           300000,
+			TotalToolDurationMS:            300000,
+			TotalIdleDurationMS:            300000,
+			TotalToolCalls:                 2,
+			SuspectedNetworkToolDurationMS: 500,
+			SuspectedNetworkToolCalls:      1,
+			DailyUsage: []agentmodel.DailyUsage{{
+				Date:                 "2026-06-27",
+				SessionCount:         2,
+				TotalTokens:          12345,
+				InputTokens:          8000,
+				CachedInputTokens:    1200,
+				OutputTokens:         4345,
+				ToolCalls:            2,
+				CacheUtilizationRate: 0.15,
+				EstimatedCostUSD:     &cost,
+			}},
+			CacheHitTrend: []agentmodel.CacheHitTrendPoint{{
+				Date:                        "2026-06-27",
+				SessionCount:                2,
+				TotalTokens:                 12345,
+				InputTokens:                 8000,
+				CachedInputTokens:           1200,
+				CacheUtilizationRate:        0.15,
+				RollingCacheUtilizationRate: 0.15,
+				LowInputVolume:              false,
+				HasUsage:                    true,
+			}},
 			ModelUsage: []agentmodel.ModelUsage{
-				{Model: "gpt-5-codex", SessionCount: 2, TotalTokens: 12345, EstimatedCostUSD: &cost},
+				{Model: "gpt-5-codex", SessionCount: 2, TotalTokens: 12345, InputTokens: 8000, CachedInputTokens: 1200, OutputTokens: 4345, ReasoningOutputTokens: 745, EstimatedCostUSD: &cost},
 			},
 			AgentUsage: []agentmodel.AgentUsage{
-				{SourceID: 7, SourceKey: "source:7", SourceLabel: "Work Codex", SourceRootPath: `D:\sessions\codex-work`, SourceSessionsPath: `D:\sessions\codex-work\sessions`, AgentKind: "codex", AgentName: "Codex", SessionCount: 2, TotalTokens: 12345, ToolCalls: 2, EstimatedCostUSD: &cost},
+				{SourceID: 7, SourceKey: "source:7", SourceLabel: "Work Codex", SourceRootPath: `D:\sessions\codex-work`, SourceSessionsPath: `D:\sessions\codex-work\sessions`, AgentKind: "codex", AgentName: "Codex", SessionCount: 2, TotalTokens: 12345, InputTokens: 8000, CachedInputTokens: 1200, OutputTokens: 4345, ReasoningOutputTokens: 745, CacheUtilizationRate: 0.15, ToolCalls: 2, EstimatedCostUSD: &cost},
+			},
+			ToolTimeLeaders: []agentmodel.ToolTimeUsage{
+				{ToolName: "web_fetch", Calls: 1, FailedCalls: 1, TotalDurationMS: 500, AvgDurationMS: 500, MaxDurationMS: 500, SuspectedNetwork: true},
+				{ToolName: "shell_command", Calls: 2, SuccessCalls: 2, TotalDurationMS: 500, AvgDurationMS: 250, MaxDurationMS: 250},
+			},
+			AgentTimeUsage: []agentmodel.AgentTimeUsage{
+				{SourceID: 7, SourceKey: "source:7", SourceLabel: "Work Codex", SourceRootPath: `D:\sessions\codex-work`, SourceSessionsPath: `D:\sessions\codex-work\sessions`, AgentKind: "codex", AgentName: "Codex", SessionCount: 2, ToolCalls: 2, WallDurationMS: 900000, ActiveDurationMS: 600000, ModelDurationMS: 300000, ToolDurationMS: 300000, IdleDurationMS: 300000, SuspectedNetworkToolDurationMS: 500},
+			},
+			ModelTimeUsage: []agentmodel.ModelTimeUsage{
+				{Model: "gpt-5-codex", SessionCount: 2, TotalTokens: 12345, WallDurationMS: 900000, ActiveDurationMS: 600000, ModelDurationMS: 300000, ToolDurationMS: 300000, IdleDurationMS: 300000},
 			},
 			RecentSessions: []agentmodel.Session{session},
+			SlowSessions:   []agentmodel.Session{session},
+		},
+		tokens: agentmodel.TokenAnalytics{
+			TotalSessions:          2,
+			TotalInputTokens:       8000,
+			TotalCachedInputTokens: 1200,
+			TotalOutputTokens:      4345,
+			TotalReasoningTokens:   745,
+			TotalTokens:            12345,
+			CacheUtilizationRate:   0.15,
+			EstimatedCostUSD:       &cost,
+			CacheHitTrend: []agentmodel.CacheHitTrendPoint{{
+				Date:                        "2026-06-27",
+				SessionCount:                2,
+				TotalTokens:                 12345,
+				InputTokens:                 8000,
+				CachedInputTokens:           1200,
+				CacheUtilizationRate:        0.15,
+				RollingCacheUtilizationRate: 0.15,
+				HasUsage:                    true,
+			}},
+			ModelUsage: []agentmodel.ModelUsage{
+				{Model: "gpt-5-codex", SessionCount: 2, TotalTokens: 12345, InputTokens: 8000, CachedInputTokens: 1200, OutputTokens: 4345, ReasoningOutputTokens: 745, EstimatedCostUSD: &cost},
+			},
+			AgentUsage: []agentmodel.AgentUsage{
+				{SourceID: 7, SourceKey: "source:7", SourceLabel: "Work Codex", SourceRootPath: `D:\sessions\codex-work`, SourceSessionsPath: `D:\sessions\codex-work\sessions`, AgentKind: "codex", AgentName: "Codex", SessionCount: 2, TotalTokens: 12345, InputTokens: 8000, CachedInputTokens: 1200, OutputTokens: 4345, ReasoningOutputTokens: 745, CacheUtilizationRate: 0.15, ToolCalls: 2, EstimatedCostUSD: &cost},
+			},
+			RecentSessions:    []agentmodel.Session{session},
+			HighTokenSessions: []agentmodel.Session{session},
+		},
+		breakdown: map[string]agentmodel.UsageBreakdown{
+			"project": {
+				GroupBy: "project",
+				Buckets: []agentmodel.UsageBreakdownBucket{{
+					ProjectPath:           session.ProjectPath,
+					SessionCount:          2,
+					TotalTokens:           12345,
+					InputTokens:           8000,
+					CachedInputTokens:     1200,
+					OutputTokens:          4345,
+					ReasoningOutputTokens: 745,
+					CacheUtilizationRate:  0.15,
+					EstimatedCostUSD:      &cost,
+				}},
+			},
 		},
 		signals: agentmodel.ModelSignals{
 			TotalSessions:                        2,
@@ -852,7 +1679,43 @@ func sampleService() *fakeService {
 				SourceLabel: "Work Codex",
 				AgentKind:   "codex",
 				AgentName:   "Codex",
-				Cells:       []agentmodel.ModelSignalsMatrixCell{{ModelProvider: "openai", Model: "gpt-5-codex", Severity: "warning", Confidence: "medium", SessionCount: 2, ModelCalls: 3, TotalTokens: 12345}},
+				Cells: []agentmodel.ModelSignalsMatrixCell{{
+					ModelProvider: "openai",
+					Model:         "gpt-5-codex",
+					CohortCount:   1,
+					Severity:      "warning",
+					Confidence:    "medium",
+					KeyReason:     "Tool failures above baseline",
+					SessionCount:  2,
+					ModelCalls:    3,
+					TotalTokens:   12345,
+					Current: agentmodel.ModelSignalsMetricSet{
+						SessionCount:                         2,
+						ModelCalls:                           3,
+						FailedToolCalls:                      1,
+						TotalTokens:                          12345,
+						P90ModelLatencyMsPer1kOutputTokens:   2400,
+						P10ModelThroughputTokensPerSecond:    11.2,
+						ModelThroughputOutputTokensPerSecond: 6.5,
+						ToolFailureRate:                      0.5,
+						CacheMissRate:                        0.72,
+						AvgModelCallsPerSession:              1.5,
+						OutputExpansionRate:                  0.54,
+						ReasoningOverheadRate:                0.22,
+						FailurePressure:                      0.5,
+						DegradationRiskScore:                 0.43,
+					},
+					Baseline: agentmodel.ModelSignalsMetricSet{
+						SessionCount:                   12,
+						ModelCalls:                     20,
+						ModelThroughputTokensPerSecond: 30,
+					},
+					Drift: agentmodel.ModelSignalsDrift{
+						Severity:   "warning",
+						Confidence: "medium",
+						Reasons:    []string{"Tool failures above baseline"},
+					},
+				}},
 			}},
 			AnomalySessions: []agentmodel.ModelSignalsAnomalySession{{
 				SessionID:                      session.ID,
@@ -892,6 +1755,14 @@ func sampleService() *fakeService {
 			{ToolName: "web_fetch", Calls: 1, FailedCalls: 1, TotalDurationMS: 500, AvgDurationMS: 500},
 		},
 		toolCalls: []agentmodel.ToolCall{toolCall, webCall},
+		audit: agentmodel.AuditSummary{
+			TotalFindings:        1,
+			HighFindings:         1,
+			CommandFindings:      1,
+			SessionsWithFindings: 1,
+			RecentFindings:       []agentmodel.AuditFinding{auditFinding},
+		},
+		findings: []agentmodel.AuditFinding{auditFinding},
 		settings: agentmodel.Settings{
 			DatabasePath:    `D:\tools\custom\AgentMeter\agentmeter.sqlite`,
 			SourceEntries:   []agentmodel.SourceEntry{{Path: `D:\sessions\codex-work`, Label: "Work Codex", Enabled: true}},
@@ -976,6 +1847,13 @@ func assertContains(t *testing.T, value, want string) {
 	}
 }
 
+func assertNotContains(t *testing.T, value, want string) {
+	t.Helper()
+	if strings.Contains(value, want) {
+		t.Fatalf("view contains %q:\n%s", want, value)
+	}
+}
+
 func assertSelectedLineContains(t *testing.T, view, want string) {
 	t.Helper()
 	for _, line := range strings.Split(view, "\n") {
@@ -984,4 +1862,44 @@ func assertSelectedLineContains(t *testing.T, view, want string) {
 		}
 	}
 	t.Fatalf("selected row does not contain %q:\n%s", want, view)
+}
+
+func lastToolCallFilter(t *testing.T, filters []agentmodel.ToolCallFilters) agentmodel.ToolCallFilters {
+	t.Helper()
+	if len(filters) == 0 {
+		t.Fatal("no tool call filters recorded")
+	}
+	return filters[len(filters)-1]
+}
+
+func lastToolFilter(t *testing.T, filters []agentmodel.ToolFilters) agentmodel.ToolFilters {
+	t.Helper()
+	if len(filters) == 0 {
+		t.Fatal("no tool filters recorded")
+	}
+	return filters[len(filters)-1]
+}
+
+func lastAnalyticsFilter(t *testing.T, filters []agentmodel.AnalyticsFilters) agentmodel.AnalyticsFilters {
+	t.Helper()
+	if len(filters) == 0 {
+		t.Fatal("no analytics filters recorded")
+	}
+	return filters[len(filters)-1]
+}
+
+func lastAuditSummaryFilter(t *testing.T, filters []agentmodel.AuditFindingFilters) agentmodel.AuditFindingFilters {
+	t.Helper()
+	if len(filters) == 0 {
+		t.Fatal("no audit summary filters recorded")
+	}
+	return filters[len(filters)-1]
+}
+
+func lastAuditFindingFilter(t *testing.T, filters []agentmodel.AuditFindingFilters) agentmodel.AuditFindingFilters {
+	t.Helper()
+	if len(filters) == 0 {
+		t.Fatal("no audit finding filters recorded")
+	}
+	return filters[len(filters)-1]
 }

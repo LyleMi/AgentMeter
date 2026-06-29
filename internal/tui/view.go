@@ -52,20 +52,20 @@ func (s *state) headerLine() string {
 			fmt.Sprintf("%s tokens", formatInt(s.overview.TotalTokens)),
 			formatCost(s.overview.EstimatedCostUSD),
 		)
-	case pageSessions:
-		parts = append(parts, fmt.Sprintf("%s sessions loaded", formatInt(int64(len(s.sessions)))))
-	case pageTools:
-		parts = append(parts, fmt.Sprintf("%s tools", formatInt(int64(len(s.tools)))))
-	case pageToolCalls:
-		parts = append(parts, fmt.Sprintf("%s calls", formatInt(int64(len(s.toolCalls)))))
-		if strings.TrimSpace(s.toolCallTool) != "" {
-			parts = append(parts, "tool "+s.toolCallTool)
-		}
-		parts = append(parts, toolCallSortLabel(s.toolCallSort))
-	case pageToolCallDetail:
-		if s.toolCall != nil {
-			parts = append(parts, empty(s.toolCall.ToolName, "unknown"), "#"+formatInt(s.toolCall.ID))
-		}
+	case pageTime:
+		parts = append(parts,
+			"tab "+s.timeTab.title(),
+			fmt.Sprintf("%s sessions", formatInt(int64(s.overview.TotalSessions))),
+			"wall "+formatDuration(s.overview.TotalWallDurationMS),
+			"active "+formatPercent(ratio(float64(s.overview.TotalActiveDurationMS), float64(s.overview.TotalWallDurationMS))),
+		)
+	case pageTokens:
+		parts = append(parts,
+			"tab "+s.tokensTab.title(),
+			fmt.Sprintf("%s sessions", formatInt(int64(s.tokens.TotalSessions))),
+			fmt.Sprintf("%s tokens", formatInt(s.tokens.TotalTokens)),
+			"cache "+formatPercent(s.tokens.CacheUtilizationRate),
+		)
 	case pageModelSignals:
 		summary := s.signals.HealthSummary
 		parts = append(parts,
@@ -74,6 +74,49 @@ func (s *state) headerLine() string {
 			fmt.Sprintf("%s sessions", formatInt(int64(s.signals.TotalSessions))),
 			fmt.Sprintf("%s calls", formatInt(int64(s.signals.TotalModelCalls))),
 		)
+	case pageModelRisk:
+		rows := buildModelRiskRows(s.signals)
+		top := modelRiskTopRow(rows)
+		parts = append(parts,
+			fmt.Sprintf("%s rows", formatInt(int64(len(rows)))),
+			"top "+formatPercent(top.Score),
+			modelRiskLevel(top.Score),
+		)
+	case pageSessions:
+		parts = append(parts, fmt.Sprintf("%s sessions loaded", formatInt(int64(len(s.sessions)))))
+	case pageTools:
+		parts = append(parts, "tab "+s.toolsTab.title(), fmt.Sprintf("%s tools", formatInt(int64(len(s.tools)))))
+		if s.toolsTab == toolsTabShell || s.toolsTab == toolsTabCalls {
+			parts = append(parts, fmt.Sprintf("%s calls", formatInt(int64(len(s.toolCalls)))))
+		}
+		if filters := toolActiveFilterLabel(s); filters != "" {
+			parts = append(parts, filters)
+		}
+	case pageToolCalls:
+		parts = append(parts, fmt.Sprintf("%s calls", formatInt(int64(len(s.toolCalls)))))
+		if strings.TrimSpace(s.toolCallTool) != "" {
+			parts = append(parts, "tool "+s.toolCallTool)
+		}
+		parts = append(parts, toolCallSortLabel(s.toolCallSort))
+		if filters := toolActiveFilterLabel(s); filters != "" {
+			parts = append(parts, filters)
+		}
+	case pageToolCallDetail:
+		if s.toolCall != nil {
+			parts = append(parts, empty(s.toolCall.ToolName, "unknown"), "#"+formatInt(s.toolCall.ID))
+		}
+	case pageAudit:
+		parts = append(parts,
+			fmt.Sprintf("%s findings", formatInt(int64(s.audit.TotalFindings))),
+			fmt.Sprintf("%s critical", formatInt(int64(s.audit.CriticalFindings))),
+			fmt.Sprintf("%s high", formatInt(int64(s.audit.HighFindings))),
+		)
+	case pageAuditFindings:
+		parts = append(parts, fmt.Sprintf("%s findings loaded", formatInt(int64(len(s.findings)))))
+	case pageAuditDetail:
+		if s.finding != nil {
+			parts = append(parts, empty(s.finding.RuleID, "finding"), "#"+formatInt(s.finding.ID), empty(s.finding.Severity, "unknown"))
+		}
 	case pagePrivacy:
 		parts = append(parts, fmt.Sprintf("%s targets", formatInt(int64(len(s.privacy)))))
 		if status := s.selectedPrivacyStatus(); status != nil {
@@ -82,6 +125,16 @@ func (s *state) headerLine() string {
 	case pageSettings:
 		if len(s.settings.SourceEntries) > 0 {
 			parts = append(parts, fmt.Sprintf("%s sources", formatInt(int64(len(s.settings.SourceEntries)))))
+		}
+	}
+	if s.isUsageScopePage() {
+		if scope := s.usageScopeLabel(); scope != "" {
+			parts = append(parts, scope)
+		}
+	}
+	if s.isAuditPage() {
+		if filters := s.auditFilterLabel(); filters != "" {
+			parts = append(parts, filters)
 		}
 	}
 	return strings.Join(parts, "  ")
@@ -94,16 +147,23 @@ func (s *state) navLine() string {
 		label string
 	}{
 		{"1", pageOverview, "Overview"},
-		{"2", pageSessions, "Sessions"},
-		{"3", pageTools, "Tools"},
-		{"m", pageModelSignals, "Model Signals"},
-		{"4", pageSettings, "Settings"},
-		{"5", pagePrivacy, "Agent Privacy"},
+		{"2", pageTime, "Time"},
+		{"3", pageTokens, "Tokens"},
+		{"4", pageModelSignals, "Model Signals"},
+		{"5", pageModelRisk, "Model Risk"},
+		{"6", pageSessions, "Sessions"},
+		{"7", pageTools, "Tools"},
+		{"8", pageAudit, "Audit"},
+		{"9", pagePrivacy, "Agent Privacy"},
+		{"0", pageSettings, "Settings"},
 	}
 	parts := make([]string, 0, len(items))
 	for _, item := range items {
 		label := item.key + " " + item.label
-		if s.page == item.page || (s.page == pageSessionDetail && item.page == pageSessions) || ((s.page == pageToolCalls || s.page == pageToolCallDetail) && item.page == pageTools) {
+		if s.page == item.page ||
+			(s.page == pageSessionDetail && item.page == pageSessions) ||
+			((s.page == pageToolCalls || s.page == pageToolCallDetail) && item.page == pageTools) ||
+			((s.page == pageAuditFindings || s.page == pageAuditDetail) && item.page == pageAudit) {
 			label = inverse(" " + label + " ")
 		}
 		parts = append(parts, label)
@@ -136,18 +196,44 @@ func (s *state) statusLine() string {
 func (s *state) footerLine() string {
 	var text string
 	switch s.page {
+	case pageOverview:
+		text = "Keys: u source  v model  w project  e range  U clear scope  tab cycle  up/down scroll  r refresh  i update index  I rebuild index  q quit"
+	case pageTime:
+		text = "Keys: [/]/h/l time tabs  u/v/w/e scope  U clear  up/down scroll  tab cycle pages  r refresh  i update index  I rebuild index  q quit"
+	case pageTokens:
+		if s.tokensTab == tokensTabBreakdown {
+			text = "Keys: [/]/h/l token tabs  d group  u/v/w/e scope  U clear  up/down scroll  r refresh  i update index  I rebuild index  q quit"
+			break
+		}
+		text = "Keys: [/]/h/l token tabs  u/v/w/e scope  U clear  up/down scroll  tab cycle pages  r refresh  i update index  I rebuild index  q quit"
 	case pageSessionDetail:
 		text = "Keys: b/esc back  up/down scroll  r refresh  i update index  I rebuild index  q quit"
 	case pageSessions:
 		text = "Keys: enter detail  up/down select  tab cycle  r refresh  i update index  I rebuild index  q quit"
 	case pageTools:
-		text = "Keys: enter calls  c all calls  up/down select  tab cycle  r refresh  i update index  I rebuild index  q quit"
+		if s.toolsTab == toolsTabShell {
+			text = "Keys: [/]/h/l tool tabs  enter detail  v command  u source  e range  d sort  U clear  up/down select  r refresh  i update index  I rebuild index  q quit"
+			break
+		}
+		if s.toolsTab == toolsTabCalls {
+			text = "Keys: [/]/h/l tool tabs  enter detail  u source  e range  d sort  U clear  up/down select  r refresh  i update index  I rebuild index  q quit"
+			break
+		}
+		text = "Keys: [/]/h/l tool tabs  enter calls  c all calls  u source  U clear  up/down select  tab cycle  r refresh  i update index  I rebuild index  q quit"
 	case pageToolCalls:
-		text = "Keys: enter detail  b/esc tools  d sort  up/down select  r refresh  i update index  I rebuild index  q quit"
+		text = "Keys: enter detail  b/esc tools  u source  e range  d sort  U clear  up/down select  r refresh  i update index  I rebuild index  q quit"
 	case pageToolCallDetail:
-		text = "Keys: b/esc calls  up/down scroll  r refresh  i update index  I rebuild index  q quit"
+		text = "Keys: b/esc back  up/down scroll  r refresh  i update index  I rebuild index  q quit"
 	case pageModelSignals:
-		text = "Keys: [/]/h/l signal tabs  up/down scroll  tab cycle pages  r refresh  i update index  I rebuild index  q quit"
+		text = "Keys: [/]/h/l signal tabs  u/v/w/e scope  U clear  up/down scroll  tab cycle pages  r refresh  i update index  I rebuild index  q quit"
+	case pageModelRisk:
+		text = "Keys: u/v/w/e scope  U clear  up/down scroll  tab cycle pages  r refresh  i update index  I rebuild index  q quit"
+	case pageAudit:
+		text = "Keys: enter detail  f findings  u source  U clear filters  up/down select  tab cycle  r refresh  i update index  I rebuild index  q quit"
+	case pageAuditFindings:
+		text = "Keys: enter detail  c category  v severity  y shell  u source  U clear  b/esc summary  up/down select  r refresh  i update index  I rebuild index  q quit"
+	case pageAuditDetail:
+		text = "Keys: b/esc back  u source  U clear filters  up/down scroll  r refresh  i update index  I rebuild index  q quit"
 	case pagePrivacy:
 		if s.privacyPending != nil {
 			text = "Keys: enter write profile  esc cancel  q quit"
@@ -157,7 +243,7 @@ func (s *state) footerLine() string {
 	case pageSettings:
 		text = "Keys: up/down scroll  tab cycle  r refresh  i update index  I rebuild index  q quit"
 	default:
-		text = "Keys: 1-5/m switch  tab cycle  up/down select/scroll  r refresh  i update index  I rebuild index  q quit"
+		text = "Keys: 1-9/0 switch  tab cycle  up/down select/scroll  r refresh  i update index  I rebuild index  q quit"
 	}
 	if position := s.positionLabel(); position != "" {
 		text += "  " + position
@@ -183,7 +269,7 @@ func (s *state) positionLabel() string {
 		return fmt.Sprintf("Rows %s-%s/%s", formatInt(int64(start)), formatInt(int64(end)), formatInt(int64(count)))
 	}
 	switch s.page {
-	case pageSessionDetail, pageToolCallDetail, pageModelSignals, pageSettings:
+	case pageSessionDetail, pageToolCallDetail, pageModelSignals, pageTime, pageTokens, pageModelRisk, pageAuditDetail, pageSettings:
 		visible := s.contentHeight()
 		if count <= visible {
 			return ""
@@ -197,6 +283,72 @@ func (s *state) positionLabel() string {
 	default:
 		return ""
 	}
+}
+
+func (s *state) usageScopeLabel() string {
+	parts := []string{}
+	if strings.TrimSpace(s.usageAgent) != "" {
+		parts = append(parts, "source "+filterLabel(s.usageAgent, usageAgentOptions(s.scopeOverview)))
+	}
+	if strings.TrimSpace(s.usageModel) != "" {
+		parts = append(parts, "model "+filterLabel(s.usageModel, usageModelOptions(s.scopeOverview)))
+	}
+	if strings.TrimSpace(s.usageProject) != "" {
+		parts = append(parts, "project "+shortPath(s.usageProject, 28))
+	}
+	if s.usageRange != usageRangeAll {
+		parts = append(parts, "range "+s.usageRange.title())
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "scope " + strings.Join(parts, ", ")
+}
+
+func filterLabel(value string, options []stringOption) string {
+	for _, option := range options {
+		if option.value == value {
+			return option.label
+		}
+	}
+	return value
+}
+
+func (s *state) auditFilterLabel() string {
+	parts := []string{}
+	if strings.TrimSpace(s.auditAgent) != "" {
+		parts = append(parts, "source "+filterLabel(s.auditAgent, usageAgentOptions(s.scopeOverview)))
+	}
+	if strings.TrimSpace(s.auditCategory) != "" {
+		parts = append(parts, "category "+filterLabel(s.auditCategory, auditCategoryOptions()))
+	}
+	if strings.TrimSpace(s.auditSeverity) != "" {
+		parts = append(parts, "severity "+filterLabel(s.auditSeverity, auditSeverityOptions()))
+	}
+	if strings.TrimSpace(s.auditShell) != "" {
+		parts = append(parts, "shell "+filterLabel(s.auditShell, auditShellOptions()))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "filters " + strings.Join(parts, ", ")
+}
+
+func toolActiveFilterLabel(s *state) string {
+	parts := []string{}
+	if strings.TrimSpace(s.toolAgent) != "" {
+		parts = append(parts, "source "+filterLabel(s.toolAgent, usageAgentOptions(s.scopeOverview)))
+	}
+	if s.toolRange != usageRangeAll && (s.page == pageToolCalls || s.toolsTab == toolsTabShell || s.toolsTab == toolsTabCalls) {
+		parts = append(parts, "range "+s.toolRange.title())
+	}
+	if strings.TrimSpace(s.toolCommand) != "" && s.page == pageTools && (s.toolsTab == toolsTabShell || s.toolsTab == toolsTabCalls) {
+		parts = append(parts, "command "+s.toolCommand)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "filters " + strings.Join(parts, ", ")
 }
 
 func (s *state) contentHeight() int {
@@ -215,6 +367,14 @@ func (s *state) content() []string {
 	switch s.page {
 	case pageOverview:
 		return s.overviewLines()
+	case pageTime:
+		return s.timeViewportLines()
+	case pageTokens:
+		return s.tokenViewportLines()
+	case pageModelSignals:
+		return s.modelSignalViewportLines()
+	case pageModelRisk:
+		return s.modelRiskViewportLines()
 	case pageSessions:
 		return s.sessionLines()
 	case pageSessionDetail:
@@ -225,8 +385,12 @@ func (s *state) content() []string {
 		return s.toolCallLines()
 	case pageToolCallDetail:
 		return s.toolCallDetailViewportLines()
-	case pageModelSignals:
-		return s.modelSignalViewportLines()
+	case pageAudit:
+		return s.auditLines()
+	case pageAuditFindings:
+		return s.auditFindingLines()
+	case pageAuditDetail:
+		return s.auditDetailViewportLines()
 	case pageSettings:
 		return s.settingsViewportLines()
 	case pagePrivacy:
@@ -279,8 +443,27 @@ func formatCost(value *float64) string {
 	return viewmodel.FormatCost(value)
 }
 
+func formatCostValue(value float64) string {
+	return viewmodel.FormatCostValue(value)
+}
+
 func formatDuration(ms int64) string {
 	return viewmodel.FormatDuration(float64(ms))
+}
+
+func formatDurationFloat(ms float64) string {
+	return viewmodel.FormatDuration(ms)
+}
+
+func formatPercent(value float64) string {
+	return viewmodel.FormatPercent(value)
+}
+
+func ratio(numerator, denominator float64) float64 {
+	if denominator <= 0 {
+		return 0
+	}
+	return numerator / denominator
 }
 
 func formatTime(value time.Time) string {

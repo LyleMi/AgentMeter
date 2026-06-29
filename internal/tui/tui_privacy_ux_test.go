@@ -159,7 +159,7 @@ func loadPrivacyPage(t *testing.T, width, height int) (*fakeService, *state) {
 	t.Helper()
 	svc := sampleService()
 	st := newState(svc, width, height)
-	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '5'})
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: 'p'})
 	if quit {
 		t.Fatal("privacy page switch unexpectedly quit")
 	}
