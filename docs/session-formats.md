@@ -128,12 +128,15 @@ Both objects can contain:
 - `cached_input_tokens`
 - `output_tokens`
 - `reasoning_output_tokens`
+- `context_compression_tokens`
 - `total_tokens`
 
 AgentMeter stores actual session usage by summing each token event delta.
 `last_token_usage` is used directly when present; otherwise AgentMeter subtracts
 the previous `total_token_usage` from the current cumulative total. It also
 creates approximate model-call rows from those per-event usage deltas.
+Context compression tokens are stored as a separate metric instead of being
+folded into input, output, cached input, or reasoning subtotals.
 
 ### Codex Tool Calls
 
@@ -209,6 +212,7 @@ Recognized usage field variants include camelCase and snake_case names:
 - `cacheReadInputTokens` / `cache_read_input_tokens`
 - `outputTokens` / `output_tokens`
 - `reasoningTokens` / `reasoning_tokens`
+- `contextCompressionTokens` / `context_compression_tokens`
 - `totalTokens` / `total_tokens`
 - OpenAI/OpenRouter-style detail objects such as
   `output_tokens_details.reasoning_tokens`
@@ -242,6 +246,7 @@ Observed generic usage shapes include:
 - `usage.cached_input_tokens`
 - `usage.output_tokens`
 - `usage.reasoning_output_tokens`
+- `usage.context_compression_tokens`
 - `usage.total_tokens`
 - `usage.prompt_tokens`
 - `usage.cached_tokens`

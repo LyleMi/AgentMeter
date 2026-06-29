@@ -1,4 +1,4 @@
-﻿package query
+package query
 
 import (
 	"context"
@@ -59,7 +59,7 @@ func (s *Service) events(ctx context.Context, sessionID int64) ([]model.Event, e
 func (s *Service) modelCalls(ctx context.Context, sessionID int64) ([]model.ModelCall, error) {
 	calculator := s.pricingCalculator(ctx)
 	rows, err := s.conn.QueryContext(ctx, `SELECT id, session_id, started_at, ended_at, duration_ms, model, provider, status,
-		input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, cost_usd
+		input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, context_compression_tokens, total_tokens, cost_usd
 		FROM model_calls WHERE session_id = ? ORDER BY started_at, id`, sessionID)
 	if err != nil {
 		return nil, err
@@ -71,19 +71,20 @@ func (s *Service) modelCalls(ctx context.Context, sessionID int64) ([]model.Mode
 		var started, ended string
 		var cost sql.NullFloat64
 		if err := rows.Scan(&item.ID, &item.SessionID, &started, &ended, &item.DurationMS, &item.Model, &item.Provider, &item.Status,
-			&item.InputTokens, &item.CachedInputTokens, &item.OutputTokens, &item.ReasoningOutputTokens, &item.TotalTokens, &cost); err != nil {
+			&item.InputTokens, &item.CachedInputTokens, &item.OutputTokens, &item.ReasoningOutputTokens, &item.ContextCompressionTokens, &item.TotalTokens, &cost); err != nil {
 			return nil, err
 		}
 		item.StartedAt = db.ParseTime(started)
 		item.EndedAt = db.ParseTime(ended)
 		currentCost, unpriced := calculator.Compute(model.Usage{
-			Model:                 item.Model,
-			InputTokens:           item.InputTokens,
-			CachedInputTokens:     item.CachedInputTokens,
-			OutputTokens:          item.OutputTokens,
-			ReasoningOutputTokens: item.ReasoningOutputTokens,
-			TotalTokens:           item.TotalTokens,
-			Source:                "model_call",
+			Model:                    item.Model,
+			InputTokens:              item.InputTokens,
+			CachedInputTokens:        item.CachedInputTokens,
+			OutputTokens:             item.OutputTokens,
+			ReasoningOutputTokens:    item.ReasoningOutputTokens,
+			ContextCompressionTokens: item.ContextCompressionTokens,
+			TotalTokens:              item.TotalTokens,
+			Source:                   "model_call",
 		})
 		if currentCost != nil || unpriced {
 			item.CostUSD = currentCost
@@ -254,6 +255,7 @@ func (s *Service) scanSessions(ctx context.Context, query string, args ...any) (
 			&item.TokenUsage.CachedInputTokens,
 			&item.TokenUsage.OutputTokens,
 			&item.TokenUsage.ReasoningOutputTokens,
+			&item.TokenUsage.ContextCompressionTokens,
 			&item.TokenUsage.TotalTokens,
 			&item.TokenUsage.Source,
 			&item.ToolCallCount,

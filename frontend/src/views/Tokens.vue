@@ -174,6 +174,7 @@ function globalBreakdownRow(item: TokenAnalytics): UsageBreakdownBucket {
     cachedInputTokens: item.totalCachedInputTokens,
     outputTokens: item.totalOutputTokens,
     reasoningOutputTokens: item.totalReasoningTokens,
+    contextCompressionTokens: item.totalContextCompressionTokens,
     cacheUtilizationRate: item.cacheUtilizationRate,
     estimatedCostUsd: item.estimatedCostUsd,
     unpriced: item.unpricedCount > 0

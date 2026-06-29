@@ -1,4 +1,4 @@
-﻿package query
+package query
 
 import (
 	"context"
@@ -63,6 +63,7 @@ func (s *Service) OverviewWithFilters(ctx context.Context, filters model.Analyti
 	overview.TotalCachedInputTokens = usage.CachedInputTokens
 	overview.TotalOutputTokens = usage.OutputTokens
 	overview.TotalReasoningTokens = usage.ReasoningOutputTokens
+	overview.TotalContextCompressionTokens = usage.ContextCompressionTokens
 	overview.TotalTokens = usage.TotalTokens
 	overview.TotalToolCalls, err = s.toolCallCount(ctx, filters)
 	if err != nil {

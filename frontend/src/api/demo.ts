@@ -220,7 +220,8 @@ function makeSession(
   const modelDurationMs = Math.round(wallDurationMs * 0.46)
   const toolDurationMs = Math.round(wallDurationMs * 0.28)
   const idleDurationMs = Math.max(0, wallDurationMs - modelDurationMs - toolDurationMs)
-  const totalTokens = inputTokens + outputTokens
+  const contextCompressionTokens = agent.agentKind === 'codex' && inputTokens >= 100_000 ? Math.round(inputTokens * 0.025) : 0
+  const totalTokens = inputTokens + outputTokens + contextCompressionTokens
   const estimatedCostUsd = costUsd(model, inputTokens, cachedInputTokens, outputTokens)
   return {
     ...agent,
@@ -247,6 +248,7 @@ function makeSession(
       cachedInputTokens,
       outputTokens,
       reasoningOutputTokens,
+      contextCompressionTokens,
       totalTokens,
       source: 'demo transcript',
       costUsd: estimatedCostUsd,
@@ -551,6 +553,7 @@ function modelUsageFor(items: Session[]): ModelUsage[] {
     cachedInputTokens: sum(group, (session) => session.tokenUsage.cachedInputTokens),
     outputTokens: sum(group, (session) => session.tokenUsage.outputTokens),
     reasoningOutputTokens: sum(group, (session) => session.tokenUsage.reasoningOutputTokens),
+    contextCompressionTokens: sum(group, (session) => session.tokenUsage.contextCompressionTokens || 0),
     estimatedCostUsd: costSum(group),
     unpriced: group.some((session) => session.unpriced)
   })).sort((left, right) => right.totalTokens - left.totalTokens)
@@ -575,6 +578,7 @@ function agentUsageFor(items: Session[]): AgentUsage[] {
       cachedInputTokens,
       outputTokens: sum(group, (session) => session.tokenUsage.outputTokens),
       reasoningOutputTokens: sum(group, (session) => session.tokenUsage.reasoningOutputTokens),
+      contextCompressionTokens: sum(group, (session) => session.tokenUsage.contextCompressionTokens || 0),
       cacheUtilizationRate: inputTokens > 0 ? cachedInputTokens / inputTokens : 0,
       toolCalls: sum(group, (session) => session.toolCallCount),
       estimatedCostUsd: costSum(group),
@@ -616,6 +620,7 @@ function dailyUsageFor(items: Session[]): DailyUsage[] {
       inputTokens,
       cachedInputTokens,
       outputTokens: sum(group, (session) => session.tokenUsage.outputTokens),
+      contextCompressionTokens: sum(group, (session) => session.tokenUsage.contextCompressionTokens || 0),
       cacheUtilizationRate: inputTokens > 0 ? cachedInputTokens / inputTokens : 0,
       toolCalls: sum(group, (session) => session.toolCallCount),
       estimatedCostUsd: costSum(group)
@@ -1541,6 +1546,7 @@ function overview(filters: UsageScopeFilters = {}): Overview {
     totalCachedInputTokens: sum(scoped, (session) => session.tokenUsage.cachedInputTokens),
     totalOutputTokens: sum(scoped, (session) => session.tokenUsage.outputTokens),
     totalReasoningTokens: sum(scoped, (session) => session.tokenUsage.reasoningOutputTokens),
+    totalContextCompressionTokens: sum(scoped, (session) => session.tokenUsage.contextCompressionTokens || 0),
     totalTokens: sum(scoped, (session) => session.tokenUsage.totalTokens),
     estimatedCostUsd: costSum(scoped),
     unpricedSessions: scoped.filter((session) => session.unpriced).length,
@@ -1623,6 +1629,7 @@ function bucketFor(group: Session[], fields: Partial<UsageBreakdownBucket>): Usa
     cachedInputTokens,
     outputTokens: sum(group, (session) => session.tokenUsage.outputTokens),
     reasoningOutputTokens: sum(group, (session) => session.tokenUsage.reasoningOutputTokens),
+    contextCompressionTokens: sum(group, (session) => session.tokenUsage.contextCompressionTokens || 0),
     cacheUtilizationRate: inputTokens > 0 ? cachedInputTokens / inputTokens : 0,
     estimatedCostUsd: costSum(group),
     unpriced: group.some((session) => session.unpriced)
@@ -1644,6 +1651,7 @@ function sessionDetail(id: number): SessionDetail {
     cachedInputTokens: session.tokenUsage.cachedInputTokens,
     outputTokens: session.tokenUsage.outputTokens,
     reasoningOutputTokens: session.tokenUsage.reasoningOutputTokens,
+    contextCompressionTokens: session.tokenUsage.contextCompressionTokens || 0,
     totalTokens: session.tokenUsage.totalTokens,
     costUsd: session.estimatedCostUsd,
     unpriced: session.unpriced
@@ -1783,6 +1791,7 @@ export const demoApi: DemoApi = {
       totalCachedInputTokens: cachedInputTokens,
       totalOutputTokens: sum(scoped, (session) => session.tokenUsage.outputTokens),
       totalReasoningTokens: sum(scoped, (session) => session.tokenUsage.reasoningOutputTokens),
+      totalContextCompressionTokens: sum(scoped, (session) => session.tokenUsage.contextCompressionTokens || 0),
       totalTokens: sum(scoped, (session) => session.tokenUsage.totalTokens),
       cacheUtilizationRate: inputTokens > 0 ? cachedInputTokens / inputTokens : 0,
       estimatedCostUsd: costSum(scoped),

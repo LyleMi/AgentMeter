@@ -1,4 +1,4 @@
-﻿package db
+package db
 
 import (
 	"context"
@@ -106,6 +106,7 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			cached_input_tokens INTEGER NOT NULL,
 			output_tokens INTEGER NOT NULL,
 			reasoning_output_tokens INTEGER NOT NULL,
+			context_compression_tokens INTEGER NOT NULL DEFAULT 0,
 			total_tokens INTEGER NOT NULL,
 			source TEXT NOT NULL,
 			UNIQUE(owner_kind, owner_id)
@@ -127,6 +128,7 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			cached_input_tokens INTEGER NOT NULL,
 			output_tokens INTEGER NOT NULL,
 			reasoning_output_tokens INTEGER NOT NULL,
+			context_compression_tokens INTEGER NOT NULL DEFAULT 0,
 			total_tokens INTEGER NOT NULL,
 			cost_usd REAL
 		)`,
@@ -218,6 +220,12 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 		return err
 	}
 	if err := ensureColumn(ctx, conn, "tool_calls", "raw_end_event_id", "raw_end_event_id INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := ensureColumn(ctx, conn, "token_usage", "context_compression_tokens", "context_compression_tokens INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := ensureColumn(ctx, conn, "model_calls", "context_compression_tokens", "context_compression_tokens INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
 	if err := ensureColumn(ctx, conn, "pricing_models", "is_custom", "is_custom INTEGER NOT NULL DEFAULT 0"); err != nil {

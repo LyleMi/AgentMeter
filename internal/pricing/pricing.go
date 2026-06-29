@@ -1,4 +1,4 @@
-﻿package pricing
+package pricing
 
 import (
 	"context"

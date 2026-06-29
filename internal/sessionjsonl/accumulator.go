@@ -1,4 +1,4 @@
-﻿package sessionjsonl
+package sessionjsonl
 
 import (
 	"fmt"
@@ -182,17 +182,18 @@ func (a *parseAccumulator) handleTokenCount(raw rawRecord, ts time.Time) {
 	duration := durationMS(start, ts)
 	a.modelDurationMS += duration
 	a.parsed.ModelCall = append(a.parsed.ModelCall, model.ModelCall{
-		StartedAt:             start,
-		EndedAt:               ts,
-		DurationMS:            duration,
-		Model:                 firstNonEmpty(callUsage.Model, a.currentModel, a.parsed.Session.Model),
-		Provider:              a.provider,
-		Status:                "completed",
-		InputTokens:           callUsage.InputTokens,
-		CachedInputTokens:     callUsage.CachedInputTokens,
-		OutputTokens:          callUsage.OutputTokens,
-		ReasoningOutputTokens: callUsage.ReasoningOutputTokens,
-		TotalTokens:           callUsage.TotalTokens,
+		StartedAt:                start,
+		EndedAt:                  ts,
+		DurationMS:               duration,
+		Model:                    firstNonEmpty(callUsage.Model, a.currentModel, a.parsed.Session.Model),
+		Provider:                 a.provider,
+		Status:                   "completed",
+		InputTokens:              callUsage.InputTokens,
+		CachedInputTokens:        callUsage.CachedInputTokens,
+		OutputTokens:             callUsage.OutputTokens,
+		ReasoningOutputTokens:    callUsage.ReasoningOutputTokens,
+		ContextCompressionTokens: callUsage.ContextCompressionTokens,
+		TotalTokens:              callUsage.TotalTokens,
 	})
 	a.modelBoundary = ts
 }
@@ -343,17 +344,18 @@ func (a *parseAccumulator) handleHeadlessUsage(raw rawRecord, ts time.Time) {
 	usage.Source = "actual"
 	addUsage(&a.parsed.Usage, usage)
 	a.parsed.ModelCall = append(a.parsed.ModelCall, model.ModelCall{
-		StartedAt:             ts,
-		EndedAt:               ts,
-		DurationMS:            0,
-		Model:                 eventModel,
-		Provider:              a.provider,
-		Status:                "completed",
-		InputTokens:           usage.InputTokens,
-		CachedInputTokens:     usage.CachedInputTokens,
-		OutputTokens:          usage.OutputTokens,
-		ReasoningOutputTokens: usage.ReasoningOutputTokens,
-		TotalTokens:           usage.TotalTokens,
+		StartedAt:                ts,
+		EndedAt:                  ts,
+		DurationMS:               0,
+		Model:                    eventModel,
+		Provider:                 a.provider,
+		Status:                   "completed",
+		InputTokens:              usage.InputTokens,
+		CachedInputTokens:        usage.CachedInputTokens,
+		OutputTokens:             usage.OutputTokens,
+		ReasoningOutputTokens:    usage.ReasoningOutputTokens,
+		ContextCompressionTokens: usage.ContextCompressionTokens,
+		TotalTokens:              usage.TotalTokens,
 	})
 }
 

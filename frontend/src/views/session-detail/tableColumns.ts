@@ -10,6 +10,7 @@ type TableColumnMessageKey =
   | 'column.cached'
   | 'column.output'
   | 'column.reasoning'
+  | 'column.contextCompression'
   | 'column.total'
   | 'column.cost'
   | 'column.started'
@@ -33,6 +34,7 @@ export function useSessionDetailTableColumns(t: Translate) {
     { title: t('column.cached'), dataIndex: 'cachedInputTokens', key: 'cached', width: 100, align: 'right' },
     { title: t('column.output'), dataIndex: 'outputTokens', key: 'output', width: 100, align: 'right' },
     { title: t('column.reasoning'), dataIndex: 'reasoningOutputTokens', key: 'reasoning', width: 110, align: 'right' },
+    { title: t('column.contextCompression'), dataIndex: 'contextCompressionTokens', key: 'contextCompression', width: 110, align: 'right' },
     { title: t('column.total'), dataIndex: 'totalTokens', key: 'total', width: 110, align: 'right' },
     { title: t('column.cost'), dataIndex: 'costUsd', key: 'cost', width: 120, align: 'right' }
   ])

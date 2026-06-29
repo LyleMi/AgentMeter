@@ -126,6 +126,7 @@ Fields:
 - `cached_input_tokens`
 - `output_tokens`
 - `reasoning_output_tokens`
+- `context_compression_tokens`
 - `total_tokens`
 - `source`
 
@@ -133,6 +134,8 @@ Fields:
 For providers that report visible output and thinking/reasoning separately,
 AgentMeter stores their billable/generated sum in `output_tokens` and keeps the
 thinking/reasoning portion in `reasoning_output_tokens` as a sub-share.
+Context compression usage is kept in `context_compression_tokens` so it can be
+reported separately from prompt, cache, output, and reasoning totals.
 
 `source` values:
 
@@ -165,6 +168,7 @@ Fields:
 - `cached_input_tokens`
 - `output_tokens`
 - `reasoning_output_tokens`
+- `context_compression_tokens`
 - `total_tokens`
 - `cost_usd`
 

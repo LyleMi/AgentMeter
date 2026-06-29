@@ -14,7 +14,7 @@ func TestParseFileExtractsSessionUsageAndTools(t *testing.T) {
 {"timestamp":"2026-06-26T10:00:02Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn_1","started_at":1782468002}}
 {"timestamp":"2026-06-26T10:00:03Z","type":"response_item","payload":{"type":"function_call","id":"fc_1","name":"shell_command","arguments":"{\"command\":\"go test ./...\"}","call_id":"call_1"}}
 {"timestamp":"2026-06-26T10:00:05Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_1","output":"ok"}}
-{"timestamp":"2026-06-26T10:00:07Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":200,"output_tokens":80,"reasoning_output_tokens":20,"total_tokens":1080},"last_token_usage":{"input_tokens":1000,"cached_input_tokens":200,"output_tokens":80,"reasoning_output_tokens":20,"total_tokens":1080},"model_context_window":258400}}}
+{"timestamp":"2026-06-26T10:00:07Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":200,"output_tokens":80,"reasoning_output_tokens":20,"context_compression_tokens":40,"total_tokens":1120},"last_token_usage":{"input_tokens":1000,"cached_input_tokens":200,"output_tokens":80,"reasoning_output_tokens":20,"context_compression_tokens":40,"total_tokens":1120},"model_context_window":258400}}}
 {"timestamp":"2026-06-26T10:00:08Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn_1","completed_at":1782468008,"duration_ms":6000}}
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -34,8 +34,11 @@ func TestParseFileExtractsSessionUsageAndTools(t *testing.T) {
 	if parsed.Session.Model != "gpt-5.5" {
 		t.Fatalf("model = %q", parsed.Session.Model)
 	}
-	if parsed.Usage.TotalTokens != 1080 {
+	if parsed.Usage.TotalTokens != 1120 {
 		t.Fatalf("total tokens = %d", parsed.Usage.TotalTokens)
+	}
+	if parsed.Usage.ContextCompressionTokens != 40 {
+		t.Fatalf("context compression tokens = %d", parsed.Usage.ContextCompressionTokens)
 	}
 	if parsed.Usage.Source != "actual" {
 		t.Fatalf("usage source = %q", parsed.Usage.Source)
@@ -51,6 +54,9 @@ func TestParseFileExtractsSessionUsageAndTools(t *testing.T) {
 	}
 	if len(parsed.ModelCall) != 1 {
 		t.Fatalf("model calls = %d", len(parsed.ModelCall))
+	}
+	if parsed.ModelCall[0].ContextCompressionTokens != 40 {
+		t.Fatalf("model call context compression tokens = %d", parsed.ModelCall[0].ContextCompressionTokens)
 	}
 	if parsed.Session.ParseStatus != "ok" {
 		t.Fatalf("parse status = %q, warnings: %v", parsed.Session.ParseStatus, parsed.Warnings)
@@ -338,11 +344,12 @@ func TestUsageFromValueSupportsProviderReasoningShapes(t *testing.T) {
 		name  string
 		value any
 		want  struct {
-			input     int64
-			cached    int64
-			output    int64
-			reasoning int64
-			total     int64
+			input       int64
+			cached      int64
+			output      int64
+			reasoning   int64
+			compression int64
+			total       int64
 		}
 	}{
 		{
@@ -359,11 +366,12 @@ func TestUsageFromValueSupportsProviderReasoningShapes(t *testing.T) {
 				"total_tokens": float64(140),
 			},
 			want: struct {
-				input     int64
-				cached    int64
-				output    int64
-				reasoning int64
-				total     int64
+				input       int64
+				cached      int64
+				output      int64
+				reasoning   int64
+				compression int64
+				total       int64
 			}{input: 100, cached: 25, output: 40, reasoning: 12, total: 140},
 		},
 		{
@@ -375,11 +383,12 @@ func TestUsageFromValueSupportsProviderReasoningShapes(t *testing.T) {
 				"total_tokens":    float64(110),
 			},
 			want: struct {
-				input     int64
-				cached    int64
-				output    int64
-				reasoning int64
-				total     int64
+				input       int64
+				cached      int64
+				output      int64
+				reasoning   int64
+				compression int64
+				total       int64
 			}{input: 80, output: 30, reasoning: 7, total: 110},
 		},
 		{
@@ -394,11 +403,12 @@ func TestUsageFromValueSupportsProviderReasoningShapes(t *testing.T) {
 				},
 			},
 			want: struct {
-				input     int64
-				cached    int64
-				output    int64
-				reasoning int64
-				total     int64
+				input       int64
+				cached      int64
+				output      int64
+				reasoning   int64
+				compression int64
+				total       int64
 			}{input: 100, cached: 40, output: 35, reasoning: 15, total: 135},
 		},
 		{
@@ -413,19 +423,36 @@ func TestUsageFromValueSupportsProviderReasoningShapes(t *testing.T) {
 				},
 			},
 			want: struct {
-				input     int64
-				cached    int64
-				output    int64
-				reasoning int64
-				total     int64
+				input       int64
+				cached      int64
+				output      int64
+				reasoning   int64
+				compression int64
+				total       int64
 			}{input: 90, cached: 10, output: 30, reasoning: 5, total: 120},
+		},
+		{
+			name: "context compression tokens",
+			value: map[string]any{
+				"inputTokens":              float64(120),
+				"outputTokens":             float64(40),
+				"contextCompressionTokens": float64(15),
+			},
+			want: struct {
+				input       int64
+				cached      int64
+				output      int64
+				reasoning   int64
+				compression int64
+				total       int64
+			}{input: 120, output: 40, compression: 15, total: 175},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := usageFromValue(tt.value)
-			if got.InputTokens != tt.want.input || got.CachedInputTokens != tt.want.cached || got.OutputTokens != tt.want.output || got.ReasoningOutputTokens != tt.want.reasoning || got.TotalTokens != tt.want.total {
+			if got.InputTokens != tt.want.input || got.CachedInputTokens != tt.want.cached || got.OutputTokens != tt.want.output || got.ReasoningOutputTokens != tt.want.reasoning || got.ContextCompressionTokens != tt.want.compression || got.TotalTokens != tt.want.total {
 				t.Fatalf("usage = %+v", got)
 			}
 		})

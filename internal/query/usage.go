@@ -1,4 +1,4 @@
-﻿package query
+package query
 
 import (
 	"context"
@@ -37,8 +37,8 @@ func analyticsUsageWhere(filters model.AnalyticsFilters) ([]string, []any) {
 	return appendAnalyticsFilters(where, args, filters, "src", usageSessionModelExpr, "s.started_at")
 }
 
-func appendBillableUsageFilter(where []string) []string {
-	return append(where, `(tu.input_tokens > 0 OR tu.cached_input_tokens > 0 OR tu.output_tokens > 0 OR tu.reasoning_output_tokens > 0 OR tu.total_tokens > 0)`)
+func appendUsageMetricFilter(where []string) []string {
+	return append(where, `(tu.input_tokens > 0 OR tu.cached_input_tokens > 0 OR tu.output_tokens > 0 OR tu.reasoning_output_tokens > 0 OR tu.context_compression_tokens > 0 OR tu.total_tokens > 0)`)
 }
 
 func (s *Service) totalCost(ctx context.Context) (*float64, int, error) {
@@ -88,6 +88,7 @@ func (s *Service) TokenAnalyticsWithFilters(ctx context.Context, filters model.A
 	result.TotalCachedInputTokens = usage.CachedInputTokens
 	result.TotalOutputTokens = usage.OutputTokens
 	result.TotalReasoningTokens = usage.ReasoningOutputTokens
+	result.TotalContextCompressionTokens = usage.ContextCompressionTokens
 	result.TotalTokens = usage.TotalTokens
 	result.CacheUtilizationRate = cacheUtilizationRate(result.TotalInputTokens, result.TotalCachedInputTokens)
 	result.EstimatedCostUSD, result.UnpricedCount, err = s.totalCostWithFilters(ctx, filters)
@@ -134,12 +135,13 @@ func (s *Service) usageTotals(ctx context.Context, filters model.AnalyticsFilter
 		COALESCE(SUM(tu.cached_input_tokens), 0),
 		COALESCE(SUM(tu.output_tokens), 0),
 		COALESCE(SUM(tu.reasoning_output_tokens), 0),
+		COALESCE(SUM(tu.context_compression_tokens), 0),
 		COALESCE(SUM(tu.total_tokens), 0)
 		FROM token_usage tu
 		JOIN sessions s ON s.id = tu.owner_id
 		JOIN sources src ON src.id = s.source_id
 		WHERE `+strings.Join(where, " AND "), args...).
-		Scan(&usage.InputTokens, &usage.CachedInputTokens, &usage.OutputTokens, &usage.ReasoningOutputTokens, &usage.TotalTokens)
+		Scan(&usage.InputTokens, &usage.CachedInputTokens, &usage.OutputTokens, &usage.ReasoningOutputTokens, &usage.ContextCompressionTokens, &usage.TotalTokens)
 	return usage, err
 }
 
@@ -195,6 +197,7 @@ func (s *Service) dailyUsageWithFilters(ctx context.Context, filters model.Analy
 			COALESCE(SUM(tu.input_tokens), 0) AS input_tokens,
 			COALESCE(SUM(tu.cached_input_tokens), 0) AS cached_input_tokens,
 			COALESCE(SUM(tu.output_tokens), 0) AS output_tokens,
+			COALESCE(SUM(tu.context_compression_tokens), 0) AS context_compression_tokens,
 			COALESCE(SUM((SELECT COUNT(*) FROM tool_calls tc WHERE tc.session_id = s.id)), 0) AS tool_calls
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
@@ -211,7 +214,7 @@ func (s *Service) dailyUsageWithFilters(ctx context.Context, filters model.Analy
 	var result []model.DailyUsage
 	for rows.Next() {
 		var item model.DailyUsage
-		if err := rows.Scan(&item.Date, &item.SessionCount, &item.TotalTokens, &item.InputTokens, &item.CachedInputTokens, &item.OutputTokens, &item.ToolCalls); err != nil {
+		if err := rows.Scan(&item.Date, &item.SessionCount, &item.TotalTokens, &item.InputTokens, &item.CachedInputTokens, &item.OutputTokens, &item.ContextCompressionTokens, &item.ToolCalls); err != nil {
 			return nil, err
 		}
 		item.CacheUtilizationRate = cacheUtilizationRate(item.InputTokens, item.CachedInputTokens)
@@ -256,7 +259,7 @@ func cacheHitTrendFromDailyUsage(daily []model.DailyUsage) []model.CacheHitTrend
 			TotalTokens:       item.TotalTokens,
 			InputTokens:       item.InputTokens,
 			CachedInputTokens: item.CachedInputTokens,
-			HasUsage:          item.SessionCount > 0 || item.TotalTokens > 0 || item.InputTokens > 0 || item.CachedInputTokens > 0,
+			HasUsage:          item.SessionCount > 0 || item.TotalTokens > 0 || item.InputTokens > 0 || item.CachedInputTokens > 0 || item.ContextCompressionTokens > 0,
 			LowInputVolume:    item.InputTokens > 0 && lowVolumeThreshold > 0 && item.InputTokens < lowVolumeThreshold,
 		}
 		point.CacheUtilizationRate = cacheUtilizationRate(item.InputTokens, item.CachedInputTokens)
@@ -374,10 +377,10 @@ func (s *Service) modelUsageWithFilters(ctx context.Context, filters model.Analy
 		return nil, err
 	}
 	where, args := analyticsUsageWhere(filters)
-	where = appendBillableUsageFilter(where)
+	where = appendUsageMetricFilter(where)
 	rows, err := s.conn.QueryContext(ctx, `SELECT `+usageSessionModelExpr+`, COUNT(*),
 		COALESCE(SUM(tu.total_tokens), 0), COALESCE(SUM(tu.input_tokens), 0), COALESCE(SUM(tu.cached_input_tokens), 0),
-		COALESCE(SUM(tu.output_tokens), 0), COALESCE(SUM(tu.reasoning_output_tokens), 0)
+		COALESCE(SUM(tu.output_tokens), 0), COALESCE(SUM(tu.reasoning_output_tokens), 0), COALESCE(SUM(tu.context_compression_tokens), 0)
 		FROM token_usage tu
 		JOIN sessions s ON s.id = tu.owner_id
 		JOIN sources src ON src.id = s.source_id
@@ -399,6 +402,7 @@ func (s *Service) modelUsageWithFilters(ctx context.Context, filters model.Analy
 			&item.CachedInputTokens,
 			&item.OutputTokens,
 			&item.ReasoningOutputTokens,
+			&item.ContextCompressionTokens,
 		); err != nil {
 			return nil, err
 		}
@@ -413,7 +417,7 @@ func (s *Service) modelUsageWithFilters(ctx context.Context, filters model.Analy
 
 func (s *Service) modelCostsWithFilters(ctx context.Context, calculator pricing.Calculator, filters model.AnalyticsFilters) (map[string]float64, map[string]bool, error) {
 	where, args := analyticsUsageWhere(filters)
-	where = appendBillableUsageFilter(where)
+	where = appendUsageMetricFilter(where)
 	rows, err := s.conn.QueryContext(ctx, `SELECT `+usageCostColumns+`
 		FROM token_usage tu
 		JOIN sessions s ON s.id = tu.owner_id
@@ -442,7 +446,7 @@ func (s *Service) agentUsageWithFilters(ctx context.Context, filters model.Analy
 	where, args := analyticsSessionWhere(filters)
 	rows, err := s.conn.QueryContext(ctx, `SELECT src.id, src.root_path, src.sessions_path, src.kind, src.name, COUNT(*),
 		COALESCE(SUM(tu.total_tokens), 0), COALESCE(SUM(tu.input_tokens), 0), COALESCE(SUM(tu.cached_input_tokens), 0),
-		COALESCE(SUM(tu.output_tokens), 0), COALESCE(SUM(tu.reasoning_output_tokens), 0),
+		COALESCE(SUM(tu.output_tokens), 0), COALESCE(SUM(tu.reasoning_output_tokens), 0), COALESCE(SUM(tu.context_compression_tokens), 0),
 		COALESCE(SUM((SELECT COUNT(*) FROM tool_calls tc WHERE tc.session_id = s.id)), 0)
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
@@ -469,6 +473,7 @@ func (s *Service) agentUsageWithFilters(ctx context.Context, filters model.Analy
 			&item.CachedInputTokens,
 			&item.OutputTokens,
 			&item.ReasoningOutputTokens,
+			&item.ContextCompressionTokens,
 			&item.ToolCalls,
 		); err != nil {
 			return nil, err
@@ -543,6 +548,7 @@ func (s *Service) UsageBreakdown(ctx context.Context, groupBy string, filters mo
 		COALESCE(SUM(COALESCE(tu.cached_input_tokens, 0)), 0),
 		COALESCE(SUM(COALESCE(tu.output_tokens, 0)), 0),
 		COALESCE(SUM(COALESCE(tu.reasoning_output_tokens, 0)), 0),
+		COALESCE(SUM(COALESCE(tu.context_compression_tokens, 0)), 0),
 		COALESCE(MAX(tu.source), 'unknown')
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
@@ -578,6 +584,7 @@ func (s *Service) UsageBreakdown(ctx context.Context, groupBy string, filters mo
 			&bucket.CachedInputTokens,
 			&bucket.OutputTokens,
 			&bucket.ReasoningOutputTokens,
+			&bucket.ContextCompressionTokens,
 			&usageSource,
 		); err != nil {
 			return model.UsageBreakdown{}, err
@@ -604,15 +611,17 @@ func (s *Service) UsageBreakdown(ctx context.Context, groupBy string, filters mo
 		target.CachedInputTokens += bucket.CachedInputTokens
 		target.OutputTokens += bucket.OutputTokens
 		target.ReasoningOutputTokens += bucket.ReasoningOutputTokens
+		target.ContextCompressionTokens += bucket.ContextCompressionTokens
 
 		usage := model.Usage{
-			Model:                 pricingModel,
-			InputTokens:           bucket.InputTokens,
-			CachedInputTokens:     bucket.CachedInputTokens,
-			OutputTokens:          bucket.OutputTokens,
-			ReasoningOutputTokens: bucket.ReasoningOutputTokens,
-			TotalTokens:           bucket.TotalTokens,
-			Source:                usageSource,
+			Model:                    pricingModel,
+			InputTokens:              bucket.InputTokens,
+			CachedInputTokens:        bucket.CachedInputTokens,
+			OutputTokens:             bucket.OutputTokens,
+			ReasoningOutputTokens:    bucket.ReasoningOutputTokens,
+			ContextCompressionTokens: bucket.ContextCompressionTokens,
+			TotalTokens:              bucket.TotalTokens,
+			Source:                   usageSource,
 		}
 		if cost, unpriced := costs.add(key, usage); unpriced {
 			target.Unpriced = true

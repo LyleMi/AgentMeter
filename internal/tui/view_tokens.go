@@ -1,4 +1,4 @@
-﻿package tui
+package tui
 
 import (
 	"fmt"
@@ -75,6 +75,10 @@ func appendTokenKpiLines(lines []string, tokens agentmodel.TokenAnalytics) []str
 			formatInt(tokens.TotalOutputTokens),
 			formatInt(tokens.TotalReasoningTokens),
 		),
+		fmt.Sprintf("Context compression: %-12s Compression share: %s",
+			formatInt(tokens.TotalContextCompressionTokens),
+			formatPercent(ratio(float64(tokens.TotalContextCompressionTokens), float64(tokens.TotalTokens))),
+		),
 		fmt.Sprintf("Output/input: %-8sx Unpriced rows: %-8s Recent sessions: %-8s High-token sessions: %s",
 			formatSignalRate(ratio(float64(tokens.TotalOutputTokens), float64(tokens.TotalInputTokens)), 2),
 			formatInt(int64(tokens.UnpricedCount)),
@@ -85,13 +89,14 @@ func appendTokenKpiLines(lines []string, tokens agentmodel.TokenAnalytics) []str
 }
 
 func appendTokenMixLines(lines []string, tokens agentmodel.TokenAnalytics) []string {
-	total := float64(tokens.TotalInputTokens + tokens.TotalCachedInputTokens + tokens.TotalOutputTokens + tokens.TotalReasoningTokens)
+	total := float64(tokens.TotalInputTokens + tokens.TotalCachedInputTokens + tokens.TotalOutputTokens + tokens.TotalReasoningTokens + tokens.TotalContextCompressionTokens)
 	lines = append(lines, "", bold("Token Mix"))
 	lines = append(lines,
 		tokenMixLine("Input", tokens.TotalInputTokens, total),
 		tokenMixLine("Cached input", tokens.TotalCachedInputTokens, total),
 		tokenMixLine("Output", tokens.TotalOutputTokens, total),
 		tokenMixLine("Reasoning overhead", tokens.TotalReasoningTokens, total),
+		tokenMixLine("Context compression", tokens.TotalContextCompressionTokens, total),
 	)
 	return lines
 }
@@ -214,16 +219,17 @@ func appendTokenBreakdownLines(lines []string, tokens agentmodel.TokenAnalytics,
 }
 
 func appendTokenBreakdownRows(lines []string, rows []agentmodel.UsageBreakdownBucket, width int, group string, limit int) []string {
-	lines = append(lines, fit(fmt.Sprintf("  %-30s %8s %12s %12s %12s %12s %8s %10s",
-		tokenBreakdownGroupTitle(group), "Sessions", "Tokens", "Input", "Cached", "Output", "Cache", "Cost"), width))
+	lines = append(lines, fit(fmt.Sprintf("  %-30s %8s %12s %12s %12s %12s %12s %8s %10s",
+		tokenBreakdownGroupTitle(group), "Sessions", "Tokens", "Input", "Cached", "Output", "Compress", "Cache", "Cost"), width))
 	for _, row := range limitSlice(rows, limit) {
-		lines = append(lines, fit(fmt.Sprintf("  %-30s %8s %12s %12s %12s %12s %8s %10s",
+		lines = append(lines, fit(fmt.Sprintf("  %-30s %8s %12s %12s %12s %12s %12s %8s %10s",
 			truncate(tokenBreakdownScope(row, group), 30),
 			formatInt(int64(row.SessionCount)),
 			formatInt(row.TotalTokens),
 			formatInt(row.InputTokens),
 			formatInt(row.CachedInputTokens),
 			formatInt(row.OutputTokens),
+			formatInt(row.ContextCompressionTokens),
 			formatPercent(row.CacheUtilizationRate),
 			formatCost(row.EstimatedCostUSD),
 		), width))
@@ -246,15 +252,16 @@ func appendTokenSessionLines(lines []string, rows []agentmodel.Session, width in
 func tokenBreakdownRows(tokens agentmodel.TokenAnalytics, breakdown agentmodel.UsageBreakdown, group string) []agentmodel.UsageBreakdownBucket {
 	if group == tokenBreakdownGlobal {
 		return []agentmodel.UsageBreakdownBucket{{
-			SessionCount:          tokens.TotalSessions,
-			TotalTokens:           tokens.TotalTokens,
-			InputTokens:           tokens.TotalInputTokens,
-			CachedInputTokens:     tokens.TotalCachedInputTokens,
-			OutputTokens:          tokens.TotalOutputTokens,
-			ReasoningOutputTokens: tokens.TotalReasoningTokens,
-			CacheUtilizationRate:  tokens.CacheUtilizationRate,
-			EstimatedCostUSD:      tokens.EstimatedCostUSD,
-			Unpriced:              tokens.UnpricedCount > 0,
+			SessionCount:             tokens.TotalSessions,
+			TotalTokens:              tokens.TotalTokens,
+			InputTokens:              tokens.TotalInputTokens,
+			CachedInputTokens:        tokens.TotalCachedInputTokens,
+			OutputTokens:             tokens.TotalOutputTokens,
+			ReasoningOutputTokens:    tokens.TotalReasoningTokens,
+			ContextCompressionTokens: tokens.TotalContextCompressionTokens,
+			CacheUtilizationRate:     tokens.CacheUtilizationRate,
+			EstimatedCostUSD:         tokens.EstimatedCostUSD,
+			Unpriced:                 tokens.UnpricedCount > 0,
 		}}
 	}
 	return breakdown.Buckets

@@ -1,4 +1,4 @@
-﻿package query
+package query
 
 import (
 	"context"
@@ -232,6 +232,7 @@ func TestTokenAnalyticsAggregatesUsageCostsAndSessions(t *testing.T) {
 	sessionA := insertTokenAnalyticsSession(t, conn, codexSourceID, now, "codex-a", "gpt-5", "gpt-5", "actual", 1_000_000, 200_000, 500_000, 50_000, 1_550_000)
 	sessionB := insertTokenAnalyticsSession(t, conn, codexSourceID, now.Add(time.Hour), "codex-b", "unknown-model", "unknown-model", "actual", 100, 20, 30, 0, 130)
 	sessionC := insertTokenAnalyticsSession(t, conn, claudeSourceID, now.Add(2*time.Hour), "claude-c", "gpt-5-mini", "gpt-5-mini", "actual", 500_000, 100_000, 250_000, 25_000, 775_000)
+	setSessionContextCompressionTokens(t, conn, sessionB, 12)
 
 	analytics, err := New(conn).TokenAnalytics(ctx)
 	if err != nil {
@@ -248,6 +249,9 @@ func TestTokenAnalyticsAggregatesUsageCostsAndSessions(t *testing.T) {
 	if analytics.UnpricedCount != 1 {
 		t.Fatalf("unpriced count = %d", analytics.UnpricedCount)
 	}
+	if analytics.TotalContextCompressionTokens != 12 {
+		t.Fatalf("context compression tokens = %d", analytics.TotalContextCompressionTokens)
+	}
 	if analytics.EstimatedCostUSD == nil || math.Abs(*analytics.EstimatedCostUSD-6.6275) > 0.000001 {
 		t.Fatalf("estimated cost = %v", analytics.EstimatedCostUSD)
 	}
@@ -258,13 +262,13 @@ func TestTokenAnalyticsAggregatesUsageCostsAndSessions(t *testing.T) {
 		t.Fatalf("gpt model usage = %+v", gptUsage)
 	}
 	unknownUsage := findModelUsage(t, analytics.ModelUsage, "unknown-model")
-	if !unknownUsage.Unpriced || unknownUsage.EstimatedCostUSD != nil {
+	if !unknownUsage.Unpriced || unknownUsage.EstimatedCostUSD != nil || unknownUsage.ContextCompressionTokens != 12 {
 		t.Fatalf("unknown model usage pricing = %+v", unknownUsage)
 	}
 
 	codexUsage := findAgentUsage(t, analytics.AgentUsage, "codex", "Codex")
 	if codexUsage.SessionCount != 2 || codexUsage.TotalTokens != 1_550_130 || codexUsage.CachedInputTokens != 200_020 ||
-		codexUsage.ReasoningOutputTokens != 50_000 || !codexUsage.Unpriced {
+		codexUsage.ReasoningOutputTokens != 50_000 || codexUsage.ContextCompressionTokens != 12 || !codexUsage.Unpriced {
 		t.Fatalf("codex agent usage = %+v", codexUsage)
 	}
 	if math.Abs(codexUsage.CacheUtilizationRate-0.2) > 0.000001 {
@@ -897,8 +901,9 @@ func TestUsageBreakdownGroupsByAgentModelAndDay(t *testing.T) {
 	codexSourceID := insertTimeSource(t, conn, "codex", "Codex", now)
 	claudeSourceID := insertTimeSource(t, conn, "claude", "Claude Code", now)
 	insertTokenAnalyticsSession(t, conn, codexSourceID, now, "codex-a", "gpt-5", "gpt-5", "actual", 1_000, 200, 500, 50, 1_550)
-	insertTokenAnalyticsSession(t, conn, codexSourceID, now.Add(time.Hour), "codex-b", "unknown-model", "unknown-model", "actual", 100, 20, 30, 0, 130)
+	sessionB := insertTokenAnalyticsSession(t, conn, codexSourceID, now.Add(time.Hour), "codex-b", "unknown-model", "unknown-model", "actual", 100, 20, 30, 0, 130)
 	insertTokenAnalyticsSession(t, conn, claudeSourceID, now.Add(24*time.Hour), "claude-c", "gpt-5-mini", "gpt-5-mini", "actual", 500, 100, 250, 25, 775)
+	setSessionContextCompressionTokens(t, conn, sessionB, 9)
 
 	service := New(conn)
 	agentBreakdown, err := service.UsageBreakdown(ctx, "agent", model.AnalyticsFilters{})
@@ -910,7 +915,7 @@ func TestUsageBreakdownGroupsByAgentModelAndDay(t *testing.T) {
 	}
 	codexAgent := findUsageBreakdownBucket(t, agentBreakdown.Buckets, codexSourceID, "", "")
 	if codexAgent.SessionCount != 2 || codexAgent.TotalTokens != 1_680 || codexAgent.InputTokens != 1_100 ||
-		codexAgent.CachedInputTokens != 220 || !codexAgent.Unpriced || math.Abs(codexAgent.CacheUtilizationRate-0.2) > 0.000001 {
+		codexAgent.CachedInputTokens != 220 || codexAgent.ContextCompressionTokens != 9 || !codexAgent.Unpriced || math.Abs(codexAgent.CacheUtilizationRate-0.2) > 0.000001 {
 		t.Fatalf("codex agent bucket = %+v", codexAgent)
 	}
 
@@ -923,7 +928,7 @@ func TestUsageBreakdownGroupsByAgentModelAndDay(t *testing.T) {
 		t.Fatalf("gpt model bucket = %+v", gptBucket)
 	}
 	unknownBucket := findUsageBreakdownBucket(t, modelBreakdown.Buckets, 0, "unknown-model", "")
-	if !unknownBucket.Unpriced || unknownBucket.EstimatedCostUSD != nil {
+	if !unknownBucket.Unpriced || unknownBucket.EstimatedCostUSD != nil || unknownBucket.ContextCompressionTokens != 9 {
 		t.Fatalf("unknown model bucket = %+v", unknownBucket)
 	}
 
@@ -947,7 +952,7 @@ func TestUsageBreakdownGroupsByAgentModelAndDay(t *testing.T) {
 		t.Fatalf("day buckets = %+v", dayBreakdown.Buckets)
 	}
 	firstDay := findUsageBreakdownBucket(t, dayBreakdown.Buckets, 0, "", "2026-06-27")
-	if firstDay.SessionCount != 2 || firstDay.TotalTokens != 1_680 || !firstDay.Unpriced {
+	if firstDay.SessionCount != 2 || firstDay.TotalTokens != 1_680 || firstDay.ContextCompressionTokens != 9 || !firstDay.Unpriced {
 		t.Fatalf("first day bucket = %+v", firstDay)
 	}
 }
@@ -1385,6 +1390,13 @@ func insertTokenAnalyticsSession(t *testing.T, conn *sql.DB, sourceID int64, sta
 func setSessionProjectPath(t *testing.T, conn *sql.DB, sessionID int64, projectPath string) {
 	t.Helper()
 	if _, err := conn.Exec(`UPDATE sessions SET project_path = ? WHERE id = ?`, projectPath, sessionID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func setSessionContextCompressionTokens(t *testing.T, conn *sql.DB, sessionID int64, tokens int64) {
+	t.Helper()
+	if _, err := conn.Exec(`UPDATE token_usage SET context_compression_tokens = ? WHERE owner_kind = 'session' AND owner_id = ?`, tokens, sessionID); err != nil {
 		t.Fatal(err)
 	}
 }

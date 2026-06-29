@@ -1,4 +1,4 @@
-﻿package ingest
+package ingest
 
 import (
 	"context"
@@ -335,13 +335,14 @@ func (i *Indexer) replaceParsedSession(ctx context.Context, source model.Source,
 	modelCallCosts := make([]*float64, len(parsed.ModelCall))
 	for index, call := range parsed.ModelCall {
 		usage := model.Usage{
-			Model:                 call.Model,
-			InputTokens:           call.InputTokens,
-			CachedInputTokens:     call.CachedInputTokens,
-			OutputTokens:          call.OutputTokens,
-			ReasoningOutputTokens: call.ReasoningOutputTokens,
-			TotalTokens:           call.TotalTokens,
-			Source:                "actual",
+			Model:                    call.Model,
+			InputTokens:              call.InputTokens,
+			CachedInputTokens:        call.CachedInputTokens,
+			OutputTokens:             call.OutputTokens,
+			ReasoningOutputTokens:    call.ReasoningOutputTokens,
+			ContextCompressionTokens: call.ContextCompressionTokens,
+			TotalTokens:              call.TotalTokens,
+			Source:                   "actual",
 		}
 		cost, _ := calculator.Compute(usage)
 		modelCallCosts[index] = cost
@@ -424,20 +425,20 @@ func (i *Indexer) replaceParsedSession(ctx context.Context, source model.Source,
 		parsed.Usage.Model = parsed.Session.Model
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO token_usage
-		(owner_kind, owner_id, model, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, source)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		(owner_kind, owner_id, model, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, context_compression_tokens, total_tokens, source)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"session", sessionID, parsed.Usage.Model, parsed.Usage.InputTokens, parsed.Usage.CachedInputTokens,
-		parsed.Usage.OutputTokens, parsed.Usage.ReasoningOutputTokens, parsed.Usage.TotalTokens, parsed.Usage.Source)
+		parsed.Usage.OutputTokens, parsed.Usage.ReasoningOutputTokens, parsed.Usage.ContextCompressionTokens, parsed.Usage.TotalTokens, parsed.Usage.Source)
 	if err != nil {
 		return err
 	}
 
 	for index, call := range parsed.ModelCall {
 		_, err := tx.ExecContext(ctx, `INSERT INTO model_calls
-			(session_id, started_at, ended_at, duration_ms, model, provider, status, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, cost_usd)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			(session_id, started_at, ended_at, duration_ms, model, provider, status, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, context_compression_tokens, total_tokens, cost_usd)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			sessionID, db.FormatTime(call.StartedAt), db.FormatTime(call.EndedAt), call.DurationMS, call.Model, call.Provider, call.Status,
-			call.InputTokens, call.CachedInputTokens, call.OutputTokens, call.ReasoningOutputTokens, call.TotalTokens, nullableFloat(modelCallCosts[index]))
+			call.InputTokens, call.CachedInputTokens, call.OutputTokens, call.ReasoningOutputTokens, call.ContextCompressionTokens, call.TotalTokens, nullableFloat(modelCallCosts[index]))
 		if err != nil {
 			return err
 		}

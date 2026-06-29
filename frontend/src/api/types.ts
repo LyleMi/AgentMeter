@@ -4,6 +4,7 @@ export interface Usage {
   cachedInputTokens: number
   outputTokens: number
   reasoningOutputTokens: number
+  contextCompressionTokens?: number
   totalTokens: number
   source: string
   costUsd?: number
@@ -54,6 +55,7 @@ export interface DailyUsage {
   inputTokens: number
   cachedInputTokens: number
   outputTokens: number
+  contextCompressionTokens?: number
   cacheUtilizationRate: number
   toolCalls: number
   estimatedCostUsd?: number
@@ -79,6 +81,7 @@ export interface ModelUsage {
   cachedInputTokens: number
   outputTokens: number
   reasoningOutputTokens: number
+  contextCompressionTokens?: number
   estimatedCostUsd?: number
   unpriced: boolean
 }
@@ -114,6 +117,7 @@ export interface UsageBreakdownBucket extends SourceIdentity {
   cachedInputTokens: number
   outputTokens: number
   reasoningOutputTokens: number
+  contextCompressionTokens?: number
   cacheUtilizationRate: number
   estimatedCostUsd?: number
   unpriced: boolean
@@ -128,6 +132,7 @@ export interface AgentUsage extends SourceIdentity {
   cachedInputTokens: number
   outputTokens: number
   reasoningOutputTokens: number
+  contextCompressionTokens?: number
   cacheUtilizationRate: number
   toolCalls: number
   estimatedCostUsd?: number
@@ -175,6 +180,7 @@ export interface Overview {
   totalCachedInputTokens: number
   totalOutputTokens: number
   totalReasoningTokens: number
+  totalContextCompressionTokens?: number
   totalTokens: number
   estimatedCostUsd?: number
   unpricedSessions: number
@@ -203,6 +209,7 @@ export interface TokenAnalytics {
   totalCachedInputTokens: number
   totalOutputTokens: number
   totalReasoningTokens: number
+  totalContextCompressionTokens?: number
   totalTokens: number
   cacheUtilizationRate: number
   estimatedCostUsd?: number
@@ -239,6 +246,7 @@ export interface ModelSignalMetricSet extends ModelSignalRates {
   cachedInputTokens: number
   outputTokens: number
   reasoningOutputTokens: number
+  contextCompressionTokens?: number
   visibleOutputTokens?: number
   billableOutputTokens?: number
   modelDurationMs: number
@@ -310,6 +318,7 @@ export interface ModelSignalsTrendPoint extends ModelSignalRates {
   cachedInputTokens: number
   outputTokens: number
   reasoningOutputTokens: number
+  contextCompressionTokens?: number
   modelDurationMs: number
   rollingModelThroughputTokensPerSecond: number
   rollingToolFailureRate: number
@@ -327,6 +336,7 @@ export interface ModelSignalBreakdown extends ModelSignalRates {
   cachedInputTokens: number
   outputTokens: number
   reasoningOutputTokens: number
+  contextCompressionTokens?: number
   modelDurationMs: number
 }
 
@@ -418,6 +428,7 @@ export interface ModelSignalAnomalySession {
   inputTokens?: number
   outputTokens?: number
   reasoningOutputTokens?: number
+  contextCompressionTokens?: number
   toolCalls?: number
   failedToolCalls?: number
   modelDurationMs?: number
@@ -485,6 +496,7 @@ export interface ModelCall {
   cachedInputTokens: number
   outputTokens: number
   reasoningOutputTokens: number
+  contextCompressionTokens?: number
   totalTokens: number
   costUsd?: number
   unpriced: boolean

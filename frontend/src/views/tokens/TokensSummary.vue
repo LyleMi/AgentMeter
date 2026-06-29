@@ -5,6 +5,7 @@ import ASpin from 'ant-design-vue/es/spin'
 import {
   BarChartOutlined,
   CheckCircleOutlined,
+  CompressOutlined,
   DatabaseOutlined,
   DollarCircleOutlined,
   TableOutlined,
@@ -34,8 +35,10 @@ const { t } = useMessages({
     'metric.costNoteMissing': '{count} unpriced usage rows',
     'metric.inputOutput': 'Input / Output',
     'metric.inputOutputNote': 'Prompt and response volume',
+    'metric.contextCompression': 'Context Compression',
+    'metric.contextCompressionNote': '{percent} of total token volume',
     'breakdown.title': 'Token Mix',
-    'breakdown.kicker': 'Input/output totals with cached input and reasoning overhead shape',
+    'breakdown.kicker': 'Input/output totals with cached input, reasoning, and context compression separated',
     'trend.title': 'Cache Hit Trend',
     'trend.kicker': 'Daily hit rate with input-weighted 7-day trend',
     'sourceCache.title': 'Source Cache Hit Rate',
@@ -47,6 +50,7 @@ const { t } = useMessages({
     'token.cached': 'Cached input',
     'token.output': 'Output',
     'token.reasoning': 'Reasoning overhead',
+    'token.contextCompression': 'Context compression',
     'fallback.unknown': 'unknown'
   },
   'zh-CN': {
@@ -59,8 +63,10 @@ const { t } = useMessages({
     'metric.costNoteMissing': '{count} 条用量缺少价格',
     'metric.inputOutput': '输入 / 输出',
     'metric.inputOutputNote': '提示词和响应规模',
+    'metric.contextCompression': '上下文压缩',
+    'metric.contextCompressionNote': '占总 Token 的 {percent}',
     'breakdown.title': 'Token 构成',
-    'breakdown.kicker': '输入/输出总量及输入缓存、推理开销形态',
+    'breakdown.kicker': '单独展示输入/输出、输入缓存、推理和上下文压缩',
     'trend.title': '缓存命中趋势',
     'trend.kicker': '每日命中率与按输入 Token 加权的 7 天趋势',
     'sourceCache.title': '来源缓存命中率',
@@ -72,6 +78,7 @@ const { t } = useMessages({
     'token.cached': '输入缓存',
     'token.output': '输出',
     'token.reasoning': '推理开销',
+    'token.contextCompression': '上下文压缩',
     'fallback.unknown': '未知'
   }
 })
@@ -98,11 +105,13 @@ const tokenMix = computed(() => {
     outputTokens: item?.totalOutputTokens,
     reasoningOutputTokens: item?.totalReasoningTokens
   })
+  const compressionShare = contextCompressionShare(item)
   const values = [
     { key: 'input', label: t('token.input'), value: item?.totalInputTokens || 0, share: shares.input, tone: 'is-input' },
     { key: 'cached', label: t('token.cached'), value: item?.totalCachedInputTokens || 0, share: shares.cachedInput, tone: 'is-cached' },
     { key: 'output', label: t('token.output'), value: item?.totalOutputTokens || 0, share: shares.output, tone: 'is-output' },
-    { key: 'reasoning', label: t('token.reasoning'), value: item?.totalReasoningTokens || 0, share: shares.reasoningOutput, tone: 'is-reasoning' }
+    { key: 'reasoning', label: t('token.reasoning'), value: item?.totalReasoningTokens || 0, share: shares.reasoningOutput, tone: 'is-reasoning' },
+    { key: 'contextCompression', label: t('token.contextCompression'), value: item?.totalContextCompressionTokens || 0, share: compressionShare, tone: 'is-compression' }
   ]
   return values.map((current) => ({
     ...current,
@@ -166,6 +175,13 @@ const metricCards = computed(() => {
       note: t('metric.inputOutputNote'),
       icon: TableOutlined,
       tone: 'metric-neutral'
+    },
+    {
+      label: t('metric.contextCompression'),
+      value: formatDisplayNumber(item?.totalContextCompressionTokens),
+      note: t('metric.contextCompressionNote', { percent: mixPercent(contextCompressionShare(item)) }),
+      icon: CompressOutlined,
+      tone: 'metric-neutral'
     }
   ]
 })
@@ -189,6 +205,14 @@ function mixPercent(share: number) {
   if (!Number.isFinite(share) || share <= 0) return '0%'
   if (share < 0.01) return '<1%'
   return `${Math.round(share * 100)}%`
+}
+
+function contextCompressionShare(item: TokenAnalytics | null | undefined) {
+  const value = item?.totalContextCompressionTokens || 0
+  const total = item?.totalTokens || 0
+  if (value <= 0) return 0
+  if (total <= 0) return 1
+  return clampRatio(value / total)
 }
 
 function sourceCacheRate(item: AgentUsage) {
@@ -308,7 +332,7 @@ function clampRatio(value: number) {
 
 <style scoped>
 .tokens-metric-strip {
-  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
 }
 
 .tokens-summary-grid {
@@ -448,6 +472,10 @@ function clampRatio(value: number) {
 
 .tokens-mix-item.is-reasoning {
   --token-accent: var(--am-warning);
+}
+
+.tokens-mix-item.is-compression {
+  --token-accent: var(--am-danger);
 }
 
 .tokens-mix-row {

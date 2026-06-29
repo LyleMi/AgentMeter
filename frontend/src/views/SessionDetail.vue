@@ -77,6 +77,7 @@ const { t } = useMessages({
     'metric.tokenIn': 'in',
     'metric.tokenOut': 'out',
     'metric.tokenCached': 'cached',
+    'metric.tokenCompression': 'compressed',
     'metric.missingPricing': 'Missing local pricing for this model',
     'metric.active': 'active',
     'metric.idle': 'idle',
@@ -119,6 +120,7 @@ const { t } = useMessages({
     'column.cached': 'Cached',
     'column.output': 'Output',
     'column.reasoning': 'Reasoning',
+    'column.contextCompression': 'Compression',
     'column.total': 'Total',
     'column.cost': 'Cost',
     'column.started': 'Started',
@@ -179,6 +181,7 @@ const { t } = useMessages({
     'metric.tokenIn': '输入',
     'metric.tokenOut': '输出',
     'metric.tokenCached': '缓存',
+    'metric.tokenCompression': '压缩',
     'metric.missingPricing': '本地缺少此模型的价格',
     'metric.active': '活跃',
     'metric.idle': '空闲',
@@ -221,6 +224,7 @@ const { t } = useMessages({
     'column.cached': '缓存',
     'column.output': '输出',
     'column.reasoning': '推理',
+    'column.contextCompression': '压缩',
     'column.total': '总计',
     'column.cost': '费用',
     'column.started': '开始',
@@ -386,6 +390,7 @@ onMounted(load)
               {{ formatNumber(detail.session.tokenUsage.inputTokens) }} {{ t('metric.tokenIn') }} ·
               {{ formatNumber(detail.session.tokenUsage.outputTokens) }} {{ t('metric.tokenOut') }} ·
               {{ formatNumber(detail.session.tokenUsage.cachedInputTokens) }} {{ t('metric.tokenCached') }} ·
+              {{ formatNumber(detail.session.tokenUsage.contextCompressionTokens) }} {{ t('metric.tokenCompression') }} ·
               {{ detail.session.tokenUsage.source }}
             </div>
           </a-card>
@@ -532,7 +537,7 @@ onMounted(load)
                     :data-source="detail.modelCalls"
                     :locale="{ emptyText: t('empty.modelCalls') }"
                     :pagination="{ pageSize: 8 }"
-                    :scroll="{ x: 1200 }"
+                    :scroll="{ x: 1310 }"
                     row-key="id"
                   >
                     <template #bodyCell="{ column, record }">
@@ -565,6 +570,9 @@ onMounted(load)
                       </template>
                       <template v-else-if="column.key === 'reasoning'">
                         <span class="number-cell">{{ formatNumber(record.reasoningOutputTokens) }}</span>
+                      </template>
+                      <template v-else-if="column.key === 'contextCompression'">
+                        <span class="number-cell">{{ formatNumber(record.contextCompressionTokens) }}</span>
                       </template>
                       <template v-else-if="column.key === 'total'">
                         <span class="number-cell">{{ formatNumber(record.totalTokens) }}</span>

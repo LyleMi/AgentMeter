@@ -5,7 +5,7 @@ const sessionSelect = `SELECT
 		s.agent_nickname, s.agent_role, s.started_at, s.ended_at, s.wall_duration_ms, s.active_duration_ms, s.model_duration_ms,
 		s.tool_duration_ms, s.idle_duration_ms, s.event_count, s.parse_status,
 		COALESCE(tu.model, s.model), COALESCE(tu.input_tokens, 0), COALESCE(tu.cached_input_tokens, 0), COALESCE(tu.output_tokens, 0),
-		COALESCE(tu.reasoning_output_tokens, 0), COALESCE(tu.total_tokens, 0), COALESCE(tu.source, 'unknown'),
+		COALESCE(tu.reasoning_output_tokens, 0), COALESCE(tu.context_compression_tokens, 0), COALESCE(tu.total_tokens, 0), COALESCE(tu.source, 'unknown'),
 		(SELECT COUNT(*) FROM tool_calls tc WHERE tc.session_id = s.id) AS tool_call_count,
 		sf.path, sf.scan_status, sf.error
 		FROM sessions s

@@ -79,15 +79,16 @@ type Session struct {
 }
 
 type Usage struct {
-	Model                 string   `json:"model"`
-	InputTokens           int64    `json:"inputTokens"`
-	CachedInputTokens     int64    `json:"cachedInputTokens"`
-	OutputTokens          int64    `json:"outputTokens"`
-	ReasoningOutputTokens int64    `json:"reasoningOutputTokens"`
-	TotalTokens           int64    `json:"totalTokens"`
-	Source                string   `json:"source"`
-	CostUSD               *float64 `json:"costUsd,omitempty"`
-	Unpriced              bool     `json:"unpriced"`
+	Model                    string   `json:"model"`
+	InputTokens              int64    `json:"inputTokens"`
+	CachedInputTokens        int64    `json:"cachedInputTokens"`
+	OutputTokens             int64    `json:"outputTokens"`
+	ReasoningOutputTokens    int64    `json:"reasoningOutputTokens"`
+	ContextCompressionTokens int64    `json:"contextCompressionTokens"`
+	TotalTokens              int64    `json:"totalTokens"`
+	Source                   string   `json:"source"`
+	CostUSD                  *float64 `json:"costUsd,omitempty"`
+	Unpriced                 bool     `json:"unpriced"`
 }
 
 type Event struct {
@@ -103,21 +104,22 @@ type Event struct {
 }
 
 type ModelCall struct {
-	ID                    int64     `json:"id"`
-	SessionID             int64     `json:"sessionId"`
-	StartedAt             time.Time `json:"startedAt"`
-	EndedAt               time.Time `json:"endedAt"`
-	DurationMS            int64     `json:"durationMs"`
-	Model                 string    `json:"model"`
-	Provider              string    `json:"provider"`
-	Status                string    `json:"status"`
-	InputTokens           int64     `json:"inputTokens"`
-	CachedInputTokens     int64     `json:"cachedInputTokens"`
-	OutputTokens          int64     `json:"outputTokens"`
-	ReasoningOutputTokens int64     `json:"reasoningOutputTokens"`
-	TotalTokens           int64     `json:"totalTokens"`
-	CostUSD               *float64  `json:"costUsd,omitempty"`
-	Unpriced              bool      `json:"unpriced"`
+	ID                       int64     `json:"id"`
+	SessionID                int64     `json:"sessionId"`
+	StartedAt                time.Time `json:"startedAt"`
+	EndedAt                  time.Time `json:"endedAt"`
+	DurationMS               int64     `json:"durationMs"`
+	Model                    string    `json:"model"`
+	Provider                 string    `json:"provider"`
+	Status                   string    `json:"status"`
+	InputTokens              int64     `json:"inputTokens"`
+	CachedInputTokens        int64     `json:"cachedInputTokens"`
+	OutputTokens             int64     `json:"outputTokens"`
+	ReasoningOutputTokens    int64     `json:"reasoningOutputTokens"`
+	ContextCompressionTokens int64     `json:"contextCompressionTokens"`
+	TotalTokens              int64     `json:"totalTokens"`
+	CostUSD                  *float64  `json:"costUsd,omitempty"`
+	Unpriced                 bool      `json:"unpriced"`
 }
 
 type ToolCall struct {
@@ -178,15 +180,16 @@ type PricingModelInput struct {
 }
 
 type DailyUsage struct {
-	Date                 string   `json:"date"`
-	SessionCount         int      `json:"sessionCount"`
-	TotalTokens          int64    `json:"totalTokens"`
-	InputTokens          int64    `json:"inputTokens"`
-	CachedInputTokens    int64    `json:"cachedInputTokens"`
-	OutputTokens         int64    `json:"outputTokens"`
-	ToolCalls            int      `json:"toolCalls"`
-	CacheUtilizationRate float64  `json:"cacheUtilizationRate"`
-	EstimatedCostUSD     *float64 `json:"estimatedCostUsd,omitempty"`
+	Date                     string   `json:"date"`
+	SessionCount             int      `json:"sessionCount"`
+	TotalTokens              int64    `json:"totalTokens"`
+	InputTokens              int64    `json:"inputTokens"`
+	CachedInputTokens        int64    `json:"cachedInputTokens"`
+	OutputTokens             int64    `json:"outputTokens"`
+	ContextCompressionTokens int64    `json:"contextCompressionTokens"`
+	ToolCalls                int      `json:"toolCalls"`
+	CacheUtilizationRate     float64  `json:"cacheUtilizationRate"`
+	EstimatedCostUSD         *float64 `json:"estimatedCostUsd,omitempty"`
 }
 
 type CacheHitTrendPoint struct {
@@ -202,35 +205,37 @@ type CacheHitTrendPoint struct {
 }
 
 type ModelUsage struct {
-	Model                 string   `json:"model"`
-	SessionCount          int      `json:"sessionCount"`
-	TotalTokens           int64    `json:"totalTokens"`
-	InputTokens           int64    `json:"inputTokens"`
-	CachedInputTokens     int64    `json:"cachedInputTokens"`
-	OutputTokens          int64    `json:"outputTokens"`
-	ReasoningOutputTokens int64    `json:"reasoningOutputTokens"`
-	EstimatedCostUSD      *float64 `json:"estimatedCostUsd,omitempty"`
-	Unpriced              bool     `json:"unpriced"`
+	Model                    string   `json:"model"`
+	SessionCount             int      `json:"sessionCount"`
+	TotalTokens              int64    `json:"totalTokens"`
+	InputTokens              int64    `json:"inputTokens"`
+	CachedInputTokens        int64    `json:"cachedInputTokens"`
+	OutputTokens             int64    `json:"outputTokens"`
+	ReasoningOutputTokens    int64    `json:"reasoningOutputTokens"`
+	ContextCompressionTokens int64    `json:"contextCompressionTokens"`
+	EstimatedCostUSD         *float64 `json:"estimatedCostUsd,omitempty"`
+	Unpriced                 bool     `json:"unpriced"`
 }
 
 type AgentUsage struct {
-	SourceID              int64    `json:"sourceId"`
-	SourceKey             string   `json:"sourceKey"`
-	SourceLabel           string   `json:"sourceLabel"`
-	SourceRootPath        string   `json:"sourceRootPath"`
-	SourceSessionsPath    string   `json:"sourceSessionsPath"`
-	AgentKind             string   `json:"agentKind"`
-	AgentName             string   `json:"agentName"`
-	SessionCount          int      `json:"sessionCount"`
-	TotalTokens           int64    `json:"totalTokens"`
-	InputTokens           int64    `json:"inputTokens"`
-	CachedInputTokens     int64    `json:"cachedInputTokens"`
-	OutputTokens          int64    `json:"outputTokens"`
-	ReasoningOutputTokens int64    `json:"reasoningOutputTokens"`
-	CacheUtilizationRate  float64  `json:"cacheUtilizationRate"`
-	ToolCalls             int      `json:"toolCalls"`
-	EstimatedCostUSD      *float64 `json:"estimatedCostUsd,omitempty"`
-	Unpriced              bool     `json:"unpriced"`
+	SourceID                 int64    `json:"sourceId"`
+	SourceKey                string   `json:"sourceKey"`
+	SourceLabel              string   `json:"sourceLabel"`
+	SourceRootPath           string   `json:"sourceRootPath"`
+	SourceSessionsPath       string   `json:"sourceSessionsPath"`
+	AgentKind                string   `json:"agentKind"`
+	AgentName                string   `json:"agentName"`
+	SessionCount             int      `json:"sessionCount"`
+	TotalTokens              int64    `json:"totalTokens"`
+	InputTokens              int64    `json:"inputTokens"`
+	CachedInputTokens        int64    `json:"cachedInputTokens"`
+	OutputTokens             int64    `json:"outputTokens"`
+	ReasoningOutputTokens    int64    `json:"reasoningOutputTokens"`
+	ContextCompressionTokens int64    `json:"contextCompressionTokens"`
+	CacheUtilizationRate     float64  `json:"cacheUtilizationRate"`
+	ToolCalls                int      `json:"toolCalls"`
+	EstimatedCostUSD         *float64 `json:"estimatedCostUsd,omitempty"`
+	Unpriced                 bool     `json:"unpriced"`
 }
 
 type ToolTimeUsage struct {
@@ -287,6 +292,7 @@ type Overview struct {
 	TotalCachedInputTokens         int64                `json:"totalCachedInputTokens"`
 	TotalOutputTokens              int64                `json:"totalOutputTokens"`
 	TotalReasoningTokens           int64                `json:"totalReasoningTokens"`
+	TotalContextCompressionTokens  int64                `json:"totalContextCompressionTokens"`
 	TotalTokens                    int64                `json:"totalTokens"`
 	EstimatedCostUSD               *float64             `json:"estimatedCostUsd,omitempty"`
 	UnpricedSessions               int                  `json:"unpricedSessions"`
@@ -310,20 +316,21 @@ type Overview struct {
 }
 
 type TokenAnalytics struct {
-	TotalSessions          int                  `json:"totalSessions"`
-	TotalInputTokens       int64                `json:"totalInputTokens"`
-	TotalCachedInputTokens int64                `json:"totalCachedInputTokens"`
-	TotalOutputTokens      int64                `json:"totalOutputTokens"`
-	TotalReasoningTokens   int64                `json:"totalReasoningTokens"`
-	TotalTokens            int64                `json:"totalTokens"`
-	CacheUtilizationRate   float64              `json:"cacheUtilizationRate"`
-	EstimatedCostUSD       *float64             `json:"estimatedCostUsd,omitempty"`
-	UnpricedCount          int                  `json:"unpricedCount"`
-	CacheHitTrend          []CacheHitTrendPoint `json:"cacheHitTrend"`
-	ModelUsage             []ModelUsage         `json:"modelUsage"`
-	AgentUsage             []AgentUsage         `json:"agentUsage"`
-	RecentSessions         []Session            `json:"recentSessions"`
-	HighTokenSessions      []Session            `json:"highTokenSessions"`
+	TotalSessions                 int                  `json:"totalSessions"`
+	TotalInputTokens              int64                `json:"totalInputTokens"`
+	TotalCachedInputTokens        int64                `json:"totalCachedInputTokens"`
+	TotalOutputTokens             int64                `json:"totalOutputTokens"`
+	TotalReasoningTokens          int64                `json:"totalReasoningTokens"`
+	TotalContextCompressionTokens int64                `json:"totalContextCompressionTokens"`
+	TotalTokens                   int64                `json:"totalTokens"`
+	CacheUtilizationRate          float64              `json:"cacheUtilizationRate"`
+	EstimatedCostUSD              *float64             `json:"estimatedCostUsd,omitempty"`
+	UnpricedCount                 int                  `json:"unpricedCount"`
+	CacheHitTrend                 []CacheHitTrendPoint `json:"cacheHitTrend"`
+	ModelUsage                    []ModelUsage         `json:"modelUsage"`
+	AgentUsage                    []AgentUsage         `json:"agentUsage"`
+	RecentSessions                []Session            `json:"recentSessions"`
+	HighTokenSessions             []Session            `json:"highTokenSessions"`
 }
 
 type ModelSignals struct {
@@ -603,25 +610,26 @@ type UsageBreakdown struct {
 }
 
 type UsageBreakdownBucket struct {
-	SourceID              int64    `json:"sourceId,omitempty"`
-	SourceKey             string   `json:"sourceKey,omitempty"`
-	SourceLabel           string   `json:"sourceLabel,omitempty"`
-	SourceRootPath        string   `json:"sourceRootPath,omitempty"`
-	SourceSessionsPath    string   `json:"sourceSessionsPath,omitempty"`
-	AgentKind             string   `json:"agentKind,omitempty"`
-	AgentName             string   `json:"agentName,omitempty"`
-	Model                 string   `json:"model,omitempty"`
-	ProjectPath           string   `json:"projectPath,omitempty"`
-	Date                  string   `json:"date,omitempty"`
-	SessionCount          int      `json:"sessionCount"`
-	TotalTokens           int64    `json:"totalTokens"`
-	InputTokens           int64    `json:"inputTokens"`
-	CachedInputTokens     int64    `json:"cachedInputTokens"`
-	OutputTokens          int64    `json:"outputTokens"`
-	ReasoningOutputTokens int64    `json:"reasoningOutputTokens"`
-	CacheUtilizationRate  float64  `json:"cacheUtilizationRate"`
-	EstimatedCostUSD      *float64 `json:"estimatedCostUsd,omitempty"`
-	Unpriced              bool     `json:"unpriced"`
+	SourceID                 int64    `json:"sourceId,omitempty"`
+	SourceKey                string   `json:"sourceKey,omitempty"`
+	SourceLabel              string   `json:"sourceLabel,omitempty"`
+	SourceRootPath           string   `json:"sourceRootPath,omitempty"`
+	SourceSessionsPath       string   `json:"sourceSessionsPath,omitempty"`
+	AgentKind                string   `json:"agentKind,omitempty"`
+	AgentName                string   `json:"agentName,omitempty"`
+	Model                    string   `json:"model,omitempty"`
+	ProjectPath              string   `json:"projectPath,omitempty"`
+	Date                     string   `json:"date,omitempty"`
+	SessionCount             int      `json:"sessionCount"`
+	TotalTokens              int64    `json:"totalTokens"`
+	InputTokens              int64    `json:"inputTokens"`
+	CachedInputTokens        int64    `json:"cachedInputTokens"`
+	OutputTokens             int64    `json:"outputTokens"`
+	ReasoningOutputTokens    int64    `json:"reasoningOutputTokens"`
+	ContextCompressionTokens int64    `json:"contextCompressionTokens"`
+	CacheUtilizationRate     float64  `json:"cacheUtilizationRate"`
+	EstimatedCostUSD         *float64 `json:"estimatedCostUsd,omitempty"`
+	Unpriced                 bool     `json:"unpriced"`
 }
 
 type ToolStat struct {

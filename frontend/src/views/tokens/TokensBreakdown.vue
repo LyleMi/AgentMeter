@@ -41,6 +41,7 @@ const { t } = useMessages({
     'column.cached': 'Cached',
     'column.output': 'Output',
     'column.reasoning': 'Reasoning',
+    'column.contextCompression': 'Compression',
     'column.cacheRate': 'Cache',
     'column.cost': 'Cost',
     'column.tools': 'Tools',
@@ -73,6 +74,7 @@ const { t } = useMessages({
     'column.cached': '缓存',
     'column.output': '输出',
     'column.reasoning': '推理',
+    'column.contextCompression': '压缩',
     'column.cacheRate': '缓存',
     'column.cost': '费用',
     'column.tools': '工具',
@@ -102,6 +104,7 @@ const breakdownColumns = computed(() => [
   { title: t('column.cached'), dataIndex: 'cachedInputTokens', key: 'cached', width: 110, align: 'right' },
   { title: t('column.output'), dataIndex: 'outputTokens', key: 'output', width: 110, align: 'right' },
   { title: t('column.reasoning'), dataIndex: 'reasoningOutputTokens', key: 'reasoning', width: 110, align: 'right' },
+  { title: t('column.contextCompression'), dataIndex: 'contextCompressionTokens', key: 'contextCompression', width: 110, align: 'right' },
   { title: t('column.cacheRate'), dataIndex: 'cacheUtilizationRate', key: 'cacheRate', width: 100, align: 'right' },
   { title: t('column.cost'), dataIndex: 'estimatedCostUsd', key: 'cost', width: 110, align: 'right' }
 ])
@@ -121,6 +124,7 @@ const modelColumns = computed(() => [
   { title: t('column.tokens'), dataIndex: 'totalTokens', key: 'tokens', width: 120, align: 'right' },
   { title: t('column.cached'), dataIndex: 'cachedInputTokens', key: 'cached', width: 110, align: 'right' },
   { title: t('column.reasoning'), dataIndex: 'reasoningOutputTokens', key: 'reasoning', width: 110, align: 'right' },
+  { title: t('column.contextCompression'), dataIndex: 'contextCompressionTokens', key: 'contextCompression', width: 110, align: 'right' },
   { title: t('column.cost'), dataIndex: 'estimatedCostUsd', key: 'cost', width: 110, align: 'right' }
 ])
 
@@ -129,6 +133,7 @@ const agentColumns = computed(() => [
   { title: t('column.sessions'), dataIndex: 'sessionCount', key: 'sessions', width: 90, align: 'right' },
   { title: t('column.tokens'), dataIndex: 'totalTokens', key: 'tokens', width: 120, align: 'right' },
   { title: t('column.cached'), dataIndex: 'cachedInputTokens', key: 'cached', width: 110, align: 'right' },
+  { title: t('column.contextCompression'), dataIndex: 'contextCompressionTokens', key: 'contextCompression', width: 110, align: 'right' },
   { title: t('column.tools'), dataIndex: 'toolCalls', key: 'tools', width: 90, align: 'right' },
   { title: t('column.cost'), dataIndex: 'estimatedCostUsd', key: 'cost', width: 110, align: 'right' }
 ])
@@ -232,7 +237,7 @@ function agentRowKey(record: AgentUsage) {
           :row-key="breakdownRowKey"
           size="small"
           :custom-row="breakdownRowClass"
-          :scroll="{ x: 1160 }"
+          :scroll="{ x: 1270 }"
         >
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'scope'">
@@ -245,6 +250,7 @@ function agentRowKey(record: AgentUsage) {
             <template v-else-if="column.key === 'cached'"><span class="number-cell">{{ formatNumber(record.cachedInputTokens) }}</span></template>
             <template v-else-if="column.key === 'output'"><span class="number-cell">{{ formatNumber(record.outputTokens) }}</span></template>
             <template v-else-if="column.key === 'reasoning'"><span class="number-cell">{{ formatNumber(record.reasoningOutputTokens) }}</span></template>
+            <template v-else-if="column.key === 'contextCompression'"><span class="number-cell">{{ formatNumber(record.contextCompressionTokens) }}</span></template>
             <template v-else-if="column.key === 'cacheRate'"><span class="number-cell">{{ formatRate(record.cacheUtilizationRate) }}</span></template>
             <template v-else-if="column.key === 'cost'">
               <span class="number-cell">{{ formatCost(record.estimatedCostUsd) }}</span>
@@ -272,7 +278,7 @@ function agentRowKey(record: AgentUsage) {
             row-key="model"
             size="small"
             :custom-row="rowClass"
-            :scroll="{ x: 760 }"
+            :scroll="{ x: 870 }"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'model'">
@@ -283,6 +289,7 @@ function agentRowKey(record: AgentUsage) {
               <template v-else-if="column.key === 'tokens'"><span class="number-cell">{{ formatNumber(record.totalTokens) }}</span></template>
               <template v-else-if="column.key === 'cached'"><span class="number-cell">{{ formatNumber(record.cachedInputTokens) }}</span></template>
               <template v-else-if="column.key === 'reasoning'"><span class="number-cell">{{ formatNumber(record.reasoningOutputTokens) }}</span></template>
+              <template v-else-if="column.key === 'contextCompression'"><span class="number-cell">{{ formatNumber(record.contextCompressionTokens) }}</span></template>
               <template v-else-if="column.key === 'cost'"><span class="number-cell">{{ formatCost(record.estimatedCostUsd) }}</span></template>
             </template>
           </a-table>
@@ -305,7 +312,7 @@ function agentRowKey(record: AgentUsage) {
             :row-key="agentRowKey"
             size="small"
             :custom-row="rowClass"
-            :scroll="{ x: 760 }"
+            :scroll="{ x: 870 }"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'agent'">
@@ -315,6 +322,7 @@ function agentRowKey(record: AgentUsage) {
               <template v-else-if="column.key === 'sessions'"><span class="number-cell">{{ formatNumber(record.sessionCount) }}</span></template>
               <template v-else-if="column.key === 'tokens'"><span class="number-cell">{{ formatNumber(record.totalTokens) }}</span></template>
               <template v-else-if="column.key === 'cached'"><span class="number-cell">{{ formatNumber(record.cachedInputTokens) }}</span></template>
+              <template v-else-if="column.key === 'contextCompression'"><span class="number-cell">{{ formatNumber(record.contextCompressionTokens) }}</span></template>
               <template v-else-if="column.key === 'tools'"><span class="number-cell">{{ formatNumber(record.toolCalls) }}</span></template>
               <template v-else-if="column.key === 'cost'"><span class="number-cell">{{ formatCost(record.estimatedCostUsd) }}</span></template>
             </template>

@@ -1,4 +1,4 @@
-﻿package sessionjsonl
+package sessionjsonl
 
 import (
 	"crypto/sha256"
@@ -594,20 +594,58 @@ func usageFromValue(value any) model.Usage {
 	if geminiUsageMetadata && candidateOutput > 0 && reasoning > 0 {
 		output += reasoning
 	}
+	contextCompression := contextCompressionTokensFromUsage(raw)
 	total := firstInt64(raw, "total_tokens", "totalTokens", "totalTokenCount", "total_token_count")
-	if total <= 0 && input+cached+output+reasoning > 0 {
+	if total <= 0 && input+cached+output+reasoning+contextCompression > 0 {
 		total = input + cacheRead + output
 		if reasoning > output {
 			total += reasoning
 		}
+		total += contextCompression
 	}
 	return model.Usage{
-		InputTokens:           input,
-		CachedInputTokens:     cached,
-		OutputTokens:          output,
-		ReasoningOutputTokens: reasoning,
-		TotalTokens:           total,
+		InputTokens:              input,
+		CachedInputTokens:        cached,
+		OutputTokens:             output,
+		ReasoningOutputTokens:    reasoning,
+		ContextCompressionTokens: contextCompression,
+		TotalTokens:              total,
 	}
+}
+
+func contextCompressionTokensFromUsage(raw map[string]any) int64 {
+	keys := []string{
+		"context_compression_tokens",
+		"contextCompressionTokens",
+		"context_compression_input_tokens",
+		"contextCompressionInputTokens",
+		"context_compaction_tokens",
+		"contextCompactionTokens",
+		"context_compaction_input_tokens",
+		"contextCompactionInputTokens",
+		"context_compressed_tokens",
+		"contextCompressedTokens",
+		"compaction_tokens",
+		"compactionTokens",
+		"compacted_tokens",
+		"compactedTokens",
+		"compression_tokens",
+		"compressionTokens",
+		"compressed_input_tokens",
+		"compressedInputTokens",
+	}
+	total := firstInt64(raw, keys...)
+	for _, value := range []any{
+		raw["inputTokensDetails"],
+		raw["input_tokens_details"],
+		raw["prompt_tokens_details"],
+		raw["contextTokensDetails"],
+		raw["context_tokens_details"],
+		raw["details"],
+	} {
+		total += nestedInt64(value, keys...)
+	}
+	return total
 }
 
 func recordTimestamp(raw rawRecord) time.Time {
@@ -827,6 +865,7 @@ func hasUsage(usage model.Usage) bool {
 		usage.CachedInputTokens > 0 ||
 		usage.OutputTokens > 0 ||
 		usage.ReasoningOutputTokens > 0 ||
+		usage.ContextCompressionTokens > 0 ||
 		usage.TotalTokens > 0
 }
 
@@ -835,11 +874,12 @@ func subtractUsage(current model.Usage, previous *model.Usage) model.Usage {
 		return current
 	}
 	return model.Usage{
-		InputTokens:           saturatingSubtract(current.InputTokens, previous.InputTokens),
-		CachedInputTokens:     saturatingSubtract(current.CachedInputTokens, previous.CachedInputTokens),
-		OutputTokens:          saturatingSubtract(current.OutputTokens, previous.OutputTokens),
-		ReasoningOutputTokens: saturatingSubtract(current.ReasoningOutputTokens, previous.ReasoningOutputTokens),
-		TotalTokens:           saturatingSubtract(current.TotalTokens, previous.TotalTokens),
+		InputTokens:              saturatingSubtract(current.InputTokens, previous.InputTokens),
+		CachedInputTokens:        saturatingSubtract(current.CachedInputTokens, previous.CachedInputTokens),
+		OutputTokens:             saturatingSubtract(current.OutputTokens, previous.OutputTokens),
+		ReasoningOutputTokens:    saturatingSubtract(current.ReasoningOutputTokens, previous.ReasoningOutputTokens),
+		ContextCompressionTokens: saturatingSubtract(current.ContextCompressionTokens, previous.ContextCompressionTokens),
+		TotalTokens:              saturatingSubtract(current.TotalTokens, previous.TotalTokens),
 	}
 }
 
@@ -854,6 +894,7 @@ func addUsage(total *model.Usage, delta model.Usage) {
 	total.CachedInputTokens += delta.CachedInputTokens
 	total.OutputTokens += delta.OutputTokens
 	total.ReasoningOutputTokens += delta.ReasoningOutputTokens
+	total.ContextCompressionTokens += delta.ContextCompressionTokens
 	total.TotalTokens += delta.TotalTokens
 }
 
