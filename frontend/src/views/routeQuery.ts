@@ -48,6 +48,11 @@ export function setTrimmedRouteQueryValue(query: RouteQueryRecord, key: string, 
   else delete query[key]
 }
 
+export function routePathWithQuery(path: string, query: RouteQueryRecord): string {
+  const encoded = new URLSearchParams(query).toString()
+  return encoded ? `${path}?${encoded}` : path
+}
+
 export function routeDateTimeInputValue(query: LocationQuery, key: string) {
   const value = stringRouteQueryValue(query[key])
   if (!value) return ''

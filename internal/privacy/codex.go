@@ -69,42 +69,25 @@ func (a CodexAdapter) Status() (model.PrivacyConfigStatus, error) {
 }
 
 func (a CodexAdapter) Apply(settingIDs []string) (model.PrivacyConfigApplyResult, error) {
-	path, err := a.configPath()
-	if err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-	original, exists, err := readOptionalFile(path)
-	if err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-
-	selected, warnings := selectedSettingDefinitions(settingIDs)
-	changes := plannedChanges(original, selected)
-	result := model.PrivacyConfigApplyResult{
-		Changed:  changes,
-		Warnings: warnings,
-	}
-	if len(changes) == 0 {
-		result.Status = buildCodexStatus(path, exists, original, warnings)
-		return result, nil
-	}
-
-	updated := applySettingsToContent(original, selected)
-	if bytes.Equal(updated, original) {
-		result.Status = buildCodexStatus(path, exists, original, warnings)
-		return result, nil
-	}
-
-	backupPath, err := writeUpdatedConfig(path, original, updated, exists, a.Now)
-	if err != nil {
-		return model.PrivacyConfigApplyResult{}, err
-	}
-	result.BackupPath = backupPath
-	result.Status = buildCodexStatus(path, true, updated, warnings)
-	return result, nil
+	return a.applyContentMutation(func(original []byte) ([]byte, []model.PrivacyConfigChange, []string, error) {
+		selected, warnings := selectedSettingDefinitions(settingIDs)
+		changes := plannedChanges(original, selected)
+		if len(changes) == 0 {
+			return original, changes, warnings, nil
+		}
+		return applySettingsToContent(original, selected), changes, warnings, nil
+	})
 }
 
 func (a CodexAdapter) ApplyChanges(edits []model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error) {
+	return a.applyContentMutation(func(original []byte) ([]byte, []model.PrivacyConfigChange, []string, error) {
+		return applyCodexEditsToContent(original, edits)
+	})
+}
+
+func (a CodexAdapter) applyContentMutation(
+	mutate func([]byte) ([]byte, []model.PrivacyConfigChange, []string, error),
+) (model.PrivacyConfigApplyResult, error) {
 	path, err := a.configPath()
 	if err != nil {
 		return model.PrivacyConfigApplyResult{}, err
@@ -114,7 +97,7 @@ func (a CodexAdapter) ApplyChanges(edits []model.PrivacyConfigEdit) (model.Priva
 		return model.PrivacyConfigApplyResult{}, err
 	}
 
-	updated, changes, warnings, err := applyCodexEditsToContent(original, edits)
+	updated, changes, warnings, err := mutate(original)
 	if err != nil {
 		return model.PrivacyConfigApplyResult{}, err
 	}

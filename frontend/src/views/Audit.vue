@@ -13,6 +13,12 @@ import PageTabs from '../components/PageTabs.vue'
 import { useMessages } from '../i18n'
 import { sourceFilterOptions, type SourceFilterOption } from '../presentation/sourceIdentity'
 import { auditPath, cleanQueryValue, cleanRouteQuery } from './auditSupport'
+import { useRouteTabKey } from './routeTabs'
+
+const auditTabMatches = [
+  { key: 'detail', pathPrefix: '/audit/findings/' },
+  { key: 'list', pathPrefix: '/audit/findings' }
+] as const
 
 const route = useRoute()
 const router = useRouter()
@@ -45,11 +51,7 @@ const visibleAgentOptions = computed(() => {
   return [{ value: selectedAgent.value, label: selectedAgent.value, title: selectedAgent.value }, ...agentOptions.value]
 })
 
-const activeKey = computed(() => {
-  if (route.path.startsWith('/audit/findings/')) return 'detail'
-  if (route.path.startsWith('/audit/findings')) return 'list'
-  return 'summary'
-})
+const activeKey = useRouteTabKey(auditTabMatches, 'summary')
 
 const tabs = computed(() => {
   const items = [

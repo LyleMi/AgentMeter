@@ -22,6 +22,8 @@ import PageTabs from '../components/PageTabs.vue'
 import UsageScopeBar from '../components/UsageScopeBar.vue'
 import { useAsyncResource } from '../composables/useAsyncResource'
 import { useMessages } from '../i18n'
+import { routePathWithQuery } from './routeQuery'
+import { routeTabKey } from './routeTabs'
 import { applyUsageScopeToQuery, useUsageScopeRoute, type UsageScopeForm } from './useUsageScope'
 import {
   buildUsageAgentOptions,
@@ -30,6 +32,12 @@ import {
   useUsageScopeOptionData
 } from './useUsageScopeOptions'
 import { timeContextKey, type TimeContext, type TimeKpiCard, type TimeSegment } from './time/timeContext'
+
+const timeTabMatches = [
+  { key: 'sources', pathPrefix: '/time/sources' },
+  { key: 'tools', pathPrefix: '/time/tools' },
+  { key: 'sessions', pathPrefix: '/time/sessions' }
+] as const
 
 const route = useRoute()
 const resource = useAsyncResource<Overview | null>(null)
@@ -108,12 +116,7 @@ const tabs = computed(() => [
   { key: 'sessions', label: t('tab.sessions'), path: timePath('/time/sessions'), icon: ProfileOutlined }
 ])
 
-const activeKey = computed(() => {
-  if (route.path.startsWith('/time/sources')) return 'sources'
-  if (route.path.startsWith('/time/tools')) return 'tools'
-  if (route.path.startsWith('/time/sessions')) return 'sessions'
-  return 'summary'
-})
+const activeKey = computed(() => routeTabKey(route.path, timeTabMatches, 'summary'))
 
 const hasIndexedData = computed(() => (overview.value?.totalSessions || 0) > 0)
 const wallDurationMs = computed(() => Math.max(0, overview.value?.totalWallDurationMs || 0))
@@ -240,10 +243,7 @@ const projectOptions = computed(() =>
 )
 
 function timePath(path: string) {
-  const query = applyUsageScopeToQuery(route.query, scope.filters.value)
-  const params = new URLSearchParams(query)
-  const encoded = params.toString()
-  return encoded ? `${path}?${encoded}` : path
+  return routePathWithQuery(path, applyUsageScopeToQuery(route.query, scope.filters.value))
 }
 
 function takeDuration(value: number, remaining: number) {
@@ -363,5 +363,4 @@ onMounted(load)
   margin-bottom: var(--am-section-gap);
 }
 </style>
-
 

@@ -1,7 +1,7 @@
 import type { AuditFinding, Session } from '../api/types'
 import { api } from '../api/client'
 import { matchesSourceFilter, type SourceIdentityLike } from '../presentation/sourceIdentity'
-import { cleanFirstRouteQuery, firstTrimmedRouteQueryValue } from './routeQuery'
+import { cleanFirstRouteQuery, firstTrimmedRouteQueryValue, routePathWithQuery } from './routeQuery'
 
 export interface AuditFindingQuery {
   agent?: string
@@ -26,17 +26,8 @@ export interface AuditFindingDetail {
 export const cleanQueryValue = firstTrimmedRouteQueryValue
 export const cleanRouteQuery = cleanFirstRouteQuery
 
-export function buildQueryString(values: Record<string, string | number | undefined | null>): string {
-  const params = new URLSearchParams()
-  Object.entries(values).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && String(value).trim()) params.set(key, String(value))
-  })
-  const query = params.toString()
-  return query ? `?${query}` : ''
-}
-
 export function auditPath(path: string, query: Record<string, unknown>): string {
-  return `${path}${buildQueryString(cleanRouteQuery(query))}`
+  return routePathWithQuery(path, cleanRouteQuery(query))
 }
 
 export function getAuditSummary(filters: AuditSummaryQuery = {}) {

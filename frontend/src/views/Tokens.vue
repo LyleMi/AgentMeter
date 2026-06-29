@@ -20,6 +20,8 @@ import PageTabs from '../components/PageTabs.vue'
 import UsageScopeBar from '../components/UsageScopeBar.vue'
 import { useAsyncResource } from '../composables/useAsyncResource'
 import { useMessages } from '../i18n'
+import { routePathWithQuery } from './routeQuery'
+import { routeTabKey } from './routeTabs'
 import { applyUsageScopeToQuery, useUsageScopeRoute, type UsageScopeForm } from './useUsageScope'
 import {
   buildUsageAgentOptions,
@@ -33,6 +35,12 @@ import {
   type TokenBreakdownGroup,
   type TokensContext
 } from './tokens/tokensContext'
+
+const tokenTabMatches = [
+  { key: 'trends', pathPrefix: '/tokens/trends' },
+  { key: 'breakdown', pathPrefix: '/tokens/breakdown' },
+  { key: 'sessions', pathPrefix: '/tokens/sessions' }
+] as const
 
 const route = useRoute()
 const router = useRouter()
@@ -79,12 +87,7 @@ const tabs = computed(() => [
   { key: 'sessions', label: t('tab.sessions'), path: tokenPath('/tokens/sessions'), icon: HistoryOutlined }
 ])
 
-const activeKey = computed(() => {
-  if (route.path.startsWith('/tokens/trends')) return 'trends'
-  if (route.path.startsWith('/tokens/breakdown')) return 'breakdown'
-  if (route.path.startsWith('/tokens/sessions')) return 'sessions'
-  return 'summary'
-})
+const activeKey = computed(() => routeTabKey(route.path, tokenTabMatches, 'summary'))
 
 const agentOptions = computed(() =>
   buildUsageAgentOptions({
@@ -132,12 +135,12 @@ const projectOptions = computed(() =>
 )
 
 function tokenPath(path: string, keepBreakdownGroup = false) {
-  const query = applyUsageScopeToQuery(route.query, scope.filters.value, {
-    groupBy: keepBreakdownGroup && breakdownGroup.value !== DEFAULT_BREAKDOWN_GROUP ? breakdownGroup.value : undefined
-  })
-  const params = new URLSearchParams(query)
-  const encoded = params.toString()
-  return encoded ? `${path}?${encoded}` : path
+  return routePathWithQuery(
+    path,
+    applyUsageScopeToQuery(route.query, scope.filters.value, {
+      groupBy: keepBreakdownGroup && breakdownGroup.value !== DEFAULT_BREAKDOWN_GROUP ? breakdownGroup.value : undefined
+    })
+  )
 }
 
 function load() {

@@ -211,7 +211,11 @@ Keep large files from becoming catch-all implementation surfaces:
   money, tokens, status labels, source identity, and drill-down cells should be
   reusable rather than reimplemented in each view. Token ratio math and percent
   labels should use the presentation helpers in `frontend/src/presentation`
-  instead of per-view clamp or formatting functions.
+  instead of per-view clamp or formatting functions. Routed page tabs should use
+  the shared route-tab helpers in `frontend/src/views/routeTabs.ts`, and scoped
+  tab links should use `routePathWithQuery` from
+  `frontend/src/views/routeQuery.ts` rather than per-view URLSearchParams
+  assembly.
 - Large backend files should be split by responsibility when distinct concerns
   emerge, such as routing, request parsing, persistence, indexing, privacy
   config adaptation, query shaping, and view-model presentation. Query package

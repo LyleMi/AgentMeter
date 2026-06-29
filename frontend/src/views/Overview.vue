@@ -15,6 +15,8 @@ import UsageScopeBar from '../components/UsageScopeBar.vue'
 import { notifyAppDataChanged } from '../events'
 import { useMessages } from '../i18n'
 import { overviewContextKey, type OverviewContext } from './overviewContext'
+import { routePathWithQuery } from './routeQuery'
+import { routeTabKey } from './routeTabs'
 import { applyUsageScopeToQuery, useUsageScopeRoute, type UsageScopeForm } from './useUsageScope'
 import {
   buildUsageAgentOptions,
@@ -22,6 +24,12 @@ import {
   buildUsageProjectOptions,
   useUsageScopeOptionData
 } from './useUsageScopeOptions'
+
+const overviewTabMatches = [
+  { key: 'trends', pathPrefix: '/overview/trends' },
+  { key: 'breakdown', pathPrefix: '/overview/breakdown' },
+  { key: 'recent', pathPrefix: '/overview/recent' }
+] as const
 
 const route = useRoute()
 const loading = ref(true)
@@ -110,12 +118,7 @@ const projectOptions = computed(() =>
   })
 )
 
-const activeKey = computed(() => {
-  if (route.path.startsWith('/overview/trends')) return 'trends'
-  if (route.path.startsWith('/overview/breakdown')) return 'breakdown'
-  if (route.path.startsWith('/overview/recent')) return 'recent'
-  return 'summary'
-})
+const activeKey = computed(() => routeTabKey(route.path, overviewTabMatches, 'summary'))
 
 async function load() {
   loading.value = true
@@ -168,10 +171,7 @@ async function clearScopeFilters() {
 }
 
 function overviewPath(path: string) {
-  const query = applyUsageScopeToQuery(route.query, scope.filters.value)
-  const params = new URLSearchParams(query)
-  const encoded = params.toString()
-  return encoded ? `${path}?${encoded}` : path
+  return routePathWithQuery(path, applyUsageScopeToQuery(route.query, scope.filters.value))
 }
 
 const context: OverviewContext = {

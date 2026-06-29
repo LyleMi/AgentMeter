@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
 import { BarChartOutlined, CodeOutlined, HistoryOutlined, ToolOutlined } from '@ant-design/icons-vue'
 import RoutedPageShell from '../components/RoutedPageShell.vue'
 import { useMessages } from '../i18n'
+import { useRouteTabKey } from './routeTabs'
 
-const route = useRoute()
+const toolsTabMatches = [
+  { key: 'summary', pathPrefix: '/tools/summary' },
+  { key: 'shell', pathPrefix: '/tools/shell' },
+  { key: 'calls', pathPrefix: '/tools/calls' }
+] as const
+
 const { t } = useMessages({
   en: {
     pageTitle: 'Tools',
@@ -32,12 +37,7 @@ const tabs = computed(() => [
   { key: 'calls', label: t('tabCalls'), path: '/tools/calls', icon: HistoryOutlined }
 ])
 
-const activeKey = computed(() => {
-  if (route.path.startsWith('/tools/summary')) return 'summary'
-  if (route.path.startsWith('/tools/shell')) return 'shell'
-  if (route.path.startsWith('/tools/calls')) return 'calls'
-  return 'overview'
-})
+const activeKey = useRouteTabKey(toolsTabMatches, 'overview')
 
 </script>
 

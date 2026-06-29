@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
 import { DatabaseOutlined, DollarOutlined, EyeOutlined, FolderOpenOutlined } from '@ant-design/icons-vue'
 import RoutedPageShell from '../components/RoutedPageShell.vue'
 import { useMessages } from '../i18n'
+import { useRouteTabKey } from './routeTabs'
 
-const route = useRoute()
+const settingsTabMatches = [
+  { key: 'database', pathPrefix: '/settings/database' },
+  { key: 'price', pathPrefix: '/settings/price' },
+  { key: 'display', pathPrefix: '/settings/display' }
+] as const
+
 const { t } = useMessages({
   en: {
     'settings.title': 'Settings',
@@ -32,12 +37,7 @@ const tabs = computed(() => [
   { key: 'display', label: t('settings.tab.display'), path: '/settings/display', icon: EyeOutlined }
 ])
 
-const activeKey = computed(() => {
-  if (route.path.startsWith('/settings/database')) return 'database'
-  if (route.path.startsWith('/settings/price')) return 'price'
-  if (route.path.startsWith('/settings/display')) return 'display'
-  return 'source'
-})
+const activeKey = useRouteTabKey(settingsTabMatches, 'source')
 
 </script>
 
