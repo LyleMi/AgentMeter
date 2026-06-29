@@ -1,8 +1,9 @@
-﻿package app
+package app
 
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -198,7 +199,7 @@ func TestSaveSourceSettingsKeepsDisabledEntriesOutOfActivePaths(t *testing.T) {
 	}
 }
 
-func TestPrivacyStatusWarnsWhenMultipleFamilySourcesAreIndexed(t *testing.T) {
+func TestPrivacyStatusIncludesCodexSourceOptionsWhenMultipleSourcesAreIndexed(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "agentmeter.sqlite")
@@ -209,7 +210,8 @@ func TestPrivacyStatusWarnsWhenMultipleFamilySourcesAreIndexed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.EnsureSource(ctx, conn, "codex", "Codex", filepath.Join(dir, ".codex"), filepath.Join(dir, ".codex", "sessions"), "test"); err != nil {
+	stable, err := db.EnsureSource(ctx, conn, "codex", "Codex", filepath.Join(dir, ".codex"), filepath.Join(dir, ".codex", "sessions"), "test")
+	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.EnsureSource(ctx, conn, "codex", "Codex nightly", filepath.Join(dir, ".ycodex"), filepath.Join(dir, ".ycodex", "sessions"), "test"); err != nil {
@@ -229,11 +231,16 @@ func TestPrivacyStatusWarnsWhenMultipleFamilySourcesAreIndexed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(status.Warnings) == 0 {
-		t.Fatalf("expected multi-source privacy warning: %+v", status)
+	if len(status.SourceOptions) != 2 {
+		t.Fatalf("source options = %#v", status.SourceOptions)
 	}
-	if !strings.Contains(status.Warnings[0], "Multiple Codex-like sources") {
-		t.Fatalf("warning = %q", status.Warnings[0])
+	if status.SelectedSourceKey != fmt.Sprintf("source:%d", stable.ID) {
+		t.Fatalf("selected source key = %q, want source:%d", status.SelectedSourceKey, stable.ID)
+	}
+	for _, warning := range status.Warnings {
+		if strings.Contains(warning, "Source-specific privacy writes are not enabled") {
+			t.Fatalf("unexpected source-specific warning after source options were enabled: %q", warning)
+		}
 	}
 }
 
@@ -437,6 +444,77 @@ func TestPrivacyCodexHTTPChangesAppliesEditableChanges(t *testing.T) {
 	}
 	if !strings.Contains(string(content), "enabled = false") {
 		t.Fatalf("config was not updated:\n%s", content)
+	}
+}
+
+func TestPrivacyCodexHTTPChangesCanTargetIndexedSource(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "agentmeter.sqlite")
+	stableRoot := filepath.Join(dir, ".codex")
+	nightlyRoot := filepath.Join(dir, ".ycodex")
+	t.Setenv("CODEX_HOME", stableRoot)
+	for _, root := range []string{stableRoot, nightlyRoot} {
+		if err := os.MkdirAll(root, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte("[analytics]\nenabled = true\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	conn, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.EnsureSource(ctx, conn, "codex", "Codex", stableRoot, filepath.Join(stableRoot, "sessions"), "test"); err != nil {
+		t.Fatal(err)
+	}
+	nightly, err := db.EnsureSource(ctx, conn, "codex", "Codex nightly", nightlyRoot, filepath.Join(nightlyRoot, "sessions"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	app := &App{dbPath: dbPath}
+	if err := app.Startup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer app.Shutdown(ctx)
+
+	mux := http.NewServeMux()
+	RegisterHTTPHandlers(mux, app, fstest.MapFS{})
+
+	recorder := httptest.NewRecorder()
+	body := strings.NewReader(fmt.Sprintf(`{"sourceKey":"source:%d","changes":[{"id":"analytics.enabled","op":"set","value":false}]}`, nightly.ID))
+	request := httptest.NewRequest(http.MethodPost, "/api/privacy/codex/changes", body)
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var result model.PrivacyConfigApplyResult
+	if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Status.SelectedSourceKey != fmt.Sprintf("source:%d", nightly.ID) {
+		t.Fatalf("selected source key = %q, want source:%d", result.Status.SelectedSourceKey, nightly.ID)
+	}
+	stableContent, err := os.ReadFile(filepath.Join(stableRoot, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(stableContent), "enabled = true") {
+		t.Fatalf("stable config should not be updated:\n%s", stableContent)
+	}
+	nightlyContent, err := os.ReadFile(filepath.Join(nightlyRoot, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(nightlyContent), "enabled = false") {
+		t.Fatalf("nightly config was not updated:\n%s", nightlyContent)
 	}
 }
 

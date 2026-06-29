@@ -22,7 +22,9 @@ It also reads any custom JSONL directories you add in **Settings**.
 
 For Agent Privacy features, AgentMeter can inspect supported user-level config
 files for external agent tools. Privacy config targets are separate from indexed
-source instances.
+source instances, except where a target explicitly supports source-aware writes.
+Codex supports source-aware Web writes for indexed Codex-like roots by editing
+the selected root's `config.toml`.
 
 ## What AgentMeter Stores
 

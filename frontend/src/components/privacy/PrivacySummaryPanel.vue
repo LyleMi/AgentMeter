@@ -1,11 +1,19 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import AAlert from 'ant-design-vue/es/alert'
 import AButton from 'ant-design-vue/es/button'
+import ASelect from 'ant-design-vue/es/select'
 import ASegmented from 'ant-design-vue/es/segmented'
 import ATag from 'ant-design-vue/es/tag'
 import Typography from 'ant-design-vue/es/typography'
 import { ReloadOutlined, SaveOutlined } from '@ant-design/icons-vue'
-import type { PrivacyConfigApplyResult, PrivacyConfigStatus, PrivacyProfileId, PrivacyTarget } from '../../api/types'
+import type {
+  PrivacyConfigApplyResult,
+  PrivacyConfigSourceOption,
+  PrivacyConfigStatus,
+  PrivacyProfileId,
+  PrivacyTarget
+} from '../../api/types'
 import type {
   PrivacyMetricCounts,
   PrivacyProfileOption,
@@ -16,7 +24,7 @@ import type {
 
 const ATypographyText = Typography.Text
 
-defineProps<{
+const props = defineProps<{
   t: PrivacyTranslate
   targetOptions: PrivacyTargetOption[]
   kickerText: string
@@ -43,6 +51,16 @@ defineEmits<{
 }>()
 
 const selectedTarget = defineModel<PrivacyTarget>('selectedTarget', { required: true })
+const selectedSourceKey = defineModel<string>('selectedSourceKey', { required: true })
+
+const sourceOptions = computed<PrivacyConfigSourceOption[]>(() => props.privacyStatus?.sourceOptions || [])
+const sourceSelectOptions = computed(() =>
+  sourceOptions.value.map((option) => ({
+    label: `${option.label} - ${option.rootPath}`,
+    value: option.sourceKey,
+    title: option.configPath
+  }))
+)
 </script>
 
 <template>
@@ -113,6 +131,16 @@ const selectedTarget = defineModel<PrivacyTarget>('selectedTarget', { required: 
                 {{ privacyStatus?.exists ? t('privacy.meta.exists') : t('privacy.meta.missing') }}
               </a-tag>
             </div>
+          </div>
+          <div v-if="sourceSelectOptions.length > 1" class="metadata-item is-wide">
+            <div class="metadata-label">{{ t('privacy.meta.source') }}</div>
+            <a-select
+              v-model:value="selectedSourceKey"
+              class="privacy-source-select"
+              :options="sourceSelectOptions"
+              :placeholder="t('privacy.source.placeholder')"
+              :disabled="savingAll || Boolean(savingId)"
+            />
           </div>
           <div class="metadata-item is-wide">
             <div class="metadata-label">{{ t('privacy.meta.configPath') }}</div>

@@ -1,10 +1,13 @@
-﻿package app
+package app
 
 import (
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -507,45 +510,77 @@ func (a *App) GetPrivacyConfigs() ([]model.PrivacyConfigStatus, error) {
 		return nil, err
 	}
 	for index := range statuses {
-		statuses[index] = a.addPrivacySourceWarning(statuses[index])
+		statuses[index] = a.addPrivacySourceMetadata(statuses[index], "")
 	}
 	return statuses, nil
 }
 
 func (a *App) GetPrivacyConfig(target string) (model.PrivacyConfigStatus, error) {
-	status, err := privacy.DefaultRegistry().Status(target)
+	return a.GetPrivacyConfigForSource(target, "")
+}
+
+func (a *App) GetPrivacyConfigForSource(target, sourceKey string) (model.PrivacyConfigStatus, error) {
+	adapter, err := a.privacyAdapterForSource(target, sourceKey)
+	if err != nil {
+		return model.PrivacyConfigStatus{}, err
+	}
+	status, err := adapter.Status()
 	if err != nil {
 		return status, err
 	}
-	return a.addPrivacySourceWarning(status), nil
+	return a.addPrivacySourceMetadata(status, sourceKey), nil
 }
 
 func (a *App) ApplyPrivacyConfig(target string, settingIDs []string) (model.PrivacyConfigApplyResult, error) {
-	result, err := privacy.DefaultRegistry().Apply(target, settingIDs)
+	return a.ApplyPrivacyConfigForSource(target, "", settingIDs)
+}
+
+func (a *App) ApplyPrivacyConfigForSource(target, sourceKey string, settingIDs []string) (model.PrivacyConfigApplyResult, error) {
+	adapter, err := a.privacyAdapterForSource(target, sourceKey)
+	if err != nil {
+		return model.PrivacyConfigApplyResult{}, err
+	}
+	result, err := adapter.Apply(settingIDs)
 	if err != nil {
 		return result, err
 	}
-	return a.addPrivacySourceWarningToResult(result), nil
+	return a.addPrivacySourceMetadataToResult(result, sourceKey), nil
 }
 
 func (a *App) ApplyPrivacyConfigChanges(target string, changes []model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error) {
-	result, err := privacy.DefaultRegistry().ApplyChanges(target, changes)
+	return a.ApplyPrivacyConfigChangesForSource(target, "", changes)
+}
+
+func (a *App) ApplyPrivacyConfigChangesForSource(target, sourceKey string, changes []model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error) {
+	adapter, err := a.privacyAdapterForSource(target, sourceKey)
+	if err != nil {
+		return model.PrivacyConfigApplyResult{}, err
+	}
+	result, err := adapter.ApplyChanges(changes)
 	if err != nil {
 		return result, err
 	}
-	return a.addPrivacySourceWarningToResult(result), nil
+	return a.addPrivacySourceMetadataToResult(result, sourceKey), nil
 }
 
 func (a *App) ApplyPrivacyProfile(target, profile string) (model.PrivacyConfigApplyResult, error) {
-	result, err := privacy.DefaultRegistry().ApplyProfile(target, profile)
+	return a.ApplyPrivacyProfileForSource(target, "", profile)
+}
+
+func (a *App) ApplyPrivacyProfileForSource(target, sourceKey, profile string) (model.PrivacyConfigApplyResult, error) {
+	adapter, err := a.privacyAdapterForSource(target, sourceKey)
+	if err != nil {
+		return model.PrivacyConfigApplyResult{}, err
+	}
+	result, err := adapter.ApplyProfile(profile)
 	if err != nil {
 		return result, err
 	}
-	return a.addPrivacySourceWarningToResult(result), nil
+	return a.addPrivacySourceMetadataToResult(result, sourceKey), nil
 }
 
-func (a *App) addPrivacySourceWarningToResult(result model.PrivacyConfigApplyResult) model.PrivacyConfigApplyResult {
-	result.Status = a.addPrivacySourceWarning(result.Status)
+func (a *App) addPrivacySourceMetadataToResult(result model.PrivacyConfigApplyResult, selectedSourceKey string) model.PrivacyConfigApplyResult {
+	result.Status = a.addPrivacySourceMetadata(result.Status, selectedSourceKey)
 	for _, warning := range result.Status.Warnings {
 		if !containsString(result.Warnings, warning) {
 			result.Warnings = append(result.Warnings, warning)
@@ -554,7 +589,7 @@ func (a *App) addPrivacySourceWarningToResult(result model.PrivacyConfigApplyRes
 	return result
 }
 
-func (a *App) addPrivacySourceWarning(status model.PrivacyConfigStatus) model.PrivacyConfigStatus {
+func (a *App) addPrivacySourceMetadata(status model.PrivacyConfigStatus, selectedSourceKey string) model.PrivacyConfigStatus {
 	if a.conn == nil {
 		return status
 	}
@@ -562,8 +597,16 @@ func (a *App) addPrivacySourceWarning(status model.PrivacyConfigStatus) model.Pr
 	if kind == "" {
 		return status
 	}
-	var count int
-	if err := a.conn.QueryRowContext(a.ctx, `SELECT COUNT(*) FROM sources WHERE kind = ?`, kind).Scan(&count); err != nil || count <= 1 {
+	options, err := a.privacySourceOptions(kind)
+	if err != nil || len(options) == 0 {
+		return status
+	}
+	status.SourceOptions = options
+	status.SelectedSourceKey = matchingPrivacySourceKey(options, selectedSourceKey, status.ConfigPath)
+	if privacySupportsSourceWrites(kind) {
+		return status
+	}
+	if len(options) <= 1 {
 		return status
 	}
 	label := privacyTargetLabel(kind)
@@ -576,6 +619,165 @@ func (a *App) addPrivacySourceWarning(status model.PrivacyConfigStatus) model.Pr
 		status.Warnings = append(status.Warnings, warning)
 	}
 	return status
+}
+
+func (a *App) privacyAdapterForSource(target, sourceKey string) (privacy.Adapter, error) {
+	normalized := strings.ToLower(strings.TrimSpace(target))
+	cleanSourceKey := strings.TrimSpace(sourceKey)
+	if cleanSourceKey == "" {
+		return privacy.DefaultRegistry().Adapter(normalized)
+	}
+	if !privacySupportsSourceWrites(normalized) {
+		return nil, privacySourceUnsupportedError{Target: normalized}
+	}
+	source, err := a.privacySourceByKey(normalized, cleanSourceKey)
+	if err != nil {
+		return nil, err
+	}
+	switch normalized {
+	case "codex":
+		return privacy.NewCodexAdapterForConfigPath(codexPrivacyConfigPathForRoot(source.RootPath)), nil
+	default:
+		return nil, privacySourceUnsupportedError{Target: normalized}
+	}
+}
+
+func privacySupportsSourceWrites(target string) bool {
+	return strings.EqualFold(strings.TrimSpace(target), "codex")
+}
+
+type privacySourceUnsupportedError struct {
+	Target string
+}
+
+func (e privacySourceUnsupportedError) Error() string {
+	return fmt.Sprintf("source-specific privacy writes are not supported for %s", e.Target)
+}
+
+type privacySourceNotFoundError struct {
+	Target    string
+	SourceKey string
+}
+
+func (e privacySourceNotFoundError) Error() string {
+	return fmt.Sprintf("privacy source %q was not found for %s", e.SourceKey, e.Target)
+}
+
+type privacySourceKeyError struct {
+	SourceKey string
+}
+
+func (e privacySourceKeyError) Error() string {
+	return fmt.Sprintf("invalid privacy source key %q", e.SourceKey)
+}
+
+func (a *App) privacySourceOptions(kind string) ([]model.PrivacyConfigSourceOption, error) {
+	rows, err := a.conn.QueryContext(appContext(a.ctx), `SELECT id, kind, name, root_path, sessions_path, platform, created_at, updated_at FROM sources WHERE kind = ? ORDER BY name, root_path, id`, strings.TrimSpace(kind))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var options []model.PrivacyConfigSourceOption
+	for rows.Next() {
+		var source model.Source
+		var created, updated string
+		if err := rows.Scan(&source.ID, &source.Kind, &source.Name, &source.RootPath, &source.SessionsPath, &source.Platform, &created, &updated); err != nil {
+			return nil, err
+		}
+		label := strings.TrimSpace(source.Name)
+		if label == "" {
+			label = source.Kind
+		}
+		options = append(options, model.PrivacyConfigSourceOption{
+			SourceID:   source.ID,
+			SourceKey:  privacySourceKey(source.ID),
+			Label:      label,
+			RootPath:   source.RootPath,
+			ConfigPath: privacyConfigPathForSource(source),
+		})
+	}
+	return options, rows.Err()
+}
+
+func (a *App) privacySourceByKey(kind, sourceKey string) (model.Source, error) {
+	if a.conn == nil {
+		return model.Source{}, errors.New("app database is not ready")
+	}
+	sourceID, err := privacySourceID(sourceKey)
+	if err != nil {
+		return model.Source{}, err
+	}
+	var source model.Source
+	var created, updated string
+	row := a.conn.QueryRowContext(appContext(a.ctx), `SELECT id, kind, name, root_path, sessions_path, platform, created_at, updated_at FROM sources WHERE id = ? AND kind = ?`, sourceID, strings.TrimSpace(kind))
+	if err := row.Scan(&source.ID, &source.Kind, &source.Name, &source.RootPath, &source.SessionsPath, &source.Platform, &created, &updated); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.Source{}, privacySourceNotFoundError{Target: kind, SourceKey: sourceKey}
+		}
+		return model.Source{}, err
+	}
+	return source, nil
+}
+
+func privacySourceID(sourceKey string) (int64, error) {
+	value := strings.TrimSpace(sourceKey)
+	idText, ok := strings.CutPrefix(value, "source:")
+	if !ok {
+		return 0, privacySourceKeyError{SourceKey: sourceKey}
+	}
+	id, err := strconv.ParseInt(strings.TrimSpace(idText), 10, 64)
+	if err != nil || id <= 0 {
+		return 0, privacySourceKeyError{SourceKey: sourceKey}
+	}
+	return id, nil
+}
+
+func privacySourceKey(sourceID int64) string {
+	if sourceID <= 0 {
+		return ""
+	}
+	return "source:" + strconv.FormatInt(sourceID, 10)
+}
+
+func matchingPrivacySourceKey(options []model.PrivacyConfigSourceOption, selectedSourceKey, configPath string) string {
+	selectedSourceKey = strings.TrimSpace(selectedSourceKey)
+	if selectedSourceKey != "" {
+		for _, option := range options {
+			if option.SourceKey == selectedSourceKey {
+				return selectedSourceKey
+			}
+		}
+	}
+	for _, option := range options {
+		if sourcepath.Equal(option.ConfigPath, configPath) {
+			return option.SourceKey
+		}
+	}
+	return ""
+}
+
+func privacyConfigPathForSource(source model.Source) string {
+	switch strings.ToLower(strings.TrimSpace(source.Kind)) {
+	case "codex":
+		return codexPrivacyConfigPathForRoot(source.RootPath)
+	default:
+		return ""
+	}
+}
+
+func codexPrivacyConfigPathForRoot(root string) string {
+	if strings.TrimSpace(root) == "" {
+		return ""
+	}
+	return filepath.Join(filepath.Clean(root), "config.toml")
+}
+
+func appContext(ctx context.Context) context.Context {
+	if ctx != nil {
+		return ctx
+	}
+	return context.Background()
 }
 
 func privacyTargetLabel(target string) string {

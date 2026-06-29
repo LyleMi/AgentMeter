@@ -91,16 +91,17 @@ const fetchApi = {
   getSettings: () => request<Settings>('/api/settings'),
   saveSourceSettings: (sourceEntries: SourceEntry[]) =>
     request<Settings>('/api/settings', { method: 'POST', body: JSON.stringify({ sourceEntries }) }),
-  getAgentPrivacy: (target: PrivacyTarget) => request<PrivacyConfigStatus>(`/api/privacy/${target}`),
-  applyAgentPrivacyChanges: (target: PrivacyTarget, changes: PrivacyConfigChange[]) =>
+  getAgentPrivacy: (target: PrivacyTarget, sourceKey?: string) =>
+    request<PrivacyConfigStatus>(queryPath(`/api/privacy/${target}`, { sourceKey })),
+  applyAgentPrivacyChanges: (target: PrivacyTarget, changes: PrivacyConfigChange[], sourceKey?: string) =>
     request<PrivacyConfigApplyResult>(`/api/privacy/${target}/changes`, {
       method: 'POST',
-      body: JSON.stringify({ changes })
+      body: JSON.stringify({ changes, sourceKey })
     }),
-  applyAgentPrivacyProfile: (target: PrivacyTarget, profile: PrivacyProfileId) =>
+  applyAgentPrivacyProfile: (target: PrivacyTarget, profile: PrivacyProfileId, sourceKey?: string) =>
     request<PrivacyConfigApplyResult>(`/api/privacy/${target}/profile`, {
       method: 'POST',
-      body: JSON.stringify({ profile })
+      body: JSON.stringify({ profile, sourceKey })
     }),
   indexNow: (rebuild = false) =>
     request<IndexResult>('/api/index', { method: 'POST', body: JSON.stringify({ rebuild }) }),

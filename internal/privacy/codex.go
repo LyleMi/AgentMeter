@@ -1,4 +1,4 @@
-﻿package privacy
+package privacy
 
 import (
 	"bytes"
@@ -20,7 +20,8 @@ const (
 )
 
 type CodexAdapter struct {
-	Now func() time.Time
+	Now        func() time.Time
+	ConfigPath string
 }
 
 type settingDefinition struct {
@@ -47,8 +48,16 @@ func NewCodexAdapter() CodexAdapter {
 	return CodexAdapter{Now: time.Now}
 }
 
+func NewCodexAdapterForConfigPath(path string) CodexAdapter {
+	adapter := NewCodexAdapter()
+	if strings.TrimSpace(path) != "" {
+		adapter.ConfigPath = filepath.Clean(path)
+	}
+	return adapter
+}
+
 func (a CodexAdapter) Status() (model.PrivacyConfigStatus, error) {
-	path, err := codexConfigPath()
+	path, err := a.configPath()
 	if err != nil {
 		return model.PrivacyConfigStatus{}, err
 	}
@@ -60,7 +69,7 @@ func (a CodexAdapter) Status() (model.PrivacyConfigStatus, error) {
 }
 
 func (a CodexAdapter) Apply(settingIDs []string) (model.PrivacyConfigApplyResult, error) {
-	path, err := codexConfigPath()
+	path, err := a.configPath()
 	if err != nil {
 		return model.PrivacyConfigApplyResult{}, err
 	}
@@ -96,7 +105,7 @@ func (a CodexAdapter) Apply(settingIDs []string) (model.PrivacyConfigApplyResult
 }
 
 func (a CodexAdapter) ApplyChanges(edits []model.PrivacyConfigEdit) (model.PrivacyConfigApplyResult, error) {
-	path, err := codexConfigPath()
+	path, err := a.configPath()
 	if err != nil {
 		return model.PrivacyConfigApplyResult{}, err
 	}
@@ -136,6 +145,13 @@ func (a CodexAdapter) ApplyProfile(profile string) (model.PrivacyConfigApplyResu
 		return a.Apply(nil)
 	}
 	return a.ApplyChanges(codexProfileEdits(normalized))
+}
+
+func (a CodexAdapter) configPath() (string, error) {
+	if strings.TrimSpace(a.ConfigPath) != "" {
+		return filepath.Clean(a.ConfigPath), nil
+	}
+	return codexConfigPath()
 }
 
 func codexConfigPath() (string, error) {

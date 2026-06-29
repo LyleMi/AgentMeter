@@ -1,4 +1,4 @@
-﻿package app
+package app
 
 import (
 	"database/sql"
@@ -37,6 +37,18 @@ func writeJSONResponse(w http.ResponseWriter, status int, value any) {
 func statusForError(err error) int {
 	if errors.Is(err, sql.ErrNoRows) {
 		return http.StatusNotFound
+	}
+	var sourceKeyErr privacySourceKeyError
+	if errors.As(err, &sourceKeyErr) {
+		return http.StatusBadRequest
+	}
+	var sourceNotFoundErr privacySourceNotFoundError
+	if errors.As(err, &sourceNotFoundErr) {
+		return http.StatusNotFound
+	}
+	var sourceUnsupportedErr privacySourceUnsupportedError
+	if errors.As(err, &sourceUnsupportedErr) {
+		return http.StatusBadRequest
 	}
 	if errors.Is(err, pricing.ErrInvalidRate) {
 		return http.StatusBadRequest
@@ -84,6 +96,15 @@ func decodeOptionalJSONBodyOrWrite(w http.ResponseWriter, r *http.Request, value
 	return true
 }
 
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 
 	mux.HandleFunc("GET /api/settings", func(w http.ResponseWriter, r *http.Request) {
@@ -95,7 +116,7 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		if !ok {
 			return
 		}
-		value, err := service.GetPrivacyConfig(target)
+		value, err := service.GetPrivacyConfigForSource(target, r.URL.Query().Get("sourceKey"))
 		writeJSON(w, value, err)
 	})
 	mux.HandleFunc("POST /api/privacy/{target}/apply", func(w http.ResponseWriter, r *http.Request) {
@@ -106,11 +127,12 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 
 		var body struct {
 			SettingIDs []string `json:"settingIds"`
+			SourceKey  string   `json:"sourceKey"`
 		}
 		if !decodeOptionalJSONBodyOrWrite(w, r, &body) {
 			return
 		}
-		value, err := service.ApplyPrivacyConfig(target, body.SettingIDs)
+		value, err := service.ApplyPrivacyConfigForSource(target, firstNonEmpty(body.SourceKey, r.URL.Query().Get("sourceKey")), body.SettingIDs)
 		writeJSON(w, value, err)
 	})
 	mux.HandleFunc("POST /api/privacy/{target}/profile", func(w http.ResponseWriter, r *http.Request) {
@@ -120,7 +142,8 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		}
 
 		var body struct {
-			Profile string `json:"profile"`
+			Profile   string `json:"profile"`
+			SourceKey string `json:"sourceKey"`
 		}
 		if !decodeOptionalJSONBodyOrWrite(w, r, &body) {
 			return
@@ -129,7 +152,7 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 			writeJSON(w, nil, errors.New("privacy profile is required"))
 			return
 		}
-		value, err := service.ApplyPrivacyProfile(target, body.Profile)
+		value, err := service.ApplyPrivacyProfileForSource(target, firstNonEmpty(body.SourceKey, r.URL.Query().Get("sourceKey")), body.Profile)
 		writeJSON(w, value, err)
 	})
 	mux.HandleFunc("POST /api/privacy/{target}/changes", func(w http.ResponseWriter, r *http.Request) {
@@ -139,12 +162,13 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		}
 
 		var body struct {
-			Changes []model.PrivacyConfigEdit `json:"changes"`
+			Changes   []model.PrivacyConfigEdit `json:"changes"`
+			SourceKey string                    `json:"sourceKey"`
 		}
 		if !decodeOptionalJSONBodyOrWrite(w, r, &body) {
 			return
 		}
-		value, err := service.ApplyPrivacyConfigChanges(target, body.Changes)
+		value, err := service.ApplyPrivacyConfigChangesForSource(target, firstNonEmpty(body.SourceKey, r.URL.Query().Get("sourceKey")), body.Changes)
 		writeJSON(w, value, err)
 	})
 	mux.HandleFunc("POST /api/settings", func(w http.ResponseWriter, r *http.Request) {

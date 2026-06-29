@@ -80,8 +80,9 @@ user-level privacy config profiles for external agent tools. That target list
 is not the same as the session indexing support matrix.
 
 For example, a tool can have privacy config support before it has a session
-parser, and applying a privacy profile is target-based rather than
-source-instance-based.
+parser. Privacy writes are target-based unless a target explicitly supports
+source-aware writes; Codex supports source-aware Web writes for indexed
+Codex-like roots.
 
 See [Privacy](privacy.md) and [Getting Started](getting-started.md) for the
 privacy CLI commands.

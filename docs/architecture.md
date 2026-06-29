@@ -171,10 +171,11 @@ an explicit confirmation step. Web Agent Privacy supports the richer per-setting
 editing flow for Codex `config.toml` and Gemini CLI, Claude Code, and CodeBuddy
 Code/IDE `settings.json`.
 
-Agent Privacy is target-based rather than source-instance-based. Privacy
-targets are supported external agent config files, not indexed source labels.
-Applying a profile to `codex`, for example, changes the supported user-level
-Codex config and is not scoped to one Codex source instance.
+Agent Privacy is target-based by default. Privacy targets are supported
+external agent config files, not parser families alone. Codex adds a
+source-aware Web flow: when multiple indexed Codex-like sources exist, the Web
+API and UI can target a selected source root's `config.toml`; other targets and
+the CLI remain target-level writes.
 
 ## Interface Synchronization
 

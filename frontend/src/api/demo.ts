@@ -68,9 +68,17 @@ interface DemoSource {
 type DemoApi = {
   getSettings: () => Promise<Settings>
   saveSourceSettings: (sourceEntries: SourceEntry[]) => Promise<Settings>
-  getAgentPrivacy: (target: PrivacyTarget) => Promise<PrivacyConfigStatus>
-  applyAgentPrivacyChanges: (target: PrivacyTarget, changes: PrivacyConfigChange[]) => Promise<PrivacyConfigApplyResult>
-  applyAgentPrivacyProfile: (target: PrivacyTarget, profile: PrivacyProfileId) => Promise<PrivacyConfigApplyResult>
+  getAgentPrivacy: (target: PrivacyTarget, sourceKey?: string) => Promise<PrivacyConfigStatus>
+  applyAgentPrivacyChanges: (
+    target: PrivacyTarget,
+    changes: PrivacyConfigChange[],
+    sourceKey?: string
+  ) => Promise<PrivacyConfigApplyResult>
+  applyAgentPrivacyProfile: (
+    target: PrivacyTarget,
+    profile: PrivacyProfileId,
+    sourceKey?: string
+  ) => Promise<PrivacyConfigApplyResult>
   indexNow: (rebuild?: boolean) => Promise<IndexResult>
   getOverview: (filters?: UsageScopeFilters) => Promise<Overview>
   getTokenAnalytics: (filters?: UsageScopeFilters) => Promise<TokenAnalytics>
@@ -1764,15 +1772,15 @@ function filteredFindings(filters: AuditFindingFilters = {}): AuditFinding[] {
 export const demoApi: DemoApi = {
   getSettings: async () => clone(settings()),
   saveSourceSettings: async (sourceEntries) => clone(settings(sourceEntries)),
-  getAgentPrivacy: async (target) => clone(privacyStatus(target)),
-  applyAgentPrivacyChanges: async (target) => ({
+  getAgentPrivacy: async (target, _sourceKey) => clone(privacyStatus(target)),
+  applyAgentPrivacyChanges: async (target, _changes, _sourceKey) => ({
     status: clone(privacyStatus(target)),
     changed: [],
     warnings: [
       'Static demo mode is read-only. Privacy changes were accepted for preview but not persisted.'
     ]
   }),
-  applyAgentPrivacyProfile: async (target) => ({
+  applyAgentPrivacyProfile: async (target, _profile, _sourceKey) => ({
     status: clone(privacyStatus(target)),
     changed: [],
     warnings: [

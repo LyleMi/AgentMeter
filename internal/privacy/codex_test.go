@@ -1,4 +1,4 @@
-﻿package privacy
+package privacy
 
 import (
 	"os"
@@ -226,6 +226,28 @@ func TestCodexApplyProfileRecommendedSetsTelemetryAndUnsetsOtherManagedSettings(
 		if strings.Contains(text, unwanted) {
 			t.Fatalf("recommended profile should leave %q unset/default:\n%s", unwanted, text)
 		}
+	}
+}
+
+func TestCodexAdapterUsesExplicitConfigPath(t *testing.T) {
+	dir := t.TempDir()
+	defaultHome := filepath.Join(dir, "default")
+	sourceRoot := filepath.Join(dir, ".ycodex")
+	t.Setenv("CODEX_HOME", defaultHome)
+
+	configPath := filepath.Join(sourceRoot, "config.toml")
+	result, err := NewCodexAdapterForConfigPath(configPath).Apply([]string{"analytics.enabled"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status.ConfigPath != configPath {
+		t.Fatalf("config path = %q, want %q", result.Status.ConfigPath, configPath)
+	}
+	if _, err := os.Stat(configPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(defaultHome, "config.toml")); !os.IsNotExist(err) {
+		t.Fatalf("default CODEX_HOME config should not be written, err=%v", err)
 	}
 }
 

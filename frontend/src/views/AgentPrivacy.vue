@@ -28,6 +28,7 @@ const savingAll = ref(false)
 const savingId = ref('')
 const applyingProfile = ref<PrivacyProfileId | ''>('')
 const selectedTarget = ref<PrivacyTarget>('codex')
+const selectedSourceKey = ref('')
 const privacyStatus = ref<PrivacyConfigStatus | null>(null)
 const lastApply = ref<PrivacyConfigApplyResult | null>(null)
 const translate = t as PrivacyTranslate
@@ -44,6 +45,7 @@ const {
 } = useAgentPrivacyEditor()
 let loadRequestId = 0
 let saveRequestId = 0
+let syncingSourceKey = false
 
 function activeSettingTarget(): PrivacyTarget | undefined {
   const target = privacyStatus.value?.target || selectedTarget.value
@@ -103,10 +105,14 @@ function settingCardClass(setting: PrivacyConfigSetting) {
 async function load() {
   const requestId = ++loadRequestId
   loading.value = true
+  const sourceKey = selectedSourceKey.value
   try {
-    const status = await api.getAgentPrivacy(selectedTarget.value)
+    const status = await api.getAgentPrivacy(selectedTarget.value, sourceKey || undefined)
     if (requestId !== loadRequestId) return
     privacyStatus.value = status
+    syncingSourceKey = true
+    selectedSourceKey.value = status.selectedSourceKey || ''
+    syncingSourceKey = false
     syncEdits(status)
   } catch (error) {
     if (requestId !== loadRequestId) return
@@ -131,17 +137,21 @@ async function saveSettings(records: PrivacyConfigSetting[], saveAll = false) {
 
   const requestId = ++saveRequestId
   const target = selectedTarget.value
+  const sourceKey = selectedSourceKey.value
   if (saveAll) savingAll.value = true
   else savingId.value = changes[0].id
 
   try {
-    const result = await api.applyAgentPrivacyChanges(target, changes)
-    if (requestId !== saveRequestId || selectedTarget.value !== target) return
+    const result = await api.applyAgentPrivacyChanges(target, changes, sourceKey || undefined)
+    if (requestId !== saveRequestId || selectedTarget.value !== target || selectedSourceKey.value !== sourceKey) return
     if (result.status.target !== target) {
       message.error(t('privacy.message.targetMismatch'))
       return
     }
     privacyStatus.value = result.status
+    syncingSourceKey = true
+    selectedSourceKey.value = result.status.selectedSourceKey || ''
+    syncingSourceKey = false
     lastApply.value = result
     syncEdits(result.status)
     if (result.changed?.length) {
@@ -150,7 +160,7 @@ async function saveSettings(records: PrivacyConfigSetting[], saveAll = false) {
       message.info(t('privacy.message.noChanges'))
     }
   } catch (error) {
-    if (requestId !== saveRequestId || selectedTarget.value !== target) return
+    if (requestId !== saveRequestId || selectedTarget.value !== target || selectedSourceKey.value !== sourceKey) return
     message.error(error instanceof Error ? error.message : t('privacy.message.saveFailed'))
   } finally {
     if (requestId === saveRequestId) {
@@ -169,17 +179,21 @@ async function applyProfile(profile: PrivacyProfileId) {
 
   const requestId = ++saveRequestId
   const target = selectedTarget.value
+  const sourceKey = selectedSourceKey.value
   applyingProfile.value = profile
   savingId.value = `profile:${profile}`
 
   try {
-    const result = await api.applyAgentPrivacyProfile(target, profile)
-    if (requestId !== saveRequestId || selectedTarget.value !== target) return
+    const result = await api.applyAgentPrivacyProfile(target, profile, sourceKey || undefined)
+    if (requestId !== saveRequestId || selectedTarget.value !== target || selectedSourceKey.value !== sourceKey) return
     if (result.status.target !== target) {
       message.error(t('privacy.message.targetMismatch'))
       return
     }
     privacyStatus.value = result.status
+    syncingSourceKey = true
+    selectedSourceKey.value = result.status.selectedSourceKey || ''
+    syncingSourceKey = false
     lastApply.value = result
     syncEdits(result.status)
     const title = profileTitle(profile)
@@ -191,7 +205,7 @@ async function applyProfile(profile: PrivacyProfileId) {
       message.info(t('privacy.message.profileNoChanges', { profile: title }))
     }
   } catch (error) {
-    if (requestId !== saveRequestId || selectedTarget.value !== target) return
+    if (requestId !== saveRequestId || selectedTarget.value !== target || selectedSourceKey.value !== sourceKey) return
     message.error(error instanceof Error ? error.message : t('privacy.message.profileFailed'))
   } finally {
     if (requestId === saveRequestId) {
@@ -207,6 +221,18 @@ watch(selectedTarget, () => {
   savingAll.value = false
   savingId.value = ''
   applyingProfile.value = ''
+  syncingSourceKey = true
+  selectedSourceKey.value = ''
+  syncingSourceKey = false
+  lastApply.value = null
+  load()
+})
+watch(selectedSourceKey, () => {
+  if (syncingSourceKey) return
+  saveRequestId++
+  savingAll.value = false
+  savingId.value = ''
+  applyingProfile.value = ''
   lastApply.value = null
   load()
 })
@@ -217,6 +243,7 @@ watch(selectedTarget, () => {
     <div class="section-stack">
       <PrivacySummaryPanel
         v-model:selected-target="selectedTarget"
+        v-model:selected-source-key="selectedSourceKey"
         :t="translate"
         :target-options="targetOptions"
         :kicker-text="kickerText"

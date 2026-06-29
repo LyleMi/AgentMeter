@@ -764,14 +764,24 @@ type AuditFindingFilters struct {
 }
 
 type PrivacyConfigStatus struct {
-	Target     string                 `json:"target"`
-	Name       string                 `json:"name"`
-	ConfigPath string                 `json:"configPath"`
-	Exists     bool                   `json:"exists"`
-	Profiles   []PrivacyConfigProfile `json:"profiles"`
-	Summary    PrivacyConfigSummary   `json:"summary"`
-	Settings   []PrivacyConfigSetting `json:"settings"`
-	Warnings   []string               `json:"warnings"`
+	Target            string                      `json:"target"`
+	Name              string                      `json:"name"`
+	ConfigPath        string                      `json:"configPath"`
+	Exists            bool                        `json:"exists"`
+	Profiles          []PrivacyConfigProfile      `json:"profiles"`
+	Summary           PrivacyConfigSummary        `json:"summary"`
+	Settings          []PrivacyConfigSetting      `json:"settings"`
+	Warnings          []string                    `json:"warnings"`
+	SourceOptions     []PrivacyConfigSourceOption `json:"sourceOptions,omitempty"`
+	SelectedSourceKey string                      `json:"selectedSourceKey,omitempty"`
+}
+
+type PrivacyConfigSourceOption struct {
+	SourceID   int64  `json:"sourceId,omitempty"`
+	SourceKey  string `json:"sourceKey"`
+	Label      string `json:"label"`
+	RootPath   string `json:"rootPath"`
+	ConfigPath string `json:"configPath"`
 }
 
 type PrivacyConfigProfile struct {

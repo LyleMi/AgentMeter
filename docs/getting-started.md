@@ -152,9 +152,10 @@ go run . privacy apply gemini strict
 write every managed hardening setting, or `default` to unset AgentMeter-managed
 keys and return to vendor defaults. Supported targets are `codex`, `gemini`,
 `claude`, and `codebuddy`. Existing config files are backed up before writes.
-Privacy config is target-based, not source-instance-based: applying a Codex
-profile changes the supported user-level Codex config for that target and does
-not scope the write to one indexed Codex source label.
+The CLI applies privacy profiles by target. In the Web UI, Codex privacy writes
+can also be scoped to a selected indexed Codex source, so users with both
+`.codex` and Codex-like variants can choose which source root's `config.toml`
+to edit.
 
 ## Development Checks
 

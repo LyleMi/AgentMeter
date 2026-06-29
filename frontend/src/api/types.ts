@@ -678,6 +678,14 @@ export interface PrivacyConfigSetting {
   profileValues?: PrivacyConfigProfileValue[]
 }
 
+export interface PrivacyConfigSourceOption {
+  sourceId?: number
+  sourceKey: string
+  label: string
+  rootPath: string
+  configPath: string
+}
+
 export interface PrivacyConfigStatus {
   target: string
   name: string
@@ -687,6 +695,8 @@ export interface PrivacyConfigStatus {
   profiles?: PrivacyConfigProfile[]
   settings: PrivacyConfigSetting[]
   warnings: string[]
+  sourceOptions?: PrivacyConfigSourceOption[]
+  selectedSourceKey?: string
 }
 
 export interface PrivacyConfigChanged {

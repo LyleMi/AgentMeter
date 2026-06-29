@@ -2272,6 +2272,10 @@ body {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.privacy-source-select {
+  width: 100%;
+}
+
 .privacy-count-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(108px, 1fr));
