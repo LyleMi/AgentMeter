@@ -12,6 +12,7 @@ import {
   BarChartOutlined,
   DollarCircleOutlined,
   FieldTimeOutlined,
+  FileTextOutlined,
   HistoryOutlined,
   LineChartOutlined,
   MenuFoldOutlined,
@@ -48,6 +49,7 @@ const { t } = useMessages({
     'nav.modelSignals': 'Model Signals',
     'nav.modelRisk': 'Model Risk',
     'nav.sessions': 'Sessions',
+    'nav.prompts': 'Prompts',
     'nav.tools': 'Tools',
     'nav.audit': 'Audit',
     'nav.agentPrivacy': 'Agent Privacy',
@@ -82,6 +84,7 @@ const { t } = useMessages({
     'nav.modelSignals': '模型表现',
     'nav.modelRisk': '模型风险',
     'nav.sessions': '会话',
+    'nav.prompts': 'Prompt',
     'nav.tools': '工具',
     'nav.audit': '审计',
     'nav.agentPrivacy': 'Agent 隐私',
@@ -131,6 +134,7 @@ const selectedKeys = computed(() => {
   if (route.path.startsWith('/model-signals/risk')) return ['model-risk']
   if (route.path.startsWith('/model-signals')) return ['model-signals']
   if (route.path.startsWith('/sessions')) return ['sessions']
+  if (route.path.startsWith('/prompts')) return ['prompts']
   if (route.path.startsWith('/tools')) return ['tools']
   if (route.path.startsWith('/audit')) return ['audit']
   if (route.path.startsWith('/agent-privacy')) return ['agent-privacy']
@@ -145,6 +149,7 @@ const menuItems = computed(() => [
   { key: 'model-signals', icon: LineChartOutlined, label: t('nav.modelSignals'), path: '/model-signals' },
   { key: 'model-risk', icon: SafetyCertificateOutlined, label: t('nav.modelRisk'), path: '/model-signals/risk' },
   { key: 'sessions', icon: HistoryOutlined, label: t('nav.sessions'), path: '/sessions' },
+  { key: 'prompts', icon: FileTextOutlined, label: t('nav.prompts'), path: '/prompts' },
   { key: 'tools', icon: ToolOutlined, label: t('nav.tools'), path: '/tools' },
   { key: 'audit', icon: WarningOutlined, label: t('nav.audit'), path: '/audit' },
   { key: 'agent-privacy', icon: SafetyCertificateOutlined, label: t('nav.agentPrivacy'), path: '/agent-privacy' },

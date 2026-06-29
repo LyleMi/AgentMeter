@@ -12,6 +12,7 @@ import (
 
 	"github.com/LyleMi/AgentMeter/internal/model"
 	"github.com/LyleMi/AgentMeter/internal/pricing"
+	"github.com/LyleMi/AgentMeter/internal/query"
 )
 
 func writeJSON(w http.ResponseWriter, value any, err error) {
@@ -51,6 +52,9 @@ func statusForError(err error) int {
 		return http.StatusBadRequest
 	}
 	if errors.Is(err, pricing.ErrInvalidRate) {
+		return http.StatusBadRequest
+	}
+	if errors.Is(err, query.ErrInvalidPrompt) {
 		return http.StatusBadRequest
 	}
 	return http.StatusInternalServerError
@@ -249,6 +253,77 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 			Offset:      queryInt(r, "offset"),
 		})
 		writeJSON(w, value, err)
+	})
+	mux.HandleFunc("GET /api/prompts/suggestions", func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		value, err := service.PromptSuggestions(model.PromptSuggestionFilters{
+			Agent:    query.Get("agent"),
+			Project:  query.Get("project"),
+			Search:   query.Get("search"),
+			Limit:    queryInt(r, "limit"),
+			MinCount: queryInt(r, "minCount"),
+		})
+		writeJSON(w, value, err)
+	})
+	mux.HandleFunc("GET /api/prompts/saved", func(w http.ResponseWriter, r *http.Request) {
+		value, err := service.SavedPrompts()
+		writeJSON(w, value, err)
+	})
+	mux.HandleFunc("POST /api/prompts/saved", func(w http.ResponseWriter, r *http.Request) {
+		var body model.SavedPromptInput
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, nil, err)
+			return
+		}
+		value, err := service.SavePrompt(body)
+		writeJSON(w, value, err)
+	})
+	mux.HandleFunc("PUT /api/prompts/saved/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			writeJSON(w, nil, err)
+			return
+		}
+		var body model.SavedPromptInput
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, nil, err)
+			return
+		}
+		value, err := service.UpdateSavedPrompt(id, body)
+		writeJSON(w, value, err)
+	})
+	mux.HandleFunc("DELETE /api/prompts/saved/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			writeJSON(w, nil, err)
+			return
+		}
+		err = service.DeleteSavedPrompt(id)
+		writeJSON(w, map[string]bool{"ok": err == nil}, err)
+	})
+	mux.HandleFunc("POST /api/prompts/saved/{id}/copy", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			writeJSON(w, nil, err)
+			return
+		}
+		value, err := service.RecordPromptCopy(id)
+		writeJSON(w, value, err)
+	})
+	mux.HandleFunc("POST /api/prompts/ignored", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			SuggestionKey string `json:"suggestionKey"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, nil, err)
+			return
+		}
+		err := service.IgnorePromptSuggestion(body.SuggestionKey)
+		writeJSON(w, map[string]bool{"ok": err == nil}, err)
+	})
+	mux.HandleFunc("DELETE /api/prompts/ignored/{key}", func(w http.ResponseWriter, r *http.Request) {
+		err := service.UnignorePromptSuggestion(r.PathValue("key"))
+		writeJSON(w, map[string]bool{"ok": err == nil}, err)
 	})
 	mux.HandleFunc("GET /api/audit/summary", func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()

@@ -94,6 +94,62 @@ export interface UsageScopeFilters {
   to?: string
 }
 
+export interface PromptSuggestionFilters {
+  agent?: string
+  project?: string
+  search?: string
+  limit?: number
+  minCount?: number
+}
+
+export interface PromptExample extends SourceIdentity {
+  sessionId: number
+  sessionKey: string
+  codexSessionId?: string
+  projectPath: string
+  timestamp: string
+  rawSourcePath?: string
+  agentKind?: string
+  agentName?: string
+}
+
+export interface PromptVariant {
+  text: string
+  count: number
+  lastUsedAt: string
+}
+
+export interface PromptSuggestion {
+  key: string
+  text: string
+  count: number
+  sessionCount: number
+  variantCount: number
+  firstUsedAt: string
+  lastUsedAt: string
+  matchKind: string
+  confidence: number
+  examples: PromptExample[]
+  variants: PromptVariant[]
+}
+
+export interface SavedPrompt {
+  id: number
+  title: string
+  content: string
+  sourceSuggestionKey?: string
+  copyCount: number
+  lastCopiedAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SavedPromptInput {
+  title: string
+  content: string
+  sourceSuggestionKey?: string
+}
+
 export type UsageBreakdownGroupBy = 'agent' | 'model' | 'agent,model' | 'day' | 'project'
 
 export interface UsageBreakdownFilters extends UsageScopeFilters {

@@ -7,11 +7,15 @@ import type {
   Overview,
   PricingModelInput,
   PricingModel,
+  PromptSuggestion,
+  PromptSuggestionFilters,
   PrivacyConfigApplyResult,
   PrivacyConfigChange,
   PrivacyConfigStatus,
   PrivacyProfileId,
   PrivacyTarget,
+  SavedPrompt,
+  SavedPromptInput,
   Session,
   SessionDetail,
   SessionFilters,
@@ -116,6 +120,27 @@ const fetchApi = {
       ...usageScopeParamValues(filters),
       groupBy: filters.groupBy
     })),
+  getPromptSuggestions: (filters: PromptSuggestionFilters = {}) =>
+    request<PromptSuggestion[]>(queryPath('/api/prompts/suggestions', {
+      agent: filters.agent,
+      project: filters.project,
+      search: filters.search,
+      limit: filters.limit,
+      minCount: filters.minCount
+    })),
+  listSavedPrompts: () => request<SavedPrompt[]>('/api/prompts/saved'),
+  savePrompt: (input: SavedPromptInput) =>
+    request<SavedPrompt>('/api/prompts/saved', { method: 'POST', body: JSON.stringify(input) }),
+  updateSavedPrompt: (id: number, input: SavedPromptInput) =>
+    request<SavedPrompt>(`/api/prompts/saved/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  deleteSavedPrompt: (id: number) =>
+    request<{ ok: boolean }>(`/api/prompts/saved/${id}`, { method: 'DELETE' }),
+  recordPromptCopy: (id: number) =>
+    request<SavedPrompt>(`/api/prompts/saved/${id}/copy`, { method: 'POST' }),
+  ignorePromptSuggestion: (suggestionKey: string) =>
+    request<{ ok: boolean }>('/api/prompts/ignored', { method: 'POST', body: JSON.stringify({ suggestionKey }) }),
+  unignorePromptSuggestion: (suggestionKey: string) =>
+    request<{ ok: boolean }>(`/api/prompts/ignored/${encodeURIComponent(suggestionKey)}`, { method: 'DELETE' }),
   listSessions: (filters: SessionFilters = {}) =>
     request<Session[]>(queryPath('/api/sessions', {
       search: filters.search,

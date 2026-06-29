@@ -206,6 +206,21 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			value TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS saved_prompts (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			content TEXT NOT NULL,
+			source_suggestion_key TEXT NOT NULL DEFAULT '',
+			copy_count INTEGER NOT NULL DEFAULT 0,
+			last_copied_at TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_saved_prompts_source_suggestion_key ON saved_prompts(source_suggestion_key)`,
+		`CREATE TABLE IF NOT EXISTS ignored_prompt_suggestions (
+			suggestion_key TEXT PRIMARY KEY,
+			ignored_at TEXT NOT NULL
+		)`,
 	}
 	for _, stmt := range statements {
 		if _, err := conn.ExecContext(ctx, stmt); err != nil {

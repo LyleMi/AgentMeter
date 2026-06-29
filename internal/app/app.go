@@ -457,6 +457,62 @@ func (a *App) ListToolCalls(filters model.ToolCallFilters) ([]model.ToolCall, er
 	return a.query.ToolCalls(a.ctx, filters)
 }
 
+func (a *App) PromptSuggestions(filters model.PromptSuggestionFilters) ([]model.PromptSuggestion, error) {
+	if err := a.ensureReady(); err != nil {
+		return nil, err
+	}
+	return a.query.PromptSuggestions(a.ctx, filters)
+}
+
+func (a *App) SavedPrompts() ([]model.SavedPrompt, error) {
+	if err := a.ensureReady(); err != nil {
+		return nil, err
+	}
+	return a.query.SavedPrompts(a.ctx)
+}
+
+func (a *App) SavePrompt(input model.SavedPromptInput) (model.SavedPrompt, error) {
+	if err := a.ensureReady(); err != nil {
+		return model.SavedPrompt{}, err
+	}
+	return a.query.SavePrompt(a.ctx, input)
+}
+
+func (a *App) UpdateSavedPrompt(id int64, input model.SavedPromptInput) (model.SavedPrompt, error) {
+	if err := a.ensureReady(); err != nil {
+		return model.SavedPrompt{}, err
+	}
+	return a.query.UpdateSavedPrompt(a.ctx, id, input)
+}
+
+func (a *App) DeleteSavedPrompt(id int64) error {
+	if err := a.ensureReady(); err != nil {
+		return err
+	}
+	return a.query.DeleteSavedPrompt(a.ctx, id)
+}
+
+func (a *App) RecordPromptCopy(id int64) (model.SavedPrompt, error) {
+	if err := a.ensureReady(); err != nil {
+		return model.SavedPrompt{}, err
+	}
+	return a.query.RecordPromptCopy(a.ctx, id)
+}
+
+func (a *App) IgnorePromptSuggestion(key string) error {
+	if err := a.ensureReady(); err != nil {
+		return err
+	}
+	return a.query.IgnorePromptSuggestion(a.ctx, key)
+}
+
+func (a *App) UnignorePromptSuggestion(key string) error {
+	if err := a.ensureReady(); err != nil {
+		return err
+	}
+	return a.query.UnignorePromptSuggestion(a.ctx, key)
+}
+
 func (a *App) GetAuditSummary() (model.AuditSummary, error) {
 	return a.GetAuditSummaryWithFilters(model.AuditFindingFilters{})
 }

@@ -42,6 +42,7 @@ const router = createRouter({
     { path: '/model-signals/risk', component: () => import('./views/ModelRisk.vue') },
     { path: '/sessions', component: () => import('./views/Sessions.vue') },
     { path: '/sessions/:id', component: () => import('./views/SessionDetail.vue'), props: true },
+    { path: '/prompts', component: () => import('./views/Prompts.vue') },
     {
       path: '/audit',
       component: () => import('./views/Audit.vue'),
@@ -79,4 +80,3 @@ const router = createRouter({
 })
 
 export default router
-

@@ -27,6 +27,7 @@ const routes: SmokeRoute[] = [
     title: /^(Model Quality Risk|模型质量风险)$/,
     panelTitle: /^(Score drivers|分数驱动因子)$/
   },
+  { path: '/#/prompts', hash: '#/prompts', title: /^(Prompts|Prompt)$/, panelTitle: /^(Suggestions|建议)$/ },
   { path: '/#/tools/overview', hash: '#/tools/overview', title: /^(Tools|工具)$/ },
   { path: '/#/tools/calls', hash: '#/tools/calls', title: /^(Tools|工具)$/ },
   { path: '/#/tools/shell', hash: '#/tools/shell', title: /^(Tools|工具)$/ },
