@@ -1,4 +1,4 @@
-package sessionjsonl
+﻿package sessionjsonl
 
 import (
 	"crypto/sha256"
@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 type rawRecord struct {

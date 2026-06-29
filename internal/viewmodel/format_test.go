@@ -1,10 +1,10 @@
-package viewmodel
+﻿package viewmodel
 
 import (
 	"testing"
 	"time"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 func TestFormatNumber(t *testing.T) {

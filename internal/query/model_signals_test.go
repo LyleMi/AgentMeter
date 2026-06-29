@@ -1,4 +1,4 @@
-package query
+﻿package query
 
 import (
 	"context"
@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"AgentMeter/internal/db"
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/db"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 func TestModelSignalsAggregatesFiltersAndRanksAnomalies(t *testing.T) {

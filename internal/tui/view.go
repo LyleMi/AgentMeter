@@ -1,12 +1,12 @@
-package tui
+﻿package tui
 
 import (
 	"fmt"
 	"strings"
 	"time"
 
-	agentmodel "AgentMeter/internal/model"
-	"AgentMeter/internal/viewmodel"
+	agentmodel "github.com/LyleMi/AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/viewmodel"
 )
 
 const (

@@ -84,16 +84,28 @@ AgentMeter 将这些数据整理成可以直接回答的问题：
 
 ## 快速开始
 
-如需使用打包版本，请从
+最省事的方式是使用打包版本：从
 [Releases](https://github.com/LyleMi/AgentMeter/releases) 下载匹配的
-`AgentMeter-<platform>-<arch>` 资产。如需从源码本地启动，请使用下面的命令。
+`AgentMeter-<platform>-<arch>` 资产，解压后运行 `AgentMeter -start`。
 
-要求：
+通过 Go 工具链安装：
 
-- Go 版本与 `go.mod` 中声明的版本匹配
-- Node.js 和 npm
+```sh
+go install github.com/LyleMi/AgentMeter@latest
+AgentMeter -start
+```
 
-推荐的本地启动方式：
+不保留二进制、直接运行：
+
+```sh
+go run github.com/LyleMi/AgentMeter@latest start
+```
+
+使用 Go install/run 时，请确认 Go 的二进制目录已经加入 `PATH`。Web 首次
+启动如果需要构建内置前端源码，会使用 Node.js 和 npm。现代 Go 版本不再推荐
+用 `go get` 安装命令行二进制，请使用 `go install ...@latest`。
+
+从源码 checkout 启动：
 
 ```sh
 go run . -start

@@ -1,4 +1,4 @@
-package app
+﻿package app
 
 import (
 	"database/sql"
@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"AgentMeter/internal/model"
-	"AgentMeter/internal/pricing"
+	"github.com/LyleMi/AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/pricing"
 )
 
 func writeJSON(w http.ResponseWriter, value any, err error) {

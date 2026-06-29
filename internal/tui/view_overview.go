@@ -1,9 +1,9 @@
-package tui
+﻿package tui
 
 import (
 	"fmt"
 
-	"AgentMeter/internal/viewmodel"
+	"github.com/LyleMi/AgentMeter/internal/viewmodel"
 )
 
 func (s *state) overviewLines() []string {

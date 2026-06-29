@@ -1,10 +1,10 @@
-package query
+﻿package query
 
 import (
 	"sort"
 	"time"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 func buildModelSignalProjectHotspots(aggregates map[string]*modelSignalProjectAggregate) []model.ModelSignalsProjectHotspot {

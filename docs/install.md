@@ -46,7 +46,42 @@ Portable releases are not installer packages. Signing and notarization are
 future packaging work, so your operating system may ask you to confirm that you
 want to run the downloaded binary.
 
-## Option 2: Run From Source
+## Option 2: Go Toolchain Install
+
+Requirements:
+
+- Go matching the version in `go.mod`
+- Node.js and npm for Web startup when built Web assets are not already present
+
+Install the command:
+
+```sh
+go install github.com/LyleMi/AgentMeter@latest
+```
+
+Make sure your Go binary directory is on `PATH`, then start the Web UI:
+
+```sh
+AgentMeter -start
+```
+
+On Windows, the installed command may be invoked as:
+
+```powershell
+AgentMeter.exe -start
+```
+
+You can also run without keeping an installed binary:
+
+```sh
+go run github.com/LyleMi/AgentMeter@latest start
+```
+
+Modern Go versions do not use `go get` to install command binaries. Use
+`go install ...@latest` for persistent installs, or `go run ...@latest` for a
+one-shot run.
+
+## Option 3: Run From Source
 
 Requirements:
 
@@ -114,6 +149,12 @@ From source:
 
 ```sh
 go run . -ui tui
+```
+
+From a Go toolchain install:
+
+```sh
+AgentMeter -ui tui
 ```
 
 See [UI Modes](ui-modes.md) for mode behavior and TUI keyboard shortcuts.

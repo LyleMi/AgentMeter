@@ -7,14 +7,13 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
-	"AgentMeter/internal/app"
-	"AgentMeter/internal/cli"
-	"AgentMeter/internal/startup"
-	"AgentMeter/internal/tui"
+	"github.com/LyleMi/AgentMeter/internal/app"
+	"github.com/LyleMi/AgentMeter/internal/cli"
+	"github.com/LyleMi/AgentMeter/internal/startup"
+	"github.com/LyleMi/AgentMeter/internal/tui"
 )
 
 func main() {
@@ -62,16 +61,11 @@ func main() {
 		if uiMode != "web" {
 			log.Fatal("-start can only be used with -ui web")
 		}
-		repoRoot, err := startup.FindRepoRoot(".")
+		preparedStaticDir, err := startup.PrepareWebAssets(staticDir, forceBuild)
 		if err != nil {
-			log.Fatalf("find repository root: %v", err)
-		}
-		if !filepath.IsAbs(staticDir) {
-			staticDir = filepath.Join(repoRoot, staticDir)
-		}
-		if err := startup.EnsureWebAssets(repoRoot, forceBuild); err != nil {
 			log.Fatalf("prepare frontend: %v", err)
 		}
+		staticDir = preparedStaticDir
 	}
 
 	service, err := app.New()

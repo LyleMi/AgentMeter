@@ -1,4 +1,4 @@
-package platform
+﻿package platform
 
 import (
 	"os"
@@ -6,8 +6,8 @@ import (
 	"runtime"
 	"strings"
 
-	"AgentMeter/internal/agent"
-	"AgentMeter/internal/sourcepath"
+	"github.com/LyleMi/AgentMeter/internal/agent"
+	"github.com/LyleMi/AgentMeter/internal/sourcepath"
 )
 
 type SourceCandidate struct {

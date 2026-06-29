@@ -1,4 +1,4 @@
-package audit
+﻿package audit
 
 import (
 	"encoding/json"
@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 type ShellFamily string

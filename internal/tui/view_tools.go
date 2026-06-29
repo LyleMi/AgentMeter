@@ -1,12 +1,12 @@
-package tui
+﻿package tui
 
 import (
 	"fmt"
 	"strconv"
 	"strings"
 
-	"AgentMeter/internal/audit"
-	agentmodel "AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/audit"
+	agentmodel "github.com/LyleMi/AgentMeter/internal/model"
 )
 
 func (s *state) toolLines() []string {

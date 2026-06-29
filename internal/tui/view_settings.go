@@ -1,10 +1,10 @@
-package tui
+﻿package tui
 
 import (
 	"fmt"
 	"strings"
 
-	agentmodel "AgentMeter/internal/model"
+	agentmodel "github.com/LyleMi/AgentMeter/internal/model"
 )
 
 func (s *state) settingsViewportLines() []string {

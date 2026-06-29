@@ -1,4 +1,4 @@
-package privacy
+﻿package privacy
 
 import (
 	"os"
@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 func TestCodexStatusMissingConfig(t *testing.T) {

@@ -1,11 +1,11 @@
-package cli
+﻿package cli
 
 import (
 	"bytes"
 	"strings"
 	"testing"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 type fakePrivacyRegistry struct {

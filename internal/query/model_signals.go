@@ -1,11 +1,11 @@
-package query
+﻿package query
 
 import (
 	"context"
 	"sort"
 	"time"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 func (s *Service) ModelSignals(ctx context.Context) (model.ModelSignals, error) {

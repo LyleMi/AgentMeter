@@ -1,4 +1,4 @@
-package pricing
+﻿package pricing
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"math"
 	"testing"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 
 	_ "modernc.org/sqlite"
 )

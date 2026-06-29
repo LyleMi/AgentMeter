@@ -1,11 +1,11 @@
-package query
+﻿package query
 
 import (
 	"math"
 	"sort"
 
-	"AgentMeter/internal/db"
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/db"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 func rankModelSignalAnomalies(metrics []modelSignalSessionMetric, limit int) []model.ModelSignalsAnomalySession {

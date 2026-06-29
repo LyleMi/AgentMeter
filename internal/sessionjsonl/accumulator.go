@@ -1,4 +1,4 @@
-package sessionjsonl
+﻿package sessionjsonl
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 type parseAccumulator struct {

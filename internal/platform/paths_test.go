@@ -1,11 +1,11 @@
-package platform
+﻿package platform
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
-	"AgentMeter/internal/sourcepath"
+	"github.com/LyleMi/AgentMeter/internal/sourcepath"
 )
 
 func TestDefaultAgentSourcePathsDiscoversHomeVariantsConservatively(t *testing.T) {

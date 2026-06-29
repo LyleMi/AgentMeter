@@ -1,4 +1,4 @@
-package query
+﻿package query
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 type modelSignalSessionMetric struct {

@@ -1,11 +1,11 @@
-package agent
+﻿package agent
 
 import (
 	"os"
 	"path/filepath"
 	"strings"
 
-	"AgentMeter/internal/sourcepath"
+	"github.com/LyleMi/AgentMeter/internal/sourcepath"
 )
 
 type SourceSpec struct {

@@ -1,4 +1,4 @@
-package app
+﻿package app
 
 import (
 	"context"
@@ -11,9 +11,9 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"AgentMeter/internal/db"
-	"AgentMeter/internal/model"
-	"AgentMeter/internal/sourcepath"
+	"github.com/LyleMi/AgentMeter/internal/db"
+	"github.com/LyleMi/AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/sourcepath"
 )
 
 func TestStartupAddsDetectedAgentDefaultsToExistingSourceEntries(t *testing.T) {

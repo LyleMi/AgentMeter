@@ -1,10 +1,10 @@
-package privacy
+﻿package privacy
 
 import (
 	"errors"
 	"testing"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 type registryFakeAdapter struct {

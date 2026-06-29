@@ -1,10 +1,10 @@
-package query
+﻿package query
 
 import (
 	"sort"
 	"strings"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 type modelSignalDriftRuleKind int

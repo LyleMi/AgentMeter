@@ -1,10 +1,10 @@
-package privacy
+﻿package privacy
 
 import (
 	"fmt"
 	"strings"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 const (

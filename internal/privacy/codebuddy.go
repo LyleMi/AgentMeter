@@ -1,9 +1,9 @@
-package privacy
+﻿package privacy
 
 import (
 	"time"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 type CodeBuddyAdapter struct {

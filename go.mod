@@ -1,4 +1,4 @@
-module AgentMeter
+module github.com/LyleMi/AgentMeter
 
 go 1.25
 

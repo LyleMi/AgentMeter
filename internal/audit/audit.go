@@ -1,11 +1,11 @@
-package audit
+﻿package audit
 
 import (
 	"fmt"
 	"strings"
 	"time"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 const (

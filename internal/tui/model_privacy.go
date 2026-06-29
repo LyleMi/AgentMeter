@@ -1,11 +1,11 @@
-package tui
+﻿package tui
 
 import (
 	"context"
 	"fmt"
 	"strings"
 
-	agentmodel "AgentMeter/internal/model"
+	agentmodel "github.com/LyleMi/AgentMeter/internal/model"
 )
 
 func (s *state) handlePrivacyKey(k keyMsg) (command, bool, bool) {

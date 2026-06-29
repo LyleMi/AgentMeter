@@ -1,10 +1,10 @@
-package tui
+﻿package tui
 
 import (
 	"context"
 	"errors"
 
-	"AgentMeter/internal/app"
+	"github.com/LyleMi/AgentMeter/internal/app"
 	tea "github.com/charmbracelet/bubbletea"
 )
 

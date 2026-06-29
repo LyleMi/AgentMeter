@@ -1,4 +1,4 @@
-package viewmodel
+﻿package viewmodel
 
 import (
 	"math"
@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 // FormatNumber formats whole-number counters with comma group separators.

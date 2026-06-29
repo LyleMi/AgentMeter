@@ -91,16 +91,30 @@ inspect directly. AgentMeter turns that data into answers you can use:
 
 ## Quick Start
 
-For packaged builds, download the matching `AgentMeter-<platform>-<arch>` asset
-from [Releases](https://github.com/LyleMi/AgentMeter/releases). For local source
-startup, use the commands below.
+The easiest path is a packaged build: download the matching
+`AgentMeter-<platform>-<arch>` asset from
+[Releases](https://github.com/LyleMi/AgentMeter/releases), unpack it, and run
+`AgentMeter -start`.
 
-Requirements:
+Go toolchain install:
 
-- Go matching the version in `go.mod`
-- Node.js and npm
+```sh
+go install github.com/LyleMi/AgentMeter@latest
+AgentMeter -start
+```
 
-Recommended local start:
+One-shot run without keeping a binary:
+
+```sh
+go run github.com/LyleMi/AgentMeter@latest start
+```
+
+For Go install/run, make sure your Go binary directory is on `PATH`. Web startup
+uses Node.js and npm the first time it needs to build the bundled frontend
+source. The old `go get` command is not recommended for installing binaries on
+modern Go versions; use `go install ...@latest`.
+
+From a source checkout:
 
 ```sh
 go run . -start

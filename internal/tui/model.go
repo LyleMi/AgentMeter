@@ -1,4 +1,4 @@
-package tui
+﻿package tui
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	agentmodel "AgentMeter/internal/model"
+	agentmodel "github.com/LyleMi/AgentMeter/internal/model"
 )
 
 type appService interface {

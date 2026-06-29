@@ -1,4 +1,4 @@
-package app
+﻿package app
 
 import (
 	"context"
@@ -9,15 +9,15 @@ import (
 	"sync"
 	"time"
 
-	"AgentMeter/internal/agent"
-	"AgentMeter/internal/db"
-	"AgentMeter/internal/ingest"
-	"AgentMeter/internal/model"
-	"AgentMeter/internal/platform"
-	"AgentMeter/internal/pricing"
-	"AgentMeter/internal/privacy"
-	"AgentMeter/internal/query"
-	"AgentMeter/internal/sourcepath"
+	"github.com/LyleMi/AgentMeter/internal/agent"
+	"github.com/LyleMi/AgentMeter/internal/db"
+	"github.com/LyleMi/AgentMeter/internal/ingest"
+	"github.com/LyleMi/AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/platform"
+	"github.com/LyleMi/AgentMeter/internal/pricing"
+	"github.com/LyleMi/AgentMeter/internal/privacy"
+	"github.com/LyleMi/AgentMeter/internal/query"
+	"github.com/LyleMi/AgentMeter/internal/sourcepath"
 )
 
 type App struct {

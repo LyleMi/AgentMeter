@@ -1,4 +1,4 @@
-package cli
+﻿package cli
 
 import (
 	"encoding/json"
@@ -7,8 +7,8 @@ import (
 	"io"
 	"strings"
 
-	"AgentMeter/internal/model"
-	"AgentMeter/internal/privacy"
+	"github.com/LyleMi/AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/privacy"
 )
 
 const (

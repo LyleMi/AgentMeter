@@ -1,12 +1,12 @@
-package query
+﻿package query
 
 import (
 	"context"
 	"database/sql"
 	"strconv"
 
-	"AgentMeter/internal/db"
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/db"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 func sourceInstanceKey(id int64) string {

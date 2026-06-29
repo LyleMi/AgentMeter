@@ -1,10 +1,10 @@
-package viewmodel
+﻿package viewmodel
 
 import (
 	"math"
 	"sort"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 type ToolSummary struct {

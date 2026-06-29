@@ -1,10 +1,10 @@
-package audit
+﻿package audit
 
 import (
 	"strings"
 	"testing"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 func TestIsShellToolRecognizesCommonNames(t *testing.T) {

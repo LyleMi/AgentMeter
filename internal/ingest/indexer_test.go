@@ -1,4 +1,4 @@
-package ingest
+﻿package ingest
 
 import (
 	"context"
@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"AgentMeter/internal/db"
-	"AgentMeter/internal/model"
-	"AgentMeter/internal/query"
+	"github.com/LyleMi/AgentMeter/internal/db"
+	"github.com/LyleMi/AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/query"
 )
 
 func TestFindJSONLFilesUsesCodexHomeSourcesWithActiveCopyWinning(t *testing.T) {

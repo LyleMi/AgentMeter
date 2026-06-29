@@ -1,11 +1,11 @@
-package tui
+﻿package tui
 
 import (
 	"fmt"
 	"sort"
 	"strings"
 
-	agentmodel "AgentMeter/internal/model"
+	agentmodel "github.com/LyleMi/AgentMeter/internal/model"
 )
 
 type modelRiskRow struct {

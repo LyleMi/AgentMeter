@@ -1,4 +1,4 @@
-package tui
+﻿package tui
 
 import (
 	"encoding/json"
@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	agentmodel "AgentMeter/internal/model"
+	agentmodel "github.com/LyleMi/AgentMeter/internal/model"
 )
 
 func (s *state) privacyViewportLines() []string {

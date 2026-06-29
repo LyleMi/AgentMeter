@@ -1,4 +1,4 @@
-package privacy
+﻿package privacy
 
 import (
 	"encoding/json"
@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 func TestGeminiStatusMissingConfig(t *testing.T) {

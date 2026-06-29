@@ -1,11 +1,11 @@
-package privacy
+﻿package privacy
 
 import (
 	"errors"
 	"fmt"
 	"strings"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 type Adapter interface {

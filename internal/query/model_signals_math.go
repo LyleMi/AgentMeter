@@ -1,11 +1,11 @@
-package query
+﻿package query
 
 import (
 	"math"
 	"sort"
 	"strings"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 func safeRate(numerator, denominator int64) float64 {

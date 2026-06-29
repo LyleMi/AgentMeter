@@ -1,9 +1,9 @@
-package viewmodel
+﻿package viewmodel
 
 import (
 	"testing"
 
-	"AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 func TestDerivedOverviewMetrics(t *testing.T) {
