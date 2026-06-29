@@ -940,11 +940,8 @@ function signalRatesFor(group: Session[], groupToolCalls: ToolCall[]): ModelSign
 
   return {
     outputExpansionRate: safeRate(outputTokens, inputTokens),
-    generationTokenOverhead: safeRate(outputTokens, inputTokens),
     reasoningTokenShare: safeRate(reasoningOutputTokens, outputTokens),
     reasoningOverheadRate: safeRate(reasoningOutputTokens, Math.max(0, outputTokens - reasoningOutputTokens)),
-    reasoningTokenOverhead: safeRate(reasoningOutputTokens, outputTokens),
-    reasoningOutputShare: safeRate(reasoningOutputTokens, outputTokens),
     cacheMissRate: clampRate(safeRate(inputTokens - cachedInputTokens, inputTokens)),
     modelThroughputTokensPerSecond: safeRate(totalTokens, modelDurationSeconds),
     modelThroughputOutputTokensPerSecond: safeRate(outputTokens, modelDurationSeconds),
@@ -995,6 +992,8 @@ function metricSetFromTotals(totals: MetricTotals): ModelSignalMetricSet {
   const failurePressure = safeRate((totals.failedModelCalls || 0) + totals.failedToolCalls, totals.sessionCount)
   const avgModelCallsPerSession = safeRate(totals.modelCalls, totals.sessionCount)
   const outputExpansionRate = safeRate(totals.outputTokens, totals.inputTokens)
+  const visibleOutputTokens = Math.max(0, totals.outputTokens - totals.reasoningOutputTokens)
+  const billableOutputTokens = totals.outputTokens
   const reasoningOverheadRate = safeRate(totals.reasoningOutputTokens, Math.max(0, totals.outputTokens - totals.reasoningOutputTokens))
   const cacheMissRate = clampRate(safeRate(totals.inputTokens - totals.cachedInputTokens, totals.inputTokens))
   const modelThroughputOutputTokensPerSecond = safeRate(totals.outputTokens, modelDurationSeconds)
@@ -1012,6 +1011,8 @@ function metricSetFromTotals(totals: MetricTotals): ModelSignalMetricSet {
     cachedInputTokens: totals.cachedInputTokens,
     outputTokens: totals.outputTokens,
     reasoningOutputTokens: totals.reasoningOutputTokens,
+    visibleOutputTokens,
+    billableOutputTokens,
     modelDurationMs: totals.modelDurationMs,
     wallDurationMs,
     activeDurationMs,
@@ -1041,11 +1042,8 @@ function metricSetFromTotals(totals: MetricTotals): ModelSignalMetricSet {
     }),
     avgModelCallsPerSession,
     outputExpansionRate,
-    generationTokenOverhead: outputExpansionRate,
     reasoningTokenShare: safeRate(totals.reasoningOutputTokens, totals.outputTokens),
     reasoningOverheadRate,
-    reasoningTokenOverhead: safeRate(totals.reasoningOutputTokens, totals.outputTokens),
-    reasoningOutputShare: safeRate(totals.reasoningOutputTokens, totals.outputTokens),
     cacheMissRate,
     modelThroughputTokensPerSecond,
     modelThroughputOutputTokensPerSecond,
@@ -1161,8 +1159,8 @@ function relativeDecrease(current: number, baseline: number): number {
   return (baseline - current) / baseline
 }
 
-function reasoningOverhead(metric: Pick<ModelSignalRates, 'reasoningTokenShare' | 'reasoningOverheadRate' | 'reasoningTokenOverhead' | 'reasoningOutputShare'>): number {
-  return metric.reasoningOverheadRate ?? metric.reasoningTokenOverhead ?? metric.reasoningOutputShare ?? metric.reasoningTokenShare
+function reasoningOverhead(metric: Pick<ModelSignalRates, 'reasoningOverheadRate'>): number {
+  return metric.reasoningOverheadRate
 }
 
 function modelSignalDriftFor(current: ModelSignalMetricSet, baseline: ModelSignalMetricSet): ModelSignalDrift {
@@ -1586,13 +1584,11 @@ function anomalySessionsFor(items: Session[], scopedToolCalls: ToolCall[]): Mode
     const reasons: string[] = []
     if (rates.toolFailureRate > 0) reasons.push('Tool failure in session')
     if (reasoningOverhead(rates) >= 0.25) reasons.push('High reasoning overhead')
-    if ((rates.generationTokenOverhead ?? rates.outputExpansionRate) >= 0.2) reasons.push('Generation overhead relative to input')
+    if (rates.outputExpansionRate >= 0.2) reasons.push('Generation overhead relative to input')
     if (rates.cacheMissRate >= 0.85) reasons.push('Low cache reuse')
     if (rates.modelThroughputTokensPerSecond > 0 && rates.modelThroughputTokensPerSecond < 85) reasons.push('Low model token throughput')
     if (!reasons.length) continue
     anomalies.push({
-      session,
-      id: session.id,
       sessionId: session.id,
       sessionKey: session.sessionKey,
       codexSessionId: session.codexSessionId,
@@ -1601,22 +1597,25 @@ function anomalySessionsFor(items: Session[], scopedToolCalls: ToolCall[]): Mode
       rawSourcePath: session.rawSourcePath,
       agentKind: session.agentKind,
       agentName: session.agentName,
-      sourceId: session.sourceId,
-      sourceKey: session.sourceKey,
-      sourceLabel: session.sourceLabel,
-      sourceRootPath: session.sourceRootPath,
-      sourceSessionsPath: session.sourceSessionsPath,
+      sourceId: session.sourceId || 0,
+      sourceKey: session.sourceKey || '',
+      sourceLabel: session.sourceLabel || session.agentName,
+      sourceRootPath: session.sourceRootPath || '',
+      sourceSessionsPath: session.sourceSessionsPath || '',
       model: session.model,
+      modelCalls: modelCallsForSession(session),
       totalTokens: session.tokenUsage.totalTokens,
       inputTokens: session.tokenUsage.inputTokens,
+      cachedInputTokens: session.tokenUsage.cachedInputTokens,
       outputTokens: session.tokenUsage.outputTokens,
       reasoningOutputTokens: session.tokenUsage.reasoningOutputTokens,
+      visibleOutputTokens: Math.max(0, session.tokenUsage.outputTokens - session.tokenUsage.reasoningOutputTokens),
+      billableOutputTokens: session.tokenUsage.outputTokens,
       toolCalls: sessionToolCalls.length,
       failedToolCalls: sessionToolCalls.filter((call) => !isSuccessfulToolStatus(call.status)).length,
       modelDurationMs: session.modelDurationMs,
-      severity: reasons.length > 1 ? 'high' : 'medium',
-      signal: reasons[0],
       reasons,
+      score: clampRate(reasons.length / 5),
       ...rates
     })
   }
@@ -1635,6 +1634,8 @@ function modelSignals(filters: UsageScopeFilters = {}): ModelSignals {
   const scopedToolCalls = filteredToolCalls({ agent: filters.agent, project: filters.project, from: filters.from, to: filters.to })
     .filter((call) => sessionIds.has(call.sessionId))
   const rates = signalRatesFor(scoped, scopedToolCalls)
+  const outputTokens = sum(scoped, (session) => session.tokenUsage.outputTokens)
+  const reasoningOutputTokens = sum(scoped, (session) => session.tokenUsage.reasoningOutputTokens)
   const cohorts = modelSignalCohortsFor(scoped, scopedToolCalls)
   return {
     totalSessions: scoped.length,
@@ -1646,6 +1647,9 @@ function modelSignals(filters: UsageScopeFilters = {}): ModelSignals {
     avgModelCallsPerSession: safeRate(sum(scoped, modelCallsForSession), scoped.length),
     outputExpansionRate: rates.outputExpansionRate,
     reasoningTokenShare: rates.reasoningTokenShare,
+    reasoningOverheadRate: rates.reasoningOverheadRate,
+    visibleOutputTokens: Math.max(0, outputTokens - reasoningOutputTokens),
+    billableOutputTokens: outputTokens,
     cacheMissRate: rates.cacheMissRate,
     modelThroughputTokensPerSecond: rates.modelThroughputTokensPerSecond,
     modelThroughputOutputTokensPerSecond: rates.modelThroughputOutputTokensPerSecond,

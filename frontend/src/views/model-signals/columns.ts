@@ -90,7 +90,7 @@ export function buildAnomalyColumns(t: ModelSignalsTranslate) {
     { title: t('column.model'), dataIndex: 'model', key: 'model', width: 170 },
     { title: t('column.signal'), dataIndex: 'reasons', key: 'signal', width: 260 },
     { title: t('column.outputExpansion'), dataIndex: 'outputExpansionRate', key: 'outputExpansion', width: 112, align: 'right' },
-    { title: t('column.reasoning'), dataIndex: 'reasoningTokenShare', key: 'reasoning', width: 100, align: 'right' },
+    { title: t('column.reasoning'), dataIndex: 'reasoningOverheadRate', key: 'reasoning', width: 100, align: 'right' },
     { title: t('column.cacheMiss'), dataIndex: 'cacheMissRate', key: 'cacheMiss', width: 120, align: 'right' },
     { title: t('column.failedTools'), dataIndex: 'failedToolCalls', key: 'failedTools', width: 90, align: 'right' },
     { title: t('column.throughput'), dataIndex: 'modelThroughputTokensPerSecond', key: 'throughput', width: 100, align: 'right' },

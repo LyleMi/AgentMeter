@@ -22,11 +22,11 @@ export interface NormalizedAnomalySession {
   model?: string
   totalTokens: number
   outputExpansionRate: number
-  reasoningTokenShare: number
+  reasoningOverheadRate: number
   cacheMissRate: number
   modelThroughputTokensPerSecond: number
   failedToolCalls: number
   modelDurationMs: number
-  severity?: string
+  score: number
   reasons: string[]
 }

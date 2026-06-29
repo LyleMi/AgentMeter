@@ -13,8 +13,7 @@ import {
   type ModelSignals,
   type ModelSignalsHealthSummary,
   type ModelSignalsProjectMetric,
-  type ModelSignalsWindow,
-  type Session
+  type ModelSignalsWindow
 } from '../../api'
 import { sourceDisplay } from '../../presentation/sourceIdentity'
 import {
@@ -190,7 +189,7 @@ export function createModelSignalsDisplay(t: ModelSignalsTranslate) {
   }
 
   function anomalyRowClass(record: NormalizedAnomalySession) {
-    return { class: record.failedToolCalls > 0 || record.severity === 'high' ? 'model-signals-warning-row' : '' }
+    return { class: record.failedToolCalls > 0 || record.score >= 0.45 ? 'model-signals-warning-row' : '' }
   }
 
   function reasonText(row: string): string {
@@ -269,59 +268,32 @@ export function createModelSignalsDisplay(t: ModelSignalsTranslate) {
     return record.projectPath || `${record.modelCount}:${record.sourceCount}:${record.totalTokens}`
   }
 
-  function anomalyReasons(row: ModelSignalAnomalySession): string[] {
-    const candidates = [row.reasons, row.reasonLabels, row.signalReasons, row.reason, row.signal]
-    const values = candidates.flatMap((value) => {
-      if (Array.isArray(value)) return value
-      if (typeof value === 'string') return [value]
-      return []
-    })
-    return [...new Set(values.map((value) => value.trim()).filter(Boolean))]
-  }
-
   function normalizeAnomaly(row: ModelSignalAnomalySession): NormalizedAnomalySession {
-    const session = row.session || ({} as Partial<Session>)
     return {
-      id: numberField(row, ['id', 'sessionId']) || session.id || 0,
-      sessionKey: stringField(row, ['sessionKey']) || session.sessionKey,
-      codexSessionId: stringField(row, ['codexSessionId']) || session.codexSessionId,
-      startedAt: stringField(row, ['startedAt']) || session.startedAt,
-      projectPath: stringField(row, ['projectPath']) || session.projectPath,
-      rawSourcePath: stringField(row, ['rawSourcePath']) || session.rawSourcePath,
-      agentKind: stringField(row, ['agentKind']) || session.agentKind,
-      agentName: stringField(row, ['agentName']) || session.agentName,
-      sourceId: numberField(row, ['sourceId']) || session.sourceId,
-      sourceKey: stringField(row, ['sourceKey']) || session.sourceKey,
-      sourceLabel: stringField(row, ['sourceLabel']) || session.sourceLabel,
-      sourceRootPath: stringField(row, ['sourceRootPath']) || session.sourceRootPath,
-      sourceSessionsPath: stringField(row, ['sourceSessionsPath']) || session.sourceSessionsPath,
-      model: stringField(row, ['model']) || session.model,
-      totalTokens: numberField(row, ['totalTokens']) || session.tokenUsage?.totalTokens || 0,
-      outputExpansionRate: numberField(row, ['generationTokenOverhead', 'outputExpansionRate']),
-      reasoningTokenShare: numberField(row, ['reasoningOverheadRate', 'reasoningTokenOverhead', 'reasoningOutputShare', 'reasoningTokenShare']),
-      cacheMissRate: numberField(row, ['cacheMissRate']),
-      modelThroughputTokensPerSecond: numberField(row, ['modelThroughputTokensPerSecond']),
-      failedToolCalls: numberField(row, ['failedToolCalls']),
-      modelDurationMs: numberField(row, ['modelDurationMs']) || session.modelDurationMs || 0,
-      severity: stringField(row, ['severity']),
-      reasons: anomalyReasons(row)
+      id: row.sessionId,
+      sessionKey: row.sessionKey,
+      codexSessionId: row.codexSessionId,
+      startedAt: row.startedAt,
+      projectPath: row.projectPath,
+      rawSourcePath: row.rawSourcePath,
+      agentKind: row.agentKind,
+      agentName: row.agentName,
+      sourceId: row.sourceId,
+      sourceKey: row.sourceKey,
+      sourceLabel: row.sourceLabel,
+      sourceRootPath: row.sourceRootPath,
+      sourceSessionsPath: row.sourceSessionsPath,
+      model: row.model,
+      totalTokens: row.totalTokens,
+      outputExpansionRate: row.outputExpansionRate,
+      reasoningOverheadRate: row.reasoningOverheadRate,
+      cacheMissRate: row.cacheMissRate,
+      modelThroughputTokensPerSecond: row.modelThroughputTokensPerSecond,
+      failedToolCalls: row.failedToolCalls,
+      modelDurationMs: row.modelDurationMs,
+      score: row.score,
+      reasons: row.reasons
     }
-  }
-
-  function stringField(row: ModelSignalAnomalySession, keys: string[]) {
-    for (const key of keys) {
-      const value = row[key]
-      if (typeof value === 'string' && value.trim()) return value.trim()
-    }
-    return undefined
-  }
-
-  function numberField(row: ModelSignalAnomalySession, keys: string[]) {
-    for (const key of keys) {
-      const value = row[key]
-      if (typeof value === 'number' && Number.isFinite(value)) return value
-    }
-    return 0
   }
 
   function sessionInfo(record: NormalizedAnomalySession) {

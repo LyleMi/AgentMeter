@@ -4,8 +4,6 @@ export interface TokenRatioInput {
   outputTokens?: number | null
   reasoningOutputTokens?: number | null
   reasoningOverheadRate?: number | null
-  reasoningTokenOverhead?: number | null
-  reasoningOutputShare?: number | null
 }
 
 export interface TokenRatioShares {
@@ -21,12 +19,7 @@ export function tokenRatioShares(input: TokenRatioInput): TokenRatioShares {
   const outputTokens = positiveNumber(input.outputTokens)
   const reasoningOutputTokens = positiveNumber(input.reasoningOutputTokens)
   const mainTotal = inputTokens + outputTokens
-  const reasoningOutput = firstRatio(
-    input.reasoningOverheadRate,
-    input.reasoningTokenOverhead,
-    input.reasoningOutputShare,
-    outputTokens > 0 ? reasoningOutputTokens / outputTokens : undefined
-  )
+  const reasoningOutput = firstRatio(input.reasoningOverheadRate, outputTokens > 0 ? reasoningOutputTokens / outputTokens : undefined)
 
   return {
     input: mainTotal > 0 ? inputTokens / mainTotal : 0,

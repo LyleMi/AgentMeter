@@ -813,12 +813,12 @@ onMounted(load)
                 <template v-else-if="column.key === 'signal'">
                   <ReasonTags
                     :reasons="record.reasons"
-                    :color="record.severity === 'high' ? 'warning' : 'processing'"
+                    :color="record.failedToolCalls > 0 || record.score >= 0.45 ? 'warning' : 'processing'"
                     :empty-text="t('fallback.noReason')"
                   />
                 </template>
                 <template v-else-if="column.key === 'outputExpansion'"><span class="number-cell">{{ formatPercent(record.outputExpansionRate) }}</span></template>
-                <template v-else-if="column.key === 'reasoning'"><span class="number-cell">{{ formatPercent(record.reasoningTokenShare) }}</span></template>
+                <template v-else-if="column.key === 'reasoning'"><span class="number-cell">{{ formatPercent(record.reasoningOverheadRate) }}</span></template>
                 <template v-else-if="column.key === 'cacheMiss'"><span class="number-cell">{{ formatPercent(record.cacheMissRate) }}</span></template>
                 <template v-else-if="column.key === 'failedTools'">
                   <span class="number-cell" :class="{ 'status-error': record.failedToolCalls > 0 }">{{ formatNumber(record.failedToolCalls) }}</span>

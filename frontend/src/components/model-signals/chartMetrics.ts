@@ -414,11 +414,11 @@ function finiteNumber(value?: number) {
 }
 
 function reasoningOverhead(metric?: ModelSignalMetricSet) {
-  return firstFinite(metric?.reasoningOverheadRate, metric?.reasoningTokenOverhead, metric?.reasoningOutputShare, metric?.reasoningTokenShare)
+  return finiteNumber(metric?.reasoningOverheadRate)
 }
 
 function generationOverhead(metric?: ModelSignalMetricSet) {
-  return firstFinite(metric?.generationTokenOverhead, metric?.outputExpansionRate)
+  return finiteNumber(metric?.outputExpansionRate)
 }
 
 function safeRate(numerator?: number, denominator?: number) {

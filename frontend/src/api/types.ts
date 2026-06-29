@@ -279,11 +279,8 @@ export interface TokenAnalytics {
 
 export interface ModelSignalRates {
   outputExpansionRate: number
-  generationTokenOverhead?: number
   reasoningTokenShare: number
-  reasoningOverheadRate?: number
-  reasoningTokenOverhead?: number
-  reasoningOutputShare?: number
+  reasoningOverheadRate: number
   cacheMissRate: number
   modelThroughputTokensPerSecond: number
   modelThroughputOutputTokensPerSecond: number
@@ -303,8 +300,8 @@ export interface ModelSignalMetricSet extends ModelSignalRates {
   outputTokens: number
   reasoningOutputTokens: number
   contextCompressionTokens?: number
-  visibleOutputTokens?: number
-  billableOutputTokens?: number
+  visibleOutputTokens: number
+  billableOutputTokens: number
   modelDurationMs: number
   wallDurationMs?: number
   activeDurationMs?: number
@@ -464,43 +461,41 @@ export interface ModelSignalsProjectMetric extends ModelSignalMetricSet {
 }
 
 export interface ModelSignalAnomalySession {
-  id?: number
-  sessionId?: number
-  session?: Session
-  sessionKey?: string
+  sessionId: number
+  sourceId: number
+  sourceKey: string
+  sourceLabel: string
+  sourceRootPath: string
+  sourceSessionsPath: string
+  sessionKey: string
   codexSessionId?: string
-  startedAt?: string
-  projectPath?: string
-  rawSourcePath?: string
-  agentKind?: string
-  agentName?: string
-  sourceId?: number
-  sourceKey?: string
-  sourceLabel?: string
-  sourceRootPath?: string
-  sourceSessionsPath?: string
-  model?: string
-  totalTokens?: number
-  inputTokens?: number
-  outputTokens?: number
-  reasoningOutputTokens?: number
+  projectPath: string
+  model: string
+  startedAt: string
+  rawSourcePath: string
+  agentKind: string
+  agentName: string
+  modelCalls: number
+  toolCalls: number
+  failedToolCalls: number
+  totalTokens: number
+  inputTokens: number
+  cachedInputTokens: number
+  outputTokens: number
+  reasoningOutputTokens: number
   contextCompressionTokens?: number
-  toolCalls?: number
-  failedToolCalls?: number
-  modelDurationMs?: number
-  outputExpansionRate?: number
-  reasoningTokenShare?: number
-  cacheMissRate?: number
-  modelThroughputTokensPerSecond?: number
-  toolFailureRate?: number
-  toolDependencyRate?: number
-  severity?: string
-  signal?: string
-  reasonLabels?: string[] | string
-  reasons?: string[] | string
-  signalReasons?: string[] | string
-  reason?: string
-  [key: string]: unknown
+  visibleOutputTokens: number
+  billableOutputTokens: number
+  modelDurationMs: number
+  outputExpansionRate: number
+  reasoningTokenShare: number
+  reasoningOverheadRate: number
+  cacheMissRate: number
+  modelThroughputTokensPerSecond: number
+  modelThroughputOutputTokensPerSecond: number
+  toolFailureRate: number
+  reasons: string[]
+  score: number
 }
 
 export interface ModelSignals {
@@ -513,9 +508,9 @@ export interface ModelSignals {
   avgModelCallsPerSession: number
   outputExpansionRate: number
   reasoningTokenShare: number
-  reasoningOverheadRate?: number
-  visibleOutputTokens?: number
-  billableOutputTokens?: number
+  reasoningOverheadRate: number
+  visibleOutputTokens: number
+  billableOutputTokens: number
   cacheMissRate: number
   modelThroughputTokensPerSecond: number
   modelThroughputOutputTokensPerSecond: number
