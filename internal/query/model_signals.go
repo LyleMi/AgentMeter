@@ -204,53 +204,33 @@ func fillModelSignalsTrendGaps(points []model.ModelSignalsTrendPoint) []model.Mo
 }
 
 func normalizeModelSignalsSlices(result *model.ModelSignals) {
-	if result.Trend == nil {
-		result.Trend = []model.ModelSignalsTrendPoint{}
-	}
-	if result.ModelBreakdown == nil {
-		result.ModelBreakdown = []model.ModelSignalsBreakdown{}
-	}
-	if result.AnomalySessions == nil {
-		result.AnomalySessions = []model.ModelSignalsAnomalySession{}
-	}
+	result.Trend = nonNilSlice(result.Trend)
+	result.ModelBreakdown = nonNilSlice(result.ModelBreakdown)
+	result.AnomalySessions = nonNilSlice(result.AnomalySessions)
 	if result.HealthSummary.Severity == "" {
 		result.HealthSummary.Severity = modelSignalSeverityUnknown
 	}
-	if result.HealthSummary.TopReasons == nil {
-		result.HealthSummary.TopReasons = []string{}
-	}
-	if result.Cohorts == nil {
-		result.Cohorts = []model.ModelSignalsCohort{}
-	}
+	result.HealthSummary.TopReasons = nonNilSlice(result.HealthSummary.TopReasons)
+	result.Cohorts = nonNilSlice(result.Cohorts)
 	for index := range result.Cohorts {
 		normalizeModelSignalsDrift(&result.Cohorts[index].Drift)
 	}
-	if result.Matrix == nil {
-		result.Matrix = []model.ModelSignalsMatrixRow{}
-	}
+	result.Matrix = nonNilSlice(result.Matrix)
 	for rowIndex := range result.Matrix {
-		if result.Matrix[rowIndex].Cells == nil {
-			result.Matrix[rowIndex].Cells = []model.ModelSignalsMatrixCell{}
-		}
+		result.Matrix[rowIndex].Cells = nonNilSlice(result.Matrix[rowIndex].Cells)
 		for cellIndex := range result.Matrix[rowIndex].Cells {
 			normalizeModelSignalsDrift(&result.Matrix[rowIndex].Cells[cellIndex].Drift)
 		}
 	}
-	if result.ProjectHotspots == nil {
-		result.ProjectHotspots = []model.ModelSignalsProjectHotspot{}
-	}
+	result.ProjectHotspots = nonNilSlice(result.ProjectHotspots)
 	for index := range result.ProjectHotspots {
 		normalizeModelSignalsDrift(&result.ProjectHotspots[index].Drift)
 	}
-	if result.DailyMetrics == nil {
-		result.DailyMetrics = []model.ModelSignalsDailyMetric{}
-	}
+	result.DailyMetrics = nonNilSlice(result.DailyMetrics)
 	for index := range result.DailyMetrics {
 		normalizeModelSignalsDrift(&result.DailyMetrics[index].Drift)
 	}
-	if result.ProjectMetrics == nil {
-		result.ProjectMetrics = []model.ModelSignalsProjectMetric{}
-	}
+	result.ProjectMetrics = nonNilSlice(result.ProjectMetrics)
 	for index := range result.ProjectMetrics {
 		normalizeModelSignalsDrift(&result.ProjectMetrics[index].Drift)
 	}
@@ -263,10 +243,6 @@ func normalizeModelSignalsDrift(drift *model.ModelSignalsDrift) {
 	if drift.Confidence == "" {
 		drift.Confidence = modelSignalConfidenceLow
 	}
-	if drift.Reasons == nil {
-		drift.Reasons = []string{}
-	}
-	if drift.Metrics == nil {
-		drift.Metrics = []model.ModelSignalsDriftMetric{}
-	}
+	drift.Reasons = nonNilSlice(drift.Reasons)
+	drift.Metrics = nonNilSlice(drift.Metrics)
 }

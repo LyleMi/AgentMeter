@@ -103,6 +103,9 @@ Current Go package responsibilities:
 - `internal/db/db.go` is the schema source of truth.
 - `internal/model/types.go` defines API/read-model shapes.
 - `internal/query` defines shared read-model semantics consumed by Web and TUI.
+  Query responses should use shared normalization helpers, such as
+  `internal/query/slices.go`, when preserving API contracts like non-null JSON
+  arrays.
 - `internal/pricing/pricing.go` is the pricing registry source of truth; see
   [Pricing Sources](pricing-sources.md) for source links and assumptions.
 - [Validation](validation.md) is the smoke and verification source of truth.
@@ -206,10 +209,20 @@ Keep large files from becoming catch-all implementation surfaces:
 - Frontend views should delegate presentation, formatting, and table-cell logic
   to focused components or helper modules. Shared display rules for durations,
   money, tokens, status labels, source identity, and drill-down cells should be
-  reusable rather than reimplemented in each view.
+  reusable rather than reimplemented in each view. Token ratio math and percent
+  labels should use the presentation helpers in `frontend/src/presentation`
+  instead of per-view clamp or formatting functions.
 - Large backend files should be split by responsibility when distinct concerns
   emerge, such as routing, request parsing, persistence, indexing, privacy
-  config adaptation, query shaping, and view-model presentation.
+  config adaptation, query shaping, and view-model presentation. Query package
+  read models should keep focused files for established surfaces, such as
+  `usage.go` for token analytics orchestration, `usage_costs.go` for pricing
+  accumulation, `usage_trends.go` for daily/cache trend read models,
+  `usage_breakdown.go` for grouped token breakdowns, `time.go` for time
+  attribution, `sessions.go` for session lists/details, `tools.go` for tool
+  summaries and call lists, `audit_findings.go` for audit read models,
+  `model_signals*.go` for model signals, and `prompts.go` for prompt
+  suggestions and saved prompts.
 - Repeated config and file-write flows should share one well-tested path for
   loading, validation, backup or atomic-write behavior, error reporting, and
   persistence semantics instead of duplicating near-identical write code.

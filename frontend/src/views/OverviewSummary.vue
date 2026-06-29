@@ -29,7 +29,7 @@ import {
 } from '../api'
 import CacheHitTrendChart from '../components/CacheHitTrendChart.vue'
 import { useMessages } from '../i18n'
-import { cachedInputRatio, tokenRatioShares } from '../presentation/tokenRatios'
+import { cachedInputRatio, clampRatio, tokenRatioShares } from '../presentation/tokenRatios'
 import { useOverviewContext } from './overviewContext'
 import { readUsageScopeQuery, usageScopeToApiFilters } from './useUsageScope'
 
@@ -412,14 +412,12 @@ function formatDayLabel(value: string) {
 }
 
 function formatSharePercent(value: number) {
-  if (!Number.isFinite(value) || value <= 0) return '0%'
-  if (value < 0.01) return '<1%'
-  return formatOverviewPercent(value)
+  return formatMetricPercent(value, { clamp: true, lessThanOne: true })
 }
 
 function formatShareWidth(value: number) {
-  if (!Number.isFinite(value) || value <= 0) return '0%'
-  return `${Math.max(2, Math.round(value * 100))}%`
+  const normalized = clampRatio(value)
+  return normalized > 0 ? `${Math.max(2, Math.round(normalized * 100))}%` : '0%'
 }
 </script>
 

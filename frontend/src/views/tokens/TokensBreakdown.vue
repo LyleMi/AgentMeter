@@ -7,6 +7,7 @@ import ATag from 'ant-design-vue/es/tag'
 import {
   formatCost,
   formatNumber,
+  formatPercent,
   projectDisplay,
   type AgentUsage,
   type ModelUsage,
@@ -151,11 +152,6 @@ function breakdownRowClass(record: UsageBreakdownBucket) {
   return { class: record.unpriced ? 'is-unpriced-row' : '' }
 }
 
-function formatRate(value: number | undefined) {
-  if (!Number.isFinite(value)) return '0%'
-  return `${Math.round(Math.max(0, Math.min(1, value || 0)) * 100)}%`
-}
-
 function modelName(record: ModelUsage) {
   return record.model || t('fallback.unknown')
 }
@@ -251,7 +247,7 @@ function agentRowKey(record: AgentUsage) {
             <template v-else-if="column.key === 'output'"><span class="number-cell">{{ formatNumber(record.outputTokens) }}</span></template>
             <template v-else-if="column.key === 'reasoning'"><span class="number-cell">{{ formatNumber(record.reasoningOutputTokens) }}</span></template>
             <template v-else-if="column.key === 'contextCompression'"><span class="number-cell">{{ formatNumber(record.contextCompressionTokens) }}</span></template>
-            <template v-else-if="column.key === 'cacheRate'"><span class="number-cell">{{ formatRate(record.cacheUtilizationRate) }}</span></template>
+            <template v-else-if="column.key === 'cacheRate'"><span class="number-cell">{{ formatPercent(record.cacheUtilizationRate, { clamp: true }) }}</span></template>
             <template v-else-if="column.key === 'cost'">
               <span class="number-cell">{{ formatCost(record.estimatedCostUsd) }}</span>
               <a-tag v-if="record.unpriced" color="warning" class="model-status-tag">{{ t('fallback.unpriced') }}</a-tag>

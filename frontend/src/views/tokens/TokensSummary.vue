@@ -14,13 +14,14 @@ import {
 import {
   formatDisplayCost,
   formatDisplayNumber,
+  formatPercent,
   type AgentUsage,
   type TokenAnalytics
 } from '../../api'
 import CacheHitTrendChart from '../../components/CacheHitTrendChart.vue'
 import { useMessages } from '../../i18n'
 import { sourceDisplay } from '../../presentation/sourceIdentity'
-import { cachedInputRatio, tokenRatioShares } from '../../presentation/tokenRatios'
+import { cachedInputRatio, clampRatio, tokenRatioShares } from '../../presentation/tokenRatios'
 import { useTokensContext } from './tokensContext'
 
 const { analytics, loading } = useTokensContext()
@@ -134,7 +135,7 @@ const sourceCacheRows = computed<SourceCacheRow[]>(() => {
       inputTokens,
       cachedInputTokens,
       rate,
-      rateLabel: formatRateLabel(rate),
+      rateLabel: formatPercent(rate, { clamp: true, lessThanOne: true }),
       width: sourceCacheWidth(rate),
       inputLabel: t('sourceCache.input', { count: inputDisplay.main }),
       inputTitle: t('sourceCache.input', { count: inputDisplay.full })
@@ -144,7 +145,7 @@ const sourceCacheRows = computed<SourceCacheRow[]>(() => {
   return rows.sort((left, right) => right.rate - left.rate || right.inputTokens - left.inputTokens || left.label.localeCompare(right.label))
 })
 
-const cacheRatePercent = computed(() => Math.round(Math.max(0, Math.min(1, analytics.value?.cacheUtilizationRate || 0)) * 100))
+const cacheRatePercent = computed(() => Math.round(clampRatio(analytics.value?.cacheUtilizationRate || 0) * 100))
 const metricCards = computed(() => {
   const item = analytics.value
   return [
@@ -179,7 +180,7 @@ const metricCards = computed(() => {
     {
       label: t('metric.contextCompression'),
       value: formatDisplayNumber(item?.totalContextCompressionTokens),
-      note: t('metric.contextCompressionNote', { percent: mixPercent(contextCompressionShare(item)) }),
+      note: t('metric.contextCompressionNote', { percent: formatPercent(contextCompressionShare(item), { clamp: true, lessThanOne: true }) }),
       icon: CompressOutlined,
       tone: 'metric-neutral'
     }
@@ -201,12 +202,6 @@ function mixWidth(share: number) {
   return `${Math.max(2, Math.round(share * 100))}%`
 }
 
-function mixPercent(share: number) {
-  if (!Number.isFinite(share) || share <= 0) return '0%'
-  if (share < 0.01) return '<1%'
-  return `${Math.round(share * 100)}%`
-}
-
 function contextCompressionShare(item: TokenAnalytics | null | undefined) {
   const value = item?.totalContextCompressionTokens || 0
   const total = item?.totalTokens || 0
@@ -224,19 +219,8 @@ function sourceCacheWidth(rate: number) {
   return `${Math.round(clampRatio(rate) * 1000) / 10}%`
 }
 
-function formatRateLabel(rate: number) {
-  const normalized = clampRatio(rate)
-  if (normalized > 0 && normalized < 0.01) return '<1%'
-  return `${Math.round(normalized * 100)}%`
-}
-
 function sourceCacheAria(row: SourceCacheRow) {
   return `${row.label}: ${row.rateLabel}, ${row.inputTitle}`
-}
-
-function clampRatio(value: number) {
-  if (!Number.isFinite(value)) return 0
-  return Math.max(0, Math.min(1, value))
 }
 </script>
 
@@ -277,7 +261,7 @@ function clampRatio(value: number) {
               <div class="tokens-mix-meter">
                 <span :style="{ width: mixWidth(item.share) }"></span>
               </div>
-              <div class="tokens-mix-share">{{ mixPercent(item.share) }}</div>
+              <div class="tokens-mix-share">{{ formatPercent(item.share, { clamp: true, lessThanOne: true }) }}</div>
             </div>
           </div>
         </section>

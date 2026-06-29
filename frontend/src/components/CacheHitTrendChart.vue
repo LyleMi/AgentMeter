@@ -6,6 +6,7 @@ import { formatNumber, formatPercent, type CacheHitTrendPoint } from '../api'
 import { chartPalette } from '../chartPalette'
 import { useEChart } from '../composables/useEChart'
 import { useMessages } from '../i18n'
+import { clampRatio } from '../presentation/tokenRatios'
 
 const props = withDefaults(
   defineProps<{
@@ -178,8 +179,7 @@ function tooltipMarkup(params: unknown) {
 }
 
 function toPercent(value: number) {
-  if (!Number.isFinite(value)) return 0
-  return Math.max(0, Math.min(100, value * 100))
+  return clampRatio(value) * 100
 }
 
 function compactNumber(value: number) {

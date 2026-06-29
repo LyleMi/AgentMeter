@@ -41,7 +41,12 @@ export function cachedInputRatio(inputTokens?: number | null, cachedInputTokens?
   const cached = positiveNumber(cachedInputTokens)
   const denominator = cacheInputDenominator(input, cached)
   if (denominator <= 0 || cached <= 0) return 0
-  return clamp01(cached / denominator)
+  return clampRatio(cached / denominator)
+}
+
+export function clampRatio(value: number) {
+  if (!Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(1, value))
 }
 
 function cacheInputDenominator(inputTokens: number, cachedInputTokens: number) {
@@ -61,10 +66,5 @@ function positiveNumber(value?: number | null) {
 
 function firstRatio(...values: Array<number | null | undefined>) {
   const value = values.find((item) => Number.isFinite(item))
-  return clamp01(value || 0)
-}
-
-function clamp01(value: number) {
-  if (!Number.isFinite(value)) return 0
-  return Math.max(0, Math.min(1, value))
+  return clampRatio(value || 0)
 }

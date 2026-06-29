@@ -674,12 +674,8 @@ func (c promptCluster) suggestion() model.PromptSuggestion {
 		})
 	}
 	suggestion.SessionCount = len(sessions)
-	if suggestion.Examples == nil {
-		suggestion.Examples = []model.PromptExample{}
-	}
-	if suggestion.Variants == nil {
-		suggestion.Variants = []model.PromptVariant{}
-	}
+	suggestion.Examples = nonNilSlice(suggestion.Examples)
+	suggestion.Variants = nonNilSlice(suggestion.Variants)
 	return suggestion
 }
 
