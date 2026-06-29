@@ -138,6 +138,25 @@ creates approximate model-call rows from those per-event usage deltas.
 Context compression tokens are stored as a separate metric instead of being
 folded into input, output, cached input, or reasoning subtotals.
 
+### Codex Context Compaction
+
+Observed Codex rollout compaction appears as two related records:
+
+- top-level `type = "compacted"` with `payload.replacement_history`
+- `type = "event_msg"` with `payload.type = "context_compacted"`
+
+The `compacted` record is the checkpoint that writes the replacement history
+snapshot into the rollout. The `context_compacted` event is treated as a marker
+for replay, UI, and compatibility flows.
+
+When Codex emits a snapshot `token_count` after `compacted`, its
+`last_token_usage.total_tokens` is interpreted as the replacement snapshot size
+when input, cached input, output, reasoning, and context compression subtotals
+are all zero. AgentMeter records
+`previous last_token_usage.input_tokens - snapshot total_tokens` as session-level
+`context_compression_tokens`. The snapshot token count does not create a
+`model_calls` row because it is not an ordinary model invocation usage record.
+
 ### Codex Tool Calls
 
 Tool calls are represented by paired start/output events. The parser matches
@@ -243,6 +262,31 @@ Recognized tool-call records include:
 The parser matches tool calls by `callId` where available and stores input and
 output summaries from arguments, argument display text, output text, or
 providerData tool-result fields.
+
+### CodeBuddy Context Compaction
+
+CodeBuddy 2.110.0 source defines three compact types:
+
+- `user-command`
+- `pre-message-auto`
+- `emergency-auto`
+
+Manual commands are recognized by CodeBuddy as `/compact` or `/_compact`, but
+AgentMeter treats compaction as complete only when a persisted summary marker is
+present. Source-backed completion markers include:
+
+- replacement summary messages with `providerData.isCompacted = true` or
+  `providerData.isSummary = true`, plus either
+  `providerData.isCompactInternal = true` or `providerData.compactType`
+- compact-agent assistant messages with `providerData.agent = "compact"` and
+  summary XML such as `<summary>...</summary>` or
+  `<conversation_history_summary>...</conversation_history_summary>`
+
+CodeBuddy does not persist explicit pre/post token counts for these records.
+AgentMeter therefore records `context_compression_tokens` only when it can
+compare the latest ordinary non-compact `inputTokens` before the marker with the
+next ordinary non-compact `inputTokens` after the marker. Compact-agent usage is
+not used as the post-compaction context size.
 
 ## Generic JSONL Shape
 

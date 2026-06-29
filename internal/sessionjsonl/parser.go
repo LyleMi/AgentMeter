@@ -14,40 +14,42 @@ import (
 )
 
 type rawRecord struct {
-	ID               any            `json:"id"`
-	ParentID         any            `json:"parentId"`
-	Timestamp        any            `json:"timestamp"`
-	TimestampMS      any            `json:"timestamp_ms"`
-	TimestampMSCamel any            `json:"timestampMs"`
-	CreatedAt        any            `json:"created_at"`
-	CreatedAtCamel   any            `json:"createdAt"`
-	Type             string         `json:"type"`
-	SessionID        any            `json:"sessionId"`
-	SessionIDSnake   any            `json:"session_id"`
-	UUID             any            `json:"uuid"`
-	CWD              any            `json:"cwd"`
-	Role             any            `json:"role"`
-	Status           any            `json:"status"`
-	Name             any            `json:"name"`
-	CallID           any            `json:"callId"`
-	CallIDSnake      any            `json:"call_id"`
-	Arguments        any            `json:"arguments"`
-	Output           any            `json:"output"`
-	Content          any            `json:"content"`
-	RawContent       any            `json:"rawContent"`
-	Summary          any            `json:"summary"`
-	AITitle          any            `json:"aiTitle"`
-	Payload          map[string]any `json:"payload"`
-	Data             map[string]any `json:"data"`
-	Result           map[string]any `json:"result"`
-	Response         map[string]any `json:"response"`
-	Message          map[string]any `json:"message"`
-	Usage            any            `json:"usage"`
-	CompactMetadata  map[string]any `json:"compactMetadata"`
-	Model            any            `json:"model"`
-	ModelName        any            `json:"model_name"`
-	Metadata         map[string]any `json:"metadata"`
-	ProviderData     map[string]any `json:"providerData"`
+	ID                 any            `json:"id"`
+	ParentID           any            `json:"parentId"`
+	Timestamp          any            `json:"timestamp"`
+	TimestampMS        any            `json:"timestamp_ms"`
+	TimestampMSCamel   any            `json:"timestampMs"`
+	CreatedAt          any            `json:"created_at"`
+	CreatedAtCamel     any            `json:"createdAt"`
+	Type               string         `json:"type"`
+	SessionID          any            `json:"sessionId"`
+	SessionIDSnake     any            `json:"session_id"`
+	UUID               any            `json:"uuid"`
+	CWD                any            `json:"cwd"`
+	Role               any            `json:"role"`
+	Status             any            `json:"status"`
+	Name               any            `json:"name"`
+	CallID             any            `json:"callId"`
+	CallIDSnake        any            `json:"call_id"`
+	Arguments          any            `json:"arguments"`
+	Output             any            `json:"output"`
+	Content            any            `json:"content"`
+	RawContent         any            `json:"rawContent"`
+	Summary            any            `json:"summary"`
+	AITitle            any            `json:"aiTitle"`
+	Payload            map[string]any `json:"payload"`
+	Data               map[string]any `json:"data"`
+	Result             map[string]any `json:"result"`
+	Response           map[string]any `json:"response"`
+	Message            any            `json:"message"`
+	Usage              any            `json:"usage"`
+	CompactMetadata    map[string]any `json:"compactMetadata"`
+	IsCompactSummary   any            `json:"isCompactSummary"`
+	ReplacementHistory any            `json:"replacement_history"`
+	Model              any            `json:"model"`
+	ModelName          any            `json:"model_name"`
+	Metadata           map[string]any `json:"metadata"`
+	ProviderData       map[string]any `json:"providerData"`
 }
 
 type pendingTool struct {
@@ -122,6 +124,9 @@ func classifyRecord(raw rawRecord) string {
 	if stringValue(raw.Payload, "type") != "" {
 		return classify(raw.Type, raw.Payload)
 	}
+	if isCodeBuddyCompactSummary(raw) {
+		return "session"
+	}
 	if raw.Type == "" {
 		switch stringFromAny(raw.Role) {
 		case "user":
@@ -146,7 +151,7 @@ func classifyRecord(raw rawRecord) string {
 		return "model"
 	case "function_call", "function_call_result":
 		return "tool"
-	case "file-history-snapshot", "ai-title", "summary":
+	case "file-history-snapshot", "ai-title", "summary", "compacted":
 		return "session"
 	default:
 		return classify(raw.Type, raw.Payload)
@@ -156,6 +161,9 @@ func classifyRecord(raw rawRecord) string {
 func summarizeRecord(raw rawRecord) string {
 	if stringValue(raw.Payload, "type") != "" {
 		return summarize(raw.Type, raw.Payload)
+	}
+	if isCodeBuddyCompactSummary(raw) {
+		return "Context compacted"
 	}
 	if raw.Type == "" {
 		if role := stringFromAny(raw.Role); role != "" {
@@ -178,6 +186,8 @@ func summarizeRecord(raw rawRecord) string {
 		return "AI title: " + preview(stringFromAny(raw.AITitle), 180)
 	case "summary":
 		return "Summary: " + preview(stringFromAny(raw.Summary), 180)
+	case "compacted":
+		return "Context compacted"
 	default:
 		return summarize(raw.Type, raw.Payload)
 	}
@@ -205,6 +215,8 @@ func classify(topType string, payload map[string]any) string {
 		return "message"
 	case "agent_message", "reasoning", "token_count", "task_started", "task_complete":
 		return "model"
+	case "context_compacted":
+		return "session"
 	case "function_call", "function_call_output", "custom_tool_call", "custom_tool_call_output", "web_search_call", "web_search_end", "tool_search_call", "tool_search_output", "patch_apply_end":
 		return "tool"
 	case "turn_aborted":
@@ -254,6 +266,8 @@ func summarize(topType string, payload map[string]any) string {
 		return "Turn started"
 	case "task_complete":
 		return "Turn completed"
+	case "context_compacted":
+		return "Context compacted"
 	case "turn_aborted":
 		return "Turn aborted: " + stringValue(payload, "reason")
 	case "agent_message":
@@ -382,14 +396,15 @@ func toolName(payloadType string, payload map[string]any) string {
 }
 
 func sessionIDFromRecord(raw rawRecord) string {
+	message := mapFromAny(raw.Message)
 	return firstNonEmpty(
 		stringFromAny(raw.SessionID),
 		stringFromAny(raw.SessionIDSnake),
 		stringValue(raw.Metadata, "sessionId"),
 		stringValue(raw.Metadata, "session_id"),
 		stringValue(raw.Metadata, "conversation_id"),
-		stringValue(raw.Message, "sessionId"),
-		stringValue(raw.Message, "session_id"),
+		stringValue(message, "sessionId"),
+		stringValue(message, "session_id"),
 		stringFromAny(raw.UUID),
 	)
 }
@@ -556,7 +571,7 @@ func headlessUsage(raw rawRecord) model.Usage {
 			return usage
 		}
 	}
-	for _, container := range []map[string]any{raw.Data, raw.Result, raw.Response, raw.Message} {
+	for _, container := range []map[string]any{raw.Data, raw.Result, raw.Response, mapFromAny(raw.Message)} {
 		if container == nil {
 			continue
 		}
@@ -677,13 +692,78 @@ func contextCompressionTokensFromCompactMetadata(raw map[string]any) int64 {
 	return saturatingSubtract(preTokens, postTokens)
 }
 
+func replacementHistoryCount(payload map[string]any) int {
+	if payload == nil {
+		return 0
+	}
+	switch value := payload["replacement_history"].(type) {
+	case []any:
+		return len(value)
+	case nil:
+		return 0
+	default:
+		return 1
+	}
+}
+
+func isCodexCompactionSnapshotUsage(usage model.Usage) bool {
+	return usage.TotalTokens > 0 &&
+		usage.InputTokens == 0 &&
+		usage.CachedInputTokens == 0 &&
+		usage.OutputTokens == 0 &&
+		usage.ReasoningOutputTokens == 0 &&
+		usage.ContextCompressionTokens == 0
+}
+
+func isCodeBuddyCompactSummary(raw rawRecord) bool {
+	if raw.ProviderData == nil {
+		return false
+	}
+	if (boolValue(raw.ProviderData, "isCompacted") || boolValue(raw.ProviderData, "isSummary")) &&
+		(boolValue(raw.ProviderData, "isCompactInternal") || stringValue(raw.ProviderData, "compactType") != "") {
+		return true
+	}
+	return isCodeBuddyCompactAgent(raw) && hasCodeBuddyCompactSummaryText(codeBuddyRecordText(raw))
+}
+
+func isCodeBuddyCompactUsage(raw rawRecord) bool {
+	if raw.ProviderData == nil {
+		return false
+	}
+	return isCodeBuddyCompactAgent(raw) ||
+		(boolValue(raw.ProviderData, "isCompactInternal") && stringValue(raw.ProviderData, "compactType") != "")
+}
+
+func isCodeBuddyCompactAgent(raw rawRecord) bool {
+	return strings.EqualFold(stringValue(raw.ProviderData, "agent"), "compact")
+}
+
+func hasCodeBuddyCompactSummaryText(text string) bool {
+	lower := strings.ToLower(text)
+	return (strings.Contains(lower, "<summary>") && strings.Contains(lower, "</summary>")) ||
+		(strings.Contains(lower, "<conversation_history_summary>") && strings.Contains(lower, "</conversation_history_summary>"))
+}
+
+func codeBuddyRecordText(raw rawRecord) string {
+	values := []string{
+		contentText(raw.Content),
+		contentText(raw.RawContent),
+		stringFromAny(raw.Summary),
+	}
+	if raw.Message != nil {
+		message := mapFromAny(raw.Message)
+		values = append([]string{contentText(message["content"])}, values...)
+	}
+	return firstNonEmpty(values...)
+}
+
 func recordTimestamp(raw rawRecord) time.Time {
 	for _, value := range []any{raw.Timestamp, raw.TimestampMS, raw.TimestampMSCamel, raw.CreatedAt, raw.CreatedAtCamel} {
 		if ts := parseTimestampValue(value); !ts.IsZero() {
 			return ts
 		}
 	}
-	for _, container := range []map[string]any{raw.Data, raw.Result, raw.Response, raw.Message, raw.Metadata} {
+	for _, container := range []map[string]any{raw.Data, raw.Result, raw.Response, mapFromAny(raw.Message), raw.Metadata} {
 		if container == nil {
 			continue
 		}
@@ -778,7 +858,7 @@ func modelFromRecord(raw rawRecord) string {
 		modelFromMap(raw.Data),
 		modelFromMap(raw.Result),
 		modelFromMap(raw.Response),
-		modelFromMap(raw.Message),
+		modelFromMap(mapFromAny(raw.Message)),
 	)
 }
 
@@ -824,6 +904,11 @@ func stringFromAny(value any) string {
 	default:
 		return ""
 	}
+}
+
+func mapFromAny(value any) map[string]any {
+	asMap, _ := value.(map[string]any)
+	return asMap
 }
 
 func boolValue(payload map[string]any, key string) bool {

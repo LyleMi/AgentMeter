@@ -22,7 +22,7 @@ import (
 	"github.com/LyleMi/AgentMeter/internal/sourcepath"
 )
 
-const sourceFileParserVersion = 2
+const sourceFileParserVersion = 4
 
 type Indexer struct {
 	conn   *sql.DB

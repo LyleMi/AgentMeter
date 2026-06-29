@@ -14,6 +14,7 @@ type parseAccumulator struct {
 	sourceFileID       int64
 	parsed             model.ParsedSession
 	pending            map[string]pendingTool
+	pendingCompaction  *pendingContextCompaction
 	firstTime          time.Time
 	lastTime           time.Time
 	modelBoundary      time.Time
@@ -21,9 +22,14 @@ type parseAccumulator struct {
 	provider           string
 	modelDurationMS    int64
 	toolDurationMS     int64
+	lastPromptTokens   int64
 	previousTotalUsage *model.Usage
 	hasSessionMeta     bool
 	hasHeadlessUsage   bool
+}
+
+type pendingContextCompaction struct {
+	preTokens int64
 }
 
 func newParseAccumulator(path string, sourceID, sourceFileID int64) *parseAccumulator {
@@ -95,7 +101,7 @@ func (a *parseAccumulator) handleRecord(record parsedRawRecord) {
 	if id := sessionIDFromRecord(raw); id != "" && a.parsed.Session.SessionKey == "" {
 		a.parsed.Session.SessionKey = id
 	}
-	if cwd := firstNonEmpty(stringFromAny(raw.CWD), stringValue(raw.Metadata, "cwd"), stringValue(raw.Message, "cwd")); cwd != "" && a.parsed.Session.ProjectPath == "" {
+	if cwd := firstNonEmpty(stringFromAny(raw.CWD), stringValue(raw.Metadata, "cwd"), stringValue(mapFromAny(raw.Message), "cwd")); cwd != "" && a.parsed.Session.ProjectPath == "" {
 		a.parsed.Session.ProjectPath = cwd
 	}
 	if agentName := stringValue(raw.ProviderData, "agent"); agentName != "" && a.parsed.Session.AgentNickname == "" {
@@ -118,6 +124,8 @@ func (a *parseAccumulator) handleRecord(record parsedRawRecord) {
 	}
 
 	a.handleCompactMetadata(raw)
+	a.handleCodexCompacted(raw)
+	a.handleCodeBuddyCompacted(raw)
 
 	switch payloadType {
 	case "task_started":
@@ -168,6 +176,15 @@ func (a *parseAccumulator) handleCompactMetadata(raw rawRecord) {
 	addUsage(&a.parsed.Usage, usage)
 }
 
+func (a *parseAccumulator) handleCodexCompacted(raw rawRecord) {
+	if raw.Type != "compacted" || replacementHistoryCount(raw.Payload) == 0 {
+		return
+	}
+	a.pendingCompaction = &pendingContextCompaction{
+		preTokens: a.lastPromptTokens,
+	}
+}
+
 func (a *parseAccumulator) handleTokenCount(raw rawRecord, ts time.Time) {
 	total := readUsage(raw.Payload, "total_token_usage")
 	last := readUsage(raw.Payload, "last_token_usage")
@@ -183,6 +200,10 @@ func (a *parseAccumulator) handleTokenCount(raw rawRecord, ts time.Time) {
 	if hasUsage(total) {
 		totalCopy := total
 		a.previousTotalUsage = &totalCopy
+	}
+	if a.handlePendingCodexCompaction(callUsage) {
+		a.modelBoundary = ts
+		return
 	}
 	if !hasUsage(callUsage) {
 		return
@@ -210,7 +231,58 @@ func (a *parseAccumulator) handleTokenCount(raw rawRecord, ts time.Time) {
 		ContextCompressionTokens: callUsage.ContextCompressionTokens,
 		TotalTokens:              callUsage.TotalTokens,
 	})
+	if callUsage.InputTokens > 0 {
+		a.lastPromptTokens = callUsage.InputTokens
+	}
 	a.modelBoundary = ts
+}
+
+func (a *parseAccumulator) handleCodeBuddyCompacted(raw rawRecord) {
+	if !isCodeBuddyCompactSummary(raw) || a.lastPromptTokens <= 0 {
+		return
+	}
+	a.pendingCompaction = &pendingContextCompaction{
+		preTokens: a.lastPromptTokens,
+	}
+}
+
+func (a *parseAccumulator) handlePendingCodexCompaction(usage model.Usage) bool {
+	return a.handlePendingCompactionUsage(usage, true)
+}
+
+func (a *parseAccumulator) handlePendingCompactionUsage(usage model.Usage, allowSnapshot bool) bool {
+	if a.pendingCompaction == nil {
+		return false
+	}
+	if usage.ContextCompressionTokens > 0 {
+		a.pendingCompaction = nil
+		return false
+	}
+	if allowSnapshot && isCodexCompactionSnapshotUsage(usage) {
+		a.addContextCompactionUsage(usage.TotalTokens)
+		return true
+	}
+	if usage.InputTokens > 0 {
+		a.addContextCompactionUsage(usage.InputTokens)
+	}
+	return false
+}
+
+func (a *parseAccumulator) addContextCompactionUsage(postTokens int64) {
+	pending := a.pendingCompaction
+	a.pendingCompaction = nil
+	if pending == nil || pending.preTokens <= 0 || postTokens <= 0 {
+		return
+	}
+	tokens := saturatingSubtract(pending.preTokens, postTokens)
+	if tokens <= 0 {
+		return
+	}
+	addUsage(&a.parsed.Usage, model.Usage{
+		Model:                    firstNonEmpty(a.currentModel, a.parsed.Session.Model),
+		ContextCompressionTokens: tokens,
+		Source:                   "actual",
+	})
 }
 
 func (a *parseAccumulator) handlePayloadToolOutput(raw rawRecord, payloadType string, ts time.Time, lineNo int) {
@@ -274,7 +346,7 @@ func (a *parseAccumulator) handleRecordToolResult(raw rawRecord, ts time.Time, l
 }
 
 func (a *parseAccumulator) handleMessage(raw rawRecord, ts time.Time, lineNo int) {
-	message := raw.Message
+	message := mapFromAny(raw.Message)
 	if message == nil {
 		message = topLevelMessage(raw)
 	}
@@ -351,6 +423,10 @@ func (a *parseAccumulator) handleHeadlessUsage(raw rawRecord, ts time.Time) {
 	if !hasUsage(usage) {
 		return
 	}
+	compactUsage := isCodeBuddyCompactUsage(raw)
+	if !compactUsage && a.handlePendingCompactionUsage(usage, false) {
+		return
+	}
 	a.hasHeadlessUsage = true
 	eventModel := firstNonEmpty(modelFromRecord(raw), a.currentModel, a.parsed.Session.Model, "gpt-5")
 	a.currentModel = eventModel
@@ -372,6 +448,9 @@ func (a *parseAccumulator) handleHeadlessUsage(raw rawRecord, ts time.Time) {
 		ContextCompressionTokens: usage.ContextCompressionTokens,
 		TotalTokens:              usage.TotalTokens,
 	})
+	if !compactUsage && usage.InputTokens > 0 {
+		a.lastPromptTokens = usage.InputTokens
+	}
 }
 
 func (a *parseAccumulator) finalize() model.ParsedSession {

@@ -141,7 +141,9 @@ For providers that report visible output and thinking/reasoning separately,
 AgentMeter stores their billable/generated sum in `output_tokens` and keeps the
 thinking/reasoning portion in `reasoning_output_tokens` as a sub-share.
 Context compression usage is kept in `context_compression_tokens` so it can be
-reported separately from prompt, cache, output, and reasoning totals.
+reported separately from prompt, cache, output, and reasoning totals. Codex
+checkpoint-derived values and CodeBuddy compact-marker deltas are session-level
+metrics and do not create synthetic `model_calls` rows.
 
 `source` values:
 

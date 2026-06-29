@@ -63,6 +63,47 @@ func TestParseFileExtractsSessionUsageAndTools(t *testing.T) {
 	}
 }
 
+func TestParseFileAddsCodexCompactedSnapshotToContextCompression(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rollout-compacted.jsonl")
+	content := `{"timestamp":"2026-06-26T10:00:00Z","type":"session_meta","payload":{"session_id":"codex_compact_sess","cwd":"D:\\workspace\\project","originator":"codex_cli","thread_source":"local","model_provider":"openai"}}
+{"timestamp":"2026-06-26T10:00:01Z","type":"turn_context","payload":{"model":"gpt-5.5","cwd":"D:\\workspace\\project"}}
+{"timestamp":"2026-06-26T10:00:02Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":240000,"cached_input_tokens":230000,"output_tokens":500,"reasoning_output_tokens":0,"total_tokens":240500},"last_token_usage":{"input_tokens":240000,"cached_input_tokens":230000,"output_tokens":500,"reasoning_output_tokens":0,"total_tokens":240500},"model_context_window":258400}}}
+{"timestamp":"2026-06-26T10:00:03Z","type":"compacted","payload":{"window_id":"win_2","previous_window_id":"win_1","replacement_history":[{"type":"message","role":"user","content":[{"type":"input_text","text":"continue"}]},{"type":"compaction","id":"comp_1","encrypted_content":"opaque"}]}}
+{"timestamp":"2026-06-26T10:00:04Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":240000,"cached_input_tokens":230000,"output_tokens":500,"reasoning_output_tokens":0,"total_tokens":240500},"last_token_usage":{"input_tokens":0,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":12000},"model_context_window":258400}}}
+{"timestamp":"2026-06-26T10:00:05Z","type":"event_msg","payload":{"type":"context_compacted"}}
+{"timestamp":"2026-06-26T10:00:06Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":255000,"cached_input_tokens":238000,"output_tokens":700,"reasoning_output_tokens":0,"total_tokens":255700},"last_token_usage":{"input_tokens":15000,"cached_input_tokens":8000,"output_tokens":200,"reasoning_output_tokens":0,"total_tokens":15200},"model_context_window":258400}}}
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	parsed, err := ParseFile(path, 10, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Usage.InputTokens != 255000 || parsed.Usage.CachedInputTokens != 238000 || parsed.Usage.OutputTokens != 700 || parsed.Usage.TotalTokens != 255700 {
+		t.Fatalf("usage = %+v", parsed.Usage)
+	}
+	if parsed.Usage.ContextCompressionTokens != 228000 {
+		t.Fatalf("context compression tokens = %d", parsed.Usage.ContextCompressionTokens)
+	}
+	if len(parsed.ModelCall) != 2 {
+		t.Fatalf("model calls = %d", len(parsed.ModelCall))
+	}
+	for _, call := range parsed.ModelCall {
+		if call.ContextCompressionTokens != 0 {
+			t.Fatalf("model call context compression tokens = %d", call.ContextCompressionTokens)
+		}
+	}
+	if parsed.Events[3].Kind != "session" || parsed.Events[3].Summary != "Context compacted" {
+		t.Fatalf("compacted event = %+v", parsed.Events[3])
+	}
+	if parsed.Events[5].Kind != "session" || parsed.Events[5].Summary != "Context compacted" {
+		t.Fatalf("context_compacted event = %+v", parsed.Events[5])
+	}
+}
+
 func TestParseFileWithHashMatchesHashFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "run.jsonl")
@@ -204,6 +245,64 @@ func TestParseFileSupportsCodeBuddyMessagesAndTools(t *testing.T) {
 	}
 	if parsed.Session.ParseStatus != "ok" {
 		t.Fatalf("parse status = %q, warnings: %v", parsed.Session.ParseStatus, parsed.Warnings)
+	}
+}
+
+func TestParseFileSupportsCodeBuddyCompactReplacementSummary(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "codebuddy-compact-replacement.jsonl")
+	content := `{"id":"msg_1","timestamp":1782468000000,"type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"working"}],"providerData":{"model":"claude-sonnet-4.6-1m","usage":{"inputTokens":180000,"outputTokens":100,"totalTokens":180100},"agent":"cli"},"sessionId":"cb_compact_sess","cwd":"D:\\workspace\\project"}
+{"id":"compact_1","parentId":"msg_1","timestamp":1782468001000,"type":"message","role":"user","content":[{"type":"input_text","text":"<conversation_history_summary>summary</conversation_history_summary>"}],"providerData":{"compactType":"pre-message-auto","isCompacted":true,"isCompactInternal":true,"isSummary":true},"sessionId":"cb_compact_sess","cwd":"D:\\workspace\\project"}
+{"id":"msg_2","parentId":"compact_1","timestamp":1782468002000,"type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"done"}],"providerData":{"model":"claude-sonnet-4.6-1m","usage":{"inputTokens":12000,"outputTokens":30,"totalTokens":12030},"agent":"cli"},"sessionId":"cb_compact_sess","cwd":"D:\\workspace\\project"}
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	parsed, err := ParseFile(path, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Usage.InputTokens != 192000 || parsed.Usage.OutputTokens != 130 || parsed.Usage.TotalTokens != 192130 {
+		t.Fatalf("usage = %+v", parsed.Usage)
+	}
+	if parsed.Usage.ContextCompressionTokens != 168000 {
+		t.Fatalf("context compression tokens = %d", parsed.Usage.ContextCompressionTokens)
+	}
+	if len(parsed.ModelCall) != 2 {
+		t.Fatalf("model calls = %d", len(parsed.ModelCall))
+	}
+	if parsed.ModelCall[0].ContextCompressionTokens != 0 || parsed.ModelCall[1].ContextCompressionTokens != 0 {
+		t.Fatalf("model call compression tokens = %+v", parsed.ModelCall)
+	}
+	if parsed.Events[1].Kind != "session" || parsed.Events[1].Summary != "Context compacted" {
+		t.Fatalf("compact event = %+v", parsed.Events[1])
+	}
+}
+
+func TestParseFileSupportsCodeBuddyCompactAgentSummary(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "codebuddy-compact-agent.jsonl")
+	content := `{"id":"msg_1","timestamp":1782468000000,"type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"working"}],"providerData":{"model":"claude-sonnet-4.6-1m","usage":{"inputTokens":90000,"outputTokens":80,"totalTokens":90080},"agent":"cli"},"sessionId":"cb_compact_agent_sess","cwd":"D:\\workspace\\project"}
+{"id":"compact_1","parentId":"msg_1","timestamp":1782468001000,"type":"message","role":"assistant","content":[{"type":"output_text","text":"<conversation_history_summary><summary>old work</summary></conversation_history_summary>"}],"providerData":{"agent":"compact","compactType":"user-command"},"sessionId":"cb_compact_agent_sess","cwd":"D:\\workspace\\project"}
+{"id":"msg_2","parentId":"compact_1","timestamp":1782468002000,"type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"done"}],"providerData":{"model":"claude-sonnet-4.6-1m","usage":{"inputTokens":8000,"outputTokens":20,"totalTokens":8020},"agent":"cli"},"sessionId":"cb_compact_agent_sess","cwd":"D:\\workspace\\project"}
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	parsed, err := ParseFile(path, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Usage.ContextCompressionTokens != 82000 {
+		t.Fatalf("context compression tokens = %d", parsed.Usage.ContextCompressionTokens)
+	}
+	if len(parsed.ModelCall) != 2 {
+		t.Fatalf("model calls = %d", len(parsed.ModelCall))
+	}
+	if parsed.Events[1].Kind != "session" || parsed.Events[1].Summary != "Context compacted" {
+		t.Fatalf("compact event = %+v", parsed.Events[1])
 	}
 }
 
