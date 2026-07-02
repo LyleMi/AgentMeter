@@ -1,0 +1,98 @@
+import type { AuditFinding, AuditFindingFilters, AuditSummary } from '../types'
+import { sessions, toolCalls } from './sessions'
+import { matchesAgent } from './utils'
+
+const auditFindings: AuditFinding[] = [
+  makeFinding(501, 101, 1001, 'command', 'medium', 'shell.powershell.concatenated-delete', 'Review destructive shell composition', 'Remove command was composed with string interpolation.', 'Remove-Item $target -Recurse', 'powershell'),
+  makeFinding(502, 102, 1005, 'egress', 'low', 'network.fetch.failed', 'Network access attempted', 'A documentation lookup was attempted while offline demo policy was active.', 'Invoke-WebRequest https://example.invalid/pricing', 'powershell'),
+  makeFinding(503, 104, 1008, 'privacy', 'high', 'privacy.telemetry.enabled', 'Telemetry setting needs review', 'Demo privacy config shows a setting that is not hardened.', 'telemetry.enabled = true', 'json'),
+  makeFinding(504, 105, 1009, 'file', 'medium', 'file.output.screenshot', 'Generated artifact requires retention decision', 'A browser screenshot artifact was created during validation.', 'browser_screenshot tools chart', 'browser')
+]
+
+function makeFinding(
+  id: number,
+  sessionId: number,
+  toolCallId: number,
+  category: string,
+  severity: string,
+  ruleId: string,
+  title: string,
+  description: string,
+  command: string,
+  shellFamily: string
+): AuditFinding {
+  const session = sessions.find((item) => item.id === sessionId)
+  if (!session) throw new Error(`Missing demo session ${sessionId}`)
+  const tool = toolCalls.find((item) => item.id === toolCallId)
+  return {
+    id,
+    sessionId,
+    toolCallId,
+    sourceFileId: session.sourceId || 0,
+    rawEventId: tool?.rawEventId || id + 5000,
+    sourceLine: tool?.rawEventLine || 1,
+    timestamp: tool?.endedAt || session.endedAt,
+    source: 'demo audit',
+    eventType: tool?.rawEndEventType || 'tool_result',
+    category,
+    severity,
+    ruleId,
+    title,
+    description,
+    evidence: tool?.rawEndEventSummary || description,
+    command,
+    shellFamily,
+    platform: 'windows',
+    decision: 'review',
+    createdAt: session.endedAt,
+    sessionKey: session.sessionKey,
+    codexSessionId: session.codexSessionId,
+    projectPath: session.projectPath,
+    agentKind: session.agentKind,
+    agentName: session.agentName,
+    rawSourcePath: session.rawSourcePath,
+    sourceId: session.sourceId,
+    sourceKey: session.sourceKey,
+    sourceLabel: session.sourceLabel,
+    sourceRootPath: session.sourceRootPath,
+    sourceSessionsPath: session.sourceSessionsPath
+  }
+}
+
+export function auditSummary(filters: Pick<AuditFindingFilters, 'agent'> = {}): AuditSummary {
+  const findings = auditFindings.filter((finding) => matchesAgent(finding, filters.agent))
+  return {
+    totalFindings: findings.length,
+    criticalFindings: findings.filter((finding) => finding.severity === 'critical').length,
+    highFindings: findings.filter((finding) => finding.severity === 'high').length,
+    mediumFindings: findings.filter((finding) => finding.severity === 'medium').length,
+    lowFindings: findings.filter((finding) => finding.severity === 'low').length,
+    commandFindings: findings.filter((finding) => finding.category === 'command').length,
+    privacyFindings: findings.filter((finding) => finding.category === 'privacy').length,
+    egressFindings: findings.filter((finding) => finding.category === 'egress').length,
+    fileFindings: findings.filter((finding) => finding.category === 'file').length,
+    sessionsWithFindings: new Set(findings.map((finding) => finding.sessionId)).size,
+    recentFindings: findings.slice(0, 5)
+  }
+}
+
+export function filteredFindings(filters: AuditFindingFilters = {}): AuditFinding[] {
+  const search = (filters.search || '').trim().toLowerCase()
+  return auditFindings
+    .filter((finding) => matchesAgent(finding, filters.agent))
+    .filter((finding) => !filters.category || finding.category === filters.category)
+    .filter((finding) => !filters.severity || finding.severity === filters.severity)
+    .filter((finding) => !filters.shell || finding.shellFamily === filters.shell)
+    .filter((finding) => {
+      if (!search) return true
+      return [finding.title, finding.description, finding.evidence, finding.command, finding.ruleId, finding.projectPath]
+        .some((value) => (value || '').toLowerCase().includes(search))
+    })
+    .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp))
+}
+
+export function auditFinding(id: number): AuditFinding {
+  const finding = auditFindings.find((item) => item.id === id)
+  if (!finding) throw new Error('Demo audit finding not found')
+  return finding
+}

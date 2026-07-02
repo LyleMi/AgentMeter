@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"runtime"
 	"testing"
+
+	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
 func TestNormalizeListCleansSkipsEmptyAndDedupes(t *testing.T) {
@@ -53,5 +55,59 @@ func TestDedupeKeyNormalizesScopeAndRelative(t *testing.T) {
 	want := Normalize("scope") + "\x00" + Normalize("sessions/one.jsonl")
 	if got != want {
 		t.Fatalf("DedupeKey() = %q, want %q", got, want)
+	}
+}
+
+func TestSourceEntriesFromPathsNormalizesDedupesAndSetsEnabled(t *testing.T) {
+	got := SourceEntriesFromPaths([]string{
+		" ./alpha/../beta ",
+		"",
+		"beta/.",
+		"gamma",
+	}, false)
+	want := []model.SourceEntry{
+		{Path: Normalize("beta"), Enabled: false},
+		{Path: Normalize("gamma"), Enabled: false},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("SourceEntriesFromPaths() = %#v, want %#v", got, want)
+	}
+}
+
+func TestNormalizeSourceEntriesCleansLabelsAndDedupesByPathKey(t *testing.T) {
+	got := NormalizeSourceEntries([]model.SourceEntry{
+		{Path: " ./alpha/../beta ", Enabled: false, Label: " Nightly "},
+		{Path: "   "},
+		{Path: "beta/.", Enabled: true, Label: "Duplicate"},
+		{Path: "gamma", Enabled: true, Label: "\tStable\n"},
+	})
+	want := []model.SourceEntry{
+		{Path: Normalize("beta"), Enabled: false, Label: "Nightly"},
+		{Path: Normalize("gamma"), Enabled: true, Label: "Stable"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("NormalizeSourceEntries() = %#v, want %#v", got, want)
+	}
+}
+
+func TestEnabledSourceEntriesAndPathsFilterAfterNormalization(t *testing.T) {
+	entries := []model.SourceEntry{
+		{Path: " ./alpha/../beta ", Enabled: false, Label: " Disabled "},
+		{Path: "beta/.", Enabled: true, Label: "Duplicate"},
+		{Path: "gamma", Enabled: true, Label: " Enabled "},
+	}
+
+	gotEntries := EnabledSourceEntries(entries)
+	wantEntries := []model.SourceEntry{
+		{Path: Normalize("gamma"), Enabled: true, Label: "Enabled"},
+	}
+	if !reflect.DeepEqual(gotEntries, wantEntries) {
+		t.Fatalf("EnabledSourceEntries() = %#v, want %#v", gotEntries, wantEntries)
+	}
+
+	gotPaths := EnabledSourceEntryPaths(entries)
+	wantPaths := []string{Normalize("gamma")}
+	if !reflect.DeepEqual(gotPaths, wantPaths) {
+		t.Fatalf("EnabledSourceEntryPaths() = %#v, want %#v", gotPaths, wantPaths)
 	}
 }

@@ -51,13 +51,13 @@ func New(conn *sql.DB, dbPath string) *Indexer {
 }
 
 func (i *Indexer) IndexPaths(ctx context.Context, sourcePaths []string, rebuild bool) (model.IndexResult, error) {
-	return i.IndexEntries(ctx, sourceEntriesFromPaths(sourcePaths), rebuild)
+	return i.IndexEntries(ctx, sourcepath.SourceEntriesFromPaths(sourcePaths, true), rebuild)
 }
 
 func (i *Indexer) IndexEntries(ctx context.Context, sourceEntries []model.SourceEntry, rebuild bool) (model.IndexResult, error) {
 	start := time.Now()
-	entries := enabledSourceEntries(sourceEntries)
-	paths := sourceEntryPaths(entries)
+	entries := sourcepath.EnabledSourceEntries(sourceEntries)
+	paths := sourcepath.SourceEntryPaths(entries)
 	result := model.IndexResult{
 		SourcePath:  strings.Join(paths, "\n"),
 		SourcePaths: paths,
@@ -166,55 +166,6 @@ func (i *Indexer) IndexSource(ctx context.Context, sessionsPath, label string, r
 	}
 	result.DurationMS = time.Since(start).Milliseconds()
 	return result, nil
-}
-
-func sourceEntriesFromPaths(paths []string) []model.SourceEntry {
-	normalized := sourcepath.NormalizeList(paths)
-	entries := make([]model.SourceEntry, 0, len(normalized))
-	for _, path := range normalized {
-		entries = append(entries, model.SourceEntry{Path: path, Enabled: true})
-	}
-	return entries
-}
-
-func normalizeSourceEntries(entries []model.SourceEntry) []model.SourceEntry {
-	seen := map[string]struct{}{}
-	result := make([]model.SourceEntry, 0, len(entries))
-	for _, entry := range entries {
-		cleaned := sourcepath.Normalize(entry.Path)
-		if cleaned == "" {
-			continue
-		}
-		key := sourcepath.Key(cleaned)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		result = append(result, model.SourceEntry{
-			Path:    cleaned,
-			Enabled: entry.Enabled,
-			Label:   strings.TrimSpace(entry.Label),
-		})
-	}
-	return result
-}
-
-func sourceEntryPaths(entries []model.SourceEntry) []string {
-	paths := make([]string, 0, len(entries))
-	for _, entry := range normalizeSourceEntries(entries) {
-		paths = append(paths, entry.Path)
-	}
-	return sourcepath.NormalizeList(paths)
-}
-
-func enabledSourceEntries(entries []model.SourceEntry) []model.SourceEntry {
-	var result []model.SourceEntry
-	for _, entry := range normalizeSourceEntries(entries) {
-		if entry.Enabled {
-			result = append(result, entry)
-		}
-	}
-	return result
 }
 
 func (r *indexRun) indexFile(ctx context.Context, source model.Source, path string, force bool) (indexed, skipped, failed, sessions int, warnings []string) {
