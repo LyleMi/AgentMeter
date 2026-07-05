@@ -3,45 +3,47 @@ import { sessions, toolCalls } from './sessions'
 import { matchesAgent, matchesDateRange } from './utils'
 
 const auditFindings: AuditFinding[] = [
-  makeFinding(501, 101, 1001, 'command', 'medium', 'shell.powershell.concatenated-delete', 'Review destructive shell composition', 'Remove command was composed with string interpolation.', 'Remove-Item $target -Recurse', 'powershell'),
-  makeFinding(502, 102, 1005, 'egress', 'low', 'network.fetch.failed', 'Network access attempted', 'A documentation lookup was attempted while offline demo policy was active.', 'Invoke-WebRequest https://example.invalid/pricing', 'powershell'),
-  makeFinding(503, 104, 1008, 'privacy', 'high', 'privacy.telemetry.enabled', 'Telemetry setting needs review', 'Demo privacy config shows a setting that is not hardened.', 'telemetry.enabled = true', 'json'),
-  makeFinding(504, 105, 1009, 'file', 'medium', 'file.output.screenshot', 'Generated artifact requires retention decision', 'A browser screenshot artifact was created during validation.', 'browser_screenshot tools chart', 'browser')
+  makeFinding({ id: 501, sessionId: 101, toolCallId: 1001, category: 'command', severity: 'medium', ruleId: 'shell.powershell.concatenated-delete', title: 'Review destructive shell composition', description: 'Remove command was composed with string interpolation.', command: 'Remove-Item $target -Recurse', shellFamily: 'powershell' }),
+  makeFinding({ id: 502, sessionId: 102, toolCallId: 1005, category: 'egress', severity: 'low', ruleId: 'network.fetch.failed', title: 'Network access attempted', description: 'A documentation lookup was attempted while offline demo policy was active.', command: 'Invoke-WebRequest https://example.invalid/pricing', shellFamily: 'powershell' }),
+  makeFinding({ id: 503, sessionId: 104, toolCallId: 1008, category: 'privacy', severity: 'high', ruleId: 'privacy.telemetry.enabled', title: 'Telemetry setting needs review', description: 'Demo privacy config shows a setting that is not hardened.', command: 'telemetry.enabled = true', shellFamily: 'json' }),
+  makeFinding({ id: 504, sessionId: 105, toolCallId: 1009, category: 'file', severity: 'medium', ruleId: 'file.output.screenshot', title: 'Generated artifact requires retention decision', description: 'A browser screenshot artifact was created during validation.', command: 'browser_screenshot tools chart', shellFamily: 'browser' })
 ]
 
-function makeFinding(
-  id: number,
-  sessionId: number,
-  toolCallId: number,
-  category: string,
-  severity: string,
-  ruleId: string,
-  title: string,
-  description: string,
-  command: string,
+type DemoFindingSpec = {
+  id: number
+  sessionId: number
+  toolCallId: number
+  category: string
+  severity: string
+  ruleId: string
+  title: string
+  description: string
+  command: string
   shellFamily: string
-): AuditFinding {
-  const session = sessions.find((item) => item.id === sessionId)
-  if (!session) throw new Error(`Missing demo session ${sessionId}`)
-  const tool = toolCalls.find((item) => item.id === toolCallId)
+}
+
+function makeFinding(spec: DemoFindingSpec): AuditFinding {
+  const session = sessions.find((item) => item.id === spec.sessionId)
+  if (!session) throw new Error(`Missing demo session ${spec.sessionId}`)
+  const tool = toolCalls.find((item) => item.id === spec.toolCallId)
   return {
-    id,
-    sessionId,
-    toolCallId,
+    id: spec.id,
+    sessionId: spec.sessionId,
+    toolCallId: spec.toolCallId,
     sourceFileId: session.sourceId || 0,
-    rawEventId: tool?.rawEventId || id + 5000,
+    rawEventId: tool?.rawEventId || spec.id + 5000,
     sourceLine: tool?.rawEventLine || 1,
     timestamp: tool?.endedAt || session.endedAt,
     source: 'demo audit',
     eventType: tool?.rawEndEventType || 'tool_result',
-    category,
-    severity,
-    ruleId,
-    title,
-    description,
-    evidence: tool?.rawEndEventSummary || description,
-    command,
-    shellFamily,
+    category: spec.category,
+    severity: spec.severity,
+    ruleId: spec.ruleId,
+    title: spec.title,
+    description: spec.description,
+    evidence: tool?.rawEndEventSummary || spec.description,
+    command: spec.command,
+    shellFamily: spec.shellFamily,
     platform: 'windows',
     decision: 'review',
     createdAt: session.endedAt,

@@ -11,37 +11,40 @@ const profiles: PrivacyConfigProfile[] = [
   { id: 'strict', title: 'Strict', description: 'Disable telemetry, network helpers, memory, and extended local retention.' }
 ]
 
-function privacySetting(
-  id: string,
-  group: string,
-  title: string,
-  key: string,
-  desiredValue: unknown,
-  strictValue: unknown,
-  currentValue: unknown,
-  configured: boolean,
-  status: string,
-  valueType: PrivacyConfigSetting['valueType'] = 'bool'
-): PrivacyConfigSetting {
+type PrivacySettingSpec = {
+  id: string
+  group: string
+  title: string
+  key: string
+  desiredValue: unknown
+  strictValue: unknown
+  currentValue: unknown
+  configured: boolean
+  status: string
+  valueType?: PrivacyConfigSetting['valueType']
+}
+
+function privacySetting(spec: PrivacySettingSpec): PrivacyConfigSetting {
+  const valueType = spec.valueType || 'bool'
   return {
-    id,
-    group,
-    title,
-    description: `Demo status for ${title.toLowerCase()}.`,
-    key,
-    desiredValue,
-    strictValue,
-    currentValue,
+    id: spec.id,
+    group: spec.group,
+    title: spec.title,
+    description: `Demo status for ${spec.title.toLowerCase()}.`,
+    key: spec.key,
+    desiredValue: spec.desiredValue,
+    strictValue: spec.strictValue,
+    currentValue: spec.currentValue,
     valueType,
-    configured,
+    configured: spec.configured,
     supportsUnset: true,
-    status,
-    impact: `Controls ${title.toLowerCase()} behavior for the selected agent.`,
+    status: spec.status,
+    impact: `Controls ${spec.title.toLowerCase()} behavior for the selected agent.`,
     canApply: true,
     profileValues: [
       { profile: 'default', op: 'unset' },
-      { profile: 'recommended', op: 'set', value: desiredValue },
-      { profile: 'strict', op: 'set', value: strictValue }
+      { profile: 'recommended', op: 'set', value: spec.desiredValue },
+      { profile: 'strict', op: 'set', value: spec.strictValue }
     ]
   }
 }
@@ -54,11 +57,11 @@ export function privacyStatus(target: PrivacyTarget): PrivacyConfigStatus {
     codebuddy: 'CodeBuddy'
   }
   const settings = [
-    privacySetting('analytics.enabled', 'Telemetry', 'Analytics', 'analytics.enabled', false, false, false, true, 'hardened'),
-    privacySetting('telemetry.enabled', 'Telemetry', 'Telemetry export', 'telemetry.enabled', false, false, target === 'claude', target !== 'claude', target === 'claude' ? 'attention' : 'hardened'),
-    privacySetting('web_search', 'Network', 'Web search', 'web_search', false, false, false, target === 'codex', target === 'codex' ? 'hardened' : 'implicit'),
-    privacySetting('history.persistence', 'Local history', 'Conversation history', 'history.persistence', false, false, true, false, 'implicit'),
-    privacySetting('retention.days', 'Local retention', 'Retention days', 'retention.days', 14, 7, 14, true, 'hardened', 'number')
+    privacySetting({ id: 'analytics.enabled', group: 'Telemetry', title: 'Analytics', key: 'analytics.enabled', desiredValue: false, strictValue: false, currentValue: false, configured: true, status: 'hardened' }),
+    privacySetting({ id: 'telemetry.enabled', group: 'Telemetry', title: 'Telemetry export', key: 'telemetry.enabled', desiredValue: false, strictValue: false, currentValue: target === 'claude', configured: target !== 'claude', status: target === 'claude' ? 'attention' : 'hardened' }),
+    privacySetting({ id: 'web_search', group: 'Network', title: 'Web search', key: 'web_search', desiredValue: false, strictValue: false, currentValue: false, configured: target === 'codex', status: target === 'codex' ? 'hardened' : 'implicit' }),
+    privacySetting({ id: 'history.persistence', group: 'Local history', title: 'Conversation history', key: 'history.persistence', desiredValue: false, strictValue: false, currentValue: true, configured: false, status: 'implicit' }),
+    privacySetting({ id: 'retention.days', group: 'Local retention', title: 'Retention days', key: 'retention.days', desiredValue: 14, strictValue: 7, currentValue: 14, configured: true, status: 'hardened', valueType: 'number' })
   ]
   const hardened = settings.filter((setting) => setting.status === 'hardened').length
   const attention = settings.filter((setting) => setting.status === 'attention').length

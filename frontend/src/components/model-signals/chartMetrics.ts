@@ -72,6 +72,15 @@ export function buildMetricGroups(t: ModelSignalsMetricChartTranslate): MetricGr
 
 export function buildMetricDefinitions(t: ModelSignalsMetricChartTranslate): MetricDefinition[] {
   return [
+    ...performanceMetricDefinitions(t),
+    ...costMetricDefinitions(t),
+    ...pressureMetricDefinitions(t),
+    ...shapeMetricDefinitions(t)
+  ]
+}
+
+function performanceMetricDefinitions(t: ModelSignalsMetricChartTranslate): MetricDefinition[] {
+  return [
     {
       key: 'p90Latency',
       label: t('metric.p90Latency'),
@@ -115,7 +124,12 @@ export function buildMetricDefinitions(t: ModelSignalsMetricChartTranslate): Met
       chart: 'line',
       direction: 'higher',
       value: (metric) => finiteNumber(metric?.modelThroughputOutputTokensPerSecond)
-    },
+    }
+  ]
+}
+
+function costMetricDefinitions(t: ModelSignalsMetricChartTranslate): MetricDefinition[] {
+  return [
     {
       key: 'costBurn',
       label: t('metric.costBurn'),
@@ -170,7 +184,12 @@ export function buildMetricDefinitions(t: ModelSignalsMetricChartTranslate): Met
       chart: 'bar',
       direction: 'higher',
       value: (metric) => finiteNumber(metric?.cacheSavingsUsd)
-    },
+    }
+  ]
+}
+
+function pressureMetricDefinitions(t: ModelSignalsMetricChartTranslate): MetricDefinition[] {
+  return [
     {
       key: 'failurePressure',
       label: t('metric.failurePressure'),
@@ -214,7 +233,12 @@ export function buildMetricDefinitions(t: ModelSignalsMetricChartTranslate): Met
       chart: 'line',
       direction: 'lower',
       value: (metric) => finiteNumber(metric?.toolFailureRate)
-    },
+    }
+  ]
+}
+
+function shapeMetricDefinitions(t: ModelSignalsMetricChartTranslate): MetricDefinition[] {
+  return [
     {
       key: 'cacheMiss',
       label: t('metric.cacheMiss'),
@@ -313,7 +337,7 @@ export function shouldNormalizeProjectScale(mode: ChartMode, kinds: MetricKind[]
   return mode === 'projects' && kinds.length > 1
 }
 
-export function metricSortValue(row: ProjectChartRow, primaryMetric: MetricDefinition) {
+function metricSortValue(row: ProjectChartRow, primaryMetric: MetricDefinition) {
   return metricValueForProject(row, primaryMetric, 'current') ?? metricValueForProject(row, primaryMetric, 'total') ?? -1
 }
 
