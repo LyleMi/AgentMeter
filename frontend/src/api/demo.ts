@@ -1,6 +1,6 @@
 import type { DemoApi } from './demo/contracts'
 import { agentResources } from './demo/agentResources'
-import { auditFinding, auditSummary, filteredFindings } from './demo/audit'
+import { auditFinding, auditSummary, filteredFindings, filteredToolCallRisks } from './demo/audit'
 import { modelSignals } from './demo/modelSignals'
 import { pricingModels, saveDemoPricingModel } from './demo/pricing'
 import {
@@ -94,6 +94,7 @@ export const demoApi: DemoApi = {
   getSessionDetail: async (id) => clone(sessionDetail(id)),
   getTools: async (filters = {}) => clone(toolStatsFor(filteredToolCalls({ agent: filters.agent }))),
   listToolCalls: async (filters = {}) => clone(paginate(filteredToolCalls(filters), filters.limit, filters.offset)),
+  listToolCallRisks: async (filters = {}) => clone(filteredToolCallRisks(filters)),
   getAuditSummary: async (filters = {}) => clone(auditSummary(filters)),
   listAuditFindings: async (filters = {}) => clone(paginate(filteredFindings(filters), filters.limit, filters.offset)),
   getAuditFinding: async (id) => clone(auditFinding(id)),

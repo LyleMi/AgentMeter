@@ -1,6 +1,6 @@
-import type { AuditFinding, AuditFindingFilters, AuditSummary } from '../types'
+import type { AuditFinding, AuditFindingFilters, AuditSummary, ToolCallRiskFilters, ToolCallRiskSummary } from '../types'
 import { sessions, toolCalls } from './sessions'
-import { matchesAgent } from './utils'
+import { matchesAgent, matchesDateRange } from './utils'
 
 const auditFindings: AuditFinding[] = [
   makeFinding(501, 101, 1001, 'command', 'medium', 'shell.powershell.concatenated-delete', 'Review destructive shell composition', 'Remove command was composed with string interpolation.', 'Remove-Item $target -Recurse', 'powershell'),
@@ -91,8 +91,35 @@ export function filteredFindings(filters: AuditFindingFilters = {}): AuditFindin
     .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp))
 }
 
+export function filteredToolCallRisks(filters: ToolCallRiskFilters = {}): ToolCallRiskSummary[] {
+  const callsById = new Map(toolCalls.map((call) => [call.id, call]))
+  const grouped = new Map<number, AuditFinding[]>()
+  for (const finding of auditFindings) {
+    if (!finding.toolCallId) continue
+    const call = callsById.get(finding.toolCallId)
+    if (!call) continue
+    if (!matchesAgent(finding, filters.agent)) continue
+    if (!matchesDateRange(call.startedAt, filters)) continue
+    grouped.set(finding.toolCallId, [...(grouped.get(finding.toolCallId) || []), finding])
+  }
+  return [...grouped.entries()]
+    .map(([toolCallId, findings]) => ({
+      toolCallId,
+      severity: highestSeverity(findings.map((finding) => finding.severity)),
+      riskCount: findings.length,
+      ruleIds: [...new Set(findings.map((finding) => finding.ruleId).filter(Boolean))].sort()
+    }))
+    .sort((left, right) => Date.parse(callsById.get(right.toolCallId)?.startedAt || '') - Date.parse(callsById.get(left.toolCallId)?.startedAt || '') || right.toolCallId - left.toolCallId)
+    .slice(0, filters.limit || 500)
+}
+
 export function auditFinding(id: number): AuditFinding {
   const finding = auditFindings.find((item) => item.id === id)
   if (!finding) throw new Error('Demo audit finding not found')
   return finding
+}
+
+function highestSeverity(values: string[]) {
+  const rank: Record<string, number> = { low: 1, medium: 2, high: 3, critical: 4 }
+  return values.reduce((best, value) => ((rank[value] || 0) > (rank[best] || 0) ? value : best), '')
 }

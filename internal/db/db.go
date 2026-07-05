@@ -188,6 +188,7 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_audit_findings_session ON audit_findings(session_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_findings_category_severity ON audit_findings(category, severity)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_findings_timestamp ON audit_findings(timestamp DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_findings_tool_call ON audit_findings(tool_call_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_findings_shell ON audit_findings(shell_family)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_findings_rule ON audit_findings(rule_id)`,
 		`CREATE TABLE IF NOT EXISTS pricing_models (

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"math"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -214,6 +215,68 @@ func TestAuditFindingsFiltersByAgentAndReturnsDetail(t *testing.T) {
 	}
 	if detail.AgentKind != "codex" || detail.AgentName != "Codex" || detail.RawSourcePath == "" {
 		t.Fatalf("audit detail source context = %+v", detail)
+	}
+}
+
+func TestToolCallRisksAggregatesFindingsByToolCall(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	codexSessionID, codexFileID := insertAuditSession(t, conn, "codex", "Codex", now, "codex-session")
+	claudeSessionID, claudeFileID := insertAuditSession(t, conn, "claude", "Claude Code", now.Add(3*time.Hour), "claude-session")
+	codexCallID := insertOverviewToolCall(t, conn, codexSessionID, now.Add(time.Minute), 1_000, "shell_command", "completed", "powershell -EncodedCommand SQBFAFgA")
+	olderCallID := insertOverviewToolCall(t, conn, codexSessionID, now.Add(-time.Hour), 1_000, "shell_command", "completed", "go test ./...")
+	claudeCallID := insertOverviewToolCall(t, conn, claudeSessionID, now.Add(3*time.Hour), 1_000, "Bash", "completed", "mkfs.ext4 /dev/sdb1")
+
+	insertAuditFindingWithToolCall(t, conn, codexSessionID, codexFileID, codexCallID, now.Add(time.Minute), "command", "medium", "shell.package-install", "npm install")
+	insertAuditFindingWithToolCall(t, conn, codexSessionID, codexFileID, codexCallID, now.Add(time.Minute+time.Second), "command", "high", "shell.obfuscated-execution", "powershell -EncodedCommand SQBFAFgA")
+	insertAuditFindingWithToolCall(t, conn, codexSessionID, codexFileID, olderCallID, now.Add(-time.Hour), "command", "low", "shell.environment-dump", "env")
+	insertAuditFindingWithToolCall(t, conn, codexSessionID, codexFileID, 0, now.Add(time.Minute), "command", "critical", "ignored.no-tool-call", "diskpart")
+	insertAuditFindingWithToolCall(t, conn, claudeSessionID, claudeFileID, claudeCallID, now.Add(3*time.Hour), "file", "critical", "shell.destructive-disk", "mkfs.ext4 /dev/sdb1")
+
+	service := New(conn)
+	risks, err := service.ToolCallRisks(ctx, model.ToolCallRiskFilters{Agent: "codex", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(risks) != 2 {
+		t.Fatalf("codex risks = %+v", risks)
+	}
+	if risks[0].ToolCallID != codexCallID || risks[0].Severity != "high" || risks[0].RiskCount != 2 {
+		t.Fatalf("codex aggregate = %+v", risks[0])
+	}
+	if got, want := strings.Join(risks[0].RuleIDs, ","), "shell.obfuscated-execution,shell.package-install"; got != want {
+		t.Fatalf("rule ids = %q, want %q", got, want)
+	}
+	for _, risk := range risks {
+		if risk.ToolCallID == 0 {
+			t.Fatalf("tool_call_id=0 should be ignored: %+v", risks)
+		}
+	}
+
+	risks, err = service.ToolCallRisks(ctx, model.ToolCallRiskFilters{
+		StartedFrom: db.FormatTime(now.Add(-time.Minute)),
+		StartedTo:   db.FormatTime(now.Add(2 * time.Minute)),
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(risks) != 1 || risks[0].ToolCallID != codexCallID {
+		t.Fatalf("time filtered risks = %+v", risks)
+	}
+
+	risks, err = service.ToolCallRisks(ctx, model.ToolCallRiskFilters{Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(risks) != 1 || risks[0].ToolCallID != claudeCallID || risks[0].Severity != "critical" {
+		t.Fatalf("limited newest risks = %+v", risks)
 	}
 }
 
@@ -1342,6 +1405,16 @@ func insertAuditFinding(t *testing.T, conn *sql.DB, sessionID, sourceFileID int6
 		 title, description, evidence, command, shell_family, platform, decision, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		sessionID, 0, sourceFileID, 0, 10, db.FormatTime(timestamp), "session_jsonl", "finding", category, severity, ruleID,
+		"Finding "+ruleID, "description", "evidence", command, "sh", "test", "observed", db.FormatTime(timestamp))
+}
+
+func insertAuditFindingWithToolCall(t *testing.T, conn *sql.DB, sessionID, sourceFileID, toolCallID int64, timestamp time.Time, category, severity, ruleID, command string) int64 {
+	t.Helper()
+	return insertRow(t, conn, `INSERT INTO audit_findings
+		(session_id, tool_call_id, source_file_id, raw_event_id, source_line, timestamp, source, event_type, category, severity, rule_id,
+		 title, description, evidence, command, shell_family, platform, decision, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		sessionID, toolCallID, sourceFileID, 0, 10, db.FormatTime(timestamp), "session_jsonl", "finding", category, severity, ruleID,
 		"Finding "+ruleID, "description", "evidence", command, "sh", "test", "observed", db.FormatTime(timestamp))
 }
 

@@ -1,4 +1,4 @@
-﻿package audit
+package audit
 
 import (
 	"encoding/json"
@@ -381,6 +381,13 @@ var commandRiskRules = []commandRiskRule{
 		pattern:  regexp.MustCompile(`(?i)((curl|wget|invoke-webrequest|invoke-restmethod|\biwr\b|\birm\b)[^\r\n]*(\|\s*(sh|bash|zsh|powershell|pwsh|iex|invoke-expression)\b|\biex\b|\binvoke-expression\b))|(\b(iex|invoke-expression)\b[^\r\n]*(iwr|irm|invoke-webrequest|invoke-restmethod|downloadstring))`),
 	},
 	{
+		ruleID:   "shell.obfuscated-execution",
+		category: CategoryCommand,
+		severity: SeverityHigh,
+		title:    "Obfuscated shell execution",
+		pattern:  regexp.MustCompile(`(?i)\b(powershell|powershell\.exe|pwsh|pwsh\.exe)\b[^\r\n;&|]*\s-(encodedcommand|enc|e)\b|\bfrombase64string\s*\(|\bbase64\s+(-d|--decode)\b[^\r\n]*\|\s*(sh|bash|zsh|powershell|pwsh)\b`),
+	},
+	{
 		ruleID:   "shell.secret-file-read",
 		category: CategoryFile,
 		severity: SeverityHigh,
@@ -421,5 +428,26 @@ var commandRiskRules = []commandRiskRule{
 		severity: SeverityHigh,
 		title:    "Windows execution policy, registry, or service change",
 		pattern:  regexp.MustCompile(`(?i)\bset-executionpolicy\b|\b-executionpolicy\s+(bypass|unrestricted|remotesigned)\b|\breg(\.exe)?\s+(add|delete|import|load|unload)\b|\b(new-itemproperty|set-itemproperty|remove-itemproperty)\b[^\r\n;&|]*(hklm:|hkcu:|registry::|hkey_local_machine|hkey_current_user)|\b(new-service|set-service|start-service|stop-service|restart-service|remove-service)\b|\bsc(\.exe)?\s+(create|delete|config|start|stop)\b|\bnet\s+(start|stop)\b`),
+	},
+	{
+		ruleID:   "shell.persistence",
+		category: CategoryCommand,
+		severity: SeverityHigh,
+		title:    "Persistence mechanism change",
+		pattern:  regexp.MustCompile(`(?i)\bschtasks(\.exe)?\b[^\r\n;&|]*/create\b|\bcrontab\b[^\r\n]*(-e|-l|\s-)|\bsystemctl\b[^\r\n;&|]*\benable\b|\blaunchctl\b[^\r\n;&|]*\b(load|bootstrap|enable)\b|\breg(\.exe)?\s+add\b[^\r\n;&|]*(\\run(once)?\b|currentversion\\run)|\b(new-itemproperty|set-itemproperty)\b[^\r\n;&|]*(\\run(once)?\b|currentversion\\run|hklm:[^;&|\r\n]*\\run|hkcu:[^;&|\r\n]*\\run)`),
+	},
+	{
+		ruleID:   "shell.destructive-disk",
+		category: CategoryFile,
+		severity: SeverityCritical,
+		title:    "Destructive disk command",
+		pattern:  regexp.MustCompile(`(?i)(^|[;&|]\s*)(((sudo|doas)\s+)?dd\b[^\r\n;&|]*\bof=|((sudo|doas)\s+)?mkfs(\.[a-z0-9]+)?\b|format(\.com)?\s+[a-z]:|\bdiskpart\b)`),
+	},
+	{
+		ruleID:   "shell.defense-evasion",
+		category: CategoryCommand,
+		severity: SeverityHigh,
+		title:    "Security control or logging disabled",
+		pattern:  regexp.MustCompile(`(?i)\bset-mppreference\b[^\r\n;&|]*(^|[\s;&|])-disable(realtime|ioav|behavior|script)monitoring\s+\$?true\b|\bnetsh\s+advfirewall\b[^\r\n;&|]*\bstate\s+off\b|\bset-netfirewallprofile\b[^\r\n;&|]*\b-enabled\s+(false|\$false)\b|\bwevtutil\b\s+cl\b|\bauditpol\b[^\r\n;&|]*/clear\b|\b(sc|sc\.exe|net)\s+(stop|config)\s+(windefend|mpssvc|eventlog|sense|wdnissvc)\b|\bsystemctl\b[^\r\n;&|]*\b(stop|disable|mask)\b[^\r\n;&|]*(firewalld|ufw|auditd|rsyslog|syslog|falcon|defender|mdatp)\b|\bufw\s+disable\b`),
 	},
 }

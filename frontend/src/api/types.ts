@@ -671,6 +671,13 @@ export interface ToolCall extends SourceIdentity {
   rawSourcePath?: string
 }
 
+export interface ToolCallRiskSummary {
+  toolCallId: number
+  severity: string
+  riskCount: number
+  ruleIds: string[]
+}
+
 export interface AuditFinding extends SourceIdentity {
   id: number
   sessionId: number
@@ -874,6 +881,13 @@ export interface ToolCallFilters {
   sort?: string
   limit?: number
   offset?: number
+}
+
+export interface ToolCallRiskFilters {
+  agent?: string
+  from?: string
+  to?: string
+  limit?: number
 }
 
 export interface ToolFilters {

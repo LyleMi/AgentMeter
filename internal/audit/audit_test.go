@@ -1,4 +1,4 @@
-﻿package audit
+package audit
 
 import (
 	"strings"
@@ -135,6 +135,39 @@ func TestAuditSessionCommandRiskFindingsAreDeterministic(t *testing.T) {
 	}
 }
 
+func TestShellCommandRiskRulesCoverHighRiskCommandFamilies(t *testing.T) {
+	tests := []struct {
+		name    string
+		command string
+		want    string
+	}{
+		{name: "encoded powershell", command: `powershell -NoProfile -EncodedCommand SQBFAFgA`, want: "shell.obfuscated-execution"},
+		{name: "from base64 string", command: `[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload)) | iex`, want: "shell.obfuscated-execution"},
+		{name: "base64 pipe", command: `cat payload.b64 | base64 -d | bash`, want: "shell.obfuscated-execution"},
+		{name: "scheduled task", command: `schtasks /Create /SC ONLOGON /TN updater /TR C:\temp\a.exe`, want: "shell.persistence"},
+		{name: "crontab edit", command: `(crontab -l; echo "* * * * * /tmp/a") | crontab -`, want: "shell.persistence"},
+		{name: "systemd enable", command: `sudo systemctl enable updater.service`, want: "shell.persistence"},
+		{name: "windows run key", command: `reg add HKCU\Software\Microsoft\Windows\CurrentVersion\Run /v updater /d C:\temp\a.exe`, want: "shell.persistence"},
+		{name: "dd output", command: `sudo dd if=/tmp/image of=/dev/sda bs=4M`, want: "shell.destructive-disk"},
+		{name: "mkfs", command: `mkfs.ext4 /dev/sdb1`, want: "shell.destructive-disk"},
+		{name: "windows format", command: `format D: /FS:NTFS /Q`, want: "shell.destructive-disk"},
+		{name: "diskpart", command: `diskpart /s wipe.txt`, want: "shell.destructive-disk"},
+		{name: "disable defender", command: `Set-MpPreference -DisableRealtimeMonitoring $true`, want: "shell.defense-evasion"},
+		{name: "disable firewall", command: `netsh advfirewall set allprofiles state off`, want: "shell.defense-evasion"},
+		{name: "clear logs", command: `wevtutil cl Security`, want: "shell.defense-evasion"},
+		{name: "stop security service", command: `sc stop WinDefend`, want: "shell.defense-evasion"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			risks := ClassifyCommandRisks(CommandInfo{ToolName: "shell_command", Command: tt.command})
+			if !hasCommandRisk(risks, tt.want) {
+				t.Fatalf("missing %s in %+v", tt.want, risks)
+			}
+		})
+	}
+}
+
 func TestAuditSessionFindsPrivacyAndSecretEvidence(t *testing.T) {
 	openAIKey := "sk-proj-abcdefghijklmnopqrstuvwxyz0123456789"
 	text := strings.Join([]string{
@@ -190,6 +223,15 @@ func ruleIDs(findings []Finding) []string {
 func hasRule(findings []Finding, ruleID string) bool {
 	for _, finding := range findings {
 		if finding.RuleID == ruleID {
+			return true
+		}
+	}
+	return false
+}
+
+func hasCommandRisk(risks []CommandRisk, ruleID string) bool {
+	for _, risk := range risks {
+		if risk.RuleID == ruleID {
 			return true
 		}
 	}

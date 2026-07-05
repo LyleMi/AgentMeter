@@ -850,6 +850,13 @@ type AuditSummary struct {
 	RecentFindings       []AuditFinding `json:"recentFindings"`
 }
 
+type ToolCallRiskSummary struct {
+	ToolCallID int64    `json:"toolCallId"`
+	Severity   string   `json:"severity"`
+	RiskCount  int      `json:"riskCount"`
+	RuleIDs    []string `json:"ruleIds"`
+}
+
 type ToolFilters struct {
 	Agent string `json:"agent"`
 }
@@ -912,6 +919,13 @@ type ToolCallFilters struct {
 	Sort        string `json:"sort"`
 	Limit       int    `json:"limit"`
 	Offset      int    `json:"offset"`
+}
+
+type ToolCallRiskFilters struct {
+	Agent       string `json:"agent"`
+	StartedFrom string `json:"startedFrom"`
+	StartedTo   string `json:"startedTo"`
+	Limit       int    `json:"limit"`
 }
 
 type AuditFindingFilters struct {

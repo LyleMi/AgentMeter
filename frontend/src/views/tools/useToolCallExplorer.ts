@@ -1,6 +1,6 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, type LocationQuery } from 'vue-router'
-import { api, type AgentUsage, type ToolCall, type ToolCallFilters, type ToolStat } from '../../api'
+import { api, type AgentUsage, type ToolCall, type ToolCallFilters, type ToolCallRiskSummary, type ToolStat } from '../../api'
 import {
   copyStringRouteQuery,
   dateTimeInputToQueryIso,
@@ -28,9 +28,11 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
   const tools = ref<ToolStat[]>([])
   const agents = ref<AgentUsage[]>([])
   const toolCalls = ref<ToolCall[]>([])
+  const toolCallRisks = ref<ToolCallRiskSummary[]>([])
   const commandOptions = ref<ShellCommandStat[]>([])
   const toolFilter = ref<string | undefined>(stringRouteQueryValue(route.query.tool))
   const commandFilter = ref<string | undefined>(mode === 'shell' ? stringRouteQueryValue(route.query.command) : undefined)
+  const riskOnlyFilter = ref(mode === 'shell' && stringRouteQueryValue(route.query.risk) === '1')
   const agentFilter = ref<string | undefined>(stringRouteQueryValue(route.query.agent))
   const fromFilter = ref(routeDateTimeInputValue(route.query, 'from'))
   const toFilter = ref(routeDateTimeInputValue(route.query, 'to'))
@@ -38,6 +40,7 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
   const selectedToolCall = ref<ToolCall | null>(null)
   const routePath = mode === 'shell' ? '/tools/shell' : '/tools/calls'
   const availableTools = computed(() => (mode === 'shell' ? tools.value.filter((item) => isShellToolName(item.toolName)) : tools.value))
+  const riskByToolCallId = computed(() => riskMapFrom(toolCallRisks.value))
   let applyingRouteUpdate = false
 
   async function load() {
@@ -68,14 +71,19 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
   async function fetchToolCalls() {
     if (mode === 'shell') return fetchShellToolCalls()
     commandOptions.value = []
+    toolCallRisks.value = []
     return (await api.listToolCalls(currentToolCallFilters())) || []
   }
 
   async function fetchShellToolCalls() {
     const selectedTools = toolFilter.value ? [toolFilter.value] : availableTools.value.map((item) => item.toolName).filter(Boolean)
-    if (!selectedTools.length) return []
+    if (!selectedTools.length) {
+      toolCallRisks.value = []
+      return []
+    }
 
-    const callGroups = await Promise.all(
+    const riskRequest = api.listToolCallRisks(currentToolCallRiskFilters())
+    const callGroupsRequest = Promise.all(
       selectedTools.map((tool) =>
         api.listToolCalls({
           ...currentToolCallFilters(),
@@ -84,9 +92,14 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
         })
       )
     )
-    const calls = sortedCalls(uniqueCalls(callGroups.flat()).filter((call) => isShellToolName(call.toolName)), sortFilter.value)
+    const [callGroups, risks] = await Promise.all([callGroupsRequest, riskRequest])
+    toolCallRisks.value = risks || []
+    const currentRiskMap = riskMapFrom(toolCallRisks.value)
+    let calls = sortedCalls(uniqueCalls(callGroups.flat()).filter((call) => isShellToolName(call.toolName)), sortFilter.value)
     commandOptions.value = shellCommandStats(calls)
-    return filteredByCommand(calls, commandFilter.value).slice(0, TOOL_CALL_LIMIT)
+    calls = filteredByCommand(calls, commandFilter.value)
+    if (riskOnlyFilter.value) calls = calls.filter((call) => currentRiskMap.has(call.id))
+    return calls.slice(0, TOOL_CALL_LIMIT)
   }
 
   function currentToolCallFilters(): ToolCallFilters {
@@ -96,6 +109,15 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
       from: dateTimeInputToQueryIso(fromFilter.value),
       to: dateTimeInputToQueryIso(toFilter.value, 'end'),
       sort: sortFilter.value === DEFAULT_SORT ? undefined : sortFilter.value,
+      limit: TOOL_CALL_LIMIT
+    }
+  }
+
+  function currentToolCallRiskFilters() {
+    return {
+      agent: agentFilter.value,
+      from: dateTimeInputToQueryIso(fromFilter.value),
+      to: dateTimeInputToQueryIso(toFilter.value, 'end'),
       limit: TOOL_CALL_LIMIT
     }
   }
@@ -121,6 +143,7 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
     const query = copyStringRouteQuery(route.query)
     setRouteQueryValue(query, 'tool', toolFilter.value)
     setRouteQueryValue(query, 'command', mode === 'shell' ? commandFilter.value : undefined)
+    setRouteQueryValue(query, 'risk', mode === 'shell' && riskOnlyFilter.value ? '1' : undefined)
     setRouteQueryValue(query, 'agent', agentFilter.value)
     setRouteQueryValue(query, 'from', fromFilter.value || undefined)
     setRouteQueryValue(query, 'to', toFilter.value || undefined)
@@ -146,6 +169,7 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
   function syncFiltersFromRoute() {
     toolFilter.value = stringRouteQueryValue(route.query.tool)
     commandFilter.value = mode === 'shell' ? stringRouteQueryValue(route.query.command) : undefined
+    riskOnlyFilter.value = mode === 'shell' && stringRouteQueryValue(route.query.risk) === '1'
     agentFilter.value = stringRouteQueryValue(route.query.agent)
     fromFilter.value = routeDateTimeInputValue(route.query, 'from')
     toFilter.value = routeDateTimeInputValue(route.query, 'to')
@@ -155,6 +179,7 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
   function resetFilters() {
     toolFilter.value = undefined
     commandFilter.value = undefined
+    riskOnlyFilter.value = false
     agentFilter.value = undefined
     fromFilter.value = ''
     toFilter.value = ''
@@ -175,7 +200,7 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
   }
 
   watch(
-    () => [route.query.tool, route.query.command, route.query.agent, route.query.from, route.query.to, route.query.sort],
+    () => [route.query.tool, route.query.command, route.query.risk, route.query.agent, route.query.from, route.query.to, route.query.sort],
     async () => {
       if (applyingRouteUpdate) return
       syncFiltersFromRoute()
@@ -195,9 +220,12 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
     availableTools,
     agents,
     toolCalls,
+    toolCallRisks,
+    riskByToolCallId,
     commandOptions,
     toolFilter,
     commandFilter,
+    riskOnlyFilter,
     agentFilter,
     fromFilter,
     toFilter,
@@ -216,6 +244,10 @@ function uniqueCalls(calls: ToolCall[]) {
   const values = new Map<number, ToolCall>()
   for (const call of calls) values.set(call.id, call)
   return [...values.values()]
+}
+
+function riskMapFrom(risks: ToolCallRiskSummary[]) {
+  return new Map(risks.map((risk) => [risk.toolCallId, risk]))
 }
 
 function sortedCalls(calls: ToolCall[], sort: ToolCallSort) {

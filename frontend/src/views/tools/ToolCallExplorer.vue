@@ -2,6 +2,7 @@
 import { computed, type DefineComponent } from 'vue'
 import AButton from 'ant-design-vue/es/button'
 import ASelect from 'ant-design-vue/es/select'
+import ASwitch from 'ant-design-vue/es/switch'
 import AntTable from 'ant-design-vue/es/table'
 import ATag from 'ant-design-vue/es/tag'
 import ATooltip from 'ant-design-vue/es/tooltip'
@@ -14,6 +15,7 @@ import { formatDateTime, formatDuration, formatNumber, sessionFullLabel, session
 import { useMessages } from '../../i18n'
 import { sourceDisplay, sourceFilterOptions } from '../../presentation/sourceIdentity'
 import { statusClass, statusColor } from '../../presentation/status'
+import { severityColor } from '../auditSupport'
 import {
   commandSummary,
   commandTooltip,
@@ -48,6 +50,7 @@ const { t } = useMessages({
     'column.tool': 'Tool',
     'column.agentTool': 'Source / Tool',
     'column.command': 'Command / Input',
+    'column.risk': 'Risk',
     'column.status': 'Status',
     'column.duration': 'Duration',
     'column.session': 'Session',
@@ -56,6 +59,7 @@ const { t } = useMessages({
     'column.project': 'Project',
     'filter.agent': 'Source',
     'filter.command': 'Invoked command',
+    'filter.riskOnly': 'Risk only',
     'filter.tool.all': 'Tool',
     'filter.tool.shell': 'Shell tool',
     'filter.from': 'From',
@@ -73,6 +77,11 @@ const { t } = useMessages({
     'empty.shell.loading': 'Loading shell commands...',
     'empty.shell.none': 'No shell command calls indexed',
     'tooltip.viewDetails': 'View details',
+    'tooltip.riskRules': 'Matched rules',
+    'severity.critical': 'Critical',
+    'severity.high': 'High',
+    'severity.medium': 'Medium',
+    'severity.low': 'Low',
     'fallback.unknown': 'unknown',
     'fallback.none': '-'
   },
@@ -91,6 +100,7 @@ const { t } = useMessages({
     'column.tool': '工具',
     'column.agentTool': '来源 / 工具',
     'column.command': '命令 / 输入',
+    'column.risk': '风险',
     'column.status': '状态',
     'column.duration': '耗时',
     'column.session': '会话',
@@ -99,6 +109,7 @@ const { t } = useMessages({
     'column.project': '项目',
     'filter.agent': '来源',
     'filter.command': '调用命令',
+    'filter.riskOnly': '仅看风险',
     'filter.tool.all': '工具',
     'filter.tool.shell': 'Shell 工具',
     'filter.from': '从',
@@ -116,6 +127,11 @@ const { t } = useMessages({
     'empty.shell.loading': '正在加载 Shell 命令...',
     'empty.shell.none': '暂无已索引 Shell 命令调用',
     'tooltip.viewDetails': '查看详情',
+    'tooltip.riskRules': '命中规则',
+    'severity.critical': '严重',
+    'severity.high': '高危',
+    'severity.medium': '中危',
+    'severity.low': '低危',
     'fallback.unknown': '未知',
     'fallback.none': '-'
   }
@@ -128,6 +144,7 @@ const callColumns = computed(() =>
         { title: t('column.started'), dataIndex: 'startedAt', key: 'startedAt', width: 132 },
         { title: t('column.agentTool'), dataIndex: 'agentName', key: 'agentTool', width: 180 },
         { title: t('column.command'), dataIndex: 'inputSummary', key: 'command', width: 470 },
+        { title: t('column.risk'), dataIndex: 'risk', key: 'risk', width: 118 },
         { title: t('column.status'), dataIndex: 'status', key: 'status', width: 105 },
         { title: t('column.duration'), dataIndex: 'durationMs', key: 'duration', width: 96, align: 'right' },
         { title: t('column.session'), dataIndex: 'sessionId', key: 'session', width: 120 },
@@ -165,7 +182,7 @@ const sortOptions = computed(() => [
   { value: 'duration_asc', label: t('sort.durationAsc') }
 ])
 const tableLocale = computed(() => ({ emptyText: explorer.callLoading.value ? t(`empty.${modeKey.value}.loading`) : t(`empty.${modeKey.value}.none`) }))
-const hasActiveFilters = computed(() => Boolean(explorer.toolFilter.value || explorer.commandFilter.value || explorer.agentFilter.value || explorer.fromFilter.value || explorer.toFilter.value))
+const hasActiveFilters = computed(() => Boolean(explorer.toolFilter.value || explorer.commandFilter.value || explorer.riskOnlyFilter.value || explorer.agentFilter.value || explorer.fromFilter.value || explorer.toFilter.value))
 const countText = computed(() => {
   const visible = formatNumber(explorer.toolCalls.value.length)
   if (hasActiveFilters.value) return t(`count.${modeKey.value}.matching`, { count: visible })
@@ -173,7 +190,7 @@ const countText = computed(() => {
   return t(`count.${modeKey.value}.recent`, { count: visible })
 })
 const tableClass = computed(() => (props.mode === 'shell' ? 'dense-table tool-shell-table' : 'dense-table tool-call-detail-table'))
-const tableScroll = computed(() => ({ x: props.mode === 'shell' ? 1450 : 1350 }))
+const tableScroll = computed(() => ({ x: props.mode === 'shell' ? 1570 : 1350 }))
 
 function callSessionLabel(call: ToolCall) {
   return sessionLabel({ id: call.sessionId, sessionKey: call.sessionKey || '', codexSessionId: call.codexSessionId })
@@ -198,6 +215,26 @@ function sourceInfo(call: ToolCall) {
 
 function commandName(call: ToolCall) {
   return invokedCommand(call)
+}
+
+function riskFor(call: ToolCall) {
+  return explorer.riskByToolCallId.value.get(call.id)
+}
+
+function riskTooltip(call: ToolCall) {
+  const risk = riskFor(call)
+  if (!risk) return ''
+  const rules = risk.ruleIds?.length ? risk.ruleIds.join('\n') : t('fallback.none')
+  return `${t('tooltip.riskRules')}\n${rules}`
+}
+
+function severityLabel(value?: string | null) {
+  const severity = (value || '').trim().toLowerCase()
+  if (severity === 'critical') return t('severity.critical')
+  if (severity === 'high') return t('severity.high')
+  if (severity === 'medium') return t('severity.medium')
+  if (severity === 'low') return t('severity.low')
+  return value || t('fallback.unknown')
 }
 </script>
 
@@ -243,6 +280,10 @@ function commandName(call: ToolCall) {
             :loading="explorer.callLoading.value"
             @change="() => explorer.updateFilters()"
           />
+          <label v-if="mode === 'shell'" class="inline-switch shell-risk-filter">
+            <a-switch v-model:checked="explorer.riskOnlyFilter.value" size="small" @change="() => explorer.updateFilters()" />
+            <span>{{ t('filter.riskOnly') }}</span>
+          </label>
           <label class="inline-field tool-time-filter">
             <span>{{ t('filter.from') }}</span>
             <input v-model="explorer.fromFilter.value" class="native-date-input" type="datetime-local" :aria-label="t('filter.fromAria')" @change="() => explorer.updateFilters()" />
@@ -307,6 +348,18 @@ function commandName(call: ToolCall) {
               <pre class="tool-shell-command mono">{{ commandSummary(record) || t('fallback.none') }}</pre>
             </a-tooltip>
             <div v-if="inputContext(record)" class="tool-shell-input">{{ inputContext(record) }}</div>
+          </template>
+
+          <template v-else-if="column.key === 'risk'">
+            <a-tooltip v-if="riskFor(record)" :title="riskTooltip(record)" placement="topLeft">
+              <span class="tool-risk-cell">
+                <a-tag class="status-tag tool-risk-tag" :color="severityColor(riskFor(record)?.severity)">
+                  {{ severityLabel(riskFor(record)?.severity) }}
+                </a-tag>
+                <span class="tool-risk-count">{{ formatNumber(riskFor(record)?.riskCount || 0) }}</span>
+              </span>
+            </a-tooltip>
+            <span v-else class="tool-risk-empty">{{ t('fallback.none') }}</span>
           </template>
 
           <template v-else-if="column.key === 'status'">
@@ -376,6 +429,20 @@ function commandName(call: ToolCall) {
   width: 170px;
 }
 
+.shell-risk-filter {
+  min-width: 96px;
+}
+
+.inline-switch {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  height: 32px;
+  color: var(--am-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .tool-shell-table :deep(.ant-table-tbody > tr > td) {
   vertical-align: top;
 }
@@ -425,5 +492,25 @@ function commandName(call: ToolCall) {
   line-height: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tool-risk-cell {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  max-width: 100%;
+}
+
+.tool-risk-tag {
+  max-width: 76px;
+  margin-inline-end: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool-risk-count,
+.tool-risk-empty {
+  color: var(--am-muted);
+  font-size: 12px;
 }
 </style>

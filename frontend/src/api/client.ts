@@ -30,6 +30,8 @@ import type {
   TokenAnalytics,
   ToolCall,
   ToolCallFilters,
+  ToolCallRiskFilters,
+  ToolCallRiskSummary,
   ToolFilters,
   ToolStat,
   UsageBreakdown,
@@ -219,6 +221,13 @@ const fetchApi = {
       sort: filters.sort,
       limit: filters.limit,
       offset: filters.offset
+    })),
+  listToolCallRisks: (filters: ToolCallRiskFilters = {}) =>
+    request<ToolCallRiskSummary[]>(queryPath('/api/tool-call-risks', {
+      agent: filters.agent,
+      from: filters.from,
+      to: filters.to,
+      limit: filters.limit
     })),
   getAuditSummary: (filters: Pick<AuditFindingFilters, 'agent'> = {}) =>
     request<AuditSummary>(queryPath('/api/audit/summary', { agent: filters.agent })),

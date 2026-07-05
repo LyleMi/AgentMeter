@@ -295,6 +295,16 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		})
 		writeJSON(w, value, err)
 	})
+	mux.HandleFunc("GET /api/tool-call-risks", func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		value, err := service.ListToolCallRisks(model.ToolCallRiskFilters{
+			Agent:       query.Get("agent"),
+			StartedFrom: query.Get("from"),
+			StartedTo:   query.Get("to"),
+			Limit:       queryInt(r, "limit"),
+		})
+		writeJSON(w, value, err)
+	})
 	mux.HandleFunc("GET /api/prompts/suggestions", func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
 		value, err := service.PromptSuggestions(model.PromptSuggestionFilters{

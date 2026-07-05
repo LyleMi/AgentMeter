@@ -438,6 +438,13 @@ func (a *App) ListToolCalls(filters model.ToolCallFilters) ([]model.ToolCall, er
 	return a.query.ToolCalls(a.ctx, filters)
 }
 
+func (a *App) ListToolCallRisks(filters model.ToolCallRiskFilters) ([]model.ToolCallRiskSummary, error) {
+	if err := a.ensureReady(); err != nil {
+		return nil, err
+	}
+	return a.query.ToolCallRisks(a.ctx, filters)
+}
+
 func (a *App) PromptSuggestions(filters model.PromptSuggestionFilters) ([]model.PromptSuggestion, error) {
 	if err := a.ensureReady(); err != nil {
 		return nil, err

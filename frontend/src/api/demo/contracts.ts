@@ -29,6 +29,8 @@ import type {
   TokenAnalytics,
   ToolCall,
   ToolCallFilters,
+  ToolCallRiskFilters,
+  ToolCallRiskSummary,
   ToolFilters,
   ToolStat,
   UsageBreakdown,
@@ -82,6 +84,7 @@ export type DemoApi = {
   getSessionDetail: (id: number) => Promise<SessionDetail>
   getTools: (filters?: ToolFilters) => Promise<ToolStat[]>
   listToolCalls: (filters?: ToolCallFilters) => Promise<ToolCall[]>
+  listToolCallRisks: (filters?: ToolCallRiskFilters) => Promise<ToolCallRiskSummary[]>
   getAuditSummary: (filters?: Pick<AuditFindingFilters, 'agent'>) => Promise<AuditSummary>
   listAuditFindings: (filters?: AuditFindingFilters) => Promise<AuditFinding[]>
   getAuditFinding: (id: number) => Promise<AuditFinding>
