@@ -37,23 +37,8 @@ func fillAuditFindingSourceIdentity(item *model.AuditFinding) {
 }
 
 func (s *Service) events(ctx context.Context, sessionID int64) ([]model.Event, error) {
-	rows, err := s.conn.QueryContext(ctx, `SELECT id, session_id, source_file_id, source_line, timestamp, kind, raw_type, summary, raw_json
-		FROM events WHERE session_id = ? ORDER BY timestamp, source_line`, sessionID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var result []model.Event
-	for rows.Next() {
-		var item model.Event
-		var ts string
-		if err := rows.Scan(&item.ID, &item.SessionID, &item.SourceFileID, &item.SourceLine, &ts, &item.Kind, &item.RawType, &item.Summary, &item.RawJSON); err != nil {
-			return nil, err
-		}
-		item.Timestamp = db.ParseTime(ts)
-		result = append(result, item)
-	}
-	return result, rows.Err()
+	return scanQueryRows(ctx, s.conn, `SELECT id, session_id, source_file_id, source_line, timestamp, kind, raw_type, summary, raw_json
+		FROM events WHERE session_id = ? ORDER BY timestamp, source_line`, scanEvent, sessionID)
 }
 
 func (s *Service) modelCalls(ctx context.Context, sessionID int64) ([]model.ModelCall, error) {
@@ -132,91 +117,79 @@ func (s *Service) scanAuditFindings(ctx context.Context, query string, args ...a
 	return scanQueryRows(ctx, s.conn, query, scanAuditFinding, args...)
 }
 
-func scanToolCall(rows *sql.Rows) (model.ToolCall, error) {
-	var item model.ToolCall
-	var started, ended string
-	if err := rows.Scan(
-		&item.ID,
-		&item.SessionID,
-		&item.SourceID,
-		&item.SourceRootPath,
-		&item.SourceSessionsPath,
-		&started,
-		&ended,
-		&item.DurationMS,
-		&item.ToolName,
-		&item.Status,
-		&item.InputSummary,
-		&item.OutputSummary,
-		&item.Error,
-		&item.RawEventID,
-		&item.CallID,
-		&item.RawStartEventID,
-		&item.RawEndEventID,
-		&item.RawStartEventLine,
-		&item.RawEndEventLine,
-		&item.RawStartEventType,
-		&item.RawEndEventType,
-		&item.RawStartEventSummary,
-		&item.RawEndEventSummary,
-		&item.RawStartEventJSON,
-		&item.RawEndEventJSON,
-		&item.SessionKey,
-		&item.CodexSessionID,
-		&item.ProjectPath,
-		&item.AgentKind,
-		&item.AgentName,
-		&item.RawSourcePath,
-	); err != nil {
-		return model.ToolCall{}, err
+func scanEvent(rows *sql.Rows) (model.Event, error) {
+	var item model.Event
+	var ts string
+	if err := rows.Scan(&item.ID, &item.SessionID, &item.SourceFileID, &item.SourceLine, &ts, &item.Kind, &item.RawType, &item.Summary, &item.RawJSON); err != nil {
+		return model.Event{}, err
 	}
-	prepareScannedToolCall(&item, started, ended)
+	item.Timestamp = db.ParseTime(ts)
 	return item, nil
 }
 
-func scanToolCallWithRisk(rows *sql.Rows) (model.ToolCall, error) {
-	var item model.ToolCall
-	var started, ended, ruleIDs string
-	if err := rows.Scan(
-		&item.ID,
-		&item.SessionID,
-		&item.SourceID,
-		&item.SourceRootPath,
-		&item.SourceSessionsPath,
-		&started,
-		&ended,
-		&item.DurationMS,
-		&item.ToolName,
-		&item.Status,
-		&item.InputSummary,
-		&item.OutputSummary,
-		&item.Error,
-		&item.RawEventID,
-		&item.CallID,
-		&item.RawStartEventID,
-		&item.RawEndEventID,
-		&item.RawStartEventLine,
-		&item.RawEndEventLine,
-		&item.RawStartEventType,
-		&item.RawEndEventType,
-		&item.RawStartEventSummary,
-		&item.RawEndEventSummary,
-		&item.RawStartEventJSON,
-		&item.RawEndEventJSON,
-		&item.SessionKey,
-		&item.CodexSessionID,
-		&item.ProjectPath,
-		&item.AgentKind,
-		&item.AgentName,
-		&item.RawSourcePath,
-		&item.RiskScore,
-		&item.RiskSeverity,
-		&item.RiskCount,
-		&ruleIDs,
-	); err != nil {
+type toolCallScan struct {
+	item    model.ToolCall
+	started string
+	ended   string
+}
+
+func (scan *toolCallScan) destinations() []any {
+	return []any{
+		&scan.item.ID,
+		&scan.item.SessionID,
+		&scan.item.SourceID,
+		&scan.item.SourceRootPath,
+		&scan.item.SourceSessionsPath,
+		&scan.started,
+		&scan.ended,
+		&scan.item.DurationMS,
+		&scan.item.ToolName,
+		&scan.item.Status,
+		&scan.item.InputSummary,
+		&scan.item.OutputSummary,
+		&scan.item.Error,
+		&scan.item.RawEventID,
+		&scan.item.CallID,
+		&scan.item.RawStartEventID,
+		&scan.item.RawEndEventID,
+		&scan.item.RawStartEventLine,
+		&scan.item.RawEndEventLine,
+		&scan.item.RawStartEventType,
+		&scan.item.RawEndEventType,
+		&scan.item.RawStartEventSummary,
+		&scan.item.RawEndEventSummary,
+		&scan.item.RawStartEventJSON,
+		&scan.item.RawEndEventJSON,
+		&scan.item.SessionKey,
+		&scan.item.CodexSessionID,
+		&scan.item.ProjectPath,
+		&scan.item.AgentKind,
+		&scan.item.AgentName,
+		&scan.item.RawSourcePath,
+	}
+}
+
+func (scan *toolCallScan) result() model.ToolCall {
+	prepareScannedToolCall(&scan.item, scan.started, scan.ended)
+	return scan.item
+}
+
+func scanToolCall(rows *sql.Rows) (model.ToolCall, error) {
+	var scan toolCallScan
+	if err := rows.Scan(scan.destinations()...); err != nil {
 		return model.ToolCall{}, err
 	}
-	prepareScannedToolCall(&item, started, ended)
+	return scan.result(), nil
+}
+
+func scanToolCallWithRisk(rows *sql.Rows) (model.ToolCall, error) {
+	var scan toolCallScan
+	var ruleIDs string
+	destinations := append(scan.destinations(), &scan.item.RiskScore, &scan.item.RiskSeverity, &scan.item.RiskCount, &ruleIDs)
+	if err := rows.Scan(destinations...); err != nil {
+		return model.ToolCall{}, err
+	}
+	item := scan.result()
 	item.RiskRuleIDs = splitSortedCSV(ruleIDs)
 	return item, nil
 }

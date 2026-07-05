@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -98,7 +99,7 @@ func (s *Service) toolTimeLeaders(ctx context.Context) ([]model.ToolTimeUsage, e
 func (s *Service) toolTimeLeadersWithFilters(ctx context.Context, filters model.AnalyticsFilters) ([]model.ToolTimeUsage, error) {
 	networkCondition := suspectedNetworkToolCondition("tc")
 	where, args := analyticsSessionWhere(filters)
-	rows, err := s.conn.QueryContext(ctx, fmt.Sprintf(`SELECT
+	query := fmt.Sprintf(`SELECT
 		tc.tool_name,
 		COUNT(*),
 		SUM(CASE WHEN tc.status IN ('completed', 'success') THEN 1 ELSE 0 END),
@@ -114,31 +115,8 @@ func (s *Service) toolTimeLeadersWithFilters(ctx context.Context, filters model.
 		WHERE %s
 		GROUP BY tc.tool_name
 		ORDER BY SUM(tc.duration_ms) DESC, tc.tool_name ASC
-		LIMIT 8`, networkCondition, strings.Join(where, " AND ")), args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var result []model.ToolTimeUsage
-	for rows.Next() {
-		var item model.ToolTimeUsage
-		var suspectedNetwork int
-		if err := rows.Scan(
-			&item.ToolName,
-			&item.Calls,
-			&item.SuccessCalls,
-			&item.FailedCalls,
-			&item.TotalDurationMS,
-			&item.AvgDurationMS,
-			&item.MaxDurationMS,
-			&suspectedNetwork,
-		); err != nil {
-			return nil, err
-		}
-		item.SuspectedNetwork = suspectedNetwork != 0
-		result = append(result, item)
-	}
-	return result, rows.Err()
+		LIMIT 8`, networkCondition, strings.Join(where, " AND "))
+	return scanQueryRows(ctx, s.conn, query, scanToolTimeUsage, args...)
 }
 
 func (s *Service) agentTimeUsage(ctx context.Context) ([]model.AgentTimeUsage, error) {
@@ -148,7 +126,7 @@ func (s *Service) agentTimeUsage(ctx context.Context) ([]model.AgentTimeUsage, e
 func (s *Service) agentTimeUsageWithFilters(ctx context.Context, filters model.AnalyticsFilters) ([]model.AgentTimeUsage, error) {
 	networkCondition := suspectedNetworkToolCondition("tc")
 	where, args := analyticsSessionWhere(filters)
-	rows, err := s.conn.QueryContext(ctx, fmt.Sprintf(`SELECT
+	query := fmt.Sprintf(`SELECT
 		src.id,
 		src.root_path,
 		src.sessions_path,
@@ -171,41 +149,8 @@ func (s *Service) agentTimeUsageWithFilters(ctx context.Context, filters model.A
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
 		WHERE %s
 		GROUP BY src.id
-		ORDER BY SUM(s.wall_duration_ms) DESC, src.name ASC`, networkCondition, strings.Join(where, " AND ")), args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var result []model.AgentTimeUsage
-	for rows.Next() {
-		var item model.AgentTimeUsage
-		if err := rows.Scan(
-			&item.SourceID,
-			&item.SourceRootPath,
-			&item.SourceSessionsPath,
-			&item.AgentKind,
-			&item.AgentName,
-			&item.SessionCount,
-			&item.ToolCalls,
-			&item.WallDurationMS,
-			&item.ActiveDurationMS,
-			&item.ModelDurationMS,
-			&item.ToolDurationMS,
-			&item.IdleDurationMS,
-			&item.SuspectedNetworkToolDurationMS,
-		); err != nil {
-			return nil, err
-		}
-		item.SourceKey = sourceInstanceKey(item.SourceID)
-		item.SourceLabel = item.AgentName
-		if item.SuspectedNetworkToolDurationMS < 0 || item.ToolDurationMS < 0 {
-			item.SuspectedNetworkToolDurationMS = 0
-		} else if item.SuspectedNetworkToolDurationMS > item.ToolDurationMS {
-			item.SuspectedNetworkToolDurationMS = item.ToolDurationMS
-		}
-		result = append(result, item)
-	}
-	return result, rows.Err()
+		ORDER BY SUM(s.wall_duration_ms) DESC, src.name ASC`, networkCondition, strings.Join(where, " AND "))
+	return scanQueryRows(ctx, s.conn, query, scanAgentTimeUsage, args...)
 }
 
 func (s *Service) modelTimeUsage(ctx context.Context) ([]model.ModelTimeUsage, error) {
@@ -214,7 +159,7 @@ func (s *Service) modelTimeUsage(ctx context.Context) ([]model.ModelTimeUsage, e
 
 func (s *Service) modelTimeUsageWithFilters(ctx context.Context, filters model.AnalyticsFilters) ([]model.ModelTimeUsage, error) {
 	where, args := analyticsSessionWhere(filters)
-	rows, err := s.conn.QueryContext(ctx, `SELECT
+	query := `SELECT
 		s.model,
 		COUNT(*),
 		COALESCE(SUM(tu.total_tokens), 0),
@@ -226,31 +171,75 @@ func (s *Service) modelTimeUsageWithFilters(ctx context.Context, filters model.A
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
-		WHERE `+strings.Join(where, " AND ")+`
+		WHERE ` + strings.Join(where, " AND ") + `
 		GROUP BY s.model
-		ORDER BY SUM(s.wall_duration_ms) DESC, s.model ASC`, args...)
-	if err != nil {
-		return nil, err
+		ORDER BY SUM(s.wall_duration_ms) DESC, s.model ASC`
+	return scanQueryRows(ctx, s.conn, query, scanModelTimeUsage, args...)
+}
+
+func scanToolTimeUsage(rows *sql.Rows) (model.ToolTimeUsage, error) {
+	var item model.ToolTimeUsage
+	var suspectedNetwork int
+	if err := rows.Scan(
+		&item.ToolName,
+		&item.Calls,
+		&item.SuccessCalls,
+		&item.FailedCalls,
+		&item.TotalDurationMS,
+		&item.AvgDurationMS,
+		&item.MaxDurationMS,
+		&suspectedNetwork,
+	); err != nil {
+		return model.ToolTimeUsage{}, err
 	}
-	defer rows.Close()
-	var result []model.ModelTimeUsage
-	for rows.Next() {
-		var item model.ModelTimeUsage
-		if err := rows.Scan(
-			&item.Model,
-			&item.SessionCount,
-			&item.TotalTokens,
-			&item.WallDurationMS,
-			&item.ActiveDurationMS,
-			&item.ModelDurationMS,
-			&item.ToolDurationMS,
-			&item.IdleDurationMS,
-		); err != nil {
-			return nil, err
-		}
-		result = append(result, item)
+	item.SuspectedNetwork = suspectedNetwork != 0
+	return item, nil
+}
+
+func scanAgentTimeUsage(rows *sql.Rows) (model.AgentTimeUsage, error) {
+	var item model.AgentTimeUsage
+	if err := rows.Scan(
+		&item.SourceID,
+		&item.SourceRootPath,
+		&item.SourceSessionsPath,
+		&item.AgentKind,
+		&item.AgentName,
+		&item.SessionCount,
+		&item.ToolCalls,
+		&item.WallDurationMS,
+		&item.ActiveDurationMS,
+		&item.ModelDurationMS,
+		&item.ToolDurationMS,
+		&item.IdleDurationMS,
+		&item.SuspectedNetworkToolDurationMS,
+	); err != nil {
+		return model.AgentTimeUsage{}, err
 	}
-	return result, rows.Err()
+	item.SourceKey = sourceInstanceKey(item.SourceID)
+	item.SourceLabel = item.AgentName
+	if item.SuspectedNetworkToolDurationMS < 0 || item.ToolDurationMS < 0 {
+		item.SuspectedNetworkToolDurationMS = 0
+	} else if item.SuspectedNetworkToolDurationMS > item.ToolDurationMS {
+		item.SuspectedNetworkToolDurationMS = item.ToolDurationMS
+	}
+	return item, nil
+}
+
+func scanModelTimeUsage(rows *sql.Rows) (model.ModelTimeUsage, error) {
+	var item model.ModelTimeUsage
+	if err := rows.Scan(
+		&item.Model,
+		&item.SessionCount,
+		&item.TotalTokens,
+		&item.WallDurationMS,
+		&item.ActiveDurationMS,
+		&item.ModelDurationMS,
+		&item.ToolDurationMS,
+		&item.IdleDurationMS,
+	); err != nil {
+		return model.ModelTimeUsage{}, err
+	}
+	return item, nil
 }
 
 func (s *Service) slowSessions(ctx context.Context) ([]model.Session, error) {
