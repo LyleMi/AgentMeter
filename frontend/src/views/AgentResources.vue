@@ -74,13 +74,18 @@ const { t } = useMessages({
     'memory.title': 'Memory',
     'memory.kicker': 'Markdown memory files discovered from agent memory directories',
     'column.name': 'Name',
+    'column.resource': 'Resource',
+    'column.server': 'Server',
+    'column.memory': 'Memory',
     'column.description': 'Description',
     'column.scope': 'Scope',
     'column.path': 'Path',
     'column.modified': 'Modified',
     'column.command': 'Command',
+    'column.commandArgs': 'Command & args',
     'column.args': 'Args',
     'column.env': 'Env keys',
+    'column.config': 'Config',
     'column.status': 'Status',
     'column.kind': 'Kind',
     'column.preview': 'Preview',
@@ -150,13 +155,18 @@ const { t } = useMessages({
     'memory.title': 'Memory',
     'memory.kicker': '从 Agent memory 目录发现的 Markdown 记忆文件',
     'column.name': '名称',
+    'column.resource': '资源',
+    'column.server': 'Server',
+    'column.memory': 'Memory',
     'column.description': '描述',
     'column.scope': '范围',
     'column.path': '路径',
     'column.modified': '修改时间',
     'column.command': '命令',
+    'column.commandArgs': '命令与参数',
     'column.args': '参数',
     'column.env': '环境变量键',
+    'column.config': '配置',
     'column.status': '状态',
     'column.kind': '类型',
     'column.preview': '摘要',
@@ -257,33 +267,23 @@ const memoryDirty = computed(() => memoryContent.value !== originalMemoryContent
 const memoryCanEdit = computed(() => Boolean(selectedMemory.value?.canEdit) && memoryDetailLoaded.value && !isStaticDemo)
 
 const skillColumns = computed(() => [
-  { title: t('column.name'), key: 'name', width: 230 },
+  { title: t('column.resource'), key: 'resource', width: 320 },
   { title: t('column.description'), dataIndex: 'description', key: 'description' },
-  { title: t('column.agent'), key: 'agent', width: 130 },
-  { title: t('column.scope'), key: 'scope', width: 104 },
-  { title: t('column.enabled'), key: 'enabled', width: 112, align: 'center' },
-  { title: t('column.path'), key: 'path', width: 260 },
-  { title: t('column.modified'), dataIndex: 'modifiedAt', key: 'modifiedAt', width: 150 }
+  { title: t('column.path'), key: 'path', width: 320 },
+  { title: t('column.modified'), dataIndex: 'modifiedAt', key: 'modifiedAt', width: 160 }
 ])
 
 const mcpColumns = computed(() => [
-  { title: t('column.name'), dataIndex: 'name', key: 'name', width: 180 },
-  { title: t('column.agent'), key: 'agent', width: 130 },
-  { title: t('column.command'), key: 'command' },
-  { title: t('column.args'), key: 'args', width: 180 },
-  { title: t('column.env'), key: 'env', width: 180 },
-  { title: t('column.enabled'), key: 'enabled', width: 112, align: 'center' },
-  { title: t('column.status'), key: 'status', width: 120 }
+  { title: t('column.server'), key: 'server', width: 260 },
+  { title: t('column.commandArgs'), key: 'commandArgs' },
+  { title: t('column.config'), key: 'config', width: 280 },
+  { title: t('column.status'), key: 'status', width: 170 }
 ])
 
 const memoryColumns = computed(() => [
-  { title: t('column.name'), key: 'name', width: 220 },
-  { title: t('column.agent'), key: 'agent', width: 130 },
-  { title: t('column.kind'), dataIndex: 'kind', key: 'kind', width: 110 },
-  { title: t('column.status'), key: 'status', width: 116 },
+  { title: t('column.memory'), key: 'memory', width: 300 },
   { title: t('column.preview'), dataIndex: 'preview', key: 'preview' },
-  { title: t('column.path'), key: 'path', width: 260 },
-  { title: t('column.modified'), dataIndex: 'modifiedAt', key: 'modifiedAt', width: 150 },
+  { title: t('column.path'), key: 'path', width: 340 },
   { title: t('column.actions'), key: 'actions', width: 104, align: 'right' }
 ])
 
@@ -561,7 +561,7 @@ onMounted(load)
                 :columns="skillColumns"
                 :data-source="filteredSkills"
                 :pagination="{ pageSize: 12, showSizeChanger: true }"
-                :scroll="{ x: 1180 }"
+                :scroll="{ x: 920 }"
                 row-key="path"
                 size="small"
                 table-layout="fixed"
@@ -570,39 +570,48 @@ onMounted(load)
                   <EmptyState :title="t('empty.skills.title')" :text="t('empty.skills.text')" compact :icon="ToolOutlined" />
                 </template>
                 <template #bodyCell="{ column, record }">
-                  <template v-if="column.key === 'name'">
-                    <div class="resource-name">{{ record.name }}</div>
-                    <div class="timeline-event-raw">{{ record.title }}</div>
-                  </template>
-                  <template v-else-if="column.key === 'agent'">
-                    <a-tag class="status-tag">{{ agentDisplay(record.agentKind) }}</a-tag>
-                  </template>
-                  <template v-else-if="column.key === 'scope'">
-                    <a-tag class="status-tag" :color="record.system ? tagColor('system') : 'default'">
-                      {{ record.system ? t('scope.system') : t('scope.user') }}
-                    </a-tag>
-                  </template>
-                  <template v-else-if="column.key === 'enabled'">
-                    <a-tooltip :title="toggleTooltip(record)">
-                      <a-switch
-                        size="small"
-                        :checked="resourceEnabled(record)"
-                        :disabled="!supportsToggle(record)"
-                        :loading="isToggling(record)"
-                        @change="(checked) => onSkillSwitchChange(record, checked)"
-                      />
-                    </a-tooltip>
-                    <div class="timeline-event-raw">
-                      {{ resourceEnabled(record) ? t('status.enabled') : t('status.disabled') }}
+                  <template v-if="column.key === 'resource'">
+                    <div class="resource-main">
+                      <div class="resource-title-row">
+                        <div class="resource-name">{{ record.name }}</div>
+                      </div>
+                      <div class="resource-subtitle">{{ record.title }}</div>
+                      <div class="resource-meta-line">
+                        <a-tag class="status-tag">{{ agentDisplay(record.agentKind) }}</a-tag>
+                        <a-tag class="status-tag" :color="record.system ? tagColor('system') : 'default'">
+                          {{ record.system ? t('scope.system') : t('scope.user') }}
+                        </a-tag>
+                        <span class="resource-switch-meta">
+                          <a-tooltip :title="toggleTooltip(record)">
+                            <a-switch
+                              size="small"
+                              :checked="resourceEnabled(record)"
+                              :disabled="!supportsToggle(record)"
+                              :loading="isToggling(record)"
+                              @change="(checked) => onSkillSwitchChange(record, checked)"
+                            />
+                          </a-tooltip>
+                          <span>{{ resourceEnabled(record) ? t('status.enabled') : t('status.disabled') }}</span>
+                        </span>
+                      </div>
                     </div>
                   </template>
-                  <template v-else-if="column.key === 'path'">
-                    <a-tooltip :title="record.path" placement="topLeft">
-                      <a-typography-text class="mono" :ellipsis="{ tooltip: record.path }">
-                        {{ record.relativePath }}
-                      </a-typography-text>
+                  <template v-else-if="column.key === 'description'">
+                    <a-tooltip :title="record.description" placement="topLeft">
+                      <div class="resource-detail-text resource-detail-text-two-line">
+                        {{ record.description || t('fallback.none') }}
+                      </div>
                     </a-tooltip>
-                    <div class="timeline-event-raw">{{ formatBytes(record.sizeBytes) }}</div>
+                  </template>
+                  <template v-else-if="column.key === 'path'">
+                    <div class="resource-path-block">
+                      <a-tooltip :title="record.path" placement="topLeft">
+                        <a-typography-text class="mono resource-ellipsis" :ellipsis="{ tooltip: record.path }">
+                          {{ record.relativePath }}
+                        </a-typography-text>
+                      </a-tooltip>
+                      <div class="timeline-event-raw">{{ formatBytes(record.sizeBytes) }}</div>
+                    </div>
                   </template>
                   <template v-else-if="column.key === 'modifiedAt'">
                     {{ formatDateTime(record.modifiedAt) }}
@@ -623,7 +632,7 @@ onMounted(load)
                 :columns="mcpColumns"
                 :data-source="filteredMcpServers"
                 :pagination="{ pageSize: 12, showSizeChanger: true }"
-                :scroll="{ x: 1120 }"
+                :scroll="{ x: 900 }"
                 :row-key="resourceKey"
                 size="small"
                 table-layout="fixed"
@@ -632,48 +641,59 @@ onMounted(load)
                   <EmptyState :title="t('empty.mcp.title')" :text="t('empty.mcp.text')" compact :icon="ApiOutlined" />
                 </template>
                 <template #bodyCell="{ column, record }">
-                  <template v-if="column.key === 'agent'">
-                    <a-tag class="status-tag">{{ agentDisplay(record.agentKind) }}</a-tag>
-                  </template>
-                  <template v-else-if="column.key === 'command'">
-                    <a-tooltip :title="record.command" placement="topLeft">
-                      <a-typography-text class="mono" :ellipsis="{ tooltip: record.command }">
-                        {{ record.command || t('fallback.none') }}
-                      </a-typography-text>
-                    </a-tooltip>
-                    <div class="timeline-event-raw">{{ shortPath(record.configPath) }}</div>
-                  </template>
-                  <template v-else-if="column.key === 'args'">
-                    <a-typography-text class="mono" :ellipsis="{ tooltip: joined(record.args) }">
-                      {{ joined(record.args) }}
-                    </a-typography-text>
-                  </template>
-                  <template v-else-if="column.key === 'env'">
-                    <div class="resource-tag-list">
-                      <a-tag v-for="key in record.envKeys" :key="key" class="status-tag">{{ key }}</a-tag>
-                      <span v-if="!record.envKeys.length" class="muted">{{ t('fallback.none') }}</span>
+                  <template v-if="column.key === 'server'">
+                    <div class="resource-main">
+                      <div class="resource-name">{{ record.name }}</div>
+                      <div class="resource-meta-line">
+                        <a-tag class="status-tag">{{ agentDisplay(record.agentKind) }}</a-tag>
+                      </div>
                     </div>
                   </template>
-                  <template v-else-if="column.key === 'enabled'">
-                    <a-tooltip :title="toggleTooltip(record)">
-                      <a-switch
-                        size="small"
-                        :checked="resourceEnabled(record)"
-                        :disabled="!supportsToggle(record)"
-                        :loading="isToggling(record)"
-                        @change="(checked) => onMcpSwitchChange(record, checked)"
-                      />
-                    </a-tooltip>
-                    <div class="timeline-event-raw">
-                      {{ resourceEnabled(record) ? t('status.enabled') : t('status.disabled') }}
+                  <template v-else-if="column.key === 'commandArgs'">
+                    <div class="resource-command-block">
+                      <a-tooltip :title="record.command" placement="topLeft">
+                        <a-typography-text class="mono resource-ellipsis" :ellipsis="{ tooltip: record.command }">
+                          {{ record.command || t('fallback.none') }}
+                        </a-typography-text>
+                      </a-tooltip>
+                      <a-typography-text class="mono resource-ellipsis resource-args-line" :ellipsis="{ tooltip: joined(record.args) }">
+                        {{ joined(record.args) }}
+                      </a-typography-text>
+                    </div>
+                  </template>
+                  <template v-else-if="column.key === 'config'">
+                    <div class="resource-path-block">
+                      <a-tooltip :title="record.configPath" placement="topLeft">
+                        <a-typography-text class="mono resource-ellipsis" :ellipsis="{ tooltip: record.configPath }">
+                          {{ shortPath(record.configPath) }}
+                        </a-typography-text>
+                      </a-tooltip>
+                      <div class="resource-tag-list resource-env-list">
+                        <a-tag v-for="key in record.envKeys" :key="key" class="status-tag">{{ key }}</a-tag>
+                        <span v-if="!record.envKeys.length" class="muted">{{ t('fallback.none') }}</span>
+                      </div>
                     </div>
                   </template>
                   <template v-else-if="column.key === 'status'">
-                    <a-tooltip :title="record.warning">
-                      <a-tag class="status-tag" :color="tagColor(record.status)">
-                        {{ statusLabel(record.status) }}
-                      </a-tag>
-                    </a-tooltip>
+                    <div class="resource-status-stack">
+                      <a-tooltip :title="record.warning">
+                        <a-tag class="status-tag" :color="tagColor(record.status)">
+                          {{ statusLabel(record.status) }}
+                        </a-tag>
+                      </a-tooltip>
+                      <span class="resource-switch-meta">
+                        <a-tooltip :title="toggleTooltip(record)">
+                          <a-switch
+                            size="small"
+                            :checked="resourceEnabled(record)"
+                            :disabled="!supportsToggle(record)"
+                            :loading="isToggling(record)"
+                            @change="(checked) => onMcpSwitchChange(record, checked)"
+                          />
+                        </a-tooltip>
+                        <span>{{ resourceEnabled(record) ? t('status.enabled') : t('status.disabled') }}</span>
+                      </span>
+                    </div>
                   </template>
                 </template>
               </a-table>
@@ -691,7 +711,7 @@ onMounted(load)
                 :columns="memoryColumns"
                 :data-source="filteredMemories"
                 :pagination="{ pageSize: 12, showSizeChanger: true }"
-                :scroll="{ x: 1180 }"
+                :scroll="{ x: 920 }"
                 row-key="path"
                 size="small"
                 table-layout="fixed"
@@ -700,34 +720,35 @@ onMounted(load)
                   <EmptyState :title="t('empty.memory.title')" :text="t('empty.memory.text')" compact :icon="BookOutlined" />
                 </template>
                 <template #bodyCell="{ column, record }">
-                  <template v-if="column.key === 'name'">
-                    <div class="resource-name">{{ record.title || record.name }}</div>
-                    <div class="timeline-event-raw">{{ record.name }}</div>
-                  </template>
-                  <template v-else-if="column.key === 'agent'">
-                    <a-tag class="status-tag">{{ agentDisplay(record.agentKind) }}</a-tag>
-                  </template>
-                  <template v-else-if="column.key === 'kind'">
-                    <a-tag class="status-tag" :color="tagColor(record.kind)">{{ record.kind }}</a-tag>
-                  </template>
-                  <template v-else-if="column.key === 'status'">
-                    <a-tag class="status-tag" :color="record.canEdit && !isStaticDemo ? tagColor('enabled') : 'default'">
-                      {{ memoryStatusLabel(record) }}
-                    </a-tag>
+                  <template v-if="column.key === 'memory'">
+                    <div class="resource-main">
+                      <div class="resource-name">{{ record.title || record.name }}</div>
+                      <div class="resource-subtitle">{{ record.name }}</div>
+                      <div class="resource-meta-line">
+                        <a-tag class="status-tag">{{ agentDisplay(record.agentKind) }}</a-tag>
+                        <a-tag class="status-tag" :color="tagColor(record.kind)">{{ record.kind }}</a-tag>
+                        <a-tag class="status-tag" :color="record.canEdit && !isStaticDemo ? tagColor('enabled') : 'default'">
+                          {{ memoryStatusLabel(record) }}
+                        </a-tag>
+                      </div>
+                    </div>
                   </template>
                   <template v-else-if="column.key === 'preview'">
-                    <div class="resource-preview">{{ record.preview || t('fallback.none') }}</div>
+                    <div class="resource-detail-text resource-detail-text-two-line">
+                      {{ record.preview || t('fallback.none') }}
+                    </div>
                   </template>
                   <template v-else-if="column.key === 'path'">
-                    <a-tooltip :title="record.path" placement="topLeft">
-                      <a-typography-text class="mono" :ellipsis="{ tooltip: record.path }">
-                        {{ record.relativePath }}
-                      </a-typography-text>
-                    </a-tooltip>
-                    <div class="timeline-event-raw">{{ formatBytes(record.sizeBytes) }}</div>
-                  </template>
-                  <template v-else-if="column.key === 'modifiedAt'">
-                    {{ formatDateTime(record.modifiedAt) }}
+                    <div class="resource-path-block">
+                      <a-tooltip :title="record.path" placement="topLeft">
+                        <a-typography-text class="mono resource-ellipsis" :ellipsis="{ tooltip: record.path }">
+                          {{ record.relativePath }}
+                        </a-typography-text>
+                      </a-tooltip>
+                      <div class="timeline-event-raw">
+                        {{ formatBytes(record.sizeBytes) }} · {{ formatDateTime(record.modifiedAt) }}
+                      </div>
+                    </div>
                   </template>
                   <template v-else-if="column.key === 'actions'">
                     <a-button size="small" type="text" @click="openMemory(record)">
@@ -843,23 +864,96 @@ onMounted(load)
   border-radius: var(--am-radius-sm);
 }
 
+.agent-resources-page :deep(.ant-table-wrapper),
+.agent-resources-page :deep(.ant-table-cell) {
+  min-width: 0;
+}
+
+.agent-resources-page :deep(.ant-table-cell) {
+  overflow: hidden;
+  vertical-align: top;
+}
+
+.resource-main,
+.resource-command-block,
+.resource-path-block,
+.resource-status-stack {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.resource-title-row {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
 .resource-name {
   color: var(--am-text);
   font-weight: 720;
   overflow-wrap: anywhere;
 }
 
-.resource-preview {
+.resource-subtitle,
+.resource-detail-text {
   color: var(--am-text-soft);
   font-size: 12px;
   line-height: 18px;
   overflow-wrap: anywhere;
 }
 
+.resource-detail-text-two-line {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.resource-ellipsis {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.resource-args-line {
+  color: var(--am-text-soft);
+}
+
+.resource-meta-line,
+.resource-switch-meta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.resource-switch-meta {
+  color: var(--am-text-soft);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 .resource-tag-list {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
+  min-width: 0;
+}
+
+.resource-meta-line .status-tag,
+.resource-tag-list .status-tag,
+.resource-status-stack .status-tag {
+  margin-inline-end: 0;
+}
+
+.resource-env-list {
+  max-height: 48px;
+  overflow: hidden;
 }
 
 .memory-detail {
