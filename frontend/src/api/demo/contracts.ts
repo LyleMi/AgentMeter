@@ -1,4 +1,5 @@
 import type {
+  AgentResourceOverview,
   AuditFinding,
   AuditFindingFilters,
   AuditSummary,
@@ -43,6 +44,7 @@ export interface DemoSource {
 
 export type DemoApi = {
   getSettings: () => Promise<Settings>
+  getAgentResources: () => Promise<AgentResourceOverview>
   saveSourceSettings: (sourceEntries: SourceEntry[]) => Promise<Settings>
   getAgentPrivacy: (target: PrivacyTarget, sourceKey?: string) => Promise<PrivacyConfigStatus>
   applyAgentPrivacyChanges: (

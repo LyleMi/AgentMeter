@@ -338,6 +338,67 @@ function Assert-Settings {
     Assert-ArrayProperty -Object $Payload -Name "pricingModels"
 }
 
+function Assert-AgentResources {
+    param([Parameter(Mandatory = $true)][object]$Payload)
+
+    Assert-JsonObject -Value $Payload -Label "response"
+    Assert-ArrayProperty -Object $Payload -Name "agents"
+    Assert-ArrayProperty -Object $Payload -Name "skills"
+    Assert-ArrayProperty -Object $Payload -Name "mcpServers"
+    Assert-ArrayProperty -Object $Payload -Name "memories"
+    Assert-ArrayProperty -Object $Payload -Name "warnings"
+
+    $agents = @((Get-JsonProperty -Object $Payload -Name "agents").Value)
+    if ($agents.Count -gt 0) {
+        $agent = $agents[0]
+        Assert-JsonObject -Value $agent -Label "agent resource"
+        Assert-StringProperty -Object $agent -Name "kind"
+        Assert-StringProperty -Object $agent -Name "name"
+        Assert-StringProperty -Object $agent -Name "rootPath"
+        Assert-BoolProperty -Object $agent -Name "exists"
+        Assert-StringProperty -Object $agent -Name "configPath"
+        Assert-ArrayProperty -Object $agent -Name "warnings"
+    }
+
+    $skills = @((Get-JsonProperty -Object $Payload -Name "skills").Value)
+    if ($skills.Count -gt 0) {
+        $skill = $skills[0]
+        Assert-JsonObject -Value $skill -Label "skill resource"
+        Assert-StringProperty -Object $skill -Name "agentKind"
+        Assert-StringProperty -Object $skill -Name "name"
+        Assert-StringProperty -Object $skill -Name "path"
+        Assert-StringProperty -Object $skill -Name "relativePath"
+        Assert-BoolProperty -Object $skill -Name "system"
+        Assert-NumberProperty -Object $skill -Name "sizeBytes"
+    }
+
+    $mcpServers = @((Get-JsonProperty -Object $Payload -Name "mcpServers").Value)
+    if ($mcpServers.Count -gt 0) {
+        $server = $mcpServers[0]
+        Assert-JsonObject -Value $server -Label "MCP server resource"
+        Assert-StringProperty -Object $server -Name "agentKind"
+        Assert-StringProperty -Object $server -Name "name"
+        Assert-StringProperty -Object $server -Name "command"
+        Assert-ArrayProperty -Object $server -Name "args"
+        Assert-ArrayProperty -Object $server -Name "envKeys"
+        Assert-BoolProperty -Object $server -Name "enabled"
+        Assert-StringProperty -Object $server -Name "status"
+    }
+
+    $memories = @((Get-JsonProperty -Object $Payload -Name "memories").Value)
+    if ($memories.Count -gt 0) {
+        $memory = $memories[0]
+        Assert-JsonObject -Value $memory -Label "memory resource"
+        Assert-StringProperty -Object $memory -Name "agentKind"
+        Assert-StringProperty -Object $memory -Name "name"
+        Assert-StringProperty -Object $memory -Name "path"
+        Assert-StringProperty -Object $memory -Name "relativePath"
+        Assert-StringProperty -Object $memory -Name "kind"
+        Assert-StringProperty -Object $memory -Name "preview"
+        Assert-NumberProperty -Object $memory -Name "sizeBytes"
+    }
+}
+
 function Assert-Overview {
     param([Parameter(Mandatory = $true)][object]$Payload)
 
@@ -657,6 +718,7 @@ function Assert-Pricing {
 
 $checks = @(
     [pscustomobject]@{ Path = "/api/settings"; Validate = { param($payload, $raw) Assert-Settings -Payload $payload } }
+    [pscustomobject]@{ Path = "/api/agent-resources"; Validate = { param($payload, $raw) Assert-AgentResources -Payload $payload } }
     [pscustomobject]@{ Path = "/api/privacy/codex"; Validate = { param($payload, $raw) Assert-PrivacyStatus -Payload $payload -ExpectedTarget "codex" } }
     [pscustomobject]@{ Path = "/api/privacy/gemini"; Validate = { param($payload, $raw) Assert-PrivacyStatus -Payload $payload -ExpectedTarget "gemini" } }
     [pscustomobject]@{ Path = "/api/privacy/claude"; Validate = { param($payload, $raw) Assert-PrivacyStatus -Payload $payload -ExpectedTarget "claude" } }

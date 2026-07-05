@@ -19,6 +19,59 @@ export interface SourceIdentity {
   sourceSessionsPath?: string
 }
 
+export interface AgentResourceOverview {
+  agents: AgentResourceAgent[]
+  skills: AgentSkillResource[]
+  mcpServers: AgentMCPServerResource[]
+  memories: AgentMemoryResource[]
+  warnings: string[]
+}
+
+export interface AgentResourceAgent {
+  kind: string
+  name: string
+  rootPath: string
+  exists: boolean
+  configPath: string
+  warnings: string[]
+}
+
+export interface AgentSkillResource {
+  agentKind: string
+  name: string
+  title: string
+  description: string
+  path: string
+  relativePath: string
+  system: boolean
+  sizeBytes: number
+  modifiedAt: string
+}
+
+export interface AgentMCPServerResource {
+  agentKind: string
+  name: string
+  command: string
+  args: string[]
+  envKeys: string[]
+  configPath: string
+  enabled: boolean
+  status: string
+  warning?: string
+}
+
+export interface AgentMemoryResource {
+  agentKind: string
+  name: string
+  title: string
+  path: string
+  relativePath: string
+  kind: string
+  preview: string
+  sizeBytes: number
+  modifiedAt: string
+}
+
 export interface Session extends SourceIdentity {
   id: number
   agentKind: string

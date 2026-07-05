@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/LyleMi/AgentMeter/internal/agent"
+	"github.com/LyleMi/AgentMeter/internal/agentresources"
 	"github.com/LyleMi/AgentMeter/internal/db"
 	"github.com/LyleMi/AgentMeter/internal/ingest"
 	"github.com/LyleMi/AgentMeter/internal/model"
@@ -102,6 +103,13 @@ func (a *App) GetSettings() (model.Settings, error) {
 		LastIndexStartedAt: a.lastStart,
 		LastIndexResult:    a.lastResult,
 	}, nil
+}
+
+func (a *App) GetAgentResources() (model.AgentResourceOverview, error) {
+	if err := a.ensureReady(); err != nil {
+		return model.AgentResourceOverview{}, err
+	}
+	return agentresources.Overview(a.ctx)
 }
 
 func (a *App) SaveSourceSettings(sourceEntries []model.SourceEntry) (model.Settings, error) {

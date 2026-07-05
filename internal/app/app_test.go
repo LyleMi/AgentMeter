@@ -318,6 +318,67 @@ func TestPrivacyCodexHTTPApplyEmptyBodyAppliesAll(t *testing.T) {
 	}
 }
 
+func TestAgentResourcesHTTPReturnsCodexOverview(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("CODEX_HOME", root)
+	if err := os.MkdirAll(filepath.Join(root, "skills", "sample"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "skills", "sample", "SKILL.md"), []byte("---\nname: sample\ndescription: Sample skill.\n---\n# Sample\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	app := &App{dbPath: filepath.Join(t.TempDir(), "agentmeter.sqlite")}
+	defer app.Shutdown(context.Background())
+	mux := http.NewServeMux()
+	RegisterHTTPHandlers(mux, app, fstest.MapFS{})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/agent-resources", nil)
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var overview model.AgentResourceOverview
+	if err := json.NewDecoder(recorder.Body).Decode(&overview); err != nil {
+		t.Fatal(err)
+	}
+	if len(overview.Agents) != 1 || overview.Agents[0].Kind != "codex" || !overview.Agents[0].Exists {
+		t.Fatalf("agent overview = %+v", overview.Agents)
+	}
+	if len(overview.Skills) != 1 || overview.Skills[0].Name != "sample" {
+		t.Fatalf("skills = %+v", overview.Skills)
+	}
+}
+
+func TestAgentResourcesHTTPMissingHomeIsReadOnlyShape(t *testing.T) {
+	t.Setenv("CODEX_HOME", filepath.Join(t.TempDir(), "missing"))
+
+	app := &App{dbPath: filepath.Join(t.TempDir(), "agentmeter.sqlite")}
+	defer app.Shutdown(context.Background())
+	mux := http.NewServeMux()
+	RegisterHTTPHandlers(mux, app, fstest.MapFS{})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/agent-resources", nil)
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var overview model.AgentResourceOverview
+	if err := json.NewDecoder(recorder.Body).Decode(&overview); err != nil {
+		t.Fatal(err)
+	}
+	if len(overview.Agents) != 1 || overview.Agents[0].Exists {
+		t.Fatalf("agent overview = %+v", overview.Agents)
+	}
+	if overview.Skills == nil || overview.MCPServers == nil || overview.Memories == nil {
+		t.Fatalf("resource arrays should be non-null: %+v", overview)
+	}
+}
+
 func TestPrivacyGeminiHTTPApplyEmptyBodyAppliesAll(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), ".gemini", "settings.json")
 	t.Setenv("AGENTMETER_GEMINI_SETTINGS_PATH", configPath)

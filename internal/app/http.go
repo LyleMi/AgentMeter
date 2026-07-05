@@ -115,6 +115,10 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 		value, err := service.GetSettings()
 		writeJSON(w, value, err)
 	})
+	mux.HandleFunc("GET /api/agent-resources", func(w http.ResponseWriter, r *http.Request) {
+		value, err := service.GetAgentResources()
+		writeJSON(w, value, err)
+	})
 	mux.HandleFunc("GET /api/privacy/{target}", func(w http.ResponseWriter, r *http.Request) {
 		target, ok := requirePrivacyTarget(w, r, service)
 		if !ok {

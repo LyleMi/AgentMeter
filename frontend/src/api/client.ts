@@ -1,4 +1,5 @@
 import type {
+  AgentResourceOverview,
   AuditFinding,
   AuditFindingFilters,
   AuditSummary,
@@ -93,6 +94,7 @@ function queryPath(path: string, values: QueryParamValues = {}) {
 
 const fetchApi = {
   getSettings: () => request<Settings>('/api/settings'),
+  getAgentResources: () => request<AgentResourceOverview>('/api/agent-resources'),
   saveSourceSettings: (sourceEntries: SourceEntry[]) =>
     request<Settings>('/api/settings', { method: 'POST', body: JSON.stringify({ sourceEntries }) }),
   getAgentPrivacy: (target: PrivacyTarget, sourceKey?: string) =>

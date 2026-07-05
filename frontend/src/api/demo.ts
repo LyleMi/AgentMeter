@@ -1,4 +1,5 @@
 import type { DemoApi } from './demo/contracts'
+import { agentResources } from './demo/agentResources'
 import { auditFinding, auditSummary, filteredFindings } from './demo/audit'
 import { modelSignals } from './demo/modelSignals'
 import { pricingModels, saveDemoPricingModel } from './demo/pricing'
@@ -20,6 +21,7 @@ import { clone, paginate } from './demo/utils'
 
 export const demoApi: DemoApi = {
   getSettings: async () => clone(settings()),
+  getAgentResources: async () => clone(agentResources),
   saveSourceSettings: async (sourceEntries) => clone(settings(sourceEntries)),
   getAgentPrivacy: async (target, _sourceKey) => clone(privacyStatus(target)),
   applyAgentPrivacyChanges: async (target, _changes, _sourceKey) => ({

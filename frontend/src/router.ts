@@ -43,6 +43,7 @@ const router = createRouter({
     { path: '/sessions', component: () => import('./views/Sessions.vue') },
     { path: '/sessions/:id', component: () => import('./views/SessionDetail.vue'), props: true },
     { path: '/prompts', component: () => import('./views/Prompts.vue') },
+    { path: '/agent-resources', component: () => import('./views/AgentResources.vue') },
     {
       path: '/audit',
       component: () => import('./views/Audit.vue'),

@@ -10,6 +10,7 @@ import Tooltip from 'ant-design-vue/es/tooltip'
 import Typography from 'ant-design-vue/es/typography'
 import {
   BarChartOutlined,
+  ApiOutlined,
   DollarCircleOutlined,
   FieldTimeOutlined,
   FileTextOutlined,
@@ -50,6 +51,7 @@ const { t } = useMessages({
     'nav.modelRisk': 'Model Risk',
     'nav.sessions': 'Sessions',
     'nav.prompts': 'Prompts',
+    'nav.agentResources': 'Agent Resources',
     'nav.tools': 'Tools',
     'nav.audit': 'Audit',
     'nav.agentPrivacy': 'Agent Privacy',
@@ -85,6 +87,7 @@ const { t } = useMessages({
     'nav.modelRisk': '模型风险',
     'nav.sessions': '会话',
     'nav.prompts': 'Prompt',
+    'nav.agentResources': 'Agent 资源',
     'nav.tools': '工具',
     'nav.audit': '审计',
     'nav.agentPrivacy': 'Agent 隐私',
@@ -135,6 +138,7 @@ const selectedKeys = computed(() => {
   if (route.path.startsWith('/model-signals')) return ['model-signals']
   if (route.path.startsWith('/sessions')) return ['sessions']
   if (route.path.startsWith('/prompts')) return ['prompts']
+  if (route.path.startsWith('/agent-resources')) return ['agent-resources']
   if (route.path.startsWith('/tools')) return ['tools']
   if (route.path.startsWith('/audit')) return ['audit']
   if (route.path.startsWith('/agent-privacy')) return ['agent-privacy']
@@ -150,6 +154,7 @@ const menuItems = computed(() => [
   { key: 'model-risk', icon: SafetyCertificateOutlined, label: t('nav.modelRisk'), path: '/model-signals/risk' },
   { key: 'sessions', icon: HistoryOutlined, label: t('nav.sessions'), path: '/sessions' },
   { key: 'prompts', icon: FileTextOutlined, label: t('nav.prompts'), path: '/prompts' },
+  { key: 'agent-resources', icon: ApiOutlined, label: t('nav.agentResources'), path: '/agent-resources' },
   { key: 'tools', icon: ToolOutlined, label: t('nav.tools'), path: '/tools' },
   { key: 'audit', icon: WarningOutlined, label: t('nav.audit'), path: '/audit' },
   { key: 'agent-privacy', icon: SafetyCertificateOutlined, label: t('nav.agentPrivacy'), path: '/agent-privacy' },
