@@ -32,21 +32,22 @@ func Overview(_ context.Context) (model.AgentResourceOverview, error) {
 		Warnings:   []string{},
 	}
 	for _, agent := range result.Agents {
-		if agent.Kind == codexKind {
-			result.Warnings = append(result.Warnings, agent.Warnings...)
-		}
-		if agent.Kind != codexKind || !agent.Exists {
+		result.Warnings = append(result.Warnings, agent.Warnings...)
+		if !agent.Exists {
 			continue
 		}
 		var warnings []string
-		result.Skills, warnings = codexSkills(filepath.Join(agent.RootPath, "skills"))
+		skills, warnings := skillsForAgent(agent)
+		result.Skills = append(result.Skills, skills...)
 		result.Warnings = append(result.Warnings, warnings...)
-		result.MCPServers, warnings = codexMCPServers(agent.ConfigPath)
+		servers, warnings := mcpServersForAgent(agent)
+		result.MCPServers = append(result.MCPServers, servers...)
 		result.Warnings = append(result.Warnings, warnings...)
-		result.Memories, warnings = codexMemories(filepath.Join(agent.RootPath, "memories"))
+		memories, warnings := memoriesForAgent(agent)
+		result.Memories = append(result.Memories, memories...)
 		result.Warnings = append(result.Warnings, warnings...)
-		return result, nil
 	}
+	sortAgentResources(result.Skills, result.MCPServers, result.Memories)
 	return result, nil
 }
 
@@ -72,14 +73,17 @@ func Unsupported(message string) error {
 }
 
 func SetSkillEnabled(_ context.Context, request model.AgentResourceToggleRequest) (model.AgentResourceOperationResult, error) {
-	agent, err := requireCodexAgentForKind(request.AgentKind)
+	agent, err := requireAgentForKind(request.AgentKind)
 	if err != nil {
 		return model.AgentResourceOperationResult{}, err
 	}
-	if request.Enabled {
-		err = setCodexSkillEnabled(agent.RootPath, request, true)
-	} else {
-		err = setCodexSkillEnabled(agent.RootPath, request, false)
+	switch agent.Kind {
+	case codexKind:
+		err = setCodexSkillEnabled(agent.RootPath, request, request.Enabled)
+	case "gemini", "claude", "codebuddy", "workbuddy":
+		err = setPackageSkillEnabled(agent, request, request.Enabled)
+	default:
+		err = Unsupported("skill toggles are not supported for " + agent.Kind)
 	}
 	if err != nil {
 		return model.AgentResourceOperationResult{}, err
@@ -88,13 +92,25 @@ func SetSkillEnabled(_ context.Context, request model.AgentResourceToggleRequest
 }
 
 func SetMCPServerEnabled(_ context.Context, request model.AgentResourceToggleRequest) (model.AgentResourceOperationResult, error) {
-	agent, err := requireCodexAgentForKind(request.AgentKind)
+	agent, err := requireAgentForKind(request.AgentKind)
 	if err != nil {
 		return model.AgentResourceOperationResult{}, err
 	}
 	name := strings.TrimSpace(request.Name)
 	if name == "" {
 		return model.AgentResourceOperationResult{}, BadRequest("MCP server name is required")
+	}
+	if agent.Kind == "gemini" {
+		if err := setGeminiMCPEnabled(agent, name, request.Enabled); err != nil {
+			return model.AgentResourceOperationResult{}, err
+		}
+		return operationResult(context.Background())
+	}
+	if agent.Kind != codexKind {
+		if err := setJSONMCPEnabled(agent, name, request.Enabled); err != nil {
+			return model.AgentResourceOperationResult{}, err
+		}
+		return operationResult(context.Background())
 	}
 	if err := ensurePathInside(agent.ConfigPath, agent.RootPath); err != nil {
 		return model.AgentResourceOperationResult{}, err
@@ -126,13 +142,20 @@ func SetMCPServerEnabled(_ context.Context, request model.AgentResourceToggleReq
 }
 
 func MemoryDetail(_ context.Context, agentKind, path, relativePath string) (model.AgentMemoryDetail, error) {
-	agent, err := requireCodexAgentForKind(agentKind)
+	agent, err := requireAgentForKind(agentKind)
 	if err != nil {
 		return model.AgentMemoryDetail{}, err
+	}
+	if agent.Kind != codexKind {
+		return genericMemoryDetail(agent, path, relativePath)
 	}
 	memoryPath, err := resolveCodexMemoryPath(agent.RootPath, path, relativePath)
 	if err != nil {
 		return model.AgentMemoryDetail{}, err
+	}
+	rel := relativePathFromRoot(filepath.Join(agent.RootPath, "memories"), memoryPath)
+	if !isCodexMemoryFile(rel) {
+		return model.AgentMemoryDetail{}, BadRequest("memory path is not a supported Codex memory file")
 	}
 	info, err := os.Stat(memoryPath)
 	if err != nil {
@@ -148,7 +171,6 @@ func MemoryDetail(_ context.Context, agentKind, path, relativePath string) (mode
 	if err != nil {
 		return model.AgentMemoryDetail{}, err
 	}
-	rel := relativePathFromRoot(filepath.Join(agent.RootPath, "memories"), memoryPath)
 	name := strings.TrimSuffix(filepath.Base(memoryPath), filepath.Ext(memoryPath))
 	return model.AgentMemoryDetail{
 		AgentMemoryResource: model.AgentMemoryResource{
@@ -168,9 +190,12 @@ func MemoryDetail(_ context.Context, agentKind, path, relativePath string) (mode
 }
 
 func UpdateMemory(_ context.Context, request model.AgentMemoryUpdateRequest) (model.AgentMemoryDetail, error) {
-	agent, err := requireCodexAgentForKind(request.AgentKind)
+	agent, err := requireAgentForKind(request.AgentKind)
 	if err != nil {
 		return model.AgentMemoryDetail{}, err
+	}
+	if agent.Kind != codexKind {
+		return updateGenericMemory(agent, request)
 	}
 	memoryPath, err := resolveCodexMemoryPath(agent.RootPath, request.Path, request.RelativePath)
 	if err != nil {
@@ -178,6 +203,10 @@ func UpdateMemory(_ context.Context, request model.AgentMemoryUpdateRequest) (mo
 	}
 	if !strings.EqualFold(filepath.Ext(memoryPath), ".md") {
 		return model.AgentMemoryDetail{}, BadRequest("memory path must be a markdown file")
+	}
+	rel := relativePathFromRoot(filepath.Join(agent.RootPath, "memories"), memoryPath)
+	if !isCodexMemoryFile(rel) {
+		return model.AgentMemoryDetail{}, BadRequest("memory path is not a supported Codex memory file")
 	}
 	if err := os.MkdirAll(filepath.Dir(memoryPath), 0o755); err != nil {
 		return model.AgentMemoryDetail{}, err
@@ -197,22 +226,30 @@ func operationResult(ctx context.Context) (model.AgentResourceOperationResult, e
 }
 
 func requireCodexAgentForKind(kind string) (model.AgentResourceAgent, error) {
+	agent, err := requireAgentForKind(kind)
+	if err != nil {
+		return model.AgentResourceAgent{}, err
+	}
+	if agent.Kind != codexKind {
+		return model.AgentResourceAgent{}, Unsupported("resource writes are not supported for " + agent.Kind)
+	}
+	return agent, nil
+}
+
+func requireAgentForKind(kind string) (model.AgentResourceAgent, error) {
 	kind = strings.ToLower(strings.TrimSpace(kind))
 	if kind == "" {
 		kind = codexKind
 	}
-	if kind != codexKind {
-		return model.AgentResourceAgent{}, Unsupported("resource writes are not supported for " + kind)
-	}
 	for _, agent := range agentResourceAgents() {
-		if agent.Kind == codexKind {
+		if agent.Kind == kind {
 			if !agent.Exists {
-				return model.AgentResourceAgent{}, NotFound("Codex home is not available")
+				return model.AgentResourceAgent{}, NotFound(agent.Name + " home is not available")
 			}
 			return agent, nil
 		}
 	}
-	return model.AgentResourceAgent{}, NotFound("Codex home is not available")
+	return model.AgentResourceAgent{}, Unsupported("resource writes are not supported for " + kind)
 }
 
 func agentResourceAgents() []model.AgentResourceAgent {
@@ -224,11 +261,11 @@ func agentResourceAgents() []model.AgentResourceAgent {
 		supports   []string
 	}{
 		{codexKind, codexName, codexRoot(), filepath.Join(codexRoot(), "config.toml"), []string{"skills", "mcpServers", "memories"}},
-		{"gemini", "Gemini CLI", jsonAgentRoot("AGENTMETER_GEMINI_SETTINGS_PATH", "", ".gemini"), jsonAgentConfigPath("AGENTMETER_GEMINI_SETTINGS_PATH", "", ".gemini"), nil},
-		{"claude", "Claude Code", jsonAgentRoot("AGENTMETER_CLAUDE_SETTINGS_PATH", "CLAUDE_CONFIG_DIR", ".claude"), jsonAgentConfigPath("AGENTMETER_CLAUDE_SETTINGS_PATH", "CLAUDE_CONFIG_DIR", ".claude"), nil},
-		{"codebuddy", "CodeBuddy", jsonAgentRoot("AGENTMETER_CODEBUDDY_SETTINGS_PATH", "CODEBUDDY_CONFIG_DIR", ".codebuddy"), jsonAgentConfigPath("AGENTMETER_CODEBUDDY_SETTINGS_PATH", "CODEBUDDY_CONFIG_DIR", ".codebuddy"), nil},
-		{"workbuddy", "WorkBuddy", envOrHomeRoot("WORKBUDDY_CONFIG_DIR", ".workbuddy"), filepath.Join(envOrHomeRoot("WORKBUDDY_CONFIG_DIR", ".workbuddy"), "settings.json"), nil},
-		{"cursor", "Cursor", envOrHomeRoot("CURSOR_HOME", ".cursor"), filepath.Join(envOrHomeRoot("CURSOR_HOME", ".cursor"), "settings.json"), nil},
+		{"gemini", "Gemini CLI", jsonAgentRoot("AGENTMETER_GEMINI_SETTINGS_PATH", "", ".gemini"), jsonAgentConfigPath("AGENTMETER_GEMINI_SETTINGS_PATH", "", ".gemini"), []string{"skills", "mcpServers", "memories"}},
+		{"claude", "Claude Code", jsonAgentRoot("AGENTMETER_CLAUDE_SETTINGS_PATH", "CLAUDE_CONFIG_DIR", ".claude"), jsonAgentConfigPath("AGENTMETER_CLAUDE_SETTINGS_PATH", "CLAUDE_CONFIG_DIR", ".claude"), []string{"skills", "mcpServers", "memories"}},
+		{"codebuddy", "CodeBuddy", jsonAgentRoot("AGENTMETER_CODEBUDDY_SETTINGS_PATH", "CODEBUDDY_CONFIG_DIR", ".codebuddy"), jsonAgentConfigPath("AGENTMETER_CODEBUDDY_SETTINGS_PATH", "CODEBUDDY_CONFIG_DIR", ".codebuddy"), []string{"skills", "mcpServers", "memories"}},
+		{"workbuddy", "WorkBuddy", envOrHomeRoot("WORKBUDDY_CONFIG_DIR", ".workbuddy"), filepath.Join(envOrHomeRoot("WORKBUDDY_CONFIG_DIR", ".workbuddy"), "settings.json"), []string{"skills", "mcpServers", "memories"}},
+		{"cursor", "Cursor", envOrHomeRoot("CURSOR_HOME", ".cursor"), filepath.Join(envOrHomeRoot("CURSOR_HOME", ".cursor"), "mcp.json"), []string{"rules", "mcpServers"}},
 	}
 	agents := make([]model.AgentResourceAgent, 0, len(definitions))
 	for _, definition := range definitions {
@@ -245,10 +282,6 @@ func agentResourceAgents() []model.AgentResourceAgent {
 			agent.Exists = true
 		} else if err != nil {
 			agent.Warnings = append(agent.Warnings, definition.name+" home is not available: "+err.Error())
-		}
-		if definition.kind != codexKind {
-			agent.Unsupported = []string{"skills", "mcpServers", "memories"}
-			agent.Warnings = append(agent.Warnings, definition.name+" resource inventory is not implemented yet; resources are intentionally empty.")
 		}
 		agents = append(agents, agent)
 	}
@@ -299,6 +332,7 @@ func codexSkills(root string) ([]model.AgentSkillResource, []string) {
 		name := firstNonEmpty(meta["name"], filepath.Base(dir))
 		items = append(items, model.AgentSkillResource{
 			AgentKind:    codexKind,
+			ResourceType: "skill",
 			Name:         name,
 			Title:        firstNonEmpty(markdownTitle(content), name),
 			Description:  meta["description"],
@@ -385,12 +419,17 @@ func codexMemories(root string) ([]model.AgentMemoryResource, []string) {
 			return nil
 		}
 		if entry.IsDir() {
-			if entry.Name() == ".git" {
+			rel := relativePath(root, path)
+			if shouldSkipCodexMemoryDir(rel, entry.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 		if !strings.EqualFold(filepath.Ext(entry.Name()), ".md") {
+			return nil
+		}
+		rel := relativePath(root, path)
+		if !isCodexMemoryFile(rel) {
 			return nil
 		}
 		info, err := entry.Info()
@@ -403,7 +442,6 @@ func codexMemories(root string) ([]model.AgentMemoryResource, []string) {
 			warnings = append(warnings, "Unable to read memory file "+path+": "+err.Error())
 			return nil
 		}
-		rel := relativePath(root, path)
 		name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 		items = append(items, model.AgentMemoryResource{
 			AgentKind:    codexKind,
@@ -719,15 +757,30 @@ func memoryKind(rel string) string {
 		return "summary"
 	case rel == "raw_memories.md":
 		return "raw"
-	case strings.HasPrefix(rel, "extensions/"):
-		return "extension"
 	case strings.HasPrefix(rel, "rollout_summaries/"):
 		return "rollout"
-	case strings.HasPrefix(rel, "skills/"):
-		return "skill"
 	default:
 		return "markdown"
 	}
+}
+
+func shouldSkipCodexMemoryDir(rel, name string) bool {
+	if name == ".git" {
+		return true
+	}
+	rel = filepath.ToSlash(rel)
+	return rel == "extensions" || strings.HasPrefix(rel, "extensions/") ||
+		rel == "skills" || strings.HasPrefix(rel, "skills/")
+}
+
+func isCodexMemoryFile(rel string) bool {
+	rel = filepath.ToSlash(filepath.Clean(rel))
+	if !strings.EqualFold(filepath.Ext(rel), ".md") {
+		return false
+	}
+	return !(rel == "extensions" || strings.HasPrefix(rel, "extensions/") ||
+		rel == "skills" || strings.HasPrefix(rel, "skills/") ||
+		rel == ".git" || strings.HasPrefix(rel, ".git/"))
 }
 
 func stringValue(value any) string {

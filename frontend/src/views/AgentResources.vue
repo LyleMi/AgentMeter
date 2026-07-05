@@ -59,7 +59,7 @@ const { t } = useMessages({
     'metric.agentNote.missing': 'Codex home missing',
     'metric.agentNote.multiple': '{count} agents discovered',
     'metric.skills': 'Skills',
-    'metric.skillsNote': 'SKILL.md packages',
+    'metric.skillsNote': 'skills and rules',
     'metric.mcp': 'MCP',
     'metric.mcpNote': 'configured servers',
     'metric.memory': 'Memory',
@@ -115,11 +115,11 @@ const { t } = useMessages({
     'message.memorySaved': 'Memory saved',
     'message.memorySaveFailed': 'Unable to save memory',
     'empty.skills.title': 'No skills found',
-    'empty.skills.text': 'No readable SKILL.md files were found under the Codex skills directory.',
+    'empty.skills.text': 'No readable skills, commands, subagents, or rules were found.',
     'empty.mcp.title': 'No MCP servers configured',
-    'empty.mcp.text': 'No mcp_servers entries were found in Codex config.toml.',
+    'empty.mcp.text': 'No MCP server entries were found in supported agent configs.',
     'empty.memory.title': 'No memory files found',
-    'empty.memory.text': 'No Markdown files were found under the Codex memory directory.',
+    'empty.memory.text': 'No editable Markdown resource files were found for supported agents.',
     'warnings.title': 'Warnings',
     'fallback.unknown': 'unknown',
     'fallback.none': 'none'
@@ -140,7 +140,7 @@ const { t } = useMessages({
     'metric.agentNote.missing': '缺少 Codex 主目录',
     'metric.agentNote.multiple': '发现 {count} 个 Agent',
     'metric.skills': 'Skill',
-    'metric.skillsNote': 'SKILL.md 包',
+    'metric.skillsNote': 'Skill 和规则',
     'metric.mcp': 'MCP',
     'metric.mcpNote': '已配置 server',
     'metric.memory': 'Memory',
@@ -196,11 +196,11 @@ const { t } = useMessages({
     'message.memorySaved': 'Memory 已保存',
     'message.memorySaveFailed': '无法保存 Memory',
     'empty.skills.title': '暂无 Skill',
-    'empty.skills.text': 'Codex skills 目录下未发现可读取的 SKILL.md 文件。',
+    'empty.skills.text': '未发现可读取的 skill、command、subagent 或 rule。',
     'empty.mcp.title': '暂无 MCP Server',
-    'empty.mcp.text': 'Codex config.toml 中未发现 mcp_servers 配置项。',
+    'empty.mcp.text': '支持的 Agent 配置中未发现 MCP server 配置项。',
     'empty.memory.title': '暂无 Memory 文件',
-    'empty.memory.text': 'Codex memory 目录下未发现 Markdown 文件。',
+    'empty.memory.text': '未发现支持编辑的 Agent Markdown 资源文件。',
     'warnings.title': '警告',
     'fallback.unknown': '未知',
     'fallback.none': '无'
@@ -329,6 +329,10 @@ function statusLabel(value: string) {
   if (value === 'disabled') return t('status.disabled')
   if (value === 'incomplete') return t('status.incomplete')
   return value || t('fallback.unknown')
+}
+
+function resourceTypeLabel(record: AgentSkillResource) {
+  return record.resourceType || 'skill'
 }
 
 function agentDisplay(agentKind: string) {
@@ -578,6 +582,7 @@ onMounted(load)
                       <div class="resource-subtitle">{{ record.title }}</div>
                       <div class="resource-meta-line">
                         <a-tag class="status-tag">{{ agentDisplay(record.agentKind) }}</a-tag>
+                        <a-tag class="status-tag" :color="tagColor(resourceTypeLabel(record))">{{ resourceTypeLabel(record) }}</a-tag>
                         <a-tag class="status-tag" :color="record.system ? tagColor('system') : 'default'">
                           {{ record.system ? t('scope.system') : t('scope.user') }}
                         </a-tag>

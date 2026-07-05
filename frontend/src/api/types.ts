@@ -40,6 +40,7 @@ export interface AgentResourceAgent {
 
 export interface AgentSkillResource {
   agentKind: string
+  resourceType?: string
   name: string
   title: string
   description: string

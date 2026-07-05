@@ -50,6 +50,7 @@ type AgentResourceAgent struct {
 
 type AgentSkillResource struct {
 	AgentKind    string    `json:"agentKind"`
+	ResourceType string    `json:"resourceType,omitempty"`
 	Name         string    `json:"name"`
 	Title        string    `json:"title"`
 	Description  string    `json:"description"`

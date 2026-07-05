@@ -22,6 +22,7 @@ export const agentResources: AgentResourceOverview = {
   skills: [
     {
       agentKind: 'codex',
+      resourceType: 'skill',
       name: 'frontend-design',
       title: 'Frontend Design',
       description: 'Guidance for distinctive, intentional visual design when building new UI.',
@@ -36,6 +37,7 @@ export const agentResources: AgentResourceOverview = {
     },
     {
       agentKind: 'codex',
+      resourceType: 'skill',
       name: 'openai-docs',
       title: 'OpenAI Docs',
       description: 'Use official OpenAI documentation for product and API questions.',
@@ -50,6 +52,7 @@ export const agentResources: AgentResourceOverview = {
     },
     {
       agentKind: 'gemini',
+      resourceType: 'skill',
       name: 'workspace-context',
       title: 'Workspace Context',
       description: 'Project-scoped Gemini CLI instructions and context files.',
