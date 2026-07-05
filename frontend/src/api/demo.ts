@@ -19,9 +19,48 @@ import { indexResult, settings } from './demo/settings'
 import { breakdown, overview, tokenAnalytics } from './demo/usage'
 import { clone, paginate } from './demo/utils'
 
+function replaceAgentResources(next: typeof agentResources) {
+  agentResources.agents = next.agents
+  agentResources.skills = next.skills
+  agentResources.mcpServers = next.mcpServers
+  agentResources.memories = next.memories
+  agentResources.warnings = next.warnings
+  return agentResources
+}
+
 export const demoApi: DemoApi = {
   getSettings: async () => clone(settings()),
   getAgentResources: async () => clone(agentResources),
+  setAgentSkillEnabled: async (input) => clone(replaceAgentResources({
+    ...agentResources,
+    skills: agentResources.skills.map((skill) => (
+      skill.agentKind === input.agentKind && (skill.path === input.path || skill.name === input.name)
+        ? { ...skill, enabled: input.enabled, status: input.enabled ? 'enabled' : 'disabled' }
+        : skill
+    ))
+  })),
+  setAgentMCPServerEnabled: async (input) => clone(replaceAgentResources({
+    ...agentResources,
+    mcpServers: agentResources.mcpServers.map((server) => (
+      server.agentKind === input.agentKind && server.name === input.name
+        ? { ...server, enabled: input.enabled, status: input.enabled ? 'configured' : 'disabled' }
+        : server
+    ))
+  })),
+  getAgentMemory: async (input) => {
+    const memory = agentResources.memories.find((item) => item.agentKind === input.agentKind && item.path === input.path)
+    if (!memory) throw new Error('Memory file not found')
+    return clone(memory)
+  },
+  saveAgentMemory: async (input) => {
+    const memory = agentResources.memories.find((item) => item.agentKind === input.agentKind && item.path === input.path)
+    if (!memory) throw new Error('Memory file not found')
+    memory.content = input.content
+    memory.preview = input.content.trim().split(/\r?\n/).find(Boolean) || ''
+    memory.sizeBytes = input.content.length
+    memory.modifiedAt = new Date().toISOString()
+    return clone(memory)
+  },
   saveSourceSettings: async (sourceEntries) => clone(settings(sourceEntries)),
   getAgentPrivacy: async (target, _sourceKey) => clone(privacyStatus(target)),
   applyAgentPrivacyChanges: async (target, _changes, _sourceKey) => ({

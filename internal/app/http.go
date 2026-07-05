@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/LyleMi/AgentMeter/internal/agentresources"
 	"github.com/LyleMi/AgentMeter/internal/model"
 	"github.com/LyleMi/AgentMeter/internal/pricing"
 	"github.com/LyleMi/AgentMeter/internal/query"
@@ -49,6 +50,13 @@ func statusForError(err error) int {
 	}
 	var sourceUnsupportedErr privacySourceUnsupportedError
 	if errors.As(err, &sourceUnsupportedErr) {
+		return http.StatusBadRequest
+	}
+	var resourceErr agentresources.ResourceError
+	if errors.As(err, &resourceErr) {
+		if resourceErr.Status > 0 {
+			return resourceErr.Status
+		}
 		return http.StatusBadRequest
 	}
 	if errors.Is(err, pricing.ErrInvalidRate) {
@@ -117,6 +125,35 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 	})
 	mux.HandleFunc("GET /api/agent-resources", func(w http.ResponseWriter, r *http.Request) {
 		value, err := service.GetAgentResources()
+		writeJSON(w, value, err)
+	})
+	mux.HandleFunc("POST /api/agent-resources/skills/enabled", func(w http.ResponseWriter, r *http.Request) {
+		var body model.AgentResourceToggleRequest
+		if !decodeOptionalJSONBodyOrWrite(w, r, &body) {
+			return
+		}
+		value, err := service.SetAgentSkillEnabled(body)
+		writeJSON(w, value, err)
+	})
+	mux.HandleFunc("POST /api/agent-resources/mcp/enabled", func(w http.ResponseWriter, r *http.Request) {
+		var body model.AgentResourceToggleRequest
+		if !decodeOptionalJSONBodyOrWrite(w, r, &body) {
+			return
+		}
+		value, err := service.SetAgentMCPServerEnabled(body)
+		writeJSON(w, value, err)
+	})
+	mux.HandleFunc("GET /api/agent-resources/memories/detail", func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		value, err := service.GetAgentMemoryDetail(query.Get("agentKind"), query.Get("path"), query.Get("relativePath"))
+		writeJSON(w, value, err)
+	})
+	mux.HandleFunc("POST /api/agent-resources/memories/detail", func(w http.ResponseWriter, r *http.Request) {
+		var body model.AgentMemoryUpdateRequest
+		if !decodeOptionalJSONBodyOrWrite(w, r, &body) {
+			return
+		}
+		value, err := service.UpdateAgentMemory(body)
 		writeJSON(w, value, err)
 	})
 	mux.HandleFunc("GET /api/privacy/{target}", func(w http.ResponseWriter, r *http.Request) {

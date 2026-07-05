@@ -319,7 +319,9 @@ func TestPrivacyCodexHTTPApplyEmptyBodyAppliesAll(t *testing.T) {
 }
 
 func TestAgentResourcesHTTPReturnsCodexOverview(t *testing.T) {
-	root := t.TempDir()
+	dir := t.TempDir()
+	isolateResourceAgentHomes(t, dir)
+	root := filepath.Join(dir, ".codex")
 	t.Setenv("CODEX_HOME", root)
 	if err := os.MkdirAll(filepath.Join(root, "skills", "sample"), 0o755); err != nil {
 		t.Fatal(err)
@@ -344,8 +346,12 @@ func TestAgentResourcesHTTPReturnsCodexOverview(t *testing.T) {
 	if err := json.NewDecoder(recorder.Body).Decode(&overview); err != nil {
 		t.Fatal(err)
 	}
-	if len(overview.Agents) != 1 || overview.Agents[0].Kind != "codex" || !overview.Agents[0].Exists {
+	codex := findResourceAgent(t, overview, "codex")
+	if !codex.Exists {
 		t.Fatalf("agent overview = %+v", overview.Agents)
+	}
+	if len(overview.Agents) < 4 {
+		t.Fatalf("expected known agents in overview: %+v", overview.Agents)
 	}
 	if len(overview.Skills) != 1 || overview.Skills[0].Name != "sample" {
 		t.Fatalf("skills = %+v", overview.Skills)
@@ -353,7 +359,9 @@ func TestAgentResourcesHTTPReturnsCodexOverview(t *testing.T) {
 }
 
 func TestAgentResourcesHTTPMissingHomeIsReadOnlyShape(t *testing.T) {
-	t.Setenv("CODEX_HOME", filepath.Join(t.TempDir(), "missing"))
+	dir := t.TempDir()
+	isolateResourceAgentHomes(t, dir)
+	t.Setenv("CODEX_HOME", filepath.Join(dir, "missing"))
 
 	app := &App{dbPath: filepath.Join(t.TempDir(), "agentmeter.sqlite")}
 	defer app.Shutdown(context.Background())
@@ -371,11 +379,65 @@ func TestAgentResourcesHTTPMissingHomeIsReadOnlyShape(t *testing.T) {
 	if err := json.NewDecoder(recorder.Body).Decode(&overview); err != nil {
 		t.Fatal(err)
 	}
-	if len(overview.Agents) != 1 || overview.Agents[0].Exists {
+	codex := findResourceAgent(t, overview, "codex")
+	if codex.Exists {
 		t.Fatalf("agent overview = %+v", overview.Agents)
 	}
 	if overview.Skills == nil || overview.MCPServers == nil || overview.Memories == nil {
 		t.Fatalf("resource arrays should be non-null: %+v", overview)
+	}
+}
+
+func TestAgentResourcesHTTPCanToggleCodexSkill(t *testing.T) {
+	dir := t.TempDir()
+	isolateResourceAgentHomes(t, dir)
+	root := filepath.Join(dir, ".codex")
+	t.Setenv("CODEX_HOME", root)
+	if err := os.MkdirAll(filepath.Join(root, "skills", "sample"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "skills", "sample", "SKILL.md"), []byte("---\nname: sample\n---\n# Sample\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	app := &App{dbPath: filepath.Join(t.TempDir(), "agentmeter.sqlite")}
+	defer app.Shutdown(context.Background())
+	mux := http.NewServeMux()
+	RegisterHTTPHandlers(mux, app, fstest.MapFS{})
+
+	recorder := httptest.NewRecorder()
+	body := strings.NewReader(`{"agentKind":"codex","relativePath":"sample","enabled":false}`)
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-resources/skills/enabled", body)
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "skills", "sample", "SKILL.md.disabled")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAgentResourcesHTTPRejectsMemoryTraversal(t *testing.T) {
+	dir := t.TempDir()
+	isolateResourceAgentHomes(t, dir)
+	root := filepath.Join(dir, ".codex")
+	t.Setenv("CODEX_HOME", root)
+	if err := os.MkdirAll(filepath.Join(root, "memories"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	app := &App{dbPath: filepath.Join(t.TempDir(), "agentmeter.sqlite")}
+	defer app.Shutdown(context.Background())
+	mux := http.NewServeMux()
+	RegisterHTTPHandlers(mux, app, fstest.MapFS{})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/agent-resources/memories/detail?agentKind=codex&relativePath=../config.toml", nil)
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
 }
 
@@ -975,4 +1037,27 @@ func containsExactSourcePath(paths []string, path string) bool {
 		}
 	}
 	return false
+}
+
+func isolateResourceAgentHomes(t *testing.T, dir string) {
+	t.Helper()
+	home := filepath.Join(dir, "home")
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("AGENTMETER_GEMINI_SETTINGS_PATH", filepath.Join(dir, ".gemini", "settings.json"))
+	t.Setenv("AGENTMETER_CLAUDE_SETTINGS_PATH", filepath.Join(dir, ".claude", "settings.json"))
+	t.Setenv("AGENTMETER_CODEBUDDY_SETTINGS_PATH", filepath.Join(dir, ".codebuddy", "settings.json"))
+	t.Setenv("WORKBUDDY_CONFIG_DIR", filepath.Join(dir, ".workbuddy"))
+	t.Setenv("CURSOR_HOME", filepath.Join(dir, ".cursor"))
+}
+
+func findResourceAgent(t *testing.T, overview model.AgentResourceOverview, kind string) model.AgentResourceAgent {
+	t.Helper()
+	for _, agent := range overview.Agents {
+		if agent.Kind == kind {
+			return agent
+		}
+	}
+	t.Fatalf("agent %q missing: %+v", kind, overview.Agents)
+	return model.AgentResourceAgent{}
 }

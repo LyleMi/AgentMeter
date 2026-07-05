@@ -1,5 +1,9 @@
 import type {
+  AgentMemoryLookup,
+  AgentMemoryResource,
+  AgentMemoryUpdateInput,
   AgentResourceOverview,
+  AgentResourceToggleInput,
   AuditFinding,
   AuditFindingFilters,
   AuditSummary,
@@ -45,6 +49,10 @@ export interface DemoSource {
 export type DemoApi = {
   getSettings: () => Promise<Settings>
   getAgentResources: () => Promise<AgentResourceOverview>
+  setAgentSkillEnabled: (input: AgentResourceToggleInput) => Promise<AgentResourceOverview>
+  setAgentMCPServerEnabled: (input: AgentResourceToggleInput) => Promise<AgentResourceOverview>
+  getAgentMemory: (input: AgentMemoryLookup) => Promise<AgentMemoryResource>
+  saveAgentMemory: (input: AgentMemoryUpdateInput) => Promise<AgentMemoryResource>
   saveSourceSettings: (sourceEntries: SourceEntry[]) => Promise<Settings>
   getAgentPrivacy: (target: PrivacyTarget, sourceKey?: string) => Promise<PrivacyConfigStatus>
   applyAgentPrivacyChanges: (

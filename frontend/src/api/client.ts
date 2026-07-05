@@ -1,5 +1,10 @@
 import type {
+  AgentMemoryLookup,
+  AgentMemoryResource,
+  AgentMemoryUpdateInput,
+  AgentResourceOperationResult,
   AgentResourceOverview,
+  AgentResourceToggleInput,
   AuditFinding,
   AuditFindingFilters,
   AuditSummary,
@@ -92,9 +97,34 @@ function queryPath(path: string, values: QueryParamValues = {}) {
   return query ? `${path}?${query}` : path
 }
 
+function agentResourceOverview(result: AgentResourceOverview | AgentResourceOperationResult) {
+  return 'overview' in result ? result.overview : result
+}
+
 const fetchApi = {
   getSettings: () => request<Settings>('/api/settings'),
   getAgentResources: () => request<AgentResourceOverview>('/api/agent-resources'),
+  setAgentSkillEnabled: (input: AgentResourceToggleInput) =>
+    request<AgentResourceOverview | AgentResourceOperationResult>('/api/agent-resources/skills/enabled', {
+      method: 'POST',
+      body: JSON.stringify(input)
+    }).then(agentResourceOverview),
+  setAgentMCPServerEnabled: (input: AgentResourceToggleInput) =>
+    request<AgentResourceOverview | AgentResourceOperationResult>('/api/agent-resources/mcp/enabled', {
+      method: 'POST',
+      body: JSON.stringify(input)
+    }).then(agentResourceOverview),
+  getAgentMemory: (input: AgentMemoryLookup) =>
+    request<AgentMemoryResource>(queryPath('/api/agent-resources/memories/detail', {
+      agentKind: input.agentKind,
+      path: input.path,
+      relativePath: input.relativePath
+    })),
+  saveAgentMemory: (input: AgentMemoryUpdateInput) =>
+    request<AgentMemoryResource>('/api/agent-resources/memories/detail', {
+      method: 'POST',
+      body: JSON.stringify(input)
+    }),
   saveSourceSettings: (sourceEntries: SourceEntry[]) =>
     request<Settings>('/api/settings', { method: 'POST', body: JSON.stringify({ sourceEntries }) }),
   getAgentPrivacy: (target: PrivacyTarget, sourceKey?: string) =>

@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,39 +24,234 @@ const (
 )
 
 func Overview(_ context.Context) (model.AgentResourceOverview, error) {
-	root := codexRoot()
-	agent := model.AgentResourceAgent{
-		Kind:       codexKind,
-		Name:       codexName,
-		RootPath:   root,
-		ConfigPath: filepath.Join(root, "config.toml"),
-		Warnings:   []string{},
-	}
-	if stat, err := os.Stat(root); err == nil && stat.IsDir() {
-		agent.Exists = true
-	} else if err != nil {
-		agent.Warnings = append(agent.Warnings, "Codex home is not available: "+err.Error())
-	}
-
 	result := model.AgentResourceOverview{
-		Agents:   []model.AgentResourceAgent{agent},
-		Warnings: append([]string{}, agent.Warnings...),
+		Agents:     agentResourceAgents(),
+		Skills:     []model.AgentSkillResource{},
+		MCPServers: []model.AgentMCPServerResource{},
+		Memories:   []model.AgentMemoryResource{},
 	}
-	if !agent.Exists {
-		result.Skills = []model.AgentSkillResource{}
-		result.MCPServers = []model.AgentMCPServerResource{}
-		result.Memories = []model.AgentMemoryResource{}
+	for _, agent := range result.Agents {
+		if agent.Kind == codexKind {
+			result.Warnings = append(result.Warnings, agent.Warnings...)
+		}
+		if agent.Kind != codexKind || !agent.Exists {
+			continue
+		}
+		var warnings []string
+		result.Skills, warnings = codexSkills(filepath.Join(agent.RootPath, "skills"))
+		result.Warnings = append(result.Warnings, warnings...)
+		result.MCPServers, warnings = codexMCPServers(agent.ConfigPath)
+		result.Warnings = append(result.Warnings, warnings...)
+		result.Memories, warnings = codexMemories(filepath.Join(agent.RootPath, "memories"))
+		result.Warnings = append(result.Warnings, warnings...)
 		return result, nil
 	}
-
-	var warnings []string
-	result.Skills, warnings = codexSkills(filepath.Join(root, "skills"))
-	result.Warnings = append(result.Warnings, warnings...)
-	result.MCPServers, warnings = codexMCPServers(agent.ConfigPath)
-	result.Warnings = append(result.Warnings, warnings...)
-	result.Memories, warnings = codexMemories(filepath.Join(root, "memories"))
-	result.Warnings = append(result.Warnings, warnings...)
 	return result, nil
+}
+
+type ResourceError struct {
+	Status  int
+	Message string
+}
+
+func (e ResourceError) Error() string {
+	return e.Message
+}
+
+func BadRequest(message string) error {
+	return ResourceError{Status: 400, Message: message}
+}
+
+func NotFound(message string) error {
+	return ResourceError{Status: 404, Message: message}
+}
+
+func Unsupported(message string) error {
+	return ResourceError{Status: 400, Message: message}
+}
+
+func SetSkillEnabled(_ context.Context, request model.AgentResourceToggleRequest) (model.AgentResourceOperationResult, error) {
+	agent, err := requireCodexAgentForKind(request.AgentKind)
+	if err != nil {
+		return model.AgentResourceOperationResult{}, err
+	}
+	if request.Enabled {
+		err = setCodexSkillEnabled(agent.RootPath, request, true)
+	} else {
+		err = setCodexSkillEnabled(agent.RootPath, request, false)
+	}
+	if err != nil {
+		return model.AgentResourceOperationResult{}, err
+	}
+	return operationResult(context.Background())
+}
+
+func SetMCPServerEnabled(_ context.Context, request model.AgentResourceToggleRequest) (model.AgentResourceOperationResult, error) {
+	agent, err := requireCodexAgentForKind(request.AgentKind)
+	if err != nil {
+		return model.AgentResourceOperationResult{}, err
+	}
+	name := strings.TrimSpace(request.Name)
+	if name == "" {
+		return model.AgentResourceOperationResult{}, BadRequest("MCP server name is required")
+	}
+	if err := ensurePathInside(agent.ConfigPath, agent.RootPath); err != nil {
+		return model.AgentResourceOperationResult{}, err
+	}
+	content, err := os.ReadFile(agent.ConfigPath)
+	if err != nil {
+		return model.AgentResourceOperationResult{}, err
+	}
+	var root map[string]any
+	if err := toml.Unmarshal(content, &root); err != nil {
+		return model.AgentResourceOperationResult{}, err
+	}
+	rawServers, _ := root["mcp_servers"].(map[string]any)
+	raw, ok := rawServers[name]
+	if !ok {
+		return model.AgentResourceOperationResult{}, NotFound("MCP server was not found")
+	}
+	if _, ok := raw.(map[string]any); !ok {
+		return model.AgentResourceOperationResult{}, BadRequest("MCP server configuration is not editable")
+	}
+	updated, err := setMCPEnabledInTOML(content, name, request.Enabled)
+	if err != nil {
+		return model.AgentResourceOperationResult{}, err
+	}
+	if err := os.WriteFile(agent.ConfigPath, updated, 0o644); err != nil {
+		return model.AgentResourceOperationResult{}, err
+	}
+	return operationResult(context.Background())
+}
+
+func MemoryDetail(_ context.Context, agentKind, path, relativePath string) (model.AgentMemoryDetail, error) {
+	agent, err := requireCodexAgentForKind(agentKind)
+	if err != nil {
+		return model.AgentMemoryDetail{}, err
+	}
+	memoryPath, err := resolveCodexMemoryPath(agent.RootPath, path, relativePath)
+	if err != nil {
+		return model.AgentMemoryDetail{}, err
+	}
+	info, err := os.Stat(memoryPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return model.AgentMemoryDetail{}, NotFound("memory file was not found")
+		}
+		return model.AgentMemoryDetail{}, err
+	}
+	if info.IsDir() {
+		return model.AgentMemoryDetail{}, BadRequest("memory path must be a file")
+	}
+	content, err := os.ReadFile(memoryPath)
+	if err != nil {
+		return model.AgentMemoryDetail{}, err
+	}
+	rel := relativePathFromRoot(filepath.Join(agent.RootPath, "memories"), memoryPath)
+	name := strings.TrimSuffix(filepath.Base(memoryPath), filepath.Ext(memoryPath))
+	return model.AgentMemoryDetail{
+		AgentMemoryResource: model.AgentMemoryResource{
+			AgentKind:    codexKind,
+			Name:         name,
+			Title:        firstNonEmpty(markdownTitle(content), name),
+			Path:         memoryPath,
+			RelativePath: rel,
+			Kind:         memoryKind(rel),
+			Preview:      textPreview(content, 260),
+			CanEdit:      true,
+			SizeBytes:    info.Size(),
+			ModifiedAt:   info.ModTime().UTC(),
+		},
+		Content: string(content),
+	}, nil
+}
+
+func UpdateMemory(_ context.Context, request model.AgentMemoryUpdateRequest) (model.AgentMemoryDetail, error) {
+	agent, err := requireCodexAgentForKind(request.AgentKind)
+	if err != nil {
+		return model.AgentMemoryDetail{}, err
+	}
+	memoryPath, err := resolveCodexMemoryPath(agent.RootPath, request.Path, request.RelativePath)
+	if err != nil {
+		return model.AgentMemoryDetail{}, err
+	}
+	if !strings.EqualFold(filepath.Ext(memoryPath), ".md") {
+		return model.AgentMemoryDetail{}, BadRequest("memory path must be a markdown file")
+	}
+	if err := os.MkdirAll(filepath.Dir(memoryPath), 0o755); err != nil {
+		return model.AgentMemoryDetail{}, err
+	}
+	if err := os.WriteFile(memoryPath, []byte(request.Content), 0o644); err != nil {
+		return model.AgentMemoryDetail{}, err
+	}
+	return MemoryDetail(context.Background(), codexKind, memoryPath, "")
+}
+
+func operationResult(ctx context.Context) (model.AgentResourceOperationResult, error) {
+	overview, err := Overview(ctx)
+	if err != nil {
+		return model.AgentResourceOperationResult{}, err
+	}
+	return model.AgentResourceOperationResult{Overview: overview, Warnings: overview.Warnings}, nil
+}
+
+func requireCodexAgentForKind(kind string) (model.AgentResourceAgent, error) {
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	if kind == "" {
+		kind = codexKind
+	}
+	if kind != codexKind {
+		return model.AgentResourceAgent{}, Unsupported("resource writes are not supported for " + kind)
+	}
+	for _, agent := range agentResourceAgents() {
+		if agent.Kind == codexKind {
+			if !agent.Exists {
+				return model.AgentResourceAgent{}, NotFound("Codex home is not available")
+			}
+			return agent, nil
+		}
+	}
+	return model.AgentResourceAgent{}, NotFound("Codex home is not available")
+}
+
+func agentResourceAgents() []model.AgentResourceAgent {
+	definitions := []struct {
+		kind       string
+		name       string
+		root       string
+		configPath string
+		supports   []string
+	}{
+		{codexKind, codexName, codexRoot(), filepath.Join(codexRoot(), "config.toml"), []string{"skills", "mcpServers", "memories"}},
+		{"gemini", "Gemini CLI", jsonAgentRoot("AGENTMETER_GEMINI_SETTINGS_PATH", "", ".gemini"), jsonAgentConfigPath("AGENTMETER_GEMINI_SETTINGS_PATH", "", ".gemini"), nil},
+		{"claude", "Claude Code", jsonAgentRoot("AGENTMETER_CLAUDE_SETTINGS_PATH", "CLAUDE_CONFIG_DIR", ".claude"), jsonAgentConfigPath("AGENTMETER_CLAUDE_SETTINGS_PATH", "CLAUDE_CONFIG_DIR", ".claude"), nil},
+		{"codebuddy", "CodeBuddy", jsonAgentRoot("AGENTMETER_CODEBUDDY_SETTINGS_PATH", "CODEBUDDY_CONFIG_DIR", ".codebuddy"), jsonAgentConfigPath("AGENTMETER_CODEBUDDY_SETTINGS_PATH", "CODEBUDDY_CONFIG_DIR", ".codebuddy"), nil},
+		{"workbuddy", "WorkBuddy", envOrHomeRoot("WORKBUDDY_CONFIG_DIR", ".workbuddy"), filepath.Join(envOrHomeRoot("WORKBUDDY_CONFIG_DIR", ".workbuddy"), "settings.json"), nil},
+		{"cursor", "Cursor", envOrHomeRoot("CURSOR_HOME", ".cursor"), filepath.Join(envOrHomeRoot("CURSOR_HOME", ".cursor"), "settings.json"), nil},
+	}
+	agents := make([]model.AgentResourceAgent, 0, len(definitions))
+	for _, definition := range definitions {
+		agent := model.AgentResourceAgent{
+			Kind:        definition.kind,
+			Name:        definition.name,
+			RootPath:    sourcepath.Normalize(definition.root),
+			ConfigPath:  sourcepath.Normalize(definition.configPath),
+			Warnings:    []string{},
+			Supports:    append([]string{}, definition.supports...),
+			Unsupported: []string{},
+		}
+		if stat, err := os.Stat(agent.RootPath); err == nil && stat.IsDir() {
+			agent.Exists = true
+		} else if err != nil {
+			agent.Warnings = append(agent.Warnings, definition.name+" home is not available: "+err.Error())
+		}
+		if definition.kind != codexKind {
+			agent.Unsupported = []string{"skills", "mcpServers", "memories"}
+			agent.Warnings = append(agent.Warnings, definition.name+" resource inventory is not implemented yet; resources are intentionally empty.")
+		}
+		agents = append(agents, agent)
+	}
+	return agents
 }
 
 func codexRoot() string {
@@ -82,7 +278,8 @@ func codexSkills(root string) ([]model.AgentSkillResource, []string) {
 			}
 			return nil
 		}
-		if !strings.EqualFold(entry.Name(), "SKILL.md") {
+		enabled := strings.EqualFold(entry.Name(), "SKILL.md")
+		if !enabled && !strings.EqualFold(entry.Name(), "SKILL.md.disabled") {
 			return nil
 		}
 		info, err := entry.Info()
@@ -107,6 +304,9 @@ func codexSkills(root string) ([]model.AgentSkillResource, []string) {
 			Path:         dir,
 			RelativePath: rel,
 			System:       strings.HasPrefix(filepath.ToSlash(rel), ".system/"),
+			Enabled:      enabled,
+			CanToggle:    !strings.HasPrefix(filepath.ToSlash(rel), ".system/"),
+			Status:       enabledStatus(enabled),
 			SizeBytes:    info.Size(),
 			ModifiedAt:   info.ModTime().UTC(),
 		})
@@ -149,6 +349,10 @@ func codexMCPServers(configPath string) ([]model.AgentMCPServerResource, []strin
 			status = "incomplete"
 			warning = "command is not configured"
 		}
+		enabled := boolValue(table["enabled"], true)
+		if !enabled && status == "configured" {
+			status = "disabled"
+		}
 		servers = append(servers, model.AgentMCPServerResource{
 			AgentKind:  codexKind,
 			Name:       name,
@@ -156,7 +360,8 @@ func codexMCPServers(configPath string) ([]model.AgentMCPServerResource, []strin
 			Args:       args,
 			EnvKeys:    envKeys,
 			ConfigPath: configPath,
-			Enabled:    status == "configured",
+			Enabled:    enabled && status == "configured",
+			CanToggle:  true,
 			Status:     status,
 			Warning:    warning,
 		})
@@ -207,6 +412,7 @@ func codexMemories(root string) ([]model.AgentMemoryResource, []string) {
 			RelativePath: rel,
 			Kind:         memoryKind(rel),
 			Preview:      textPreview(content, 260),
+			CanEdit:      true,
 			SizeBytes:    info.Size(),
 			ModifiedAt:   info.ModTime().UTC(),
 		})
@@ -318,6 +524,189 @@ func relativePath(root, path string) string {
 		return filepath.ToSlash(path)
 	}
 	return filepath.ToSlash(rel)
+}
+
+func relativePathFromRoot(root, path string) string {
+	return relativePath(root, path)
+}
+
+func setCodexSkillEnabled(root string, request model.AgentResourceToggleRequest, enabled bool) error {
+	skillsRoot := filepath.Join(root, "skills")
+	dir, err := resolvePathInRoot(skillsRoot, request.Path, request.RelativePath)
+	if err != nil {
+		return err
+	}
+	rel := relativePathFromRoot(skillsRoot, dir)
+	if rel == "." || strings.HasPrefix(filepath.ToSlash(rel), ".system/") {
+		return Unsupported("system skills cannot be toggled")
+	}
+	active := filepath.Join(dir, "SKILL.md")
+	disabled := filepath.Join(dir, "SKILL.md.disabled")
+	if err := ensurePathInside(active, skillsRoot); err != nil {
+		return err
+	}
+	if err := ensurePathInside(disabled, skillsRoot); err != nil {
+		return err
+	}
+	if enabled {
+		if _, err := os.Stat(active); err == nil {
+			return nil
+		}
+		if _, err := os.Stat(disabled); err != nil {
+			if os.IsNotExist(err) {
+				return NotFound("disabled skill file was not found")
+			}
+			return err
+		}
+		return os.Rename(disabled, active)
+	}
+	if _, err := os.Stat(disabled); err == nil {
+		return nil
+	}
+	if _, err := os.Stat(active); err != nil {
+		if os.IsNotExist(err) {
+			return NotFound("skill file was not found")
+		}
+		return err
+	}
+	return os.Rename(active, disabled)
+}
+
+func resolveCodexMemoryPath(root, path, rel string) (string, error) {
+	memoriesRoot := filepath.Join(root, "memories")
+	return resolvePathInRoot(memoriesRoot, path, rel)
+}
+
+func resolvePathInRoot(root, path, rel string) (string, error) {
+	root = filepath.Clean(root)
+	candidate := strings.TrimSpace(path)
+	if candidate == "" {
+		if strings.TrimSpace(rel) == "" {
+			return "", BadRequest("path or relativePath is required")
+		}
+		if filepath.IsAbs(rel) {
+			return "", BadRequest("relativePath must not be absolute")
+		}
+		candidate = filepath.Join(root, filepath.FromSlash(rel))
+	}
+	candidate = filepath.Clean(candidate)
+	if err := ensurePathInside(candidate, root); err != nil {
+		return "", err
+	}
+	return candidate, nil
+}
+
+func ensurePathInside(path, root string) error {
+	if strings.TrimSpace(path) == "" || strings.TrimSpace(root) == "" {
+		return BadRequest("path and root are required")
+	}
+	absRoot, err := filepath.Abs(filepath.Clean(root))
+	if err != nil {
+		return err
+	}
+	absPath, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return err
+	}
+	rootKey := comparablePath(absRoot)
+	pathKey := comparablePath(absPath)
+	if pathKey == rootKey || strings.HasPrefix(pathKey, rootKey+string(os.PathSeparator)) {
+		return nil
+	}
+	return BadRequest("path is outside the known agent resource root")
+}
+
+func comparablePath(path string) string {
+	cleaned := filepath.Clean(path)
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(cleaned)
+	}
+	return cleaned
+}
+
+func enabledStatus(enabled bool) string {
+	if enabled {
+		return "enabled"
+	}
+	return "disabled"
+}
+
+func boolValue(value any, fallback bool) bool {
+	typed, ok := value.(bool)
+	if !ok {
+		return fallback
+	}
+	return typed
+}
+
+func setMCPEnabledInTOML(content []byte, name string, enabled bool) ([]byte, error) {
+	text := string(content)
+	separator := "\n"
+	if strings.Contains(text, "\r\n") {
+		separator = "\r\n"
+		text = strings.ReplaceAll(text, "\r\n", "\n")
+	}
+	lines := strings.Split(text, "\n")
+	header := "[mcp_servers." + name + "]"
+	start := -1
+	for index, line := range lines {
+		if strings.TrimSpace(line) == header {
+			start = index
+			break
+		}
+	}
+	if start < 0 {
+		return nil, BadRequest("MCP server table uses an unsupported TOML table style")
+	}
+	end := len(lines)
+	for index := start + 1; index < len(lines); index++ {
+		trimmed := strings.TrimSpace(lines[index])
+		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+			end = index
+			break
+		}
+	}
+	valueLine := "enabled = " + strconv.FormatBool(enabled)
+	for index := start + 1; index < end; index++ {
+		trimmed := strings.TrimSpace(lines[index])
+		key, _, ok := strings.Cut(trimmed, "=")
+		if ok && strings.TrimSpace(key) == "enabled" {
+			prefix := lines[index][:len(lines[index])-len(strings.TrimLeft(lines[index], " \t"))]
+			lines[index] = prefix + valueLine
+			return []byte(strings.Join(lines, separator)), nil
+		}
+	}
+	updated := make([]string, 0, len(lines)+1)
+	updated = append(updated, lines[:start+1]...)
+	updated = append(updated, valueLine)
+	updated = append(updated, lines[start+1:]...)
+	return []byte(strings.Join(updated, separator)), nil
+}
+
+func jsonAgentRoot(overrideEnv, configDirEnv, homeDirName string) string {
+	if path := strings.TrimSpace(os.Getenv(overrideEnv)); path != "" {
+		return filepath.Dir(filepath.Clean(path))
+	}
+	return envOrHomeRoot(configDirEnv, homeDirName)
+}
+
+func jsonAgentConfigPath(overrideEnv, configDirEnv, homeDirName string) string {
+	if path := strings.TrimSpace(os.Getenv(overrideEnv)); path != "" {
+		return filepath.Clean(path)
+	}
+	return filepath.Join(envOrHomeRoot(configDirEnv, homeDirName), "settings.json")
+}
+
+func envOrHomeRoot(envName, homeDirName string) string {
+	if envName != "" {
+		if value := strings.TrimSpace(os.Getenv(envName)); value != "" {
+			return filepath.Clean(value)
+		}
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, homeDirName)
+	}
+	return homeDirName
 }
 
 func memoryKind(rel string) string {

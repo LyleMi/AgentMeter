@@ -34,6 +34,8 @@ export interface AgentResourceAgent {
   exists: boolean
   configPath: string
   warnings: string[]
+  supports?: string[]
+  unsupported?: string[]
 }
 
 export interface AgentSkillResource {
@@ -44,6 +46,10 @@ export interface AgentSkillResource {
   path: string
   relativePath: string
   system: boolean
+  enabled?: boolean
+  canToggle?: boolean
+  status?: string
+  warning?: string
   sizeBytes: number
   modifiedAt: string
 }
@@ -56,6 +62,7 @@ export interface AgentMCPServerResource {
   envKeys: string[]
   configPath: string
   enabled: boolean
+  canToggle?: boolean
   status: string
   warning?: string
 }
@@ -68,8 +75,33 @@ export interface AgentMemoryResource {
   relativePath: string
   kind: string
   preview: string
+  content?: string
+  canEdit?: boolean
   sizeBytes: number
   modifiedAt: string
+}
+
+export interface AgentResourceToggleInput {
+  agentKind: string
+  name?: string
+  path?: string
+  relativePath?: string
+  enabled: boolean
+}
+
+export interface AgentMemoryLookup {
+  agentKind: string
+  path?: string
+  relativePath?: string
+}
+
+export interface AgentMemoryUpdateInput extends AgentMemoryLookup {
+  content: string
+}
+
+export interface AgentResourceOperationResult {
+  overview: AgentResourceOverview
+  warnings: string[]
 }
 
 export interface Session extends SourceIdentity {

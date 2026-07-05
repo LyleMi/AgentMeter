@@ -112,6 +112,34 @@ func (a *App) GetAgentResources() (model.AgentResourceOverview, error) {
 	return agentresources.Overview(a.ctx)
 }
 
+func (a *App) SetAgentSkillEnabled(request model.AgentResourceToggleRequest) (model.AgentResourceOperationResult, error) {
+	if err := a.ensureReady(); err != nil {
+		return model.AgentResourceOperationResult{}, err
+	}
+	return agentresources.SetSkillEnabled(a.ctx, request)
+}
+
+func (a *App) SetAgentMCPServerEnabled(request model.AgentResourceToggleRequest) (model.AgentResourceOperationResult, error) {
+	if err := a.ensureReady(); err != nil {
+		return model.AgentResourceOperationResult{}, err
+	}
+	return agentresources.SetMCPServerEnabled(a.ctx, request)
+}
+
+func (a *App) GetAgentMemoryDetail(agentKind, path, relativePath string) (model.AgentMemoryDetail, error) {
+	if err := a.ensureReady(); err != nil {
+		return model.AgentMemoryDetail{}, err
+	}
+	return agentresources.MemoryDetail(a.ctx, agentKind, path, relativePath)
+}
+
+func (a *App) UpdateAgentMemory(request model.AgentMemoryUpdateRequest) (model.AgentMemoryDetail, error) {
+	if err := a.ensureReady(); err != nil {
+		return model.AgentMemoryDetail{}, err
+	}
+	return agentresources.UpdateMemory(a.ctx, request)
+}
+
 func (a *App) SaveSourceSettings(sourceEntries []model.SourceEntry) (model.Settings, error) {
 	if err := a.ensureReady(); err != nil {
 		return model.Settings{}, err
