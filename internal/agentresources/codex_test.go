@@ -2,6 +2,7 @@ package agentresources
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -109,6 +110,36 @@ VISIBLE_NAME = 'node'
 	claude := findAgent(t, overview, "claude")
 	if len(claude.Unsupported) == 0 || len(claude.Warnings) == 0 {
 		t.Fatalf("unsupported non-Codex agent should explain empty resources: %+v", claude)
+	}
+}
+
+func TestOverviewEncodesEmptyResourceCollectionsAsArrays(t *testing.T) {
+	dir := t.TempDir()
+	isolateAgentHomes(t, dir)
+	root := filepath.Join(dir, ".codex")
+	t.Setenv("CODEX_HOME", root)
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	overview, err := Overview(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(overview)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(payload)
+	for _, unexpected := range []string{
+		`"skills":null`,
+		`"mcpServers":null`,
+		`"memories":null`,
+		`"warnings":null`,
+	} {
+		if strings.Contains(text, unexpected) {
+			t.Fatalf("overview should encode empty collections as arrays, got %s", text)
+		}
 	}
 }
 

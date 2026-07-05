@@ -51,6 +51,10 @@ export const isStaticDemo = import.meta.env.VITE_AGENTMETER_STATIC_DEMO === 'tru
 type QueryParamValue = string | number | undefined
 type QueryParamValues = Record<string, QueryParamValue>
 
+function arrayOrEmpty<T>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : []
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
@@ -97,13 +101,35 @@ function queryPath(path: string, values: QueryParamValues = {}) {
   return query ? `${path}?${query}` : path
 }
 
-function agentResourceOverview(result: AgentResourceOverview | AgentResourceOperationResult) {
-  return 'overview' in result ? result.overview : result
+function normalizeAgentResourceOverview(value: Partial<AgentResourceOverview> | null | undefined): AgentResourceOverview {
+  return {
+    agents: arrayOrEmpty(value?.agents).map((agent) => ({
+      ...agent,
+      warnings: arrayOrEmpty(agent.warnings),
+      supports: arrayOrEmpty(agent.supports),
+      unsupported: arrayOrEmpty(agent.unsupported)
+    })),
+    skills: arrayOrEmpty(value?.skills),
+    mcpServers: arrayOrEmpty(value?.mcpServers).map((server) => ({
+      ...server,
+      args: arrayOrEmpty(server.args),
+      envKeys: arrayOrEmpty(server.envKeys)
+    })),
+    memories: arrayOrEmpty(value?.memories),
+    warnings: arrayOrEmpty(value?.warnings)
+  }
+}
+
+function agentResourceOverview(result: AgentResourceOverview | AgentResourceOperationResult | null | undefined) {
+  if (result && typeof result === 'object' && 'overview' in result) {
+    return normalizeAgentResourceOverview(result.overview)
+  }
+  return normalizeAgentResourceOverview(result)
 }
 
 const fetchApi = {
   getSettings: () => request<Settings>('/api/settings'),
-  getAgentResources: () => request<AgentResourceOverview>('/api/agent-resources'),
+  getAgentResources: () => request<AgentResourceOverview>('/api/agent-resources').then(normalizeAgentResourceOverview),
   setAgentSkillEnabled: (input: AgentResourceToggleInput) =>
     request<AgentResourceOverview | AgentResourceOperationResult>('/api/agent-resources/skills/enabled', {
       method: 'POST',

@@ -29,6 +29,7 @@ func Overview(_ context.Context) (model.AgentResourceOverview, error) {
 		Skills:     []model.AgentSkillResource{},
 		MCPServers: []model.AgentMCPServerResource{},
 		Memories:   []model.AgentMemoryResource{},
+		Warnings:   []string{},
 	}
 	for _, agent := range result.Agents {
 		if agent.Kind == codexKind {
@@ -265,8 +266,8 @@ func codexSkills(root string) ([]model.AgentSkillResource, []string) {
 	if stat, err := os.Stat(root); err != nil || !stat.IsDir() {
 		return []model.AgentSkillResource{}, nil
 	}
-	var items []model.AgentSkillResource
-	var warnings []string
+	items := []model.AgentSkillResource{}
+	warnings := []string{}
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			warnings = append(warnings, "Unable to inspect skill path "+path+": "+err.Error())
@@ -376,8 +377,8 @@ func codexMemories(root string) ([]model.AgentMemoryResource, []string) {
 	if stat, err := os.Stat(root); err != nil || !stat.IsDir() {
 		return []model.AgentMemoryResource{}, nil
 	}
-	var items []model.AgentMemoryResource
-	var warnings []string
+	items := []model.AgentMemoryResource{}
+	warnings := []string{}
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			warnings = append(warnings, "Unable to inspect memory path "+path+": "+err.Error())

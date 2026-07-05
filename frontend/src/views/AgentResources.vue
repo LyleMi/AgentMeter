@@ -188,7 +188,7 @@ const overview = ref<AgentResourceOverview>({
   memories: [],
   warnings: []
 })
-const selectedAgentKind = ref('all')
+const selectedAgentKind = ref('codex')
 const togglingKeys = ref<string[]>([])
 const memoryDrawerOpen = ref(false)
 const memoryLoading = ref(false)
@@ -215,6 +215,12 @@ const selectedAgent = computed(() => overview.value.agents.find((item) => item.k
 const filteredSkills = computed(() => filterByAgent(overview.value.skills))
 const filteredMcpServers = computed(() => filterByAgent(overview.value.mcpServers))
 const filteredMemories = computed(() => filterByAgent(overview.value.memories))
+const visibleWarnings = computed(() => {
+  const warnings = selectedAgentKind.value === 'all'
+    ? overview.value.warnings
+    : [...overview.value.warnings, ...(selectedAgent.value?.warnings || [])]
+  return [...new Set(warnings)]
+})
 const agentReady = computed(() => {
   if (selectedAgentKind.value === 'all') return overview.value.agents.some((item) => item.exists)
   return Boolean(selectedAgent.value?.exists)
@@ -264,8 +270,8 @@ async function load() {
   loading.value = true
   try {
     overview.value = await api.getAgentResources()
-    if (selectedAgentKind.value !== 'all' && !agentOptions.value.some((option) => option.value === selectedAgentKind.value)) {
-      selectedAgentKind.value = 'all'
+    if (!agentOptions.value.some((option) => option.value === selectedAgentKind.value)) {
+      selectedAgentKind.value = agentOptions.value.some((option) => option.value === 'codex') ? 'codex' : 'all'
     }
   } finally {
     loading.value = false
@@ -487,10 +493,10 @@ onMounted(load)
         </div>
       </section>
 
-      <section v-if="overview.warnings.length" class="index-result-warnings agent-resource-warnings">
+      <section v-if="visibleWarnings.length" class="index-result-warnings agent-resource-warnings">
         <div class="metadata-label">{{ t('warnings.title') }}</div>
         <ul>
-          <li v-for="warning in overview.warnings" :key="warning">{{ warning }}</li>
+          <li v-for="warning in visibleWarnings" :key="warning">{{ warning }}</li>
         </ul>
       </section>
 
