@@ -1,4 +1,4 @@
-﻿package tui
+package tui
 
 import (
 	"context"
@@ -138,6 +138,12 @@ func (f *fakeService) ListToolCalls(filters agentmodel.ToolCallFilters) ([]agent
 		if strings.TrimSpace(filters.ToolName) != "" && call.ToolName != filters.ToolName {
 			continue
 		}
+		if filters.Shell && !isShellToolName(call.ToolName) {
+			continue
+		}
+		if filters.RiskOnly && call.RiskCount <= 0 {
+			continue
+		}
 		if strings.TrimSpace(filters.Agent) != "" && !toolCallMatchesAgent(call, filters.Agent) {
 			continue
 		}
@@ -160,6 +166,34 @@ func (f *fakeService) ListToolCalls(filters agentmodel.ToolCallFilters) ([]agent
 				return result[i].StartedAt.After(result[j].StartedAt)
 			}
 			return result[i].DurationMS < result[j].DurationMS
+		})
+	case "risk_desc":
+		sort.Slice(result, func(i, j int) bool {
+			left, right := result[i].RiskScore, result[j].RiskScore
+			if left == 0 {
+				left = 1
+			}
+			if right == 0 {
+				right = 1
+			}
+			if left == right {
+				return result[i].StartedAt.After(result[j].StartedAt)
+			}
+			return left > right
+		})
+	case "risk_asc":
+		sort.Slice(result, func(i, j int) bool {
+			left, right := result[i].RiskScore, result[j].RiskScore
+			if left == 0 {
+				left = 1
+			}
+			if right == 0 {
+				right = 1
+			}
+			if left == right {
+				return result[i].StartedAt.After(result[j].StartedAt)
+			}
+			return left < right
 		})
 	default:
 		sort.Slice(result, func(i, j int) bool {
@@ -596,7 +630,7 @@ func TestToolsTabsAndFiltersRender(t *testing.T) {
 	}
 }
 
-func TestToolsShellTabFetchesShellToolsBeforeLocalLimit(t *testing.T) {
+func TestToolsShellTabUsesSharedShellToolCallQuery(t *testing.T) {
 	svc := sampleService()
 	base := time.Date(2026, 6, 27, 9, 30, 0, 0, time.UTC)
 	shellCall := svc.toolCalls[0]
@@ -635,12 +669,10 @@ func TestToolsShellTabFetchesShellToolsBeforeLocalLimit(t *testing.T) {
 	assertContains(t, view, "Shell Commands")
 	assertContains(t, view, "shell_command")
 	assertContains(t, view, "rg --files")
-	for _, filters := range svc.toolCallFilters {
-		if filters.ToolName == "shell_command" {
-			return
-		}
+	filters := lastToolCallFilter(t, svc.toolCallFilters)
+	if !filters.Shell || !filters.IncludeRisk || filters.ToolName != "" {
+		t.Fatalf("tool call filters = %+v, want shared shell risk query", filters)
 	}
-	t.Fatalf("tool call filters = %+v, want per-shell-tool request", svc.toolCallFilters)
 }
 
 func TestToolsTabDetailReturnsToOriginTab(t *testing.T) {

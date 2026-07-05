@@ -45,27 +45,17 @@ func listToolCallsForToolsContext(service appService, filters agentmodel.ToolCal
 		}
 		return filterToolCallsForToolsTab(calls, tab, command), nil
 	}
-	toolNames := shellToolNames(tools)
-	if len(toolNames) == 0 {
-		return []agentmodel.ToolCall{}, nil
-	}
 	limit := filters.Limit
 	if limit <= 0 {
 		limit = 500
 	}
-	calls := []agentmodel.ToolCall{}
-	for _, toolName := range toolNames {
-		toolFilters := filters
-		toolFilters.ToolName = toolName
-		toolFilters.Limit = limit
-		values, err := service.ListToolCalls(toolFilters)
-		if err != nil {
-			return nil, err
-		}
-		calls = append(calls, values...)
+	filters.Shell = true
+	filters.IncludeRisk = true
+	filters.Limit = limit
+	calls, err := service.ListToolCalls(filters)
+	if err != nil {
+		return nil, err
 	}
-	calls = uniqueToolCalls(calls)
-	sortToolCalls(calls, filters.Sort)
 	calls = filterToolCallsForToolsTab(calls, tab, command)
 	return limitSlice(calls, limit), nil
 }
@@ -160,6 +150,10 @@ func (s *state) cycleToolCallSort() command {
 		s.toolCallSort = "duration_desc"
 	case "duration_desc":
 		s.toolCallSort = "duration_asc"
+	case "duration_asc":
+		s.toolCallSort = "risk_desc"
+	case "risk_desc":
+		s.toolCallSort = "risk_asc"
 	default:
 		s.toolCallSort = ""
 	}

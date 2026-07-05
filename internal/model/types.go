@@ -244,6 +244,10 @@ type ToolCall struct {
 	AgentKind            string    `json:"agentKind,omitempty"`
 	AgentName            string    `json:"agentName,omitempty"`
 	RawSourcePath        string    `json:"rawSourcePath,omitempty"`
+	RiskScore            int       `json:"riskScore,omitempty"`
+	RiskSeverity         string    `json:"riskSeverity,omitempty"`
+	RiskCount            int       `json:"riskCount,omitempty"`
+	RiskRuleIDs          []string  `json:"riskRuleIds,omitempty"`
 }
 
 type PricingModel struct {
@@ -853,6 +857,7 @@ type AuditSummary struct {
 type ToolCallRiskSummary struct {
 	ToolCallID int64    `json:"toolCallId"`
 	Severity   string   `json:"severity"`
+	RiskScore  int      `json:"riskScore"`
 	RiskCount  int      `json:"riskCount"`
 	RuleIDs    []string `json:"ruleIds"`
 }
@@ -917,6 +922,9 @@ type ToolCallFilters struct {
 	StartedFrom string `json:"startedFrom"`
 	StartedTo   string `json:"startedTo"`
 	Sort        string `json:"sort"`
+	Shell       bool   `json:"shell"`
+	RiskOnly    bool   `json:"riskOnly"`
+	IncludeRisk bool   `json:"includeRisk"`
 	Limit       int    `json:"limit"`
 	Offset      int    `json:"offset"`
 }

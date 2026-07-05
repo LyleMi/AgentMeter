@@ -219,6 +219,9 @@ const fetchApi = {
       from: filters.from,
       to: filters.to,
       sort: filters.sort,
+      shell: filters.shell ? '1' : undefined,
+      riskOnly: filters.riskOnly ? '1' : undefined,
+      includeRisk: filters.includeRisk ? '1' : undefined,
       limit: filters.limit,
       offset: filters.offset
     })),

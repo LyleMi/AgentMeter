@@ -1,4 +1,4 @@
-﻿package tui
+package tui
 
 import (
 	"fmt"
@@ -286,6 +286,12 @@ func toolCallDetailLines(call agentmodel.ToolCall, width int) []string {
 	if strings.TrimSpace(call.CallID) != "" {
 		lines = append(lines, "Call ID: "+call.CallID)
 	}
+	if call.RiskScore > 0 {
+		lines = append(lines, fmt.Sprintf("Risk: %d  Severity: %s  Findings: %d", call.RiskScore, empty(call.RiskSeverity, "none"), call.RiskCount))
+		if len(call.RiskRuleIDs) > 0 {
+			lines = append(lines, fit("Risk rules: "+strings.Join(call.RiskRuleIDs, ", "), width))
+		}
+	}
 	lines = appendRawEventLines(lines, call)
 	lines = append(lines, bold("Input"))
 	lines = appendToolCallValue(lines, call.InputSummary, width)
@@ -369,6 +375,10 @@ func toolCallSortLabel(sort string) string {
 		return "duration high to low"
 	case "duration_asc":
 		return "duration low to high"
+	case "risk_desc":
+		return "risk high to low"
+	case "risk_asc":
+		return "risk low to high"
 	default:
 		return "recent first"
 	}

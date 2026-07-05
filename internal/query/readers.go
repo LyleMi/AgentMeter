@@ -157,6 +157,65 @@ func (s *Service) scanToolCalls(ctx context.Context, query string, args ...any) 
 	return result, rows.Err()
 }
 
+func (s *Service) scanToolCallsWithRisk(ctx context.Context, query string, args ...any) ([]model.ToolCall, error) {
+	rows, err := s.conn.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []model.ToolCall
+	for rows.Next() {
+		var item model.ToolCall
+		var started, ended, ruleIDs string
+		if err := rows.Scan(
+			&item.ID,
+			&item.SessionID,
+			&item.SourceID,
+			&item.SourceRootPath,
+			&item.SourceSessionsPath,
+			&started,
+			&ended,
+			&item.DurationMS,
+			&item.ToolName,
+			&item.Status,
+			&item.InputSummary,
+			&item.OutputSummary,
+			&item.Error,
+			&item.RawEventID,
+			&item.CallID,
+			&item.RawStartEventID,
+			&item.RawEndEventID,
+			&item.RawStartEventLine,
+			&item.RawEndEventLine,
+			&item.RawStartEventType,
+			&item.RawEndEventType,
+			&item.RawStartEventSummary,
+			&item.RawEndEventSummary,
+			&item.RawStartEventJSON,
+			&item.RawEndEventJSON,
+			&item.SessionKey,
+			&item.CodexSessionID,
+			&item.ProjectPath,
+			&item.AgentKind,
+			&item.AgentName,
+			&item.RawSourcePath,
+			&item.RiskScore,
+			&item.RiskSeverity,
+			&item.RiskCount,
+			&ruleIDs,
+		); err != nil {
+			return nil, err
+		}
+		item.StartedAt = db.ParseTime(started)
+		item.EndedAt = db.ParseTime(ended)
+		item.RiskRuleIDs = splitSortedCSV(ruleIDs)
+		fillToolCallSourceIdentity(&item)
+		item.RawEventLine = item.RawStartEventLine
+		result = append(result, item)
+	}
+	return result, rows.Err()
+}
+
 func (s *Service) scanAuditFindings(ctx context.Context, query string, args ...any) ([]model.AuditFinding, error) {
 	rows, err := s.conn.QueryContext(ctx, query, args...)
 	if err != nil {

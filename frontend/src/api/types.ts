@@ -669,11 +669,16 @@ export interface ToolCall extends SourceIdentity {
   agentKind?: string
   agentName?: string
   rawSourcePath?: string
+  riskScore?: number
+  riskSeverity?: string
+  riskCount?: number
+  riskRuleIds?: string[]
 }
 
 export interface ToolCallRiskSummary {
   toolCallId: number
   severity: string
+  riskScore: number
   riskCount: number
   ruleIds: string[]
 }
@@ -879,6 +884,9 @@ export interface ToolCallFilters {
   from?: string
   to?: string
   sort?: string
+  shell?: boolean
+  riskOnly?: boolean
+  includeRisk?: boolean
   limit?: number
   offset?: number
 }

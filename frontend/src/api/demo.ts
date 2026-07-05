@@ -1,3 +1,4 @@
+import type { ToolCall, ToolCallFilters } from './types'
 import type { DemoApi } from './demo/contracts'
 import { agentResources } from './demo/agentResources'
 import { auditFinding, auditSummary, filteredFindings, filteredToolCallRisks } from './demo/audit'
@@ -26,6 +27,38 @@ function replaceAgentResources(next: typeof agentResources) {
   agentResources.memories = next.memories
   agentResources.warnings = next.warnings
   return agentResources
+}
+
+function filteredDemoToolCalls(filters: ToolCallFilters = {}) {
+  const riskMap = new Map(filteredToolCallRisks(filters).map((risk) => [risk.toolCallId, risk]))
+  const includeRisk = Boolean(filters.includeRisk || filters.shell || filters.riskOnly || filters.sort === 'risk_desc' || filters.sort === 'risk_asc')
+  let calls = filteredToolCalls({
+    ...filters,
+    sort: filters.sort === 'risk_desc' || filters.sort === 'risk_asc' ? undefined : filters.sort
+  })
+  if (filters.riskOnly) calls = calls.filter((call) => riskMap.has(call.id))
+  if (includeRisk) calls = calls.map((call) => withDemoRisk(call, riskMap))
+  if (filters.sort === 'risk_desc' || filters.sort === 'risk_asc') {
+    calls = [...calls].sort((left, right) => {
+      const direction = filters.sort === 'risk_desc'
+        ? (right.riskScore || 1) - (left.riskScore || 1)
+        : (left.riskScore || 1) - (right.riskScore || 1)
+      return direction || Date.parse(right.startedAt) - Date.parse(left.startedAt) || right.id - left.id
+    })
+  }
+  return calls
+}
+
+function withDemoRisk(call: ToolCall, riskMap: Map<number, ReturnType<typeof filteredToolCallRisks>[number]>): ToolCall {
+  const risk = riskMap.get(call.id)
+  if (!risk) return { ...call, riskScore: 1, riskSeverity: '', riskCount: 0, riskRuleIds: [] }
+  return {
+    ...call,
+    riskScore: risk.riskScore,
+    riskSeverity: risk.severity,
+    riskCount: risk.riskCount,
+    riskRuleIds: risk.ruleIds
+  }
 }
 
 export const demoApi: DemoApi = {
@@ -93,7 +126,7 @@ export const demoApi: DemoApi = {
   listSessions: async (filters = {}) => clone(paginate(filteredSessions(filters), filters.limit, filters.offset)),
   getSessionDetail: async (id) => clone(sessionDetail(id)),
   getTools: async (filters = {}) => clone(toolStatsFor(filteredToolCalls({ agent: filters.agent }))),
-  listToolCalls: async (filters = {}) => clone(paginate(filteredToolCalls(filters), filters.limit, filters.offset)),
+  listToolCalls: async (filters = {}) => clone(paginate(filteredDemoToolCalls(filters), filters.limit, filters.offset)),
   listToolCallRisks: async (filters = {}) => clone(filteredToolCallRisks(filters)),
   getAuditSummary: async (filters = {}) => clone(auditSummary(filters)),
   listAuditFindings: async (filters = {}) => clone(paginate(filteredFindings(filters), filters.limit, filters.offset)),

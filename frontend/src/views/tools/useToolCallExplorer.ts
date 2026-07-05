@@ -13,7 +13,7 @@ import { invokedCommand, isShellToolName } from './shellTool'
 export const DEFAULT_SORT = 'recent'
 export const TOOL_CALL_LIMIT = 500
 export type ToolCallExplorerMode = 'all' | 'shell'
-export type ToolCallSort = typeof DEFAULT_SORT | 'duration_desc' | 'duration_asc'
+export type ToolCallSort = typeof DEFAULT_SORT | 'duration_desc' | 'duration_asc' | 'risk_desc' | 'risk_asc'
 export interface ShellCommandStat {
   command: string
   calls: number
@@ -76,48 +76,31 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
   }
 
   async function fetchShellToolCalls() {
-    const selectedTools = toolFilter.value ? [toolFilter.value] : availableTools.value.map((item) => item.toolName).filter(Boolean)
-    if (!selectedTools.length) {
-      toolCallRisks.value = []
-      return []
-    }
-
-    const riskRequest = api.listToolCallRisks(currentToolCallRiskFilters())
-    const callGroupsRequest = Promise.all(
-      selectedTools.map((tool) =>
-        api.listToolCalls({
-          ...currentToolCallFilters(),
-          tool,
-          limit: TOOL_CALL_LIMIT
-        })
-      )
-    )
-    const [callGroups, risks] = await Promise.all([callGroupsRequest, riskRequest])
-    toolCallRisks.value = risks || []
-    const currentRiskMap = riskMapFrom(toolCallRisks.value)
-    let calls = sortedCalls(uniqueCalls(callGroups.flat()).filter((call) => isShellToolName(call.toolName)), sortFilter.value)
+    let calls = ((await api.listToolCalls(currentToolCallFilters())) || []).filter((call) => isShellToolName(call.toolName))
+    toolCallRisks.value = calls
+      .filter((call) => call.riskScore || call.riskSeverity || call.riskCount || call.riskRuleIds?.length)
+      .map((call) => ({
+        toolCallId: call.id,
+        severity: call.riskSeverity || '',
+        riskScore: call.riskScore || 1,
+        riskCount: call.riskCount || 0,
+        ruleIds: call.riskRuleIds || []
+      }))
     commandOptions.value = shellCommandStats(calls)
     calls = filteredByCommand(calls, commandFilter.value)
-    if (riskOnlyFilter.value) calls = calls.filter((call) => currentRiskMap.has(call.id))
     return calls.slice(0, TOOL_CALL_LIMIT)
   }
 
   function currentToolCallFilters(): ToolCallFilters {
     return {
-      tool: mode === 'all' ? toolFilter.value : undefined,
+      tool: toolFilter.value,
       agent: agentFilter.value,
       from: dateTimeInputToQueryIso(fromFilter.value),
       to: dateTimeInputToQueryIso(toFilter.value, 'end'),
       sort: sortFilter.value === DEFAULT_SORT ? undefined : sortFilter.value,
-      limit: TOOL_CALL_LIMIT
-    }
-  }
-
-  function currentToolCallRiskFilters() {
-    return {
-      agent: agentFilter.value,
-      from: dateTimeInputToQueryIso(fromFilter.value),
-      to: dateTimeInputToQueryIso(toFilter.value, 'end'),
+      shell: mode === 'shell',
+      riskOnly: mode === 'shell' && riskOnlyFilter.value,
+      includeRisk: mode === 'shell',
       limit: TOOL_CALL_LIMIT
     }
   }
@@ -240,22 +223,8 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
   }
 }
 
-function uniqueCalls(calls: ToolCall[]) {
-  const values = new Map<number, ToolCall>()
-  for (const call of calls) values.set(call.id, call)
-  return [...values.values()]
-}
-
 function riskMapFrom(risks: ToolCallRiskSummary[]) {
   return new Map(risks.map((risk) => [risk.toolCallId, risk]))
-}
-
-function sortedCalls(calls: ToolCall[], sort: ToolCallSort) {
-  return [...calls].sort((left, right) => {
-    if (sort === 'duration_desc') return (right.durationMs || 0) - (left.durationMs || 0)
-    if (sort === 'duration_asc') return (left.durationMs || 0) - (right.durationMs || 0)
-    return timestampMs(right.startedAt) - timestampMs(left.startedAt)
-  })
 }
 
 function filteredByCommand(calls: ToolCall[], command?: string) {
@@ -275,14 +244,8 @@ function shellCommandStats(calls: ToolCall[]): ShellCommandStat[] {
     .sort((left, right) => right.calls - left.calls || left.command.localeCompare(right.command))
 }
 
-function timestampMs(value?: string) {
-  if (!value) return 0
-  const parsed = Date.parse(value)
-  return Number.isNaN(parsed) ? 0 : parsed
-}
-
 function routeSortQuery(query: LocationQuery): ToolCallSort {
   const value = stringRouteQueryValue(query.sort)
-  if (value === 'duration_desc' || value === 'duration_asc') return value
+  if (value === 'duration_desc' || value === 'duration_asc' || value === 'risk_desc' || value === 'risk_asc') return value
   return DEFAULT_SORT
 }

@@ -151,6 +151,7 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_tool_calls_name ON tool_calls(tool_name)`,
 		`CREATE INDEX IF NOT EXISTS idx_tool_calls_started_at ON tool_calls(started_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_tool_calls_name_started ON tool_calls(tool_name, started_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_tool_calls_duration ON tool_calls(duration_ms DESC)`,
 		`CREATE TABLE IF NOT EXISTS audit_runs (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -189,6 +190,7 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_audit_findings_category_severity ON audit_findings(category, severity)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_findings_timestamp ON audit_findings(timestamp DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_findings_tool_call ON audit_findings(tool_call_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_findings_tool_call_severity_rule ON audit_findings(tool_call_id, severity, rule_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_findings_shell ON audit_findings(shell_family)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_findings_rule ON audit_findings(rule_id)`,
 		`CREATE TABLE IF NOT EXISTS pricing_models (

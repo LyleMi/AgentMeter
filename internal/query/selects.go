@@ -30,6 +30,62 @@ const toolCallSelect = `SELECT
 	LEFT JOIN events start_event ON start_event.id = CASE WHEN tc.raw_start_event_id != 0 THEN tc.raw_start_event_id ELSE tc.raw_event_id END
 	LEFT JOIN events end_event ON end_event.id = tc.raw_end_event_id`
 
+const toolCallWithRiskSelect = `SELECT
+		tc.id, tc.session_id, src.id, src.root_path, src.sessions_path,
+		tc.started_at, tc.ended_at, tc.duration_ms, tc.tool_name, tc.status, tc.input_summary, tc.output_summary, tc.error,
+		tc.raw_event_id, tc.call_id, tc.raw_start_event_id, tc.raw_end_event_id,
+		COALESCE(start_event.source_line, 0), COALESCE(end_event.source_line, 0),
+		COALESCE(start_event.raw_type, ''), COALESCE(end_event.raw_type, ''),
+		COALESCE(start_event.summary, ''), COALESCE(end_event.summary, ''),
+		COALESCE(start_event.raw_json, ''), COALESCE(end_event.raw_json, ''),
+		COALESCE(NULLIF(sess.session_key, ''), sess.codex_session_id), sess.codex_session_id, sess.project_path,
+		src.kind, src.name, sf.path,
+		CASE WHEN COALESCE(risk.risk_count, 0) > 0 THEN risk.risk_score ELSE 1 END,
+		COALESCE(risk.severity, ''),
+		COALESCE(risk.risk_count, 0),
+		COALESCE(risk.rule_ids, '')
+	FROM tool_calls tc
+	JOIN sessions sess ON sess.id = tc.session_id
+	JOIN sources src ON src.id = sess.source_id
+	JOIN source_files sf ON sf.id = sess.source_file_id
+	LEFT JOIN events start_event ON start_event.id = CASE WHEN tc.raw_start_event_id != 0 THEN tc.raw_start_event_id ELSE tc.raw_event_id END
+	LEFT JOIN events end_event ON end_event.id = tc.raw_end_event_id
+	LEFT JOIN (
+		SELECT
+			af.tool_call_id,
+			CASE MAX(CASE af.severity
+				WHEN 'critical' THEN 4
+				WHEN 'high' THEN 3
+				WHEN 'medium' THEN 2
+				WHEN 'low' THEN 1
+				ELSE 0
+			END)
+				WHEN 4 THEN 'critical'
+				WHEN 3 THEN 'high'
+				WHEN 2 THEN 'medium'
+				WHEN 1 THEN 'low'
+				ELSE ''
+			END AS severity,
+			COUNT(*) AS risk_count,
+			GROUP_CONCAT(DISTINCT af.rule_id) AS rule_ids,
+			MIN(100, CASE MAX(CASE af.severity
+				WHEN 'critical' THEN 4
+				WHEN 'high' THEN 3
+				WHEN 'medium' THEN 2
+				WHEN 'low' THEN 1
+				ELSE 0
+			END)
+				WHEN 4 THEN 90
+				WHEN 3 THEN 70
+				WHEN 2 THEN 45
+				WHEN 1 THEN 20
+				ELSE 0
+			END + ((COUNT(DISTINCT af.rule_id) - 1) * 5)) AS risk_score
+		FROM audit_findings af
+		WHERE af.tool_call_id > 0
+		GROUP BY af.tool_call_id
+	) risk ON risk.tool_call_id = tc.id`
+
 const auditFindingSelect = `SELECT
 		af.id, af.session_id, src.id, src.root_path, src.sessions_path,
 		af.tool_call_id, af.source_file_id, af.raw_event_id, af.source_line, af.timestamp,

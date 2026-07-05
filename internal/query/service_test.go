@@ -126,6 +126,68 @@ func TestToolCallsFiltersByAgentTimeAndSortsByDuration(t *testing.T) {
 	}
 }
 
+func TestToolCallsFiltersShellAndRiskInQuery(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	now := time.Date(2026, 6, 27, 1, 2, 3, 0, time.UTC)
+	sessionID, sourceFileID := insertAuditSession(t, conn, "codex", "Codex", now, "risk-query")
+	lowRiskID := insertOverviewToolCall(t, conn, sessionID, now.Add(time.Minute), 1_000, "shell_command", "completed", "env")
+	noRiskID := insertOverviewToolCall(t, conn, sessionID, now.Add(2*time.Minute), 1_000, "Bash", "completed", "go test ./...")
+	highRiskID := insertOverviewToolCall(t, conn, sessionID, now.Add(3*time.Minute), 1_000, "PowerShell", "completed", "powershell -EncodedCommand SQBFAFgA")
+	nonShellID := insertOverviewToolCall(t, conn, sessionID, now.Add(4*time.Minute), 1_000, "read_file", "completed", "README.md")
+
+	insertAuditFindingWithToolCall(t, conn, sessionID, sourceFileID, lowRiskID, now.Add(time.Minute), "command", "low", "shell.environment-dump", "env")
+	insertAuditFindingWithToolCall(t, conn, sessionID, sourceFileID, highRiskID, now.Add(3*time.Minute), "command", "medium", "shell.package-install", "npm install")
+	insertAuditFindingWithToolCall(t, conn, sessionID, sourceFileID, highRiskID, now.Add(3*time.Minute+time.Second), "command", "high", "shell.obfuscated-execution", "powershell -EncodedCommand SQBFAFgA")
+	insertAuditFindingWithToolCall(t, conn, sessionID, sourceFileID, nonShellID, now.Add(4*time.Minute), "file", "critical", "file.secret", "README.md")
+
+	service := New(conn)
+	calls, err := service.ToolCalls(ctx, model.ToolCallFilters{Shell: true, IncludeRisk: true, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := toolCallIDs(calls), []int64{highRiskID, noRiskID, lowRiskID}; !equalInt64s(got, want) {
+		t.Fatalf("shell calls = %+v, want %+v", got, want)
+	}
+	noRisk := findToolCallByID(t, calls, noRiskID)
+	if noRisk.RiskScore != 1 || noRisk.RiskSeverity != "" || noRisk.RiskCount != 0 {
+		t.Fatalf("no-risk shell call risk = %+v", noRisk)
+	}
+	highRisk := findToolCallByID(t, calls, highRiskID)
+	if highRisk.RiskScore != 75 || highRisk.RiskSeverity != "high" || highRisk.RiskCount != 2 {
+		t.Fatalf("high-risk shell call risk = %+v", highRisk)
+	}
+
+	calls, err = service.ToolCalls(ctx, model.ToolCallFilters{Shell: true, RiskOnly: true, Sort: "risk_desc", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := toolCallIDs(calls), []int64{highRiskID, lowRiskID}; !equalInt64s(got, want) {
+		t.Fatalf("risk desc shell calls = %+v, want %+v", got, want)
+	}
+
+	calls, err = service.ToolCalls(ctx, model.ToolCallFilters{Shell: true, Sort: "risk_asc", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := toolCallIDs(calls), []int64{noRiskID, lowRiskID, highRiskID}; !equalInt64s(got, want) {
+		t.Fatalf("risk asc shell calls = %+v, want %+v", got, want)
+	}
+
+	calls, err = service.ToolCalls(ctx, model.ToolCallFilters{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if normal := findToolCallByID(t, calls, highRiskID); normal.RiskScore != 0 || normal.RiskCount != 0 || len(normal.RiskRuleIDs) != 0 {
+		t.Fatalf("plain tool call query should not include risk fields: %+v", normal)
+	}
+}
+
 func TestToolsFiltersByAgent(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "agentmeter.sqlite"))
@@ -247,7 +309,7 @@ func TestToolCallRisksAggregatesFindingsByToolCall(t *testing.T) {
 	if len(risks) != 2 {
 		t.Fatalf("codex risks = %+v", risks)
 	}
-	if risks[0].ToolCallID != codexCallID || risks[0].Severity != "high" || risks[0].RiskCount != 2 {
+	if risks[0].ToolCallID != codexCallID || risks[0].Severity != "high" || risks[0].RiskScore != 75 || risks[0].RiskCount != 2 {
 		t.Fatalf("codex aggregate = %+v", risks[0])
 	}
 	if got, want := strings.Join(risks[0].RuleIDs, ","), "shell.obfuscated-execution,shell.package-install"; got != want {
@@ -1274,6 +1336,37 @@ func findToolTimeUsage(t *testing.T, items []model.ToolTimeUsage, toolName strin
 	}
 	t.Fatalf("tool time usage for %s missing: %+v", toolName, items)
 	return model.ToolTimeUsage{}
+}
+
+func findToolCallByID(t *testing.T, items []model.ToolCall, id int64) model.ToolCall {
+	t.Helper()
+	for _, item := range items {
+		if item.ID == id {
+			return item
+		}
+	}
+	t.Fatalf("tool call %d missing: %+v", id, items)
+	return model.ToolCall{}
+}
+
+func toolCallIDs(items []model.ToolCall) []int64 {
+	result := make([]int64, 0, len(items))
+	for _, item := range items {
+		result = append(result, item.ID)
+	}
+	return result
+}
+
+func equalInt64s(left, right []int64) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func findAgentTimeUsage(t *testing.T, items []model.AgentTimeUsage, agentKind, agentName string) model.AgentTimeUsage {

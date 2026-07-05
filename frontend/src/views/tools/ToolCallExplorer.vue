@@ -69,6 +69,8 @@ const { t } = useMessages({
     'sort.recent': 'Recent first',
     'sort.durationDesc': 'Duration high to low',
     'sort.durationAsc': 'Duration low to high',
+    'sort.riskDesc': 'Risk high to low',
+    'sort.riskAsc': 'Risk low to high',
     'action.reset': 'Reset',
     'action.refresh': 'Refresh',
     'label.rawSource': 'raw',
@@ -77,6 +79,7 @@ const { t } = useMessages({
     'empty.shell.loading': 'Loading shell commands...',
     'empty.shell.none': 'No shell command calls indexed',
     'tooltip.viewDetails': 'View details',
+    'tooltip.riskScore': 'Risk score',
     'tooltip.riskRules': 'Matched rules',
     'severity.critical': 'Critical',
     'severity.high': 'High',
@@ -119,6 +122,8 @@ const { t } = useMessages({
     'sort.recent': '最近优先',
     'sort.durationDesc': '耗时从高到低',
     'sort.durationAsc': '耗时从低到高',
+    'sort.riskDesc': '风险从高到低',
+    'sort.riskAsc': '风险从低到高',
     'action.reset': '重置',
     'action.refresh': '刷新',
     'label.rawSource': '原始',
@@ -127,6 +132,7 @@ const { t } = useMessages({
     'empty.shell.loading': '正在加载 Shell 命令...',
     'empty.shell.none': '暂无已索引 Shell 命令调用',
     'tooltip.viewDetails': '查看详情',
+    'tooltip.riskScore': '风险分数',
     'tooltip.riskRules': '命中规则',
     'severity.critical': '严重',
     'severity.high': '高危',
@@ -179,7 +185,13 @@ const agentOptions = computed(() => sourceFilterOptions(explorer.agents.value, t
 const sortOptions = computed(() => [
   { value: DEFAULT_SORT, label: t('sort.recent') },
   { value: 'duration_desc', label: t('sort.durationDesc') },
-  { value: 'duration_asc', label: t('sort.durationAsc') }
+  { value: 'duration_asc', label: t('sort.durationAsc') },
+  ...(props.mode === 'shell'
+    ? [
+        { value: 'risk_desc', label: t('sort.riskDesc') },
+        { value: 'risk_asc', label: t('sort.riskAsc') }
+      ]
+    : [])
 ])
 const tableLocale = computed(() => ({ emptyText: explorer.callLoading.value ? t(`empty.${modeKey.value}.loading`) : t(`empty.${modeKey.value}.none`) }))
 const hasActiveFilters = computed(() => Boolean(explorer.toolFilter.value || explorer.commandFilter.value || explorer.riskOnlyFilter.value || explorer.agentFilter.value || explorer.fromFilter.value || explorer.toFilter.value))
@@ -225,7 +237,7 @@ function riskTooltip(call: ToolCall) {
   const risk = riskFor(call)
   if (!risk) return ''
   const rules = risk.ruleIds?.length ? risk.ruleIds.join('\n') : t('fallback.none')
-  return `${t('tooltip.riskRules')}\n${rules}`
+  return `${t('tooltip.riskScore')}: ${formatNumber(risk.riskScore || 1)}\n${severityLabel(risk.severity)} · ${formatNumber(risk.riskCount || 0)}\n${t('tooltip.riskRules')}\n${rules}`
 }
 
 function severityLabel(value?: string | null) {
@@ -354,7 +366,7 @@ function severityLabel(value?: string | null) {
             <a-tooltip v-if="riskFor(record)" :title="riskTooltip(record)" placement="topLeft">
               <span class="tool-risk-cell">
                 <a-tag class="status-tag tool-risk-tag" :color="severityColor(riskFor(record)?.severity)">
-                  {{ severityLabel(riskFor(record)?.severity) }}
+                  {{ formatNumber(riskFor(record)?.riskScore || 1) }}
                 </a-tag>
                 <span class="tool-risk-count">{{ formatNumber(riskFor(record)?.riskCount || 0) }}</span>
               </span>

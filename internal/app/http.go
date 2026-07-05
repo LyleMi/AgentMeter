@@ -91,6 +91,11 @@ func queryInt(r *http.Request, key string) int {
 	return value
 }
 
+func queryBool(r *http.Request, key string) bool {
+	value := strings.ToLower(strings.TrimSpace(r.URL.Query().Get(key)))
+	return value == "1" || value == "true" || value == "yes" || value == "on"
+}
+
 func requirePrivacyTarget(w http.ResponseWriter, r *http.Request, service *App) (string, bool) {
 	target := r.PathValue("target")
 	if !service.SupportsPrivacyTarget(target) {
@@ -290,6 +295,9 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 			StartedFrom: query.Get("from"),
 			StartedTo:   query.Get("to"),
 			Sort:        query.Get("sort"),
+			Shell:       queryBool(r, "shell"),
+			RiskOnly:    queryBool(r, "riskOnly"),
+			IncludeRisk: queryBool(r, "includeRisk"),
 			Limit:       queryInt(r, "limit"),
 			Offset:      queryInt(r, "offset"),
 		})

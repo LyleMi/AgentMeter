@@ -106,6 +106,7 @@ export function filteredToolCallRisks(filters: ToolCallRiskFilters = {}): ToolCa
     .map(([toolCallId, findings]) => ({
       toolCallId,
       severity: highestSeverity(findings.map((finding) => finding.severity)),
+      riskScore: riskScoreFor(findings),
       riskCount: findings.length,
       ruleIds: [...new Set(findings.map((finding) => finding.ruleId).filter(Boolean))].sort()
     }))
@@ -122,4 +123,11 @@ export function auditFinding(id: number): AuditFinding {
 function highestSeverity(values: string[]) {
   const rank: Record<string, number> = { low: 1, medium: 2, high: 3, critical: 4 }
   return values.reduce((best, value) => ((rank[value] || 0) > (rank[best] || 0) ? value : best), '')
+}
+
+function riskScoreFor(findings: AuditFinding[]) {
+  if (!findings.length) return 1
+  const base: Record<string, number> = { low: 20, medium: 45, high: 70, critical: 90 }
+  const ruleCount = new Set(findings.map((finding) => finding.ruleId).filter(Boolean)).size
+  return Math.min(100, (base[highestSeverity(findings.map((finding) => finding.severity))] || 0) + Math.max(0, ruleCount - 1) * 5)
 }

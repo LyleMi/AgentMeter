@@ -49,6 +49,9 @@ func (s *Service) ToolCalls(ctx context.Context, filters model.ToolCallFilters) 
 		where = append(where, "tc.tool_name = ?")
 		args = append(args, strings.TrimSpace(filters.ToolName))
 	}
+	if filters.Shell {
+		where = append(where, shellToolSQLPredicate("tc.tool_name"))
+	}
 	where, args = appendSourceFilter(where, args, filters.Agent)
 	if strings.TrimSpace(filters.StartedFrom) != "" {
 		where = append(where, "tc.started_at >= ?")
@@ -58,6 +61,9 @@ func (s *Service) ToolCalls(ctx context.Context, filters model.ToolCallFilters) 
 		where = append(where, "tc.started_at <= ?")
 		args = append(args, strings.TrimSpace(filters.StartedTo))
 	}
+	if filters.RiskOnly {
+		where = append(where, "COALESCE(risk.risk_count, 0) > 0")
+	}
 	limit, offset := clampLimitOffset(filters.Limit, filters.Offset, 500, 1000)
 	orderBy := "tc.started_at DESC, tc.id DESC"
 	switch strings.TrimSpace(filters.Sort) {
@@ -65,8 +71,19 @@ func (s *Service) ToolCalls(ctx context.Context, filters model.ToolCallFilters) 
 		orderBy = "tc.duration_ms DESC, tc.started_at DESC, tc.id DESC"
 	case "duration_asc":
 		orderBy = "tc.duration_ms ASC, tc.started_at DESC, tc.id DESC"
+	case "risk_desc":
+		orderBy = "CASE WHEN COALESCE(risk.risk_count, 0) > 0 THEN risk.risk_score ELSE 1 END DESC, tc.started_at DESC, tc.id DESC"
+	case "risk_asc":
+		orderBy = "CASE WHEN COALESCE(risk.risk_count, 0) > 0 THEN risk.risk_score ELSE 1 END ASC, tc.started_at DESC, tc.id DESC"
 	}
 	args = append(args, limit, offset)
+	if filters.IncludeRisk || filters.Shell || filters.RiskOnly || strings.HasPrefix(strings.TrimSpace(filters.Sort), "risk_") {
+		query := fmt.Sprintf(`%s
+		WHERE %s
+		ORDER BY %s
+		LIMIT ? OFFSET ?`, toolCallWithRiskSelect, strings.Join(where, " AND "), orderBy)
+		return s.scanToolCallsWithRisk(ctx, query, args...)
+	}
 	query := fmt.Sprintf(`%s
 		WHERE %s
 		ORDER BY %s
@@ -103,6 +120,19 @@ func (s *Service) ToolCallRisks(ctx context.Context, filters model.ToolCallRiskF
 			WHEN 1 THEN 'low'
 			ELSE ''
 		END AS severity,
+		MIN(100, CASE MAX(CASE af.severity
+			WHEN 'critical' THEN 4
+			WHEN 'high' THEN 3
+			WHEN 'medium' THEN 2
+			WHEN 'low' THEN 1
+			ELSE 0
+		END)
+			WHEN 4 THEN 90
+			WHEN 3 THEN 70
+			WHEN 2 THEN 45
+			WHEN 1 THEN 20
+			ELSE 0
+		END + ((COUNT(DISTINCT af.rule_id) - 1) * 5)) AS risk_score,
 		COUNT(*) AS risk_count,
 		GROUP_CONCAT(DISTINCT af.rule_id) AS rule_ids,
 		MAX(tc.started_at) AS latest_started_at
@@ -125,13 +155,18 @@ func (s *Service) ToolCallRisks(ctx context.Context, filters model.ToolCallRiskF
 		var item model.ToolCallRiskSummary
 		var ruleIDs string
 		var latestStartedAt string
-		if err := rows.Scan(&item.ToolCallID, &item.Severity, &item.RiskCount, &ruleIDs, &latestStartedAt); err != nil {
+		if err := rows.Scan(&item.ToolCallID, &item.Severity, &item.RiskScore, &item.RiskCount, &ruleIDs, &latestStartedAt); err != nil {
 			return nil, err
 		}
 		item.RuleIDs = splitSortedCSV(ruleIDs)
 		result = append(result, item)
 	}
 	return result, rows.Err()
+}
+
+func shellToolSQLPredicate(column string) string {
+	lower := "LOWER(TRIM(" + column + "))"
+	return "(" + lower + " IN ('shell_command', 'bash', 'zsh', 'sh', 'powershell', 'powershell.exe', 'pwsh', 'pwsh.exe', 'cmd', 'cmd.exe', 'shell', 'terminal') OR " + lower + " LIKE '%.shell_command' OR " + lower + " LIKE '%shell_command%')"
 }
 
 func splitSortedCSV(value string) []string {

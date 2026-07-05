@@ -175,12 +175,22 @@ export function filteredToolCalls(filters: ToolCallFilters & Pick<UsageScopeFilt
   return toolCalls
     .filter((call) => matchesAgent(call, filters.agent))
     .filter((call) => !filters.tool || call.toolName === filters.tool)
+    .filter((call) => !filters.shell || isShellToolName(call.toolName))
     .filter((call) => matchesProject(call, filters.project))
     .filter((call) => matchesDateRange(call.startedAt, filters))
     .sort((left, right) => {
-      const direction = filters.sort === 'duration' ? right.durationMs - left.durationMs : Date.parse(right.startedAt) - Date.parse(left.startedAt)
+      let direction = Date.parse(right.startedAt) - Date.parse(left.startedAt)
+      if (filters.sort === 'duration_desc' || filters.sort === 'duration') direction = right.durationMs - left.durationMs
+      if (filters.sort === 'duration_asc') direction = left.durationMs - right.durationMs
       return direction || right.id - left.id
     })
+}
+
+function isShellToolName(toolName?: string) {
+  const normalized = (toolName || '').trim().toLowerCase()
+  if (!normalized) return false
+  if (normalized.endsWith('.shell_command') || normalized.includes('shell_command')) return true
+  return ['bash', 'cmd', 'cmd.exe', 'powershell', 'powershell.exe', 'pwsh', 'pwsh.exe', 'sh', 'shell', 'terminal', 'zsh'].includes(normalized)
 }
 
 export function toolStatsFor(calls: ToolCall[]): ToolStat[] {
