@@ -1,4 +1,4 @@
-﻿package tui
+package tui
 
 import (
 	"fmt"
@@ -38,18 +38,7 @@ type modelRiskDriver struct {
 
 func (s *state) modelRiskViewportLines() []string {
 	lines := modelRiskLines(s.signals, s.width)
-	height := s.contentHeight()
-	if s.scroll >= len(lines) {
-		s.scroll = len(lines) - 1
-	}
-	if s.scroll < 0 {
-		s.scroll = 0
-	}
-	end := s.scroll + height
-	if end > len(lines) {
-		end = len(lines)
-	}
-	return lines[s.scroll:end]
+	return s.viewportLines(lines)
 }
 
 func modelRiskLines(signals agentmodel.ModelSignals, width int) []string {

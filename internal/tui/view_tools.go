@@ -49,7 +49,8 @@ func (s *state) toolOverviewLines() []string {
 		bold("Top Tools"),
 		fmt.Sprintf("  %-30s %8s %8s %8s %12s %12s", "Tool", "Calls", "Success", "Failed", "Total", "Average"),
 	)
-	lines = s.appendToolRows(lines, visibleToolRows(s.tools, s.scroll, s.contentHeight()-len(lines)), -1)
+	start, end := s.visibleItemRange(len(s.tools), len(lines))
+	lines = s.appendToolRows(lines, s.tools[start:end], -1)
 	return append(lines, "",
 		bold("Activity Summary"),
 		fmt.Sprintf("Total calls: %-10s Tools used: %-8s Failed/pending: %-8s Average: %s",
@@ -74,32 +75,8 @@ func (s *state) toolSummaryLines() []string {
 		return append(lines, "No tool calls found.")
 	}
 	lines = append(lines, fmt.Sprintf("  %-30s %8s %8s %8s %12s %12s", "Tool", "Calls", "Success", "Failed", "Total", "Average"))
-	visible := s.contentHeight() - len(lines)
-	if visible < 1 {
-		visible = 1
-	}
-	end := s.scroll + visible
-	if end > len(s.tools) {
-		end = len(s.tools)
-	}
-	return s.appendToolRows(lines, s.tools[s.scroll:end], -1)
-}
-
-func visibleToolRows(rows []agentmodel.ToolStat, scroll, visible int) []agentmodel.ToolStat {
-	if visible < 1 {
-		visible = 1
-	}
-	if scroll < 0 {
-		scroll = 0
-	}
-	if scroll > len(rows) {
-		scroll = len(rows)
-	}
-	end := scroll + visible
-	if end > len(rows) {
-		end = len(rows)
-	}
-	return rows[scroll:end]
+	start, end := s.visibleItemRange(len(s.tools), len(lines))
+	return s.appendToolRows(lines, s.tools[start:end], -1)
 }
 
 func (s *state) appendToolRows(lines []string, rows []agentmodel.ToolStat, limit int) []string {
@@ -145,18 +122,8 @@ func (s *state) toolExplorerLines() []string {
 		return append(lines, "No matching tool calls found.")
 	}
 	lines = append(lines, toolCallHeader(s.width))
-	visible := s.contentHeight() - len(lines)
-	if visible < 1 {
-		visible = 1
-	}
-	if s.scroll > len(s.toolCalls)-1 {
-		s.scroll = len(s.toolCalls) - 1
-	}
-	end := s.scroll + visible
-	if end > len(s.toolCalls) {
-		end = len(s.toolCalls)
-	}
-	for i := s.scroll; i < end; i++ {
+	start, end := s.visibleItemRange(len(s.toolCalls), len(lines))
+	for i := start; i < end; i++ {
 		lines = append(lines, toolCallRow(s.toolCalls[i], i == s.selected, s.width))
 		if s.toolsTab == toolsTabShell {
 			command := invokedToolCommand(s.toolCalls[i])
@@ -216,18 +183,8 @@ func (s *state) toolCallLines() []string {
 		return append(lines, "No matching tool calls found.")
 	}
 	lines = append(lines, toolCallHeader(s.width))
-	visible := s.contentHeight() - len(lines)
-	if visible < 1 {
-		visible = 1
-	}
-	if s.scroll > len(s.toolCalls)-1 {
-		s.scroll = len(s.toolCalls) - 1
-	}
-	end := s.scroll + visible
-	if end > len(s.toolCalls) {
-		end = len(s.toolCalls)
-	}
-	for i := s.scroll; i < end; i++ {
+	start, end := s.visibleItemRange(len(s.toolCalls), len(lines))
+	for i := start; i < end; i++ {
 		lines = append(lines, toolCallRow(s.toolCalls[i], i == s.selected, s.width))
 	}
 	return lines
@@ -238,18 +195,7 @@ func (s *state) toolCallDetailViewportLines() []string {
 		return []string{bold("Tool Call Detail")}
 	}
 	lines := toolCallDetailLines(*s.toolCall, s.width)
-	height := s.contentHeight()
-	if s.scroll >= len(lines) {
-		s.scroll = len(lines) - 1
-	}
-	if s.scroll < 0 {
-		s.scroll = 0
-	}
-	end := s.scroll + height
-	if end > len(lines) {
-		end = len(lines)
-	}
-	return lines[s.scroll:end]
+	return s.viewportLines(lines)
 }
 
 func toolCallHeader(width int) string {

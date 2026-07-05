@@ -1,4 +1,4 @@
-﻿package tui
+package tui
 
 import (
 	"encoding/json"
@@ -16,18 +16,7 @@ func (s *state) privacyViewportLines() []string {
 		return lines
 	}
 	detail := privacyDetailLines(*status, s.width)
-	detailHeight := s.privacyDetailHeight()
-	if s.scroll >= len(detail) {
-		s.scroll = len(detail) - 1
-	}
-	if s.scroll < 0 {
-		s.scroll = 0
-	}
-	end := s.scroll + detailHeight
-	if end > len(detail) {
-		end = len(detail)
-	}
-	return append(lines, detail[s.scroll:end]...)
+	return append(lines, s.viewportLinesWithHeight(detail, s.privacyDetailHeight())...)
 }
 
 func (s *state) privacyLines() []string {

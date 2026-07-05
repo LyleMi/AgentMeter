@@ -342,6 +342,35 @@ func TestOverviewLoadsAndRenders(t *testing.T) {
 	assertContains(t, view, "Recent Sessions")
 }
 
+func TestViewportHelpersClampScrollAndNarrowWidths(t *testing.T) {
+	st := &state{height: 10, scroll: 99}
+	got := st.viewportLines([]string{"a", "b", "c", "d", "e"})
+	if st.scroll != 4 || len(got) != 1 || got[0] != "e" {
+		t.Fatalf("clamped viewport = %v scroll=%d, want final row", got, st.scroll)
+	}
+
+	st.scroll = -4
+	got = st.viewportLines([]string{"a", "b", "c", "d", "e"})
+	if st.scroll != 0 || len(got) != 4 || got[0] != "a" || got[3] != "d" {
+		t.Fatalf("negative-scroll viewport = %v scroll=%d, want first page", got, st.scroll)
+	}
+
+	st.scroll = 3
+	got = st.viewportLinesWithHeight(nil, 0)
+	if st.scroll != 0 || len(got) != 0 {
+		t.Fatalf("empty viewport = %v scroll=%d, want empty with reset scroll", got, st.scroll)
+	}
+
+	st.scroll = 10
+	start, end := st.visibleItemRange(3, 99)
+	if st.scroll != 2 || start != 2 || end != 3 {
+		t.Fatalf("visible range = %d:%d scroll=%d, want last single row", start, end, st.scroll)
+	}
+	if got := fit("abcdef", 2); got != "ab" {
+		t.Fatalf("narrow fit = %q, want ab", got)
+	}
+}
+
 func TestUsageScopeFiltersAreAppliedAcrossAnalyticsPages(t *testing.T) {
 	svc := sampleService()
 	st := newState(svc, 150, 40)

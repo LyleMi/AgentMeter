@@ -10,18 +10,7 @@ import (
 
 func (s *state) tokenViewportLines() []string {
 	lines := tokenLines(s.tokens, s.breakdown, s.width, s.tokensTab, s.tokenBreakdownGroup)
-	height := s.contentHeight()
-	if s.scroll >= len(lines) {
-		s.scroll = len(lines) - 1
-	}
-	if s.scroll < 0 {
-		s.scroll = 0
-	}
-	end := s.scroll + height
-	if end > len(lines) {
-		end = len(lines)
-	}
-	return lines[s.scroll:end]
+	return s.viewportLines(lines)
 }
 
 func tokenLines(tokens agentmodel.TokenAnalytics, breakdown agentmodel.UsageBreakdown, width int, tab tokensTab, group string) []string {

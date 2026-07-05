@@ -1,4 +1,4 @@
-﻿package query
+package query
 
 import (
 	"sort"
@@ -137,11 +137,8 @@ func sortModelSignalProjectHotspots(hotspots []model.ModelSignalsProjectHotspot)
 	sort.Slice(hotspots, func(i, j int) bool {
 		left := hotspots[i]
 		right := hotspots[j]
-		if modelSignalSeverityRank(left.Drift.Severity) != modelSignalSeverityRank(right.Drift.Severity) {
-			return modelSignalSeverityRank(left.Drift.Severity) < modelSignalSeverityRank(right.Drift.Severity)
-		}
-		if left.TotalTokens != right.TotalTokens {
-			return left.TotalTokens > right.TotalTokens
+		if order := compareModelSignalSeverityTokens(left.Drift.Severity, right.Drift.Severity, left.TotalTokens, right.TotalTokens); order != 0 {
+			return order < 0
 		}
 		return left.ProjectPath < right.ProjectPath
 	})
@@ -151,11 +148,8 @@ func sortModelSignalProjectMetrics(projectMetrics []model.ModelSignalsProjectMet
 	sort.Slice(projectMetrics, func(i, j int) bool {
 		left := projectMetrics[i]
 		right := projectMetrics[j]
-		if modelSignalSeverityRank(left.Drift.Severity) != modelSignalSeverityRank(right.Drift.Severity) {
-			return modelSignalSeverityRank(left.Drift.Severity) < modelSignalSeverityRank(right.Drift.Severity)
-		}
-		if left.TotalTokens != right.TotalTokens {
-			return left.TotalTokens > right.TotalTokens
+		if order := compareModelSignalSeverityTokens(left.Drift.Severity, right.Drift.Severity, left.TotalTokens, right.TotalTokens); order != 0 {
+			return order < 0
 		}
 		return left.ProjectPath < right.ProjectPath
 	})

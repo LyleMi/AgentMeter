@@ -1,4 +1,4 @@
-﻿package tui
+package tui
 
 import (
 	"fmt"
@@ -37,18 +37,8 @@ func (s *state) auditLines() []string {
 		}
 		return append(lines, "No audit findings indexed yet.")
 	}
-	visible := s.contentHeight() - len(lines)
-	if visible < 1 {
-		visible = 1
-	}
-	if s.scroll > len(s.audit.RecentFindings)-1 {
-		s.scroll = len(s.audit.RecentFindings) - 1
-	}
-	end := s.scroll + visible
-	if end > len(s.audit.RecentFindings) {
-		end = len(s.audit.RecentFindings)
-	}
-	for i := s.scroll; i < end; i++ {
+	start, end := s.visibleItemRange(len(s.audit.RecentFindings), len(lines))
+	for i := start; i < end; i++ {
 		lines = append(lines, auditFindingRow(s.audit.RecentFindings[i], i == s.selected, s.width))
 	}
 	return lines
@@ -66,18 +56,8 @@ func (s *state) auditFindingLines() []string {
 		}
 		return append(lines, "No audit findings indexed yet.")
 	}
-	visible := s.contentHeight() - len(lines)
-	if visible < 1 {
-		visible = 1
-	}
-	if s.scroll > len(s.findings)-1 {
-		s.scroll = len(s.findings) - 1
-	}
-	end := s.scroll + visible
-	if end > len(s.findings) {
-		end = len(s.findings)
-	}
-	for i := s.scroll; i < end; i++ {
+	start, end := s.visibleItemRange(len(s.findings), len(lines))
+	for i := start; i < end; i++ {
 		lines = append(lines, auditFindingRow(s.findings[i], i == s.selected, s.width))
 	}
 	return lines
@@ -85,18 +65,7 @@ func (s *state) auditFindingLines() []string {
 
 func (s *state) auditDetailViewportLines() []string {
 	lines := auditDetailLines(s.finding, s.auditSession, s.width)
-	height := s.contentHeight()
-	if s.scroll >= len(lines) {
-		s.scroll = len(lines) - 1
-	}
-	if s.scroll < 0 {
-		s.scroll = 0
-	}
-	end := s.scroll + height
-	if end > len(lines) {
-		end = len(lines)
-	}
-	return lines[s.scroll:end]
+	return s.viewportLines(lines)
 }
 
 func auditFindingHeader(width int) string {

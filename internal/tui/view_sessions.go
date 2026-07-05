@@ -1,4 +1,4 @@
-﻿package tui
+package tui
 
 import (
 	"fmt"
@@ -16,18 +16,8 @@ func (s *state) sessionLines() []string {
 		return append(lines, "No sessions found. Press i to update the index.")
 	}
 	lines = append(lines, sessionHeader(s.width))
-	visible := s.contentHeight() - len(lines)
-	if visible < 1 {
-		visible = 1
-	}
-	if s.scroll > len(s.sessions)-1 {
-		s.scroll = len(s.sessions) - 1
-	}
-	end := s.scroll + visible
-	if end > len(s.sessions) {
-		end = len(s.sessions)
-	}
-	for i := s.scroll; i < end; i++ {
+	start, end := s.visibleItemRange(len(s.sessions), len(lines))
+	for i := start; i < end; i++ {
 		lines = append(lines, sessionRow(s.sessions[i], i == s.selected, s.width))
 	}
 	return lines
@@ -38,18 +28,7 @@ func (s *state) detailLines() []string {
 		return []string{bold("Session Detail")}
 	}
 	lines := sessionDetailLines(*s.detail, s.width)
-	height := s.contentHeight()
-	if s.scroll >= len(lines) {
-		s.scroll = len(lines) - 1
-	}
-	if s.scroll < 0 {
-		s.scroll = 0
-	}
-	end := s.scroll + height
-	if end > len(lines) {
-		end = len(lines)
-	}
-	return lines[s.scroll:end]
+	return s.viewportLines(lines)
 }
 
 func sessionHeader(width int) string {

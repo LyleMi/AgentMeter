@@ -1,4 +1,4 @@
-﻿package query
+package query
 
 import (
 	"sort"
@@ -496,11 +496,8 @@ func sortModelSignalCohorts(cohorts []model.ModelSignalsCohort) {
 	sort.Slice(cohorts, func(i, j int) bool {
 		left := cohorts[i]
 		right := cohorts[j]
-		if modelSignalSeverityRank(left.Drift.Severity) != modelSignalSeverityRank(right.Drift.Severity) {
-			return modelSignalSeverityRank(left.Drift.Severity) < modelSignalSeverityRank(right.Drift.Severity)
-		}
-		if left.TotalTokens != right.TotalTokens {
-			return left.TotalTokens > right.TotalTokens
+		if order := compareModelSignalSeverityTokens(left.Drift.Severity, right.Drift.Severity, left.TotalTokens, right.TotalTokens); order != 0 {
+			return order < 0
 		}
 		if left.SourceLabel != right.SourceLabel {
 			return left.SourceLabel < right.SourceLabel
@@ -519,15 +516,30 @@ func sortModelSignalMatrixCells(cells []model.ModelSignalsMatrixCell) {
 	sort.Slice(cells, func(i, j int) bool {
 		left := cells[i]
 		right := cells[j]
-		if modelSignalSeverityRank(left.Severity) != modelSignalSeverityRank(right.Severity) {
-			return modelSignalSeverityRank(left.Severity) < modelSignalSeverityRank(right.Severity)
-		}
-		if left.TotalTokens != right.TotalTokens {
-			return left.TotalTokens > right.TotalTokens
+		if order := compareModelSignalSeverityTokens(left.Severity, right.Severity, left.TotalTokens, right.TotalTokens); order != 0 {
+			return order < 0
 		}
 		if left.ModelProvider != right.ModelProvider {
 			return left.ModelProvider < right.ModelProvider
 		}
 		return left.Model < right.Model
 	})
+}
+
+func compareModelSignalSeverityTokens(leftSeverity, rightSeverity string, leftTokens, rightTokens int64) int {
+	leftRank := modelSignalSeverityRank(leftSeverity)
+	rightRank := modelSignalSeverityRank(rightSeverity)
+	if leftRank != rightRank {
+		if leftRank < rightRank {
+			return -1
+		}
+		return 1
+	}
+	if leftTokens != rightTokens {
+		if leftTokens > rightTokens {
+			return -1
+		}
+		return 1
+	}
+	return 0
 }

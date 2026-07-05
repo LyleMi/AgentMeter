@@ -1,4 +1,4 @@
-﻿package tui
+package tui
 
 import (
 	"fmt"
@@ -12,18 +12,7 @@ import (
 
 func (s *state) modelSignalViewportLines() []string {
 	lines := modelSignalLines(s.signals, s.width, s.modelSignalsTab)
-	height := s.contentHeight()
-	if s.scroll >= len(lines) {
-		s.scroll = len(lines) - 1
-	}
-	if s.scroll < 0 {
-		s.scroll = 0
-	}
-	end := s.scroll + height
-	if end > len(lines) {
-		end = len(lines)
-	}
-	return lines[s.scroll:end]
+	return s.viewportLines(lines)
 }
 
 func modelSignalLines(signals agentmodel.ModelSignals, width int, tab modelSignalsTab) []string {

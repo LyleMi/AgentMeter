@@ -111,38 +111,13 @@ func sortAgentResources(skills []model.AgentSkillResource, servers []model.Agent
 }
 
 func packageSkills(agent model.AgentResourceAgent, root string) ([]model.AgentSkillResource, []string) {
-	if stat, err := os.Stat(root); err != nil || !stat.IsDir() {
-		return []model.AgentSkillResource{}, nil
-	}
-	items := []model.AgentSkillResource{}
-	warnings := []string{}
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			warnings = append(warnings, "Unable to inspect "+agent.Name+" skill path "+path+": "+err.Error())
-			return nil
-		}
-		if entry.IsDir() {
-			if entry.Name() == ".git" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
+	return scanSkillResourceFiles(agent, root, "skill", agent.Name+" skill", agent.Name+" skills", func(entry fs.DirEntry) (bool, bool) {
 		enabled := strings.EqualFold(entry.Name(), "SKILL.md")
 		if !enabled && !strings.EqualFold(entry.Name(), "SKILL.md.disabled") {
-			return nil
+			return false, false
 		}
-		item, warning := skillResourceFromFile(agent, root, path, "skill", enabled)
-		if warning != "" {
-			warnings = append(warnings, warning)
-			return nil
-		}
-		items = append(items, item)
-		return nil
-	})
-	if err != nil {
-		warnings = append(warnings, "Unable to scan "+agent.Name+" skills: "+err.Error())
-	}
-	return items, warnings
+		return true, enabled
+	}, nil)
 }
 
 func skillResourceFromFile(agent model.AgentResourceAgent, root, path, resourceType string, enabled bool) (model.AgentSkillResource, string) {
@@ -179,45 +154,35 @@ func skillResourceFromFile(agent model.AgentResourceAgent, root, path, resourceT
 }
 
 func markdownSkillResources(agent model.AgentResourceAgent, root, resourceType string) ([]model.AgentSkillResource, []string) {
-	if stat, err := os.Stat(root); err != nil || !stat.IsDir() {
-		return []model.AgentSkillResource{}, nil
-	}
-	items := []model.AgentSkillResource{}
-	warnings := []string{}
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			warnings = append(warnings, "Unable to inspect "+agent.Name+" "+resourceType+" path "+path+": "+err.Error())
-			return nil
-		}
-		if entry.IsDir() {
-			if entry.Name() == ".git" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
+	return scanSkillResourceFiles(agent, root, resourceType, agent.Name+" "+resourceType, agent.Name+" "+resourceType+" resources", func(entry fs.DirEntry) (bool, bool) {
 		if !strings.EqualFold(filepath.Ext(entry.Name()), ".md") {
-			return nil
+			return false, false
 		}
-		item, warning := skillResourceFromFile(agent, root, path, resourceType, true)
-		if warning != "" {
-			warnings = append(warnings, warning)
-			return nil
-		}
+		return true, true
+	}, func(item *model.AgentSkillResource, path string) {
 		item.Path = path
 		item.RelativePath = relativePath(root, path)
 		item.CanToggle = false
 		item.Status = "configured"
-		items = append(items, item)
-		return nil
 	})
-	if err != nil {
-		warnings = append(warnings, "Unable to scan "+agent.Name+" "+resourceType+" resources: "+err.Error())
-	}
-	return items, warnings
 }
 
 func cursorRules(agent model.AgentResourceAgent) ([]model.AgentSkillResource, []string) {
 	root := filepath.Join(agent.RootPath, "rules")
+	return scanSkillResourceFiles(agent, root, "rule", "Cursor rule", "Cursor rules", func(entry fs.DirEntry) (bool, bool) {
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if ext != ".md" && ext != ".mdc" {
+			return false, false
+		}
+		return true, true
+	}, func(item *model.AgentSkillResource, path string) {
+		item.CanToggle = false
+		item.Path = path
+		item.RelativePath = relativePath(root, path)
+	})
+}
+
+func scanSkillResourceFiles(agent model.AgentResourceAgent, root, resourceType, inspectLabel, scanLabel string, match func(fs.DirEntry) (bool, bool), update func(*model.AgentSkillResource, string)) ([]model.AgentSkillResource, []string) {
 	if stat, err := os.Stat(root); err != nil || !stat.IsDir() {
 		return []model.AgentSkillResource{}, nil
 	}
@@ -225,7 +190,7 @@ func cursorRules(agent model.AgentResourceAgent) ([]model.AgentSkillResource, []
 	warnings := []string{}
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
-			warnings = append(warnings, "Unable to inspect Cursor rule path "+path+": "+err.Error())
+			warnings = append(warnings, "Unable to inspect "+inspectLabel+" path "+path+": "+err.Error())
 			return nil
 		}
 		if entry.IsDir() {
@@ -234,23 +199,23 @@ func cursorRules(agent model.AgentResourceAgent) ([]model.AgentSkillResource, []
 			}
 			return nil
 		}
-		ext := strings.ToLower(filepath.Ext(entry.Name()))
-		if ext != ".md" && ext != ".mdc" {
+		include, enabled := match(entry)
+		if !include {
 			return nil
 		}
-		item, warning := skillResourceFromFile(agent, root, path, "rule", true)
+		item, warning := skillResourceFromFile(agent, root, path, resourceType, enabled)
 		if warning != "" {
 			warnings = append(warnings, warning)
 			return nil
 		}
-		item.CanToggle = false
-		item.Path = path
-		item.RelativePath = relativePath(root, path)
+		if update != nil {
+			update(&item, path)
+		}
 		items = append(items, item)
 		return nil
 	})
 	if err != nil {
-		warnings = append(warnings, "Unable to scan Cursor rules: "+err.Error())
+		warnings = append(warnings, "Unable to scan "+scanLabel+": "+err.Error())
 	}
 	return items, warnings
 }
