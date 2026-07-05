@@ -15,6 +15,7 @@ import message from 'ant-design-vue/es/message'
 import {
   ApiOutlined,
   BookOutlined,
+  EditOutlined,
   EyeOutlined,
   DatabaseOutlined,
   ReloadOutlined,
@@ -47,6 +48,8 @@ const { t } = useMessages({
     'subtitle': 'Inventory and management for local agent skills, MCP servers and memory files',
     'action.refresh': 'Refresh',
     'action.view': 'View',
+    'action.edit': 'Edit',
+    'action.reset': 'Reset',
     'action.save': 'Save',
     'action.close': 'Close',
     'filter.agent': 'Agent',
@@ -94,10 +97,16 @@ const { t } = useMessages({
     'memory.drawerTitle': 'Memory details',
     'memory.content': 'Content',
     'memory.path': 'Path',
+    'memory.size': 'Size',
+    'memory.modified': 'Modified',
+    'memory.editable': 'Editable',
+    'memory.readOnlyStatus': 'Read-only',
+    'memory.unsaved': 'Unsaved',
     'memory.readOnly': 'This memory file is read-only from AgentMeter.',
     'message.toggleSaved': 'Resource state updated',
     'message.toggleFailed': 'Unable to update resource state',
-    'message.memoryLoadedFallback': 'Memory details are unavailable; showing table preview.',
+    'message.memoryLoadedFallback': 'Full memory content is unavailable; showing read-only table preview.',
+    'message.memoryDiscardConfirm': 'Discard unsaved memory changes?',
     'message.memorySaved': 'Memory saved',
     'message.memorySaveFailed': 'Unable to save memory',
     'empty.skills.title': 'No skills found',
@@ -115,6 +124,8 @@ const { t } = useMessages({
     'subtitle': '管理本地 Agent 的 Skill、MCP server 和 Memory 文件',
     'action.refresh': '刷新',
     'action.view': '查看',
+    'action.edit': '编辑',
+    'action.reset': '重置',
     'action.save': '保存',
     'action.close': '关闭',
     'filter.agent': 'Agent',
@@ -162,10 +173,16 @@ const { t } = useMessages({
     'memory.drawerTitle': 'Memory 详情',
     'memory.content': '内容',
     'memory.path': '路径',
+    'memory.size': '大小',
+    'memory.modified': '修改时间',
+    'memory.editable': '可编辑',
+    'memory.readOnlyStatus': '只读',
+    'memory.unsaved': '未保存',
     'memory.readOnly': '此 Memory 文件不能从 AgentMeter 编辑。',
     'message.toggleSaved': '资源状态已更新',
     'message.toggleFailed': '无法更新资源状态',
-    'message.memoryLoadedFallback': '无法加载 Memory 详情，正在显示表格摘要。',
+    'message.memoryLoadedFallback': '无法加载完整 Memory 内容，正在只读显示表格摘要。',
+    'message.memoryDiscardConfirm': '放弃未保存的 Memory 变更？',
     'message.memorySaved': 'Memory 已保存',
     'message.memorySaveFailed': '无法保存 Memory',
     'empty.skills.title': '暂无 Skill',
@@ -195,6 +212,8 @@ const memoryLoading = ref(false)
 const memorySaving = ref(false)
 const selectedMemory = ref<AgentMemoryResource | null>(null)
 const memoryContent = ref('')
+const originalMemoryContent = ref('')
+const memoryDetailLoaded = ref(false)
 
 const agentOptions = computed(() => {
   const kinds = new Set<string>()
@@ -234,7 +253,8 @@ const agentNote = computed(() => {
   return agentReady.value ? t('metric.agentNote.ready') : t('metric.agentNote.missing')
 })
 const rootPath = computed(() => selectedAgent.value?.rootPath || '')
-const memoryCanEdit = computed(() => Boolean(selectedMemory.value?.canEdit) && !isStaticDemo)
+const memoryDirty = computed(() => memoryContent.value !== originalMemoryContent.value)
+const memoryCanEdit = computed(() => Boolean(selectedMemory.value?.canEdit) && memoryDetailLoaded.value && !isStaticDemo)
 
 const skillColumns = computed(() => [
   { title: t('column.name'), key: 'name', width: 230 },
@@ -260,10 +280,11 @@ const memoryColumns = computed(() => [
   { title: t('column.name'), key: 'name', width: 220 },
   { title: t('column.agent'), key: 'agent', width: 130 },
   { title: t('column.kind'), dataIndex: 'kind', key: 'kind', width: 110 },
+  { title: t('column.status'), key: 'status', width: 116 },
   { title: t('column.preview'), dataIndex: 'preview', key: 'preview' },
   { title: t('column.path'), key: 'path', width: 260 },
   { title: t('column.modified'), dataIndex: 'modifiedAt', key: 'modifiedAt', width: 150 },
-  { title: t('column.actions'), key: 'actions', width: 96, align: 'right' }
+  { title: t('column.actions'), key: 'actions', width: 104, align: 'right' }
 ])
 
 async function load() {
@@ -321,6 +342,14 @@ function supportsToggle(record: { canToggle?: boolean }) {
 function toggleTooltip(record: { canToggle?: boolean }) {
   if (supportsToggle(record)) return ''
   return t('status.unsupported')
+}
+
+function memoryActionLabel(record: { canEdit?: boolean }) {
+  return record.canEdit && !isStaticDemo ? t('action.edit') : t('action.view')
+}
+
+function memoryStatusLabel(record: { canEdit?: boolean }) {
+  return record.canEdit && !isStaticDemo ? t('memory.editable') : t('memory.readOnlyStatus')
 }
 
 function resourceEnabled(record: { enabled?: boolean }) {
@@ -387,6 +416,8 @@ function onMcpSwitchChange(record: AgentMCPServerResource, checked: unknown) {
 async function openMemory(record: AgentMemoryResource) {
   selectedMemory.value = record
   memoryContent.value = record.content || record.preview || ''
+  originalMemoryContent.value = memoryContent.value
+  memoryDetailLoaded.value = false
   memoryDrawerOpen.value = true
   memoryLoading.value = true
   try {
@@ -397,15 +428,27 @@ async function openMemory(record: AgentMemoryResource) {
     })
     selectedMemory.value = detail
     memoryContent.value = detail.content || detail.preview || ''
+    originalMemoryContent.value = memoryContent.value
+    memoryDetailLoaded.value = true
   } catch {
+    selectedMemory.value = { ...record, canEdit: false }
     message.info(t('message.memoryLoadedFallback'))
   } finally {
     memoryLoading.value = false
   }
 }
 
+function closeMemoryDrawer() {
+  if (memoryDirty.value && !window.confirm(t('message.memoryDiscardConfirm'))) return
+  memoryDrawerOpen.value = false
+}
+
+function resetMemoryContent() {
+  memoryContent.value = originalMemoryContent.value
+}
+
 async function saveMemory() {
-  if (!selectedMemory.value || !memoryCanEdit.value) return
+  if (!selectedMemory.value || !memoryCanEdit.value || !memoryDirty.value) return
   memorySaving.value = true
   try {
     const saved = await api.saveAgentMemory({
@@ -415,6 +458,9 @@ async function saveMemory() {
       content: memoryContent.value
     })
     selectedMemory.value = saved
+    memoryContent.value = saved.content || memoryContent.value
+    originalMemoryContent.value = memoryContent.value
+    memoryDetailLoaded.value = true
     const memoryIndex = overview.value.memories.findIndex((item) => (
       item.agentKind === saved.agentKind && item.path === saved.path
     ))
@@ -664,6 +710,11 @@ onMounted(load)
                   <template v-else-if="column.key === 'kind'">
                     <a-tag class="status-tag" :color="tagColor(record.kind)">{{ record.kind }}</a-tag>
                   </template>
+                  <template v-else-if="column.key === 'status'">
+                    <a-tag class="status-tag" :color="record.canEdit && !isStaticDemo ? tagColor('enabled') : 'default'">
+                      {{ memoryStatusLabel(record) }}
+                    </a-tag>
+                  </template>
                   <template v-else-if="column.key === 'preview'">
                     <div class="resource-preview">{{ record.preview || t('fallback.none') }}</div>
                   </template>
@@ -681,9 +732,10 @@ onMounted(load)
                   <template v-else-if="column.key === 'actions'">
                     <a-button size="small" type="text" @click="openMemory(record)">
                       <template #icon>
-                        <EyeOutlined />
+                        <EditOutlined v-if="record.canEdit && !isStaticDemo" />
+                        <EyeOutlined v-else />
                       </template>
-                      {{ t('action.view') }}
+                      {{ memoryActionLabel(record) }}
                     </a-button>
                   </template>
                 </template>
@@ -699,7 +751,7 @@ onMounted(load)
       :open="memoryDrawerOpen"
       :width="'min(720px, 100vw)'"
       placement="right"
-      @close="memoryDrawerOpen = false"
+      @close="closeMemoryDrawer"
     >
       <template #title>
         {{ t('memory.drawerTitle') }}
@@ -711,25 +763,51 @@ onMounted(load)
               <div class="resource-name">{{ selectedMemory.title || selectedMemory.name }}</div>
               <div class="timeline-event-raw">{{ agentDisplay(selectedMemory.agentKind) }} · {{ selectedMemory.kind }}</div>
             </div>
-            <a-tag class="status-tag" :color="memoryCanEdit ? tagColor('enabled') : 'default'">
-              {{ memoryCanEdit ? t('status.enabled') : t('memory.readOnly') }}
-            </a-tag>
+            <div class="memory-status-line">
+              <a-tag v-if="memoryDirty" class="status-tag" color="warning">{{ t('memory.unsaved') }}</a-tag>
+              <a-tooltip :title="memoryCanEdit ? '' : t('memory.readOnly')">
+                <a-tag class="status-tag" :color="memoryCanEdit ? tagColor('enabled') : 'default'">
+                  {{ memoryCanEdit ? t('memory.editable') : t('memory.readOnlyStatus') }}
+                </a-tag>
+              </a-tooltip>
+            </div>
           </div>
-          <div class="memory-field">
-            <div class="metadata-label">{{ t('memory.path') }}</div>
-            <a-tooltip :title="selectedMemory.path" placement="topLeft">
-              <a-typography-text class="mono" :ellipsis="{ tooltip: selectedMemory.path }">
-                {{ selectedMemory.relativePath }}
-              </a-typography-text>
-            </a-tooltip>
+          <div class="memory-meta-grid">
+            <div class="memory-field is-wide">
+              <div class="metadata-label">{{ t('memory.path') }}</div>
+              <a-tooltip :title="selectedMemory.path" placement="topLeft">
+                <a-typography-text class="mono" :ellipsis="{ tooltip: selectedMemory.path }">
+                  {{ selectedMemory.relativePath }}
+                </a-typography-text>
+              </a-tooltip>
+            </div>
+            <div class="memory-field">
+              <div class="metadata-label">{{ t('memory.size') }}</div>
+              <div class="memory-meta-value">{{ formatBytes(selectedMemory.sizeBytes) }}</div>
+            </div>
+            <div class="memory-field">
+              <div class="metadata-label">{{ t('memory.modified') }}</div>
+              <div class="memory-meta-value">{{ formatDateTime(selectedMemory.modifiedAt) }}</div>
+            </div>
           </div>
           <div class="memory-field">
             <div class="metadata-label">{{ t('memory.content') }}</div>
-            <a-textarea v-model:value="memoryContent" :auto-size="{ minRows: 12, maxRows: 24 }" :readonly="!memoryCanEdit" />
+            <a-textarea
+              v-model:value="memoryContent"
+              class="memory-editor"
+              :auto-size="{ minRows: 14, maxRows: 26 }"
+              :readonly="!memoryCanEdit"
+            />
           </div>
           <div class="memory-actions">
-            <a-button @click="memoryDrawerOpen = false">{{ t('action.close') }}</a-button>
-            <a-button type="primary" :disabled="!memoryCanEdit" :loading="memorySaving" @click="saveMemory">
+            <a-button :disabled="!memoryDirty || memorySaving" @click="resetMemoryContent">{{ t('action.reset') }}</a-button>
+            <a-button @click="closeMemoryDrawer">{{ t('action.close') }}</a-button>
+            <a-button
+              type="primary"
+              :disabled="!memoryCanEdit || !memoryDirty || memoryLoading"
+              :loading="memorySaving"
+              @click="saveMemory"
+            >
               <template #icon>
                 <SaveOutlined />
               </template>
@@ -796,13 +874,43 @@ onMounted(load)
   justify-content: space-between;
 }
 
+.memory-status-line {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.memory-meta-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .memory-field {
   display: grid;
   gap: 6px;
 }
 
+.memory-field.is-wide {
+  grid-column: 1 / -1;
+}
+
+.memory-meta-value {
+  color: var(--am-text-soft);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.memory-editor {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  line-height: 1.55;
+}
+
 .memory-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
 }
@@ -815,6 +923,18 @@ onMounted(load)
 
 @media (max-width: 760px) {
   .agent-resource-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .memory-detail-head {
+    display: grid;
+  }
+
+  .memory-status-line {
+    justify-content: flex-start;
+  }
+
+  .memory-meta-grid {
     grid-template-columns: 1fr;
   }
 }

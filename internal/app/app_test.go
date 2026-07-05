@@ -418,6 +418,56 @@ func TestAgentResourcesHTTPCanToggleCodexSkill(t *testing.T) {
 	}
 }
 
+func TestAgentResourcesHTTPCanReadAndUpdateMemory(t *testing.T) {
+	dir := t.TempDir()
+	isolateResourceAgentHomes(t, dir)
+	root := filepath.Join(dir, ".codex")
+	t.Setenv("CODEX_HOME", root)
+	memoryPath := filepath.Join(root, "memories", "MEMORY.md")
+	if err := os.MkdirAll(filepath.Dir(memoryPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(memoryPath, []byte("# Memory\n\nInitial.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	app := &App{dbPath: filepath.Join(t.TempDir(), "agentmeter.sqlite")}
+	defer app.Shutdown(context.Background())
+	mux := http.NewServeMux()
+	RegisterHTTPHandlers(mux, app, fstest.MapFS{})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/agent-resources/memories/detail?agentKind=codex&relativePath=MEMORY.md", nil)
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var detail model.AgentMemoryDetail
+	if err := json.NewDecoder(recorder.Body).Decode(&detail); err != nil {
+		t.Fatal(err)
+	}
+	if detail.Content != "# Memory\n\nInitial.\n" || !detail.CanEdit {
+		t.Fatalf("detail = %+v", detail)
+	}
+
+	recorder = httptest.NewRecorder()
+	body := strings.NewReader(`{"agentKind":"codex","relativePath":"MEMORY.md","content":"# Memory\n\nUpdated.\n"}`)
+	request = httptest.NewRequest(http.MethodPost, "/api/agent-resources/memories/detail", body)
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	content, err := os.ReadFile(memoryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "# Memory\n\nUpdated.\n" {
+		t.Fatalf("memory content = %q", content)
+	}
+}
+
 func TestAgentResourcesHTTPRejectsMemoryTraversal(t *testing.T) {
 	dir := t.TempDir()
 	isolateResourceAgentHomes(t, dir)
