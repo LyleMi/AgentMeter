@@ -1,4 +1,4 @@
-﻿package cli
+package cli
 
 import (
 	"encoding/json"
@@ -241,7 +241,14 @@ func runPrivacyApply(args []string, stdout, stderr io.Writer, registry privacyRe
 	if isAllTarget(target) {
 		return runPrivacyApplyAll(profile, stdout, stderr, registry)
 	}
-	return runPrivacyApplyOne(target, profile, settingIDs, stdout, stderr, registry)
+	return runPrivacyApplyOne(privacyApplyOneRequest{
+		target:     target,
+		profile:    profile,
+		settingIDs: settingIDs,
+		stdout:     stdout,
+		stderr:     stderr,
+		registry:   registry,
+	})
 }
 
 func runPrivacyApplyAll(profile string, stdout, stderr io.Writer, registry privacyRegistry) int {
@@ -258,17 +265,26 @@ func runPrivacyApplyAll(profile string, stdout, stderr io.Writer, registry priva
 	return code
 }
 
-func runPrivacyApplyOne(target, profile string, settingIDs []string, stdout, stderr io.Writer, registry privacyRegistry) int {
-	if len(settingIDs) > 0 {
-		result, err := registry.Apply(target, settingIDs)
+type privacyApplyOneRequest struct {
+	target     string
+	profile    string
+	settingIDs []string
+	stdout     io.Writer
+	stderr     io.Writer
+	registry   privacyRegistry
+}
+
+func runPrivacyApplyOne(req privacyApplyOneRequest) int {
+	if len(req.settingIDs) > 0 {
+		result, err := req.registry.Apply(req.target, req.settingIDs)
 		if err != nil {
-			return printError(stderr, err)
+			return printError(req.stderr, err)
 		}
-		printApplyResult(stdout, fmt.Sprintf("Applied %d setting(s)", len(settingIDs)), result)
+		printApplyResult(req.stdout, fmt.Sprintf("Applied %d setting(s)", len(req.settingIDs)), result)
 		return ExitOK
 	}
-	if err := applyProfile(target, profile, stdout, registry); err != nil {
-		return printError(stderr, err)
+	if err := applyProfile(req.target, req.profile, req.stdout, req.registry); err != nil {
+		return printError(req.stderr, err)
 	}
 	return ExitOK
 }

@@ -149,7 +149,55 @@ interface MetricTotals {
   toolDependencyRate?: number
 }
 
+interface MetricDerivedValues {
+  visibleOutputTokens: number
+  billableOutputTokens: number
+  wallDurationMs: number
+  activeDurationMs: number
+  toolDurationMs: number
+  idleDurationMs: number
+  estimatedCostUsd?: number
+  unpricedSessionCount: number
+  cacheSavingsUsd?: number
+  costPerSession?: number
+  costPerActiveHour?: number
+  costPer1kTokens?: number
+  failurePressure: number
+  degradationRiskScore: number
+  avgModelCallsPerSession: number
+  outputExpansionRate: number
+  reasoningTokenShare: number
+  reasoningOverheadRate: number
+  cacheMissRate: number
+  modelThroughputTokensPerSecond: number
+  modelThroughputOutputTokensPerSecond: number
+  modelLatencyMsPer1kOutputTokens: number
+  p50ModelLatencyMsPer1kOutputTokens: number
+  p90ModelLatencyMsPer1kOutputTokens: number
+  p50ModelThroughputTokensPerSecond: number
+  p10ModelThroughputTokensPerSecond: number
+  toolFailureRate: number
+  toolDependencyRate: number
+}
+
 function metricSetFromTotals(totals: MetricTotals): ModelSignalMetricSet {
+  return {
+    sessionCount: totals.sessionCount,
+    modelCalls: totals.modelCalls,
+    failedModelCalls: totals.failedModelCalls || 0,
+    toolCalls: totals.toolCalls,
+    failedToolCalls: totals.failedToolCalls,
+    totalTokens: totals.totalTokens,
+    inputTokens: totals.inputTokens,
+    cachedInputTokens: totals.cachedInputTokens,
+    outputTokens: totals.outputTokens,
+    reasoningOutputTokens: totals.reasoningOutputTokens,
+    modelDurationMs: totals.modelDurationMs,
+    ...metricDerivedValues(totals)
+  }
+}
+
+function metricDerivedValues(totals: MetricTotals): MetricDerivedValues {
   const wallDurationMs = totals.wallDurationMs ?? totals.modelDurationMs
   const toolDurationMs = totals.toolDurationMs ?? 0
   const activeDurationMs = totals.activeDurationMs ?? totals.modelDurationMs + toolDurationMs
@@ -176,19 +224,8 @@ function metricSetFromTotals(totals: MetricTotals): ModelSignalMetricSet {
   const p10ModelThroughputTokensPerSecond = percentile(totals.throughputSamples || [], 0.1) ?? modelThroughputTokensPerSecond
   const toolFailureRate = safeRate(totals.failedToolCalls, totals.toolCalls)
   return {
-    sessionCount: totals.sessionCount,
-    modelCalls: totals.modelCalls,
-    failedModelCalls: totals.failedModelCalls || 0,
-    toolCalls: totals.toolCalls,
-    failedToolCalls: totals.failedToolCalls,
-    totalTokens: totals.totalTokens,
-    inputTokens: totals.inputTokens,
-    cachedInputTokens: totals.cachedInputTokens,
-    outputTokens: totals.outputTokens,
-    reasoningOutputTokens: totals.reasoningOutputTokens,
     visibleOutputTokens,
     billableOutputTokens,
-    modelDurationMs: totals.modelDurationMs,
     wallDurationMs,
     activeDurationMs,
     toolDurationMs,
