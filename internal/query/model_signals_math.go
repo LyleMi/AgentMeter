@@ -1,4 +1,4 @@
-﻿package query
+package query
 
 import (
 	"math"
@@ -22,36 +22,45 @@ func safeRateInt(numerator, denominator int) float64 {
 	return float64(numerator) / float64(denominator)
 }
 
-func reasoningOutputSemantics(inputTokens, cachedInputTokens, outputTokens, reasoningOutputTokens, totalTokens int64, modelName string) (visibleOutputTokens int64, billableOutputTokens int64, reasoningTokenShare float64, reasoningOverheadRate float64) {
-	if outputTokens <= 0 {
+type reasoningOutputInput struct {
+	inputTokens           int64
+	cachedInputTokens     int64
+	outputTokens          int64
+	reasoningOutputTokens int64
+	totalTokens           int64
+	modelName             string
+}
+
+func reasoningOutputSemantics(input reasoningOutputInput) (visibleOutputTokens int64, billableOutputTokens int64, reasoningTokenShare float64, reasoningOverheadRate float64) {
+	if input.outputTokens <= 0 {
 		return 0, 0, 0, 0
 	}
-	if reasoningOutputTokens <= 0 {
-		return outputTokens, outputTokens, 0, 0
+	if input.reasoningOutputTokens <= 0 {
+		return input.outputTokens, input.outputTokens, 0, 0
 	}
-	separateReasoning := reasoningOutputAppearsSeparate(inputTokens, cachedInputTokens, outputTokens, reasoningOutputTokens, totalTokens, modelName)
-	visibleOutputTokens, billableOutputTokens = reasoningOutputDenominators(outputTokens, reasoningOutputTokens, separateReasoning)
-	reasoningTokenShare, reasoningOverheadRate = reasoningRates(reasoningOutputTokens, visibleOutputTokens, billableOutputTokens)
+	separateReasoning := reasoningOutputAppearsSeparate(input)
+	visibleOutputTokens, billableOutputTokens = reasoningOutputDenominators(input.outputTokens, input.reasoningOutputTokens, separateReasoning)
+	reasoningTokenShare, reasoningOverheadRate = reasoningRates(input.reasoningOutputTokens, visibleOutputTokens, billableOutputTokens)
 	return visibleOutputTokens, billableOutputTokens, reasoningTokenShare, reasoningOverheadRate
 }
 
-func reasoningOutputAppearsSeparate(inputTokens, cachedInputTokens, outputTokens, reasoningOutputTokens, totalTokens int64, modelName string) bool {
-	if outputTokens <= 0 || reasoningOutputTokens <= 0 || totalTokens <= 0 {
+func reasoningOutputAppearsSeparate(input reasoningOutputInput) bool {
+	if input.outputTokens <= 0 || input.reasoningOutputTokens <= 0 || input.totalTokens <= 0 {
 		return false
 	}
-	if reasoningOutputTokens > outputTokens {
+	if input.reasoningOutputTokens > input.outputTokens {
 		return true
 	}
-	normalizedModel := strings.ToLower(strings.TrimSpace(modelName))
+	normalizedModel := strings.ToLower(strings.TrimSpace(input.modelName))
 	normalizedModel = strings.TrimPrefix(normalizedModel, "models/")
 	if !strings.Contains(normalizedModel, "gemini") {
 		return false
 	}
-	promptTokens := inputTokens
-	if cachedInputTokens > inputTokens {
-		promptTokens += cachedInputTokens
+	promptTokens := input.inputTokens
+	if input.cachedInputTokens > input.inputTokens {
+		promptTokens += input.cachedInputTokens
 	}
-	return totalTokens >= promptTokens+outputTokens+reasoningOutputTokens
+	return input.totalTokens >= promptTokens+input.outputTokens+input.reasoningOutputTokens
 }
 
 func reasoningOutputDenominators(outputTokens, reasoningOutputTokens int64, separateReasoning bool) (visibleOutputTokens int64, billableOutputTokens int64) {

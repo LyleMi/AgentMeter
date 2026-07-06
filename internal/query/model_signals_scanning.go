@@ -191,14 +191,14 @@ func enrichModelSignalSessionMetric(item *modelSignalSessionMetric, latencySampl
 	}
 	item.EstimatedCostUSD, item.Unpriced = calculator.Compute(usage)
 	item.CacheSavingsUSD = calculator.CacheSavings(usage)
-	item.VisibleOutputTokens, item.BillableOutputTokens, _, _ = reasoningOutputSemantics(
-		item.InputTokens,
-		item.CachedInputTokens,
-		item.OutputTokens,
-		item.ReasoningOutputTokens,
-		item.TotalTokens,
-		item.Model,
-	)
+	item.VisibleOutputTokens, item.BillableOutputTokens, _, _ = reasoningOutputSemantics(reasoningOutputInput{
+		inputTokens:           item.InputTokens,
+		cachedInputTokens:     item.CachedInputTokens,
+		outputTokens:          item.OutputTokens,
+		reasoningOutputTokens: item.ReasoningOutputTokens,
+		totalTokens:           item.TotalTokens,
+		modelName:             item.Model,
+	})
 	item.LatencySamples = modelSignalSamplesOrFallback(latencySamples, modelLatencyMSPer1kOutputTokens(item.OutputTokens, item.ModelDurationMS))
 	item.ThroughputSamples = modelSignalSamplesOrFallback(throughputSamples, throughputPerSecond(item.TotalTokens, item.ModelDurationMS))
 }
