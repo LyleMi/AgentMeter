@@ -36,6 +36,16 @@ type modelRiskDriver struct {
 	Explanation  string
 }
 
+type modelRiskDriverInput struct {
+	key          string
+	label        string
+	value        float64
+	formatter    func(float64) string
+	contribution float64
+	weight       float64
+	explanation  string
+}
+
 func (s *state) modelRiskViewportLines() []string {
 	lines := modelRiskLines(s.signals, s.width)
 	return s.viewportLines(lines)
@@ -196,71 +206,95 @@ func modelRiskPrimaryReason(cell agentmodel.ModelSignalsMatrixCell, drivers []mo
 
 func buildModelRiskDrivers(metric agentmodel.ModelSignalsMetricSet) []modelRiskDriver {
 	return []modelRiskDriver{
-		newModelRiskDriver("latency", "Tail latency",
-			firstPositiveFloat(metric.P90ModelLatencyMsPer1kOutputTokens, metric.ModelLatencyMsPer1kOutputTokens),
-			func(value float64) string { return formatSignalRate(value, 0) + " ms/1k" },
-			thresholdRiskScore(firstPositiveFloat(metric.P90ModelLatencyMsPer1kOutputTokens, metric.ModelLatencyMsPer1kOutputTokens), 8000, 20000)*0.24,
-			0.24,
-			"Tail responses are slow after normalizing by generated output."),
-		newModelRiskDriver("throughput", "Slow-floor throughput",
-			firstPositiveFloat(metric.P10ModelThroughputTokensPerSecond, metric.ModelThroughputOutputTokensPerSecond, metric.ModelThroughputTokensPerSecond),
-			func(value float64) string { return formatSignalRate(value, 1) + " tok/s" },
-			inverseThresholdRiskScore(firstPositiveFloat(metric.P10ModelThroughputTokensPerSecond, metric.ModelThroughputOutputTokensPerSecond, metric.ModelThroughputTokensPerSecond), 40, 12)*0.24,
-			0.24,
-			"Observed token throughput is below the expected floor."),
-		newModelRiskDriver("failurePressure", "Failure pressure",
-			metric.FailurePressure,
-			func(value float64) string { return formatSignalRate(value, 2) + "/session" },
-			rangeRiskScore(metric.FailurePressure, 0.05, 0.95)*0.18,
-			0.18,
-			"Model or tool failures are concentrated per session."),
-		newModelRiskDriver("toolFailureRate", "Tool failures",
-			metric.ToolFailureRate,
-			formatSignalPercent,
-			rangeRiskScore(metric.ToolFailureRate, 0.08, 0.42)*0.10,
-			0.10,
-			"Tool failures are taking a larger share of tool calls."),
-		newModelRiskDriver("cacheMiss", "Cache misses",
-			metric.CacheMissRate,
-			formatSignalPercent,
-			rangeRiskScore(metric.CacheMissRate, 0.70, 0.30)*0.08,
-			0.08,
-			"A high uncached input share can make the same work slower or more expensive."),
-		newModelRiskDriver("retryPressure", "Retry pressure",
-			metric.AvgModelCallsPerSession,
-			func(value float64) string { return formatSignalRate(value, 2) + "/session" },
-			rangeRiskScore(metric.AvgModelCallsPerSession, 1.5, 2.5)*0.07,
-			0.07,
-			"More model calls per session can indicate repair loops or unstable responses."),
-		newModelRiskDriver("outputExpansion", "Output expansion",
-			metric.OutputExpansionRate,
-			func(value float64) string { return formatSignalRate(value, 2) + "x" },
-			rangeRiskScore(metric.OutputExpansionRate, 3.0, 5.0)*0.05,
-			0.05,
-			"Generated output is large relative to input, changing latency and cost."),
-		newModelRiskDriver("reasoningOverhead", "Reasoning overhead",
-			metric.ReasoningOverheadRate,
-			func(value float64) string { return formatSignalRate(value, 2) + "x" },
-			rangeRiskScore(metric.ReasoningOverheadRate, 1.0, 4.0)*0.04,
-			0.04,
-			"Hidden reasoning output is high relative to visible output."),
+		newModelRiskDriver(modelRiskDriverInput{
+			key:          "latency",
+			label:        "Tail latency",
+			value:        firstPositiveFloat(metric.P90ModelLatencyMsPer1kOutputTokens, metric.ModelLatencyMsPer1kOutputTokens),
+			formatter:    func(value float64) string { return formatSignalRate(value, 0) + " ms/1k" },
+			contribution: thresholdRiskScore(firstPositiveFloat(metric.P90ModelLatencyMsPer1kOutputTokens, metric.ModelLatencyMsPer1kOutputTokens), 8000, 20000) * 0.24,
+			weight:       0.24,
+			explanation:  "Tail responses are slow after normalizing by generated output.",
+		}),
+		newModelRiskDriver(modelRiskDriverInput{
+			key:          "throughput",
+			label:        "Slow-floor throughput",
+			value:        firstPositiveFloat(metric.P10ModelThroughputTokensPerSecond, metric.ModelThroughputOutputTokensPerSecond, metric.ModelThroughputTokensPerSecond),
+			formatter:    func(value float64) string { return formatSignalRate(value, 1) + " tok/s" },
+			contribution: inverseThresholdRiskScore(firstPositiveFloat(metric.P10ModelThroughputTokensPerSecond, metric.ModelThroughputOutputTokensPerSecond, metric.ModelThroughputTokensPerSecond), 40, 12) * 0.24,
+			weight:       0.24,
+			explanation:  "Observed token throughput is below the expected floor.",
+		}),
+		newModelRiskDriver(modelRiskDriverInput{
+			key:          "failurePressure",
+			label:        "Failure pressure",
+			value:        metric.FailurePressure,
+			formatter:    func(value float64) string { return formatSignalRate(value, 2) + "/session" },
+			contribution: rangeRiskScore(metric.FailurePressure, 0.05, 0.95) * 0.18,
+			weight:       0.18,
+			explanation:  "Model or tool failures are concentrated per session.",
+		}),
+		newModelRiskDriver(modelRiskDriverInput{
+			key:          "toolFailureRate",
+			label:        "Tool failures",
+			value:        metric.ToolFailureRate,
+			formatter:    formatSignalPercent,
+			contribution: rangeRiskScore(metric.ToolFailureRate, 0.08, 0.42) * 0.10,
+			weight:       0.10,
+			explanation:  "Tool failures are taking a larger share of tool calls.",
+		}),
+		newModelRiskDriver(modelRiskDriverInput{
+			key:          "cacheMiss",
+			label:        "Cache misses",
+			value:        metric.CacheMissRate,
+			formatter:    formatSignalPercent,
+			contribution: rangeRiskScore(metric.CacheMissRate, 0.70, 0.30) * 0.08,
+			weight:       0.08,
+			explanation:  "A high uncached input share can make the same work slower or more expensive.",
+		}),
+		newModelRiskDriver(modelRiskDriverInput{
+			key:          "retryPressure",
+			label:        "Retry pressure",
+			value:        metric.AvgModelCallsPerSession,
+			formatter:    func(value float64) string { return formatSignalRate(value, 2) + "/session" },
+			contribution: rangeRiskScore(metric.AvgModelCallsPerSession, 1.5, 2.5) * 0.07,
+			weight:       0.07,
+			explanation:  "More model calls per session can indicate repair loops or unstable responses.",
+		}),
+		newModelRiskDriver(modelRiskDriverInput{
+			key:          "outputExpansion",
+			label:        "Output expansion",
+			value:        metric.OutputExpansionRate,
+			formatter:    func(value float64) string { return formatSignalRate(value, 2) + "x" },
+			contribution: rangeRiskScore(metric.OutputExpansionRate, 3.0, 5.0) * 0.05,
+			weight:       0.05,
+			explanation:  "Generated output is large relative to input, changing latency and cost.",
+		}),
+		newModelRiskDriver(modelRiskDriverInput{
+			key:          "reasoningOverhead",
+			label:        "Reasoning overhead",
+			value:        metric.ReasoningOverheadRate,
+			formatter:    func(value float64) string { return formatSignalRate(value, 2) + "x" },
+			contribution: rangeRiskScore(metric.ReasoningOverheadRate, 1.0, 4.0) * 0.04,
+			weight:       0.04,
+			explanation:  "Hidden reasoning output is high relative to visible output.",
+		}),
 	}
 }
 
-func newModelRiskDriver(key, label string, value float64, formatter func(float64) string, contribution, weight float64, explanation string) modelRiskDriver {
-	contribution = clampRisk01(contribution)
+func newModelRiskDriver(input modelRiskDriverInput) modelRiskDriver {
+	contribution := clampRisk01(input.contribution)
 	normalized := 0.0
-	if weight > 0 {
-		normalized = contribution / weight
+	if input.weight > 0 {
+		normalized = contribution / input.weight
 	}
 	return modelRiskDriver{
-		Key:          key,
-		Label:        label,
-		Value:        formatter(value),
+		Key:          input.key,
+		Label:        input.label,
+		Value:        input.formatter(input.value),
 		Contribution: contribution,
-		Weight:       weight,
+		Weight:       input.weight,
 		Level:        modelRiskLevel(normalized),
-		Explanation:  explanation,
+		Explanation:  input.explanation,
 	}
 }
 
