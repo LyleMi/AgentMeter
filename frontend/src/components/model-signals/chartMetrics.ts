@@ -61,6 +61,11 @@ export interface MetricGroup {
   label: string
 }
 
+type MetricDefinitionSpec = Omit<MetricDefinition, 'label' | 'description'> & {
+  labelKey: ModelSignalsMetricChartMessageKey
+  descriptionKey: ModelSignalsMetricChartMessageKey
+}
+
 export function buildMetricGroups(t: ModelSignalsMetricChartTranslate): MetricGroup[] {
   return [
     { key: 'performance', label: t('group.performance') },
@@ -71,220 +76,215 @@ export function buildMetricGroups(t: ModelSignalsMetricChartTranslate): MetricGr
 }
 
 export function buildMetricDefinitions(t: ModelSignalsMetricChartTranslate): MetricDefinition[] {
-  return [
-    ...performanceMetricDefinitions(t),
-    ...costMetricDefinitions(t),
-    ...pressureMetricDefinitions(t),
-    ...shapeMetricDefinitions(t)
-  ]
+  return metricDefinitionSpecs.map((spec) => metricDefinitionFromSpec(t, spec))
 }
 
-function performanceMetricDefinitions(t: ModelSignalsMetricChartTranslate): MetricDefinition[] {
-  return [
-    {
-      key: 'p90Latency',
-      label: t('metric.p90Latency'),
-      description: t('metric.p90LatencyDesc'),
-      group: 'performance',
-      kind: 'latency',
-      color: chartPalette.danger,
-      chart: 'line',
-      direction: 'lower',
-      value: (metric) => firstFinite(metric?.p90ModelLatencyMsPer1kOutputTokens, metric?.modelLatencyMsPer1kOutputTokens)
-    },
-    {
-      key: 'p50Latency',
-      label: t('metric.p50Latency'),
-      description: t('metric.p50LatencyDesc'),
-      group: 'performance',
-      kind: 'latency',
-      color: '#ea580c',
-      chart: 'line',
-      direction: 'lower',
-      value: (metric) => firstFinite(metric?.p50ModelLatencyMsPer1kOutputTokens, metric?.modelLatencyMsPer1kOutputTokens)
-    },
-    {
-      key: 'p10Throughput',
-      label: t('metric.p10Throughput'),
-      description: t('metric.p10ThroughputDesc'),
-      group: 'performance',
-      kind: 'throughput',
-      color: chartPalette.success,
-      chart: 'line',
-      direction: 'higher',
-      value: (metric) => firstFinite(metric?.p10ModelThroughputTokensPerSecond, metric?.modelThroughputTokensPerSecond)
-    },
-    {
-      key: 'outputThroughput',
-      label: t('metric.outputThroughput'),
-      description: t('metric.outputThroughputDesc'),
-      group: 'performance',
-      kind: 'throughput',
-      color: chartPalette.info,
-      chart: 'line',
-      direction: 'higher',
-      value: (metric) => finiteNumber(metric?.modelThroughputOutputTokensPerSecond)
-    }
-  ]
+function metricDefinitionFromSpec(
+  t: ModelSignalsMetricChartTranslate,
+  spec: MetricDefinitionSpec
+): MetricDefinition {
+  return {
+    key: spec.key,
+    label: t(spec.labelKey),
+    description: t(spec.descriptionKey),
+    group: spec.group,
+    kind: spec.kind,
+    color: spec.color,
+    chart: spec.chart,
+    direction: spec.direction,
+    value: spec.value
+  }
 }
 
-function costMetricDefinitions(t: ModelSignalsMetricChartTranslate): MetricDefinition[] {
-  return [
-    {
-      key: 'costBurn',
-      label: t('metric.costBurn'),
-      description: t('metric.costBurnDesc'),
-      group: 'cost',
-      kind: 'cost',
-      color: chartPalette.primary,
-      chart: 'bar',
-      direction: 'lower',
-      value: (metric) => finiteNumber(metric?.estimatedCostUsd)
-    },
-    {
-      key: 'costPerSession',
-      label: t('metric.costPerSession'),
-      description: t('metric.costPerSessionDesc'),
-      group: 'cost',
-      kind: 'cost',
-      color: '#7c3aed',
-      chart: 'bar',
-      direction: 'lower',
-      value: (metric) => finiteNumber(metric?.costPerSession)
-    },
-    {
-      key: 'costPerActiveHour',
-      label: t('metric.costPerActiveHour'),
-      description: t('metric.costPerActiveHourDesc'),
-      group: 'cost',
-      kind: 'cost',
-      color: chartPalette.indigo,
-      chart: 'bar',
-      direction: 'lower',
-      value: (metric) => finiteNumber(metric?.costPerActiveHour)
-    },
-    {
-      key: 'costPer1kTokens',
-      label: t('metric.costPer1kTokens'),
-      description: t('metric.costPer1kTokensDesc'),
-      group: 'cost',
-      kind: 'cost',
-      color: chartPalette.sky,
-      chart: 'bar',
-      direction: 'lower',
-      value: (metric) => finiteNumber(metric?.costPer1kTokens)
-    },
-    {
-      key: 'cacheSavings',
-      label: t('metric.cacheSavings'),
-      description: t('metric.cacheSavingsDesc'),
-      group: 'cost',
-      kind: 'cost',
-      color: '#059669',
-      chart: 'bar',
-      direction: 'higher',
-      value: (metric) => finiteNumber(metric?.cacheSavingsUsd)
-    }
-  ]
-}
-
-function pressureMetricDefinitions(t: ModelSignalsMetricChartTranslate): MetricDefinition[] {
-  return [
-    {
-      key: 'failurePressure',
-      label: t('metric.failurePressure'),
-      description: t('metric.failurePressureDesc'),
-      group: 'pressure',
-      kind: 'pressure',
-      color: chartPalette.warning,
-      chart: 'line',
-      direction: 'lower',
-      value: (metric) => finiteNumber(metric?.failurePressure)
-    },
-    {
-      key: 'retryPressure',
-      label: t('metric.retryPressure'),
-      description: t('metric.retryPressureDesc'),
-      group: 'pressure',
-      kind: 'pressure',
-      color: '#9333ea',
-      chart: 'line',
-      direction: 'lower',
-      value: (metric) => finiteNumber(metric?.avgModelCallsPerSession)
-    },
-    {
-      key: 'modelFailureRate',
-      label: t('metric.modelFailureRate'),
-      description: t('metric.modelFailureRateDesc'),
-      group: 'pressure',
-      kind: 'percent',
-      color: chartPalette.danger,
-      chart: 'line',
-      direction: 'lower',
-      value: (metric) => safeRate(metric?.failedModelCalls, metric?.modelCalls)
-    },
-    {
-      key: 'toolFailureRate',
-      label: t('metric.toolFailureRate'),
-      description: t('metric.toolFailureRateDesc'),
-      group: 'pressure',
-      kind: 'percent',
-      color: '#c2410c',
-      chart: 'line',
-      direction: 'lower',
-      value: (metric) => finiteNumber(metric?.toolFailureRate)
-    }
-  ]
-}
-
-function shapeMetricDefinitions(t: ModelSignalsMetricChartTranslate): MetricDefinition[] {
-  return [
-    {
-      key: 'cacheMiss',
-      label: t('metric.cacheMiss'),
-      description: t('metric.cacheMissDesc'),
-      group: 'shape',
-      kind: 'percent',
-      color: '#d97706',
-      chart: 'line',
-      direction: 'lower',
-      value: (metric) => finiteNumber(metric?.cacheMissRate)
-    },
-    {
-      key: 'reasoningShare',
-      label: t('metric.reasoningShare'),
-      description: t('metric.reasoningShareDesc'),
-      group: 'shape',
-      kind: 'percent',
-      color: chartPalette.indigo,
-      chart: 'line',
-      direction: 'context',
-      value: (metric) => reasoningOverhead(metric)
-    },
-    {
-      key: 'outputExpansion',
-      label: t('metric.outputExpansion'),
-      description: t('metric.outputExpansionDesc'),
-      group: 'shape',
-      kind: 'ratio',
-      color: chartPalette.primary,
-      chart: 'line',
-      direction: 'context',
-      value: (metric) => generationOverhead(metric)
-    },
-    {
-      key: 'toolDependency',
-      label: t('metric.toolDependency'),
-      description: t('metric.toolDependencyDesc'),
-      group: 'shape',
-      kind: 'percent',
-      color: chartPalette.axis,
-      chart: 'line',
-      direction: 'lower',
-      value: (metric) => finiteNumber(metric?.toolDependencyRate)
-    }
-  ]
-}
+const metricDefinitionSpecs: MetricDefinitionSpec[] = [
+  {
+    key: 'p90Latency',
+    labelKey: 'metric.p90Latency',
+    descriptionKey: 'metric.p90LatencyDesc',
+    group: 'performance',
+    kind: 'latency',
+    color: chartPalette.danger,
+    chart: 'line',
+    direction: 'lower',
+    value: (metric) => firstFinite(metric?.p90ModelLatencyMsPer1kOutputTokens, metric?.modelLatencyMsPer1kOutputTokens)
+  },
+  {
+    key: 'p50Latency',
+    labelKey: 'metric.p50Latency',
+    descriptionKey: 'metric.p50LatencyDesc',
+    group: 'performance',
+    kind: 'latency',
+    color: '#ea580c',
+    chart: 'line',
+    direction: 'lower',
+    value: (metric) => firstFinite(metric?.p50ModelLatencyMsPer1kOutputTokens, metric?.modelLatencyMsPer1kOutputTokens)
+  },
+  {
+    key: 'p10Throughput',
+    labelKey: 'metric.p10Throughput',
+    descriptionKey: 'metric.p10ThroughputDesc',
+    group: 'performance',
+    kind: 'throughput',
+    color: chartPalette.success,
+    chart: 'line',
+    direction: 'higher',
+    value: (metric) => firstFinite(metric?.p10ModelThroughputTokensPerSecond, metric?.modelThroughputTokensPerSecond)
+  },
+  {
+    key: 'outputThroughput',
+    labelKey: 'metric.outputThroughput',
+    descriptionKey: 'metric.outputThroughputDesc',
+    group: 'performance',
+    kind: 'throughput',
+    color: chartPalette.info,
+    chart: 'line',
+    direction: 'higher',
+    value: (metric) => finiteNumber(metric?.modelThroughputOutputTokensPerSecond)
+  },
+  {
+    key: 'costBurn',
+    labelKey: 'metric.costBurn',
+    descriptionKey: 'metric.costBurnDesc',
+    group: 'cost',
+    kind: 'cost',
+    color: chartPalette.primary,
+    chart: 'bar',
+    direction: 'lower',
+    value: (metric) => finiteNumber(metric?.estimatedCostUsd)
+  },
+  {
+    key: 'costPerSession',
+    labelKey: 'metric.costPerSession',
+    descriptionKey: 'metric.costPerSessionDesc',
+    group: 'cost',
+    kind: 'cost',
+    color: '#7c3aed',
+    chart: 'bar',
+    direction: 'lower',
+    value: (metric) => finiteNumber(metric?.costPerSession)
+  },
+  {
+    key: 'costPerActiveHour',
+    labelKey: 'metric.costPerActiveHour',
+    descriptionKey: 'metric.costPerActiveHourDesc',
+    group: 'cost',
+    kind: 'cost',
+    color: chartPalette.indigo,
+    chart: 'bar',
+    direction: 'lower',
+    value: (metric) => finiteNumber(metric?.costPerActiveHour)
+  },
+  {
+    key: 'costPer1kTokens',
+    labelKey: 'metric.costPer1kTokens',
+    descriptionKey: 'metric.costPer1kTokensDesc',
+    group: 'cost',
+    kind: 'cost',
+    color: chartPalette.sky,
+    chart: 'bar',
+    direction: 'lower',
+    value: (metric) => finiteNumber(metric?.costPer1kTokens)
+  },
+  {
+    key: 'cacheSavings',
+    labelKey: 'metric.cacheSavings',
+    descriptionKey: 'metric.cacheSavingsDesc',
+    group: 'cost',
+    kind: 'cost',
+    color: '#059669',
+    chart: 'bar',
+    direction: 'higher',
+    value: (metric) => finiteNumber(metric?.cacheSavingsUsd)
+  },
+  {
+    key: 'failurePressure',
+    labelKey: 'metric.failurePressure',
+    descriptionKey: 'metric.failurePressureDesc',
+    group: 'pressure',
+    kind: 'pressure',
+    color: chartPalette.warning,
+    chart: 'line',
+    direction: 'lower',
+    value: (metric) => finiteNumber(metric?.failurePressure)
+  },
+  {
+    key: 'retryPressure',
+    labelKey: 'metric.retryPressure',
+    descriptionKey: 'metric.retryPressureDesc',
+    group: 'pressure',
+    kind: 'pressure',
+    color: '#9333ea',
+    chart: 'line',
+    direction: 'lower',
+    value: (metric) => finiteNumber(metric?.avgModelCallsPerSession)
+  },
+  {
+    key: 'modelFailureRate',
+    labelKey: 'metric.modelFailureRate',
+    descriptionKey: 'metric.modelFailureRateDesc',
+    group: 'pressure',
+    kind: 'percent',
+    color: chartPalette.danger,
+    chart: 'line',
+    direction: 'lower',
+    value: (metric) => safeRate(metric?.failedModelCalls, metric?.modelCalls)
+  },
+  {
+    key: 'toolFailureRate',
+    labelKey: 'metric.toolFailureRate',
+    descriptionKey: 'metric.toolFailureRateDesc',
+    group: 'pressure',
+    kind: 'percent',
+    color: '#c2410c',
+    chart: 'line',
+    direction: 'lower',
+    value: (metric) => finiteNumber(metric?.toolFailureRate)
+  },
+  {
+    key: 'cacheMiss',
+    labelKey: 'metric.cacheMiss',
+    descriptionKey: 'metric.cacheMissDesc',
+    group: 'shape',
+    kind: 'percent',
+    color: '#d97706',
+    chart: 'line',
+    direction: 'lower',
+    value: (metric) => finiteNumber(metric?.cacheMissRate)
+  },
+  {
+    key: 'reasoningShare',
+    labelKey: 'metric.reasoningShare',
+    descriptionKey: 'metric.reasoningShareDesc',
+    group: 'shape',
+    kind: 'percent',
+    color: chartPalette.indigo,
+    chart: 'line',
+    direction: 'context',
+    value: (metric) => reasoningOverhead(metric)
+  },
+  {
+    key: 'outputExpansion',
+    labelKey: 'metric.outputExpansion',
+    descriptionKey: 'metric.outputExpansionDesc',
+    group: 'shape',
+    kind: 'ratio',
+    color: chartPalette.primary,
+    chart: 'line',
+    direction: 'context',
+    value: (metric) => generationOverhead(metric)
+  },
+  {
+    key: 'toolDependency',
+    labelKey: 'metric.toolDependency',
+    descriptionKey: 'metric.toolDependencyDesc',
+    group: 'shape',
+    kind: 'percent',
+    color: chartPalette.axis,
+    chart: 'line',
+    direction: 'lower',
+    value: (metric) => finiteNumber(metric?.toolDependencyRate)
+  }
+]
 
 export function defaultMetricsForMode(mode: ChartMode): MetricKey[] {
   return mode === 'projects'
