@@ -13,13 +13,21 @@ const usageCostColumns = usageSessionModelExpr + `, tu.input_tokens, tu.cached_i
 func analyticsSessionWhere(filters model.AnalyticsFilters) ([]string, []any) {
 	where := []string{"1 = 1"}
 	args := []any{}
-	return appendAnalyticsFilters(where, args, filters, "src", usageSessionModelExpr, "s.started_at")
+	return appendAnalyticsFilters(where, args, filters, usageAnalyticsFilterSQLScope())
 }
 
 func analyticsUsageWhere(filters model.AnalyticsFilters) ([]string, []any) {
 	where := []string{"tu.owner_kind = 'session'"}
 	args := []any{}
-	return appendAnalyticsFilters(where, args, filters, "src", usageSessionModelExpr, "s.started_at")
+	return appendAnalyticsFilters(where, args, filters, usageAnalyticsFilterSQLScope())
+}
+
+func usageAnalyticsFilterSQLScope() analyticsFilterSQLScope {
+	return analyticsFilterSQLScope{
+		sourceAlias: "src",
+		modelExpr:   usageSessionModelExpr,
+		startedExpr: "s.started_at",
+	}
 }
 
 func appendUsageMetricFilter(where []string) []string {

@@ -1,4 +1,4 @@
-﻿package query
+package query
 
 import (
 	"runtime"
@@ -11,6 +11,12 @@ import (
 )
 
 const analyticsDateOnlyLayout = "2006-01-02"
+
+type analyticsFilterSQLScope struct {
+	sourceAlias string
+	modelExpr   string
+	startedExpr string
+}
 
 func appendSourceFilter(where []string, args []any, value string) ([]string, []any) {
 	return appendSourceFilterWithAlias(where, args, value, "src")
@@ -31,23 +37,23 @@ func appendSourceFilterWithAlias(where []string, args []any, value, alias string
 	return append(where, alias+".kind = ?"), append(args, value)
 }
 
-func appendAnalyticsFilters(where []string, args []any, filters model.AnalyticsFilters, sourceAlias, modelExpr, startedExpr string) ([]string, []any) {
-	where, args = appendSourceFilterWithAlias(where, args, filters.Agent, sourceAlias)
+func appendAnalyticsFilters(where []string, args []any, filters model.AnalyticsFilters, scope analyticsFilterSQLScope) ([]string, []any) {
+	where, args = appendSourceFilterWithAlias(where, args, filters.Agent, scope.sourceAlias)
 	if strings.TrimSpace(filters.Model) != "" {
-		where = append(where, modelExpr+" = ?")
+		where = append(where, scope.modelExpr+" = ?")
 		args = append(args, strings.TrimSpace(filters.Model))
 	}
 	where, args = appendProjectFilter(where, args, filters.Project, "s.project_path")
 	if strings.TrimSpace(filters.StartedFrom) != "" {
-		where = append(where, startedExpr+" >= ?")
+		where = append(where, scope.startedExpr+" >= ?")
 		args = append(args, normalizeAnalyticsDateBoundary(filters.StartedFrom, "start"))
 	}
 	if strings.TrimSpace(filters.StartedTo) != "" {
 		toValue, exclusive := normalizeAnalyticsToBoundary(filters.StartedTo)
 		if exclusive {
-			where = append(where, startedExpr+" < ?")
+			where = append(where, scope.startedExpr+" < ?")
 		} else {
-			where = append(where, startedExpr+" <= ?")
+			where = append(where, scope.startedExpr+" <= ?")
 		}
 		args = append(args, toValue)
 	}
