@@ -833,49 +833,77 @@ func promptSimilarityGroups(leftGroup, rightGroup *promptVariantGroup) float64 {
 	if left == "" || right == "" {
 		return 0
 	}
-	leftLen := leftGroup.length
-	rightLen := rightGroup.length
-	if leftLen <= 0 {
-		leftLen = len([]rune(left))
+	shorter, longer, lengthRatio := promptSimilarityLengthWindow(leftGroup, rightGroup)
+	if lengthRatio < minPromptSimilarityLengthRatio {
+		return 0
 	}
-	if rightLen <= 0 {
-		rightLen = len([]rune(right))
+	if promptSubstringSimilarity(shorter, longer, lengthRatio) {
+		return 0.95
 	}
+	return promptGramSimilarity(
+		promptGroupNGrams(leftGroup),
+		promptGroupNGrams(rightGroup),
+	)
+}
+
+const (
+	minPromptSimilarityLengthRatio = 0.65
+	minPromptSubstringLengthRatio  = 0.72
+	minPromptSubstringRunes        = 16
+)
+
+func promptSimilarityLengthWindow(leftGroup, rightGroup *promptVariantGroup) (string, string, float64) {
+	leftLen := promptGroupLength(leftGroup)
+	rightLen := promptGroupLength(rightGroup)
 	shorterLen, longerLen := leftLen, rightLen
-	shorter, longer := left, right
+	shorter, longer := leftGroup.normalized, rightGroup.normalized
 	if shorterLen > longerLen {
 		shorterLen, longerLen = longerLen, shorterLen
 		shorter, longer = longer, shorter
 	}
-	lengthRatio := float64(shorterLen) / float64(longerLen)
-	if lengthRatio < 0.65 {
-		return 0
+	return shorter, longer, float64(shorterLen) / float64(longerLen)
+}
+
+func promptGroupLength(group *promptVariantGroup) int {
+	if group.length > 0 {
+		return group.length
 	}
-	if shorterLen >= 16 && strings.Contains(longer, shorter) && lengthRatio >= 0.72 {
-		return 0.95
+	return len([]rune(group.normalized))
+}
+
+func promptSubstringSimilarity(shorter, longer string, lengthRatio float64) bool {
+	return len([]rune(shorter)) >= minPromptSubstringRunes &&
+		lengthRatio >= minPromptSubstringLengthRatio &&
+		strings.Contains(longer, shorter)
+}
+
+func promptGroupNGrams(group *promptVariantGroup) map[string]struct{} {
+	if len(group.grams) > 0 {
+		return group.grams
 	}
-	leftGrams := leftGroup.grams
-	if len(leftGrams) == 0 {
-		leftGrams = promptNGrams(left, 3)
-	}
-	rightGrams := rightGroup.grams
-	if len(rightGrams) == 0 {
-		rightGrams = promptNGrams(right, 3)
-	}
+	return promptNGrams(group.normalized, 3)
+}
+
+func promptGramSimilarity(leftGrams, rightGrams map[string]struct{}) float64 {
 	if len(leftGrams) == 0 || len(rightGrams) == 0 {
 		return 0
 	}
+	intersection := promptGramIntersection(leftGrams, rightGrams)
+	union := len(leftGrams) + len(rightGrams) - intersection
+	if union == 0 {
+		return 0
+	}
+	return float64(intersection) / float64(union)
+}
+
+func promptGramIntersection(leftGrams, rightGrams map[string]struct{}) int {
 	intersection := 0
 	for gram := range leftGrams {
 		if _, ok := rightGrams[gram]; ok {
 			intersection++
 		}
 	}
-	union := len(leftGrams) + len(rightGrams) - intersection
-	if union == 0 {
-		return 0
-	}
-	return float64(intersection) / float64(union)
+	return intersection
 }
 
 func promptNGrams(value string, n int) map[string]struct{} {
