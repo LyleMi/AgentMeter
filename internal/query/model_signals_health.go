@@ -87,6 +87,22 @@ type modelSignalModelIdentity struct {
 	Model    string
 }
 
+type modelSignalHealthWindows struct {
+	anchor       time.Time
+	currentFrom  time.Time
+	baselineFrom time.Time
+	current      model.ModelSignalsWindow
+	baseline     model.ModelSignalsWindow
+}
+
+type modelSignalReadModelAggregates struct {
+	cohorts       map[string]*modelSignalCohortAggregate
+	matrix        map[string]*modelSignalMatrixCellAggregate
+	projects      map[string]*modelSignalProjectAggregate
+	currentTotal  modelSignalMetricAccumulator
+	baselineTotal modelSignalMetricAccumulator
+}
+
 func buildModelSignalHealthReadModels(metrics []modelSignalSessionMetric) (model.ModelSignalsHealthSummary, []model.ModelSignalsCohort, []model.ModelSignalsMatrixRow, []model.ModelSignalsProjectHotspot, []model.ModelSignalsProjectMetric) {
 	health := model.ModelSignalsHealthSummary{
 		Severity:   modelSignalSeverityUnknown,
@@ -102,108 +118,139 @@ func buildModelSignalHealthReadModels(metrics []modelSignalSessionMetric) (model
 		return health, cohorts, matrix, hotspots, projectMetrics
 	}
 
-	currentFrom := anchor.Add(-modelSignalCurrentWindowDuration)
-	baselineFrom := anchor.Add(-modelSignalBaselineWindowDuration)
-	health.CurrentWindow = model.ModelSignalsWindow{
-		From: db.FormatTime(currentFrom),
-		To:   db.FormatTime(anchor),
-	}
-	health.BaselineWindow = model.ModelSignalsWindow{
-		From: db.FormatTime(baselineFrom),
-		To:   db.FormatTime(currentFrom),
-	}
+	windows := modelSignalHealthWindowBounds(anchor)
+	health.CurrentWindow = windows.current
+	health.BaselineWindow = windows.baseline
 
-	cohortAggregates := map[string]*modelSignalCohortAggregate{}
-	matrixAggregates := map[string]*modelSignalMatrixCellAggregate{}
-	projectAggregates := map[string]*modelSignalProjectAggregate{}
-	var currentTotal modelSignalMetricAccumulator
-	var baselineTotal modelSignalMetricAccumulator
+	aggregates := newModelSignalReadModelAggregates()
+	aggregates.addMetrics(metrics, windows)
 
-	for _, metric := range metrics {
-		started := db.ParseTime(metric.StartedAt)
-		window := modelSignalMetricWindowFor(started, baselineFrom, currentFrom, anchor)
-
-		cohort := modelSignalCohortAggregateFor(cohortAggregates, metric)
-		cohort.total.add(metric)
-		if window == modelSignalWindowCurrent {
-			cohort.current.add(metric)
-			currentTotal.add(metric)
-		} else if window == modelSignalWindowBaseline {
-			cohort.baseline.add(metric)
-			baselineTotal.add(metric)
-		}
-
-		cell := modelSignalMatrixAggregateFor(matrixAggregates, metric, cohort.CohortKey)
-		cell.total.add(metric)
-		if window == modelSignalWindowCurrent {
-			cell.current.add(metric)
-		} else if window == modelSignalWindowBaseline {
-			cell.baseline.add(metric)
-		}
-
-		project := modelSignalProjectAggregateFor(projectAggregates, metric)
-		project.total.add(metric)
-		if window == modelSignalWindowCurrent {
-			project.current.add(metric)
-		} else if window == modelSignalWindowBaseline {
-			project.baseline.add(metric)
-		}
-	}
-
-	currentSet := currentTotal.metricSet()
-	baselineSet := baselineTotal.metricSet()
-	health.CurrentWindow.SessionCount = currentSet.SessionCount
-	health.CurrentWindow.ModelCalls = currentSet.ModelCalls
-	health.BaselineWindow.SessionCount = baselineSet.SessionCount
-	health.BaselineWindow.ModelCalls = baselineSet.ModelCalls
+	currentSet := aggregates.currentTotal.metricSet()
+	baselineSet := aggregates.baselineTotal.metricSet()
+	setModelSignalHealthWindowCounts(&health, currentSet, baselineSet)
 
 	globalDrift := compareModelSignalDrift(currentSet, baselineSet)
 	health.Severity = globalDrift.Severity
 	reasonCounts := map[string]int{}
 	addModelSignalReasonCounts(reasonCounts, globalDrift.Reasons)
 
-	for _, aggregate := range cohortAggregates {
-		totalSet := aggregate.total.metricSet()
-		currentSet := aggregate.current.metricSet()
-		baselineSet := aggregate.baseline.metricSet()
-		drift := compareModelSignalDrift(currentSet, baselineSet)
-		cohorts = append(cohorts, model.ModelSignalsCohort{
-			SourceID:              aggregate.SourceID,
-			SourceKey:             aggregate.SourceKey,
-			SourceLabel:           aggregate.SourceLabel,
-			SourceRootPath:        aggregate.SourceRootPath,
-			SourceSessionsPath:    aggregate.SourceSessionsPath,
-			AgentKind:             aggregate.AgentKind,
-			AgentName:             aggregate.AgentName,
-			ModelProvider:         aggregate.ModelProvider,
-			Model:                 aggregate.Model,
-			ProjectPath:           aggregate.ProjectPath,
-			CohortKey:             aggregate.CohortKey,
-			ModelSignalsMetricSet: totalSet,
-			Current:               currentSet,
-			Baseline:              baselineSet,
-			Drift:                 drift,
-		})
-		health.CohortCount++
-		if drift.Severity == modelSignalSeverityWarning {
-			health.WarningCohorts++
-		}
-		if drift.Severity == modelSignalSeverityCritical {
-			health.CriticalCohorts++
-		}
-		if drift.Confidence == modelSignalConfidenceLow {
-			health.LowConfidenceCohorts++
-		}
-		health.Severity = worseModelSignalSeverity(health.Severity, drift.Severity)
+	cohorts = buildModelSignalCohorts(aggregates.cohorts, &health, reasonCounts)
+	matrix = buildModelSignalMatrixRows(aggregates.matrix)
+	hotspots = buildModelSignalProjectHotspots(aggregates.projects)
+	projectMetrics = buildModelSignalProjectMetrics(aggregates.projects)
+	health.TopReasons = topModelSignalReasons(reasonCounts, 5)
+	return health, cohorts, matrix, hotspots, projectMetrics
+}
+
+func modelSignalHealthWindowBounds(anchor time.Time) modelSignalHealthWindows {
+	currentFrom := anchor.Add(-modelSignalCurrentWindowDuration)
+	baselineFrom := anchor.Add(-modelSignalBaselineWindowDuration)
+	return modelSignalHealthWindows{
+		anchor:       anchor,
+		currentFrom:  currentFrom,
+		baselineFrom: baselineFrom,
+		current: model.ModelSignalsWindow{
+			From: db.FormatTime(currentFrom),
+			To:   db.FormatTime(anchor),
+		},
+		baseline: model.ModelSignalsWindow{
+			From: db.FormatTime(baselineFrom),
+			To:   db.FormatTime(currentFrom),
+		},
+	}
+}
+
+func newModelSignalReadModelAggregates() modelSignalReadModelAggregates {
+	return modelSignalReadModelAggregates{
+		cohorts:  map[string]*modelSignalCohortAggregate{},
+		matrix:   map[string]*modelSignalMatrixCellAggregate{},
+		projects: map[string]*modelSignalProjectAggregate{},
+	}
+}
+
+func (a *modelSignalReadModelAggregates) addMetrics(metrics []modelSignalSessionMetric, windows modelSignalHealthWindows) {
+	for _, metric := range metrics {
+		a.addMetric(metric, modelSignalMetricWindowFor(db.ParseTime(metric.StartedAt), windows.baselineFrom, windows.currentFrom, windows.anchor))
+	}
+}
+
+func (a *modelSignalReadModelAggregates) addMetric(metric modelSignalSessionMetric, window modelSignalMetricWindow) {
+	cohort := modelSignalCohortAggregateFor(a.cohorts, metric)
+	cohort.total.add(metric)
+	cell := modelSignalMatrixAggregateFor(a.matrix, metric, cohort.CohortKey)
+	cell.total.add(metric)
+	project := modelSignalProjectAggregateFor(a.projects, metric)
+	project.total.add(metric)
+
+	switch window {
+	case modelSignalWindowCurrent:
+		cohort.current.add(metric)
+		cell.current.add(metric)
+		project.current.add(metric)
+		a.currentTotal.add(metric)
+	case modelSignalWindowBaseline:
+		cohort.baseline.add(metric)
+		cell.baseline.add(metric)
+		project.baseline.add(metric)
+		a.baselineTotal.add(metric)
+	}
+}
+
+func setModelSignalHealthWindowCounts(health *model.ModelSignalsHealthSummary, currentSet, baselineSet model.ModelSignalsMetricSet) {
+	health.CurrentWindow.SessionCount = currentSet.SessionCount
+	health.CurrentWindow.ModelCalls = currentSet.ModelCalls
+	health.BaselineWindow.SessionCount = baselineSet.SessionCount
+	health.BaselineWindow.ModelCalls = baselineSet.ModelCalls
+}
+
+func buildModelSignalCohorts(aggregates map[string]*modelSignalCohortAggregate, health *model.ModelSignalsHealthSummary, reasonCounts map[string]int) []model.ModelSignalsCohort {
+	cohorts := make([]model.ModelSignalsCohort, 0, len(aggregates))
+	for _, aggregate := range aggregates {
+		cohort, drift := modelSignalCohortFromAggregate(aggregate)
+		cohorts = append(cohorts, cohort)
+		updateModelSignalHealthCohortCounts(health, drift)
 		addModelSignalReasonCounts(reasonCounts, drift.Reasons)
 	}
 	sortModelSignalCohorts(cohorts)
+	return cohorts
+}
 
-	matrix = buildModelSignalMatrixRows(matrixAggregates)
-	hotspots = buildModelSignalProjectHotspots(projectAggregates)
-	projectMetrics = buildModelSignalProjectMetrics(projectAggregates)
-	health.TopReasons = topModelSignalReasons(reasonCounts, 5)
-	return health, cohorts, matrix, hotspots, projectMetrics
+func modelSignalCohortFromAggregate(aggregate *modelSignalCohortAggregate) (model.ModelSignalsCohort, model.ModelSignalsDrift) {
+	totalSet := aggregate.total.metricSet()
+	currentSet := aggregate.current.metricSet()
+	baselineSet := aggregate.baseline.metricSet()
+	drift := compareModelSignalDrift(currentSet, baselineSet)
+	return model.ModelSignalsCohort{
+		SourceID:              aggregate.SourceID,
+		SourceKey:             aggregate.SourceKey,
+		SourceLabel:           aggregate.SourceLabel,
+		SourceRootPath:        aggregate.SourceRootPath,
+		SourceSessionsPath:    aggregate.SourceSessionsPath,
+		AgentKind:             aggregate.AgentKind,
+		AgentName:             aggregate.AgentName,
+		ModelProvider:         aggregate.ModelProvider,
+		Model:                 aggregate.Model,
+		ProjectPath:           aggregate.ProjectPath,
+		CohortKey:             aggregate.CohortKey,
+		ModelSignalsMetricSet: totalSet,
+		Current:               currentSet,
+		Baseline:              baselineSet,
+		Drift:                 drift,
+	}, drift
+}
+
+func updateModelSignalHealthCohortCounts(health *model.ModelSignalsHealthSummary, drift model.ModelSignalsDrift) {
+	health.CohortCount++
+	if drift.Severity == modelSignalSeverityWarning {
+		health.WarningCohorts++
+	}
+	if drift.Severity == modelSignalSeverityCritical {
+		health.CriticalCohorts++
+	}
+	if drift.Confidence == modelSignalConfidenceLow {
+		health.LowConfidenceCohorts++
+	}
+	health.Severity = worseModelSignalSeverity(health.Severity, drift.Severity)
 }
 
 func latestModelSignalMetricStart(metrics []modelSignalSessionMetric) time.Time {
