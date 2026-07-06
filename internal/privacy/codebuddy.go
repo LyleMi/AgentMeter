@@ -1,4 +1,4 @@
-﻿package privacy
+package privacy
 
 import (
 	"time"
@@ -44,7 +44,7 @@ func codeBuddySettingsPath() (string, error) {
 }
 
 func buildCodeBuddyStatus(path string, exists bool, content []byte, warnings []string) model.PrivacyConfigStatus {
-	return codeBuddyJSONSpec.buildStatus(path, exists, content, warnings)
+	return codeBuddyJSONSpec.buildStatus(privacyConfigFile{path: path, exists: exists, content: content, warnings: warnings})
 }
 
 var codeBuddyJSONSpec = jsonAdapterSpec{

@@ -1,4 +1,4 @@
-﻿package privacy
+package privacy
 
 import (
 	"time"
@@ -44,7 +44,7 @@ func claudeSettingsPath() (string, error) {
 }
 
 func buildClaudeStatus(path string, exists bool, content []byte, warnings []string) model.PrivacyConfigStatus {
-	return claudeJSONSpec.buildStatus(path, exists, content, warnings)
+	return claudeJSONSpec.buildStatus(privacyConfigFile{path: path, exists: exists, content: content, warnings: warnings})
 }
 
 var claudeJSONSpec = jsonAdapterSpec{

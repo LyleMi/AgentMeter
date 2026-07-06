@@ -1,4 +1,4 @@
-﻿package privacy
+package privacy
 
 import (
 	"time"
@@ -44,7 +44,7 @@ func geminiSettingsPath() (string, error) {
 }
 
 func buildGeminiStatus(path string, exists bool, content []byte, warnings []string) model.PrivacyConfigStatus {
-	return geminiJSONSpec.buildStatus(path, exists, content, warnings)
+	return geminiJSONSpec.buildStatus(privacyConfigFile{path: path, exists: exists, content: content, warnings: warnings})
 }
 
 var geminiJSONSpec = jsonAdapterSpec{

@@ -25,6 +25,18 @@ type privacyRegistry interface {
 	ApplyProfile(target, profile string) (model.PrivacyConfigApplyResult, error)
 }
 
+type privacyCommandContext struct {
+	args     []string
+	stdout   io.Writer
+	stderr   io.Writer
+	registry privacyRegistry
+}
+
+func (c privacyCommandContext) withArgs(args []string) privacyCommandContext {
+	c.args = args
+	return c
+}
+
 func IsCommand(command string) bool {
 	switch normalizeCommand(command) {
 	case "help", "privacy":
@@ -39,19 +51,25 @@ func Run(args []string, stdout, stderr io.Writer) int {
 }
 
 func runWithPrivacyRegistry(args []string, stdout, stderr io.Writer, registry privacyRegistry) int {
-	if len(args) == 0 {
+	ctx := privacyCommandContext{
+		args:     args,
+		stdout:   stdout,
+		stderr:   stderr,
+		registry: registry,
+	}
+	if len(ctx.args) == 0 {
 		PrintUsage(stdout)
 		return ExitOK
 	}
 
-	switch normalizeCommand(args[0]) {
+	switch normalizeCommand(ctx.args[0]) {
 	case "help", "-h", "--help":
 		PrintUsage(stdout)
 		return ExitOK
 	case "privacy":
-		return runPrivacy(args[1:], stdout, stderr, registry)
+		return ctx.withArgs(ctx.args[1:]).runPrivacy()
 	default:
-		fmt.Fprintf(stderr, "unknown command %q\n\n", args[0])
+		fmt.Fprintf(stderr, "unknown command %q\n\n", ctx.args[0])
 		PrintUsage(stderr)
 		return ExitUsage
 	}
@@ -83,37 +101,37 @@ Examples:
 `)
 }
 
-func runPrivacy(args []string, stdout, stderr io.Writer, registry privacyRegistry) int {
-	if len(args) == 0 {
-		printPrivacyUsage(stdout)
+func (c privacyCommandContext) runPrivacy() int {
+	if len(c.args) == 0 {
+		printPrivacyUsage(c.stdout)
 		return ExitOK
 	}
 
-	switch normalizeCommand(args[0]) {
+	switch normalizeCommand(c.args[0]) {
 	case "help", "-h", "--help":
-		printPrivacyUsage(stdout)
+		printPrivacyUsage(c.stdout)
 		return ExitOK
 	case "targets", "target", "list", "ls":
-		return runPrivacyTargets(args[1:], stdout, stderr, registry)
+		return c.withArgs(c.args[1:]).runPrivacyTargets()
 	case "status", "summary":
-		return runPrivacyStatus(args[1:], stdout, stderr, registry)
+		return c.withArgs(c.args[1:]).runPrivacyStatus()
 	case "settings", "setting":
-		return runPrivacySettings(args[1:], stdout, stderr, registry)
+		return c.withArgs(c.args[1:]).runPrivacySettings()
 	case "apply":
-		return runPrivacyApply(args[1:], stdout, stderr, registry)
+		return c.withArgs(c.args[1:]).runPrivacyApply()
 	case "harden":
-		if len(args) != 2 {
-			fmt.Fprintln(stderr, "usage: agentmeter privacy harden <target|all>")
+		if len(c.args) != 2 {
+			fmt.Fprintln(c.stderr, "usage: agentmeter privacy harden <target|all>")
 			return ExitUsage
 		}
-		return runPrivacyApply([]string{args[1], "strict"}, stdout, stderr, registry)
+		return c.withArgs([]string{c.args[1], "strict"}).runPrivacyApply()
 	case "set":
-		return runPrivacySet(args[1:], stdout, stderr, registry)
+		return c.withArgs(c.args[1:]).runPrivacySet()
 	case "unset":
-		return runPrivacyUnset(args[1:], stdout, stderr, registry)
+		return c.withArgs(c.args[1:]).runPrivacyUnset()
 	default:
-		fmt.Fprintf(stderr, "unknown privacy command %q\n\n", args[0])
-		printPrivacyUsage(stderr)
+		fmt.Fprintf(c.stderr, "unknown privacy command %q\n\n", c.args[0])
+		printPrivacyUsage(c.stderr)
 		return ExitUsage
 	}
 }
@@ -143,74 +161,74 @@ Examples:
 `)
 }
 
-func runPrivacyTargets(args []string, stdout, stderr io.Writer, registry privacyRegistry) int {
-	if len(args) != 0 {
-		fmt.Fprintln(stderr, "privacy targets does not accept arguments")
+func (c privacyCommandContext) runPrivacyTargets() int {
+	if len(c.args) != 0 {
+		fmt.Fprintln(c.stderr, "privacy targets does not accept arguments")
 		return ExitUsage
 	}
-	for _, target := range registry.Targets() {
-		fmt.Fprintln(stdout, target)
+	for _, target := range c.registry.Targets() {
+		fmt.Fprintln(c.stdout, target)
 	}
 	return ExitOK
 }
 
-func runPrivacyStatus(args []string, stdout, stderr io.Writer, registry privacyRegistry) int {
-	if len(args) > 1 {
-		fmt.Fprintln(stderr, "usage: agentmeter privacy status [target|all]")
+func (c privacyCommandContext) runPrivacyStatus() int {
+	if len(c.args) > 1 {
+		fmt.Fprintln(c.stderr, "usage: agentmeter privacy status [target|all]")
 		return ExitUsage
 	}
 
 	target := "all"
-	if len(args) == 1 {
-		target = normalizeCommand(args[0])
+	if len(c.args) == 1 {
+		target = normalizeCommand(c.args[0])
 	}
 	if isAllTarget(target) {
-		return runPrivacyStatusAll(stdout, stderr, registry)
+		return c.runPrivacyStatusAll()
 	}
 
-	status, err := registry.Status(target)
+	status, err := c.registry.Status(target)
 	if err != nil {
-		return printError(stderr, err)
+		return printError(c.stderr, err)
 	}
-	printStatus(stdout, status)
+	printStatus(c.stdout, status)
 	return ExitOK
 }
 
-func runPrivacyStatusAll(stdout, stderr io.Writer, registry privacyRegistry) int {
+func (c privacyCommandContext) runPrivacyStatusAll() int {
 	code := ExitOK
 	first := true
-	for _, target := range registry.Targets() {
-		status, err := registry.Status(target)
+	for _, target := range c.registry.Targets() {
+		status, err := c.registry.Status(target)
 		if err != nil {
 			code = ExitError
-			fmt.Fprintf(stderr, "%s: %v\n", target, err)
+			fmt.Fprintf(c.stderr, "%s: %v\n", target, err)
 			continue
 		}
 		if !first {
-			fmt.Fprintln(stdout)
+			fmt.Fprintln(c.stdout)
 		}
 		first = false
-		printStatus(stdout, status)
+		printStatus(c.stdout, status)
 	}
 	return code
 }
 
-func runPrivacySettings(args []string, stdout, stderr io.Writer, registry privacyRegistry) int {
-	if len(args) != 1 || isAllTarget(args[0]) {
-		fmt.Fprintln(stderr, "usage: agentmeter privacy settings <target>")
+func (c privacyCommandContext) runPrivacySettings() int {
+	if len(c.args) != 1 || isAllTarget(c.args[0]) {
+		fmt.Fprintln(c.stderr, "usage: agentmeter privacy settings <target>")
 		return ExitUsage
 	}
 
-	status, err := registry.Status(normalizeCommand(args[0]))
+	status, err := c.registry.Status(normalizeCommand(c.args[0]))
 	if err != nil {
-		return printError(stderr, err)
+		return printError(c.stderr, err)
 	}
-	printStatus(stdout, status)
+	printStatus(c.stdout, status)
 	if len(status.Settings) == 0 {
-		fmt.Fprintln(stdout, "Settings: none")
+		fmt.Fprintln(c.stdout, "Settings: none")
 		return ExitOK
 	}
-	fmt.Fprintln(stdout, "Settings:")
+	fmt.Fprintln(c.stdout, "Settings:")
 	for _, setting := range status.Settings {
 		current := "unset"
 		if setting.Configured {
@@ -220,46 +238,46 @@ func runPrivacySettings(args []string, stdout, stderr io.Writer, registry privac
 		if strict == nil {
 			strict = setting.DesiredValue
 		}
-		fmt.Fprintf(stdout, "  - %s [%s] current=%s strict=%s\n", setting.ID, setting.Status, current, formatValue(strict))
+		fmt.Fprintf(c.stdout, "  - %s [%s] current=%s strict=%s\n", setting.ID, setting.Status, current, formatValue(strict))
 	}
 	return ExitOK
 }
 
-func runPrivacyApply(args []string, stdout, stderr io.Writer, registry privacyRegistry) int {
-	if len(args) < 1 {
-		fmt.Fprintln(stderr, "usage: agentmeter privacy apply <target|all> [recommended|strict|default|setting-id...]")
+func (c privacyCommandContext) runPrivacyApply() int {
+	if len(c.args) < 1 {
+		fmt.Fprintln(c.stderr, "usage: agentmeter privacy apply <target|all> [recommended|strict|default|setting-id...]")
 		return ExitUsage
 	}
 
-	target := normalizeCommand(args[0])
-	rest := args[1:]
+	target := normalizeCommand(c.args[0])
+	rest := c.args[1:]
 	profile, settingIDs := applyOperation(rest)
 	if isAllTarget(target) && len(settingIDs) > 0 {
-		fmt.Fprintln(stderr, "agentmeter privacy apply all only supports profiles")
+		fmt.Fprintln(c.stderr, "agentmeter privacy apply all only supports profiles")
 		return ExitUsage
 	}
 	if isAllTarget(target) {
-		return runPrivacyApplyAll(profile, stdout, stderr, registry)
+		return c.runPrivacyApplyAll(profile)
 	}
 	return runPrivacyApplyOne(privacyApplyOneRequest{
 		target:     target,
 		profile:    profile,
 		settingIDs: settingIDs,
-		stdout:     stdout,
-		stderr:     stderr,
-		registry:   registry,
+		stdout:     c.stdout,
+		stderr:     c.stderr,
+		registry:   c.registry,
 	})
 }
 
-func runPrivacyApplyAll(profile string, stdout, stderr io.Writer, registry privacyRegistry) int {
+func (c privacyCommandContext) runPrivacyApplyAll(profile string) int {
 	code := ExitOK
-	for index, target := range registry.Targets() {
+	for index, target := range c.registry.Targets() {
 		if index > 0 {
-			fmt.Fprintln(stdout)
+			fmt.Fprintln(c.stdout)
 		}
-		if err := applyProfile(target, profile, stdout, registry); err != nil {
+		if err := applyProfile(target, profile, c.stdout, c.registry); err != nil {
 			code = ExitError
-			fmt.Fprintf(stderr, "%s: %v\n", target, err)
+			fmt.Fprintf(c.stderr, "%s: %v\n", target, err)
 		}
 	}
 	return code
@@ -298,40 +316,40 @@ func applyProfile(target, profile string, stdout io.Writer, registry privacyRegi
 	return nil
 }
 
-func runPrivacySet(args []string, stdout, stderr io.Writer, registry privacyRegistry) int {
-	if len(args) < 3 || isAllTarget(args[0]) {
-		fmt.Fprintln(stderr, "usage: agentmeter privacy set <target> <setting-id> <json-or-string-value>")
+func (c privacyCommandContext) runPrivacySet() int {
+	if len(c.args) < 3 || isAllTarget(c.args[0]) {
+		fmt.Fprintln(c.stderr, "usage: agentmeter privacy set <target> <setting-id> <json-or-string-value>")
 		return ExitUsage
 	}
-	value, err := parseConfigValue(strings.Join(args[2:], " "))
+	value, err := parseConfigValue(strings.Join(c.args[2:], " "))
 	if err != nil {
-		return printError(stderr, err)
+		return printError(c.stderr, err)
 	}
-	result, err := registry.ApplyChanges(normalizeCommand(args[0]), []model.PrivacyConfigEdit{{
-		ID:    args[1],
+	result, err := c.registry.ApplyChanges(normalizeCommand(c.args[0]), []model.PrivacyConfigEdit{{
+		ID:    c.args[1],
 		Op:    "set",
 		Value: value,
 	}})
 	if err != nil {
-		return printError(stderr, err)
+		return printError(c.stderr, err)
 	}
-	printApplyResult(stdout, "Set privacy setting", result)
+	printApplyResult(c.stdout, "Set privacy setting", result)
 	return ExitOK
 }
 
-func runPrivacyUnset(args []string, stdout, stderr io.Writer, registry privacyRegistry) int {
-	if len(args) != 2 || isAllTarget(args[0]) {
-		fmt.Fprintln(stderr, "usage: agentmeter privacy unset <target> <setting-id>")
+func (c privacyCommandContext) runPrivacyUnset() int {
+	if len(c.args) != 2 || isAllTarget(c.args[0]) {
+		fmt.Fprintln(c.stderr, "usage: agentmeter privacy unset <target> <setting-id>")
 		return ExitUsage
 	}
-	result, err := registry.ApplyChanges(normalizeCommand(args[0]), []model.PrivacyConfigEdit{{
-		ID: args[1],
+	result, err := c.registry.ApplyChanges(normalizeCommand(c.args[0]), []model.PrivacyConfigEdit{{
+		ID: c.args[1],
 		Op: "unset",
 	}})
 	if err != nil {
-		return printError(stderr, err)
+		return printError(c.stderr, err)
 	}
-	printApplyResult(stdout, "Unset privacy setting", result)
+	printApplyResult(c.stdout, "Unset privacy setting", result)
 	return ExitOK
 }
 

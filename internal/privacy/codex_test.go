@@ -80,7 +80,11 @@ inherit = "all"
 ignore_default_excludes = true
 `)
 
-	status := buildCodexStatus(filepath.Join("codex", "config.toml"), true, content, nil)
+	status := buildCodexStatus(privacyConfigFile{
+		path:    filepath.Join("codex", "config.toml"),
+		exists:  true,
+		content: content,
+	})
 
 	for _, id := range []string{
 		"web_search",

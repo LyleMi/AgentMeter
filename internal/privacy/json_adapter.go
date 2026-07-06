@@ -1,4 +1,4 @@
-﻿package privacy
+package privacy
 
 import (
 	"time"
@@ -41,6 +41,6 @@ func (s jsonAdapterSpec) settingsPathFunc(configPath string) func() (string, err
 	}
 }
 
-func (s jsonAdapterSpec) buildStatus(path string, exists bool, content []byte, warnings []string) model.PrivacyConfigStatus {
-	return s.adapter(nil, nil).buildStatus(path, exists, content, warnings)
+func (s jsonAdapterSpec) buildStatus(file privacyConfigFile) model.PrivacyConfigStatus {
+	return s.adapter(nil, nil).buildStatus(file)
 }

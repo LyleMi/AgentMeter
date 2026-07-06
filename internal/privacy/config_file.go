@@ -7,6 +7,13 @@ import (
 	"time"
 )
 
+type privacyConfigFile struct {
+	path     string
+	exists   bool
+	content  []byte
+	warnings []string
+}
+
 func readOptionalFile(path string) ([]byte, bool, error) {
 	content, err := os.ReadFile(path)
 	if err == nil {

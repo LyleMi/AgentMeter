@@ -46,7 +46,7 @@ func (a jsonPrivacyAdapter) status() (model.PrivacyConfigStatus, error) {
 	if err != nil {
 		return model.PrivacyConfigStatus{}, err
 	}
-	return a.buildStatus(path, exists, content, nil), nil
+	return a.buildStatus(privacyConfigFile{path: path, exists: exists, content: content}), nil
 }
 
 func (a jsonPrivacyAdapter) apply(settingIDs []string) (model.PrivacyConfigApplyResult, error) {
@@ -88,12 +88,12 @@ func (a jsonPrivacyAdapter) applyProfile(profile string) (model.PrivacyConfigApp
 	})
 }
 
-func (a jsonPrivacyAdapter) buildStatus(path string, exists bool, content []byte, warnings []string) model.PrivacyConfigStatus {
-	root, err := parseJSONSettings(content)
+func (a jsonPrivacyAdapter) buildStatus(file privacyConfigFile) model.PrivacyConfigStatus {
+	root, err := parseJSONSettings(file.content)
 	canApply := true
 	if err != nil {
 		canApply = false
-		warnings = append(warnings, fmt.Sprintf("%s settings.json could not be parsed: %v", a.agentName, err))
+		file.warnings = append(file.warnings, fmt.Sprintf("%s settings.json could not be parsed: %v", a.agentName, err))
 		root = map[string]any{}
 	}
 
@@ -149,12 +149,12 @@ func (a jsonPrivacyAdapter) buildStatus(path string, exists bool, content []byte
 	return model.PrivacyConfigStatus{
 		Target:     a.target,
 		Name:       a.name,
-		ConfigPath: path,
-		Exists:     exists,
+		ConfigPath: file.path,
+		Exists:     file.exists,
 		Profiles:   privacyConfigProfiles(),
 		Summary:    summary,
 		Settings:   settings,
-		Warnings:   warnings,
+		Warnings:   file.warnings,
 	}
 }
 
@@ -184,7 +184,7 @@ func parseJSONSettings(content []byte) (map[string]any, error) {
 func applyJSONSettingsMutation(
 	path string,
 	now func() time.Time,
-	buildStatus func(string, bool, []byte, []string) model.PrivacyConfigStatus,
+	buildStatus func(privacyConfigFile) model.PrivacyConfigStatus,
 	mutate func(map[string]any) ([]model.PrivacyConfigChange, []string, error),
 ) (model.PrivacyConfigApplyResult, error) {
 	original, exists, err := readOptionalFile(path)
@@ -205,7 +205,7 @@ func applyJSONSettingsMutation(
 		Warnings: warnings,
 	}
 	if len(changes) == 0 {
-		result.Status = buildStatus(path, exists, original, warnings)
+		result.Status = buildStatus(privacyConfigFile{path: path, exists: exists, content: original, warnings: warnings})
 		return result, nil
 	}
 
@@ -214,7 +214,7 @@ func applyJSONSettingsMutation(
 		return model.PrivacyConfigApplyResult{}, err
 	}
 	if bytes.Equal(updated, original) {
-		result.Status = buildStatus(path, exists, original, warnings)
+		result.Status = buildStatus(privacyConfigFile{path: path, exists: exists, content: original, warnings: warnings})
 		return result, nil
 	}
 
@@ -223,7 +223,7 @@ func applyJSONSettingsMutation(
 		return model.PrivacyConfigApplyResult{}, err
 	}
 	result.BackupPath = backupPath
-	result.Status = buildStatus(path, true, updated, warnings)
+	result.Status = buildStatus(privacyConfigFile{path: path, exists: true, content: updated, warnings: warnings})
 	return result, nil
 }
 

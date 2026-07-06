@@ -65,7 +65,7 @@ func (a CodexAdapter) Status() (model.PrivacyConfigStatus, error) {
 	if err != nil {
 		return model.PrivacyConfigStatus{}, err
 	}
-	return buildCodexStatus(path, exists, content, nil), nil
+	return buildCodexStatus(privacyConfigFile{path: path, exists: exists, content: content}), nil
 }
 
 func (a CodexAdapter) Apply(settingIDs []string) (model.PrivacyConfigApplyResult, error) {
@@ -106,7 +106,7 @@ func (a CodexAdapter) applyContentMutation(
 		Warnings: warnings,
 	}
 	if len(changes) == 0 || bytes.Equal(updated, original) {
-		result.Status = buildCodexStatus(path, exists, original, warnings)
+		result.Status = buildCodexStatus(privacyConfigFile{path: path, exists: exists, content: original, warnings: warnings})
 		return result, nil
 	}
 
@@ -115,7 +115,7 @@ func (a CodexAdapter) applyContentMutation(
 		return model.PrivacyConfigApplyResult{}, err
 	}
 	result.BackupPath = backupPath
-	result.Status = buildCodexStatus(path, true, updated, warnings)
+	result.Status = buildCodexStatus(privacyConfigFile{path: path, exists: true, content: updated, warnings: warnings})
 	return result, nil
 }
 
@@ -148,8 +148,8 @@ func codexConfigPath() (string, error) {
 	return filepath.Join(home, ".codex", "config.toml"), nil
 }
 
-func buildCodexStatus(path string, exists bool, content []byte, warnings []string) model.PrivacyConfigStatus {
-	doc := parseTOML(content)
+func buildCodexStatus(file privacyConfigFile) model.PrivacyConfigStatus {
+	doc := parseTOML(file.content)
 	settings := make([]model.PrivacyConfigSetting, 0, len(codexSettingDefinitions))
 	summary := model.PrivacyConfigSummary{Total: len(codexSettingDefinitions)}
 	for _, definition := range codexSettingDefinitions {
@@ -198,12 +198,12 @@ func buildCodexStatus(path string, exists bool, content []byte, warnings []strin
 	return model.PrivacyConfigStatus{
 		Target:     "codex",
 		Name:       "Codex",
-		ConfigPath: path,
-		Exists:     exists,
+		ConfigPath: file.path,
+		Exists:     file.exists,
 		Profiles:   privacyConfigProfiles(),
 		Summary:    summary,
 		Settings:   settings,
-		Warnings:   warnings,
+		Warnings:   file.warnings,
 	}
 }
 
