@@ -4,6 +4,12 @@ import type {
   Session,
   ToolCall
 } from '../types'
+import {
+  clampRiskScore,
+  inverseThresholdRiskScore,
+  rangeRiskScore,
+  thresholdRiskScore
+} from '../../presentation/riskScore'
 import { cacheSavingsUsdFor, costSum } from './usageMetrics'
 import { sum } from './utils'
 
@@ -16,9 +22,7 @@ export function safeRate(numerator: number, denominator: number): number {
 }
 
 export function clampRate(value: number): number {
-  if (!Number.isFinite(value) || value < 0) return 0
-  if (value > 1) return 1
-  return value
+  return clampRiskScore(value)
 }
 
 function percentile(values: number[], percentileRank: number): number | undefined {
@@ -51,14 +55,14 @@ function modelSignalDegradationRiskScore(metric: {
     metric.modelThroughputTokensPerSecond
   )
   return weightedRiskScore([
-    { score: thresholdScore(latency, 8_000, 20_000), weight: 0.24 },
-    { score: inverseThresholdScore(throughput, 40, 12), weight: 0.24 },
-    { score: rangeScore(numberOrZero(metric.failurePressure), 0.05, 0.95), weight: 0.18 },
-    { score: rangeScore(numberOrZero(metric.toolFailureRate), 0.08, 0.42), weight: 0.10 },
-    { score: rangeScore(numberOrZero(metric.cacheMissRate), 0.70, 0.30), weight: 0.08 },
-    { score: rangeScore(numberOrZero(metric.avgModelCallsPerSession), 1.5, 2.5), weight: 0.07 },
-    { score: rangeScore(numberOrZero(metric.outputExpansionRate), 3.0, 5.0), weight: 0.05 },
-    { score: rangeScore(numberOrZero(metric.reasoningOverheadRate), 1.0, 4.0), weight: 0.04 }
+    { score: thresholdRiskScore({ value: latency, warning: 8_000, critical: 20_000 }), weight: 0.24 },
+    { score: inverseThresholdRiskScore({ value: throughput, warning: 40, critical: 12 }), weight: 0.24 },
+    { score: rangeRiskScore({ value: numberOrZero(metric.failurePressure), start: 0.05, span: 0.95 }), weight: 0.18 },
+    { score: rangeRiskScore({ value: numberOrZero(metric.toolFailureRate), start: 0.08, span: 0.42 }), weight: 0.10 },
+    { score: rangeRiskScore({ value: numberOrZero(metric.cacheMissRate), start: 0.70, span: 0.30 }), weight: 0.08 },
+    { score: rangeRiskScore({ value: numberOrZero(metric.avgModelCallsPerSession), start: 1.5, span: 2.5 }), weight: 0.07 },
+    { score: rangeRiskScore({ value: numberOrZero(metric.outputExpansionRate), start: 3.0, span: 5.0 }), weight: 0.05 },
+    { score: rangeRiskScore({ value: numberOrZero(metric.reasoningOverheadRate), start: 1.0, span: 4.0 }), weight: 0.04 }
   ])
 }
 
@@ -68,24 +72,6 @@ function weightedRiskScore(contributions: Array<{ score: number; weight: number 
 
 function numberOrZero(value: number | undefined): number {
   return value ?? 0
-}
-
-function thresholdScore(value: number, warning: number, critical: number): number {
-  if (value <= warning || warning >= critical) return 0
-  if (value >= critical) return 1
-  return clampRate((value - warning) / (critical - warning))
-}
-
-function inverseThresholdScore(value: number, warning: number, critical: number): number {
-  if (value <= 0 || warning <= critical) return 0
-  if (value >= warning) return 0
-  if (value <= critical) return 1
-  return clampRate((warning - value) / (warning - critical))
-}
-
-function rangeScore(value: number, start: number, span: number): number {
-  if (value <= start || span <= 0) return 0
-  return clampRate((value - start) / span)
 }
 
 function firstPositiveNumber(...values: Array<number | undefined>): number {

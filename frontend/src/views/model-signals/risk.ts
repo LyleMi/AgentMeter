@@ -9,6 +9,12 @@ import {
   formatModelSignalPercent as formatPercent,
   formatModelSignalRate as formatRate
 } from '../../presentation/modelSignals'
+import {
+  clampRiskScore,
+  inverseThresholdRiskScore,
+  rangeRiskScore,
+  thresholdRiskScore
+} from '../../presentation/riskScore'
 import { sourceDisplay } from '../../presentation/sourceIdentity'
 
 export type QualityRiskLevel = 'low' | 'watch' | 'elevated' | 'high'
@@ -131,7 +137,7 @@ function buildQualityRiskRow(
 ): QualityRiskRow {
   const current = cell.current
   const drivers = sortedQualityRiskDrivers(current, t)
-  const score = clamp01(current?.degradationRiskScore || 0)
+  const score = clampRiskScore(current?.degradationRiskScore || 0)
   const drift = cell.drift
   return {
     key: `${source.key}:${cell.modelProvider}:${cell.model}`,
@@ -178,7 +184,7 @@ export function qualityRiskLevel(score: number): QualityRiskLevel {
 }
 
 export function formatQualityRiskScore(score?: number) {
-  return formatPercent(clamp01(score || 0))
+  return formatPercent(clampRiskScore(score || 0))
 }
 
 export function formatQualityRiskContribution(value: number) {
@@ -202,7 +208,7 @@ function riskDriver(input: {
   weight: number
   explanation: string
 }): QualityRiskDriver {
-  const contribution = clamp01(input.contribution)
+  const contribution = clampRiskScore(input.contribution)
   const normalized = input.weight > 0 ? contribution / input.weight : 0
   return {
     key: input.key,
@@ -225,7 +231,7 @@ function qualityRiskDriverInputs(metric: ModelSignalMetricSet, t: QualityRiskTra
       label: t('risk.driver.latency'),
       value: latency,
       formattedValue: (value: number) => `${formatRate(value, 0)} ms/1k`,
-      contribution: thresholdScore(latency, 8_000, 20_000) * 0.24,
+      contribution: thresholdRiskScore({ value: latency, warning: 8_000, critical: 20_000 }) * 0.24,
       weight: 0.24,
       explanation: t('risk.driver.latencyExplain')
     },
@@ -234,7 +240,7 @@ function qualityRiskDriverInputs(metric: ModelSignalMetricSet, t: QualityRiskTra
       label: t('risk.driver.throughput'),
       value: throughput,
       formattedValue: (value: number) => `${formatRate(value, 1)} tok/s`,
-      contribution: inverseThresholdScore(throughput, 40, 12) * 0.24,
+      contribution: inverseThresholdRiskScore({ value: throughput, warning: 40, critical: 12 }) * 0.24,
       weight: 0.24,
       explanation: t('risk.driver.throughputExplain')
     },
@@ -243,42 +249,42 @@ function qualityRiskDriverInputs(metric: ModelSignalMetricSet, t: QualityRiskTra
       value: metric.failurePressure || 0,
       weight: 0.18,
       formattedValue: (value) => `${formatRate(value, 2)}/session`,
-      score: rangeScore(metric.failurePressure || 0, 0.05, 0.95)
+      score: rangeRiskScore({ value: metric.failurePressure || 0, start: 0.05, span: 0.95 })
     }),
     metricRiskDriverInput(t, {
       key: 'toolFailureRate',
       value: metric.toolFailureRate || 0,
       weight: 0.10,
       formattedValue: formatPercent,
-      score: rangeScore(metric.toolFailureRate || 0, 0.08, 0.42)
+      score: rangeRiskScore({ value: metric.toolFailureRate || 0, start: 0.08, span: 0.42 })
     }),
     metricRiskDriverInput(t, {
       key: 'cacheMiss',
       value: metric.cacheMissRate || 0,
       weight: 0.08,
       formattedValue: formatPercent,
-      score: rangeScore(metric.cacheMissRate || 0, 0.70, 0.30)
+      score: rangeRiskScore({ value: metric.cacheMissRate || 0, start: 0.70, span: 0.30 })
     }),
     metricRiskDriverInput(t, {
       key: 'retryPressure',
       value: metric.avgModelCallsPerSession || 0,
       weight: 0.07,
       formattedValue: (value) => `${formatRate(value, 2)}/session`,
-      score: rangeScore(metric.avgModelCallsPerSession || 0, 1.5, 2.5)
+      score: rangeRiskScore({ value: metric.avgModelCallsPerSession || 0, start: 1.5, span: 2.5 })
     }),
     metricRiskDriverInput(t, {
       key: 'outputExpansion',
       value: metric.outputExpansionRate || 0,
       weight: 0.05,
       formattedValue: (value) => `${formatRate(value, 2)}x`,
-      score: rangeScore(metric.outputExpansionRate || 0, 3.0, 5.0)
+      score: rangeRiskScore({ value: metric.outputExpansionRate || 0, start: 3.0, span: 5.0 })
     }),
     metricRiskDriverInput(t, {
       key: 'reasoningOverhead',
       value: metric.reasoningOverheadRate || 0,
       weight: 0.04,
       formattedValue: (value) => `${formatRate(value, 2)}x`,
-      score: rangeScore(metric.reasoningOverheadRate || 0, 1.0, 4.0)
+      score: rangeRiskScore({ value: metric.reasoningOverheadRate || 0, start: 1.0, span: 4.0 })
     })
   ]
 }
@@ -307,29 +313,4 @@ function metricRiskDriverInput(t: QualityRiskTranslate, input: MetricRiskDriverI
 
 function firstPositive(...values: Array<number | undefined>) {
   return values.find((value) => Number.isFinite(value) && (value || 0) > 0) || 0
-}
-
-function thresholdScore(value: number, warning: number, critical: number) {
-  if (value <= warning || warning >= critical) return 0
-  if (value >= critical) return 1
-  return clamp01((value - warning) / (critical - warning))
-}
-
-function inverseThresholdScore(value: number, warning: number, critical: number) {
-  if (value <= 0 || warning <= critical) return 0
-  if (value >= warning) return 0
-  if (value <= critical) return 1
-  return clamp01((warning - value) / (warning - critical))
-}
-
-function rangeScore(value: number, warning: number, criticalDelta: number) {
-  if (value <= warning) return 0
-  return clamp01((value - warning) / criticalDelta)
-}
-
-function clamp01(value: number) {
-  if (!Number.isFinite(value)) return 0
-  if (value < 0) return 0
-  if (value > 1) return 1
-  return value
 }
