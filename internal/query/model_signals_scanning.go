@@ -1,4 +1,4 @@
-﻿package query
+package query
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/LyleMi/AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/pricing"
 )
 
 type modelSignalSessionMetric struct {
@@ -51,7 +52,26 @@ type modelSignalSessionMetric struct {
 func (s *Service) modelSignalSessionMetrics(ctx context.Context, filters model.AnalyticsFilters) ([]modelSignalSessionMetric, error) {
 	where, args := analyticsSessionWhere(filters)
 	calculator := s.pricingCalculator(ctx)
-	rows, err := s.conn.QueryContext(ctx, `WITH model_call_stats AS (
+	rows, err := s.conn.QueryContext(ctx, modelSignalSessionMetricsSQL(where), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []modelSignalSessionMetric
+	for rows.Next() {
+		item, latencySamples, throughputSamples, err := scanModelSignalSessionMetric(rows)
+		if err != nil {
+			return nil, err
+		}
+		enrichModelSignalSessionMetric(&item, latencySamples, throughputSamples, calculator)
+		result = append(result, item)
+	}
+	return result, rows.Err()
+}
+
+func modelSignalSessionMetricsSQL(where []string) string {
+	return `WITH model_call_stats AS (
 		SELECT
 			session_id,
 			COUNT(*) AS model_calls,
@@ -79,7 +99,7 @@ func (s *Service) modelSignalSessionMetrics(ctx context.Context, filters model.A
 		COALESCE(NULLIF(s.session_key, ''), s.codex_session_id),
 		s.codex_session_id,
 		s.project_path,
-		`+usageSessionModelExpr+`,
+		` + usageSessionModelExpr + `,
 		s.model_provider,
 		s.started_at,
 		substr(s.started_at, 1, 10),
@@ -110,88 +130,85 @@ func (s *Service) modelSignalSessionMetrics(ctx context.Context, filters model.A
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
 		LEFT JOIN model_call_stats mcs ON mcs.session_id = s.id
 		LEFT JOIN tool_call_stats tcs ON tcs.session_id = s.id
-		WHERE `+strings.Join(where, " AND ")+`
-		ORDER BY s.started_at ASC, s.id ASC`, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+		WHERE ` + strings.Join(where, " AND ") + `
+		ORDER BY s.started_at ASC, s.id ASC`
+}
 
-	var result []modelSignalSessionMetric
-	for rows.Next() {
-		var item modelSignalSessionMetric
-		var latencySamples string
-		var throughputSamples string
-		if err := rows.Scan(
-			&item.SessionID,
-			&item.SourceID,
-			&item.SourceRootPath,
-			&item.SourceSessionsPath,
-			&item.AgentKind,
-			&item.AgentName,
-			&item.SessionKey,
-			&item.CodexSessionID,
-			&item.ProjectPath,
-			&item.Model,
-			&item.ModelProvider,
-			&item.StartedAt,
-			&item.Day,
-			&item.RawSourcePath,
-			&item.InputTokens,
-			&item.CachedInputTokens,
-			&item.OutputTokens,
-			&item.ReasoningOutputTokens,
-			&item.TotalTokens,
-			&item.WallDurationMS,
-			&item.ActiveDurationMS,
-			&item.ModelDurationMS,
-			&item.ToolDurationMS,
-			&item.IdleDurationMS,
-			&item.ModelCalls,
-			&item.FailedModelCalls,
-			&latencySamples,
-			&throughputSamples,
-			&item.ToolCalls,
-			&item.FailedToolCalls,
-		); err != nil {
-			return nil, err
-		}
-		if item.AgentName == "" {
-			item.AgentName = item.AgentKind
-		}
-		usage := model.Usage{
-			Model:                 item.Model,
-			InputTokens:           item.InputTokens,
-			CachedInputTokens:     item.CachedInputTokens,
-			OutputTokens:          item.OutputTokens,
-			ReasoningOutputTokens: item.ReasoningOutputTokens,
-			TotalTokens:           item.TotalTokens,
-		}
-		item.EstimatedCostUSD, item.Unpriced = calculator.Compute(usage)
-		item.CacheSavingsUSD = calculator.CacheSavings(usage)
-		item.VisibleOutputTokens, item.BillableOutputTokens, _, _ = reasoningOutputSemantics(
-			item.InputTokens,
-			item.CachedInputTokens,
-			item.OutputTokens,
-			item.ReasoningOutputTokens,
-			item.TotalTokens,
-			item.Model,
-		)
-		item.LatencySamples = parseModelSignalSamples(latencySamples)
-		item.ThroughputSamples = parseModelSignalSamples(throughputSamples)
-		if len(item.LatencySamples) == 0 {
-			if latency := modelLatencyMSPer1kOutputTokens(item.OutputTokens, item.ModelDurationMS); latency > 0 {
-				item.LatencySamples = append(item.LatencySamples, latency)
-			}
-		}
-		if len(item.ThroughputSamples) == 0 {
-			if throughput := throughputPerSecond(item.TotalTokens, item.ModelDurationMS); throughput > 0 {
-				item.ThroughputSamples = append(item.ThroughputSamples, throughput)
-			}
-		}
-		result = append(result, item)
+type modelSignalMetricScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanModelSignalSessionMetric(scanner modelSignalMetricScanner) (modelSignalSessionMetric, string, string, error) {
+	var item modelSignalSessionMetric
+	var latencySamples string
+	var throughputSamples string
+	err := scanner.Scan(
+		&item.SessionID,
+		&item.SourceID,
+		&item.SourceRootPath,
+		&item.SourceSessionsPath,
+		&item.AgentKind,
+		&item.AgentName,
+		&item.SessionKey,
+		&item.CodexSessionID,
+		&item.ProjectPath,
+		&item.Model,
+		&item.ModelProvider,
+		&item.StartedAt,
+		&item.Day,
+		&item.RawSourcePath,
+		&item.InputTokens,
+		&item.CachedInputTokens,
+		&item.OutputTokens,
+		&item.ReasoningOutputTokens,
+		&item.TotalTokens,
+		&item.WallDurationMS,
+		&item.ActiveDurationMS,
+		&item.ModelDurationMS,
+		&item.ToolDurationMS,
+		&item.IdleDurationMS,
+		&item.ModelCalls,
+		&item.FailedModelCalls,
+		&latencySamples,
+		&throughputSamples,
+		&item.ToolCalls,
+		&item.FailedToolCalls,
+	)
+	return item, latencySamples, throughputSamples, err
+}
+
+func enrichModelSignalSessionMetric(item *modelSignalSessionMetric, latencySamples, throughputSamples string, calculator pricing.Calculator) {
+	if item.AgentName == "" {
+		item.AgentName = item.AgentKind
 	}
-	return result, rows.Err()
+	usage := model.Usage{
+		Model:                 item.Model,
+		InputTokens:           item.InputTokens,
+		CachedInputTokens:     item.CachedInputTokens,
+		OutputTokens:          item.OutputTokens,
+		ReasoningOutputTokens: item.ReasoningOutputTokens,
+		TotalTokens:           item.TotalTokens,
+	}
+	item.EstimatedCostUSD, item.Unpriced = calculator.Compute(usage)
+	item.CacheSavingsUSD = calculator.CacheSavings(usage)
+	item.VisibleOutputTokens, item.BillableOutputTokens, _, _ = reasoningOutputSemantics(
+		item.InputTokens,
+		item.CachedInputTokens,
+		item.OutputTokens,
+		item.ReasoningOutputTokens,
+		item.TotalTokens,
+		item.Model,
+	)
+	item.LatencySamples = modelSignalSamplesOrFallback(latencySamples, modelLatencyMSPer1kOutputTokens(item.OutputTokens, item.ModelDurationMS))
+	item.ThroughputSamples = modelSignalSamplesOrFallback(throughputSamples, throughputPerSecond(item.TotalTokens, item.ModelDurationMS))
+}
+
+func modelSignalSamplesOrFallback(value string, fallback float64) []float64 {
+	samples := parseModelSignalSamples(value)
+	if len(samples) > 0 || fallback <= 0 {
+		return samples
+	}
+	return []float64{fallback}
 }
 
 func parseModelSignalSamples(value string) []float64 {
