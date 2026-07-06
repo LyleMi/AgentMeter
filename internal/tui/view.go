@@ -1,4 +1,4 @@
-﻿package tui
+package tui
 
 import (
 	"fmt"
@@ -45,88 +45,138 @@ func (s *state) view() string {
 
 func (s *state) headerLine() string {
 	parts := []string{bold("AgentMeter"), dim(s.page.title())}
+	parts = append(parts, s.pageHeaderParts()...)
+	parts = append(parts, s.headerFilterParts()...)
+	return strings.Join(parts, "  ")
+}
+
+func (s *state) pageHeaderParts() []string {
 	switch s.page {
 	case pageOverview:
-		parts = append(parts,
+		return []string{
 			fmt.Sprintf("%s sessions", formatInt(int64(s.overview.TotalSessions))),
 			fmt.Sprintf("%s tokens", formatInt(s.overview.TotalTokens)),
 			formatCost(s.overview.EstimatedCostUSD),
-		)
+		}
 	case pageTime:
-		parts = append(parts,
-			"tab "+s.timeTab.title(),
+		return []string{
+			"tab " + s.timeTab.title(),
 			fmt.Sprintf("%s sessions", formatInt(int64(s.overview.TotalSessions))),
-			"wall "+formatDuration(s.overview.TotalWallDurationMS),
-			"active "+formatPercent(ratio(float64(s.overview.TotalActiveDurationMS), float64(s.overview.TotalWallDurationMS))),
-		)
+			"wall " + formatDuration(s.overview.TotalWallDurationMS),
+			"active " + formatPercent(ratio(float64(s.overview.TotalActiveDurationMS), float64(s.overview.TotalWallDurationMS))),
+		}
 	case pageTokens:
-		parts = append(parts,
-			"tab "+s.tokensTab.title(),
+		return []string{
+			"tab " + s.tokensTab.title(),
 			fmt.Sprintf("%s sessions", formatInt(int64(s.tokens.TotalSessions))),
 			fmt.Sprintf("%s tokens", formatInt(s.tokens.TotalTokens)),
-			"cache "+formatPercent(s.tokens.CacheUtilizationRate),
-		)
+			"cache " + formatPercent(s.tokens.CacheUtilizationRate),
+		}
 	case pageModelSignals:
-		summary := s.signals.HealthSummary
-		parts = append(parts,
-			"tab "+s.modelSignalsTab.title(),
-			"health "+modelSignalSeverityLabel(summary.Severity),
-			fmt.Sprintf("%s sessions", formatInt(int64(s.signals.TotalSessions))),
-			fmt.Sprintf("%s calls", formatInt(int64(s.signals.TotalModelCalls))),
-		)
+		return s.modelSignalsHeaderParts()
 	case pageModelRisk:
-		rows := buildModelRiskRows(s.signals)
-		top := modelRiskTopRow(rows)
-		parts = append(parts,
-			fmt.Sprintf("%s rows", formatInt(int64(len(rows)))),
-			"top "+formatPercent(top.Score),
-			modelRiskLevel(top.Score),
-		)
+		return s.modelRiskHeaderParts()
 	case pageSessions:
-		parts = append(parts, fmt.Sprintf("%s sessions loaded", formatInt(int64(len(s.sessions)))))
+		return []string{fmt.Sprintf("%s sessions loaded", formatInt(int64(len(s.sessions))))}
 	case pageTools:
-		parts = append(parts, "tab "+s.toolsTab.title(), fmt.Sprintf("%s tools", formatInt(int64(len(s.tools)))))
-		if s.toolsTab == toolsTabShell || s.toolsTab == toolsTabCalls {
-			parts = append(parts, fmt.Sprintf("%s calls", formatInt(int64(len(s.toolCalls)))))
-		}
-		if filters := toolActiveFilterLabel(s); filters != "" {
-			parts = append(parts, filters)
-		}
+		return s.toolsHeaderParts()
 	case pageToolCalls:
-		parts = append(parts, fmt.Sprintf("%s calls", formatInt(int64(len(s.toolCalls)))))
-		if strings.TrimSpace(s.toolCallTool) != "" {
-			parts = append(parts, "tool "+s.toolCallTool)
-		}
-		parts = append(parts, toolCallSortLabel(s.toolCallSort))
-		if filters := toolActiveFilterLabel(s); filters != "" {
-			parts = append(parts, filters)
-		}
+		return s.toolCallsHeaderParts()
 	case pageToolCallDetail:
-		if s.toolCall != nil {
-			parts = append(parts, empty(s.toolCall.ToolName, "unknown"), "#"+formatInt(s.toolCall.ID))
-		}
+		return s.toolCallDetailHeaderParts()
 	case pageAudit:
-		parts = append(parts,
+		return []string{
 			fmt.Sprintf("%s findings", formatInt(int64(s.audit.TotalFindings))),
 			fmt.Sprintf("%s critical", formatInt(int64(s.audit.CriticalFindings))),
 			fmt.Sprintf("%s high", formatInt(int64(s.audit.HighFindings))),
-		)
+		}
 	case pageAuditFindings:
-		parts = append(parts, fmt.Sprintf("%s findings loaded", formatInt(int64(len(s.findings)))))
+		return []string{fmt.Sprintf("%s findings loaded", formatInt(int64(len(s.findings))))}
 	case pageAuditDetail:
-		if s.finding != nil {
-			parts = append(parts, empty(s.finding.RuleID, "finding"), "#"+formatInt(s.finding.ID), empty(s.finding.Severity, "unknown"))
-		}
+		return s.auditDetailHeaderParts()
 	case pagePrivacy:
-		parts = append(parts, fmt.Sprintf("%s targets", formatInt(int64(len(s.privacy)))))
-		if status := s.selectedPrivacyStatus(); status != nil {
-			parts = append(parts, "selected "+privacyDisplayName(*status))
-		}
+		return s.privacyHeaderParts()
 	case pageSettings:
-		if len(s.settings.SourceEntries) > 0 {
-			parts = append(parts, fmt.Sprintf("%s sources", formatInt(int64(len(s.settings.SourceEntries)))))
-		}
+		return s.settingsHeaderParts()
+	default:
+		return nil
 	}
+}
+
+func (s *state) modelSignalsHeaderParts() []string {
+	summary := s.signals.HealthSummary
+	return []string{
+		"tab " + s.modelSignalsTab.title(),
+		"health " + modelSignalSeverityLabel(summary.Severity),
+		fmt.Sprintf("%s sessions", formatInt(int64(s.signals.TotalSessions))),
+		fmt.Sprintf("%s calls", formatInt(int64(s.signals.TotalModelCalls))),
+	}
+}
+
+func (s *state) modelRiskHeaderParts() []string {
+	rows := buildModelRiskRows(s.signals)
+	top := modelRiskTopRow(rows)
+	return []string{
+		fmt.Sprintf("%s rows", formatInt(int64(len(rows)))),
+		"top " + formatPercent(top.Score),
+		modelRiskLevel(top.Score),
+	}
+}
+
+func (s *state) toolsHeaderParts() []string {
+	parts := []string{"tab " + s.toolsTab.title(), fmt.Sprintf("%s tools", formatInt(int64(len(s.tools))))}
+	if s.toolsTab == toolsTabShell || s.toolsTab == toolsTabCalls {
+		parts = append(parts, fmt.Sprintf("%s calls", formatInt(int64(len(s.toolCalls)))))
+	}
+	if filters := toolActiveFilterLabel(s); filters != "" {
+		parts = append(parts, filters)
+	}
+	return parts
+}
+
+func (s *state) toolCallsHeaderParts() []string {
+	parts := []string{fmt.Sprintf("%s calls", formatInt(int64(len(s.toolCalls))))}
+	if strings.TrimSpace(s.toolCallTool) != "" {
+		parts = append(parts, "tool "+s.toolCallTool)
+	}
+	parts = append(parts, toolCallSortLabel(s.toolCallSort))
+	if filters := toolActiveFilterLabel(s); filters != "" {
+		parts = append(parts, filters)
+	}
+	return parts
+}
+
+func (s *state) toolCallDetailHeaderParts() []string {
+	if s.toolCall == nil {
+		return nil
+	}
+	return []string{empty(s.toolCall.ToolName, "unknown"), "#" + formatInt(s.toolCall.ID)}
+}
+
+func (s *state) auditDetailHeaderParts() []string {
+	if s.finding == nil {
+		return nil
+	}
+	return []string{empty(s.finding.RuleID, "finding"), "#" + formatInt(s.finding.ID), empty(s.finding.Severity, "unknown")}
+}
+
+func (s *state) privacyHeaderParts() []string {
+	parts := []string{fmt.Sprintf("%s targets", formatInt(int64(len(s.privacy))))}
+	if status := s.selectedPrivacyStatus(); status != nil {
+		parts = append(parts, "selected "+privacyDisplayName(*status))
+	}
+	return parts
+}
+
+func (s *state) settingsHeaderParts() []string {
+	if len(s.settings.SourceEntries) == 0 {
+		return nil
+	}
+	return []string{fmt.Sprintf("%s sources", formatInt(int64(len(s.settings.SourceEntries))))}
+}
+
+func (s *state) headerFilterParts() []string {
+	parts := []string{}
 	if s.isUsageScopePage() {
 		if scope := s.usageScopeLabel(); scope != "" {
 			parts = append(parts, scope)
@@ -137,7 +187,7 @@ func (s *state) headerLine() string {
 			parts = append(parts, filters)
 		}
 	}
-	return strings.Join(parts, "  ")
+	return parts
 }
 
 func (s *state) navLine() string {
