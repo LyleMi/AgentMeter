@@ -129,6 +129,16 @@ type stringOption struct {
 	label string
 }
 
+type sourceOptionInput struct {
+	sourceID           int64
+	sourceKey          string
+	sourceLabel        string
+	agentKind          string
+	agentName          string
+	sourceRootPath     string
+	sourceSessionsPath string
+}
+
 func cycleStringOption(current string, options []stringOption) (string, string) {
 	if len(options) == 0 {
 		return "", "All"
@@ -148,10 +158,26 @@ func cycleStringOption(current string, options []stringOption) (string, string) 
 func usageAgentOptions(overview agentmodel.Overview) []stringOption {
 	seen := map[string]string{}
 	for _, row := range overview.AgentUsage {
-		addSourceOption(seen, row.SourceID, row.SourceKey, row.SourceLabel, row.AgentKind, row.AgentName, row.SourceRootPath, row.SourceSessionsPath)
+		addSourceOption(seen, sourceOptionInput{
+			sourceID:           row.SourceID,
+			sourceKey:          row.SourceKey,
+			sourceLabel:        row.SourceLabel,
+			agentKind:          row.AgentKind,
+			agentName:          row.AgentName,
+			sourceRootPath:     row.SourceRootPath,
+			sourceSessionsPath: row.SourceSessionsPath,
+		})
 	}
 	for _, session := range append(append([]agentmodel.Session{}, overview.RecentSessions...), overview.SlowSessions...) {
-		addSourceOption(seen, session.SourceID, session.SourceKey, session.SourceLabel, session.AgentKind, session.AgentName, session.SourceRootPath, session.SourceSessionsPath)
+		addSourceOption(seen, sourceOptionInput{
+			sourceID:           session.SourceID,
+			sourceKey:          session.SourceKey,
+			sourceLabel:        session.SourceLabel,
+			agentKind:          session.AgentKind,
+			agentName:          session.AgentName,
+			sourceRootPath:     session.SourceRootPath,
+			sourceSessionsPath: session.SourceSessionsPath,
+		})
 	}
 	return sortedStringOptions(seen)
 }
@@ -178,22 +204,22 @@ func usageProjectOptions(projects agentmodel.UsageBreakdown, overview agentmodel
 	return sortedStringOptions(seen)
 }
 
-func addSourceOption(seen map[string]string, sourceID int64, sourceKey, sourceLabel, agentKind, agentName, rootPath, sessionsPath string) {
-	value := strings.TrimSpace(sourceKey)
-	if value == "" && sourceID > 0 {
-		value = fmt.Sprintf("source:%d", sourceID)
+func addSourceOption(seen map[string]string, input sourceOptionInput) {
+	value := strings.TrimSpace(input.sourceKey)
+	if value == "" && input.sourceID > 0 {
+		value = fmt.Sprintf("source:%d", input.sourceID)
 	}
 	if value == "" {
-		value = strings.TrimSpace(agentKind)
+		value = strings.TrimSpace(input.agentKind)
 	}
 	if value == "" {
-		value = strings.TrimSpace(agentName)
+		value = strings.TrimSpace(input.agentName)
 	}
 	if value == "" {
 		return
 	}
-	label := sourceDisplayName(sourceLabel, agentName, agentKind, sourceKey)
-	context := sourceContext(agentKind, agentName, rootPath, sessionsPath)
+	label := sourceDisplayName(input.sourceLabel, input.agentName, input.agentKind, input.sourceKey)
+	context := sourceContext(input.agentKind, input.agentName, input.sourceRootPath, input.sourceSessionsPath)
 	if context != "" && context != label {
 		label += " (" + context + ")"
 	}
