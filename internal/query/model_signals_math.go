@@ -144,45 +144,15 @@ func modelSignalDegradationRiskScore(item model.ModelSignalsMetricSet) float64 {
 		item.ModelThroughputTokensPerSecond,
 	)
 	score := 0.0
-	score += thresholdScore(latency, 8_000, 20_000) * 0.24
-	score += inverseThresholdScore(throughput, 40, 12) * 0.24
-	score += rangeScore(item.FailurePressure, 0.05, 0.95) * 0.18
-	score += rangeScore(item.ToolFailureRate, 0.08, 0.42) * 0.10
-	score += rangeScore(item.CacheMissRate, 0.70, 0.30) * 0.08
-	score += rangeScore(item.AvgModelCallsPerSession, 1.5, 2.5) * 0.07
-	score += rangeScore(item.OutputExpansionRate, 3.0, 5.0) * 0.05
-	score += rangeScore(item.ReasoningOverheadRate, 1.0, 4.0) * 0.04
+	score += model.RiskThresholdScore(latency, 8_000, 20_000) * 0.24
+	score += model.InverseRiskThresholdScore(throughput, 40, 12) * 0.24
+	score += model.RiskRangeScore(item.FailurePressure, 0.05, 0.95) * 0.18
+	score += model.RiskRangeScore(item.ToolFailureRate, 0.08, 0.42) * 0.10
+	score += model.RiskRangeScore(item.CacheMissRate, 0.70, 0.30) * 0.08
+	score += model.RiskRangeScore(item.AvgModelCallsPerSession, 1.5, 2.5) * 0.07
+	score += model.RiskRangeScore(item.OutputExpansionRate, 3.0, 5.0) * 0.05
+	score += model.RiskRangeScore(item.ReasoningOverheadRate, 1.0, 4.0) * 0.04
 	return clamp01(score)
-}
-
-func thresholdScore(value, warning, critical float64) float64 {
-	if value <= warning || warning >= critical {
-		return 0
-	}
-	if value >= critical {
-		return 1
-	}
-	return clamp01((value - warning) / (critical - warning))
-}
-
-func inverseThresholdScore(value, warning, critical float64) float64 {
-	if value <= 0 || warning <= critical {
-		return 0
-	}
-	if value >= warning {
-		return 0
-	}
-	if value <= critical {
-		return 1
-	}
-	return clamp01((warning - value) / (warning - critical))
-}
-
-func rangeScore(value, start, span float64) float64 {
-	if value <= start || span <= 0 {
-		return 0
-	}
-	return clamp01((value - start) / span)
 }
 
 func firstPositiveFloat(values ...float64) float64 {

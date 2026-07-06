@@ -131,7 +131,7 @@ func buildModelRiskRows(signals agentmodel.ModelSignals) []modelRiskRow {
 		secondary := sourceContext(matrixRow.AgentKind, matrixRow.AgentName, matrixRow.SourceRootPath, matrixRow.SourceSessionsPath)
 		for _, cell := range matrixRow.Cells {
 			current := cell.Current
-			score := clampRisk01(current.DegradationRiskScore)
+			score := agentmodel.ClampRiskScore(current.DegradationRiskScore)
 			drivers := buildModelRiskDrivers(current)
 			sort.SliceStable(drivers, func(i, j int) bool {
 				if drivers[i].Contribution == drivers[j].Contribution {
@@ -211,7 +211,7 @@ func buildModelRiskDrivers(metric agentmodel.ModelSignalsMetricSet) []modelRiskD
 			label:        "Tail latency",
 			value:        firstPositiveFloat(metric.P90ModelLatencyMsPer1kOutputTokens, metric.ModelLatencyMsPer1kOutputTokens),
 			formatter:    func(value float64) string { return formatSignalRate(value, 0) + " ms/1k" },
-			contribution: thresholdRiskScore(firstPositiveFloat(metric.P90ModelLatencyMsPer1kOutputTokens, metric.ModelLatencyMsPer1kOutputTokens), 8000, 20000) * 0.24,
+			contribution: agentmodel.RiskThresholdScore(firstPositiveFloat(metric.P90ModelLatencyMsPer1kOutputTokens, metric.ModelLatencyMsPer1kOutputTokens), 8000, 20000) * 0.24,
 			weight:       0.24,
 			explanation:  "Tail responses are slow after normalizing by generated output.",
 		}),
@@ -220,7 +220,7 @@ func buildModelRiskDrivers(metric agentmodel.ModelSignalsMetricSet) []modelRiskD
 			label:        "Slow-floor throughput",
 			value:        firstPositiveFloat(metric.P10ModelThroughputTokensPerSecond, metric.ModelThroughputOutputTokensPerSecond, metric.ModelThroughputTokensPerSecond),
 			formatter:    func(value float64) string { return formatSignalRate(value, 1) + " tok/s" },
-			contribution: inverseThresholdRiskScore(firstPositiveFloat(metric.P10ModelThroughputTokensPerSecond, metric.ModelThroughputOutputTokensPerSecond, metric.ModelThroughputTokensPerSecond), 40, 12) * 0.24,
+			contribution: agentmodel.InverseRiskThresholdScore(firstPositiveFloat(metric.P10ModelThroughputTokensPerSecond, metric.ModelThroughputOutputTokensPerSecond, metric.ModelThroughputTokensPerSecond), 40, 12) * 0.24,
 			weight:       0.24,
 			explanation:  "Observed token throughput is below the expected floor.",
 		}),
@@ -229,7 +229,7 @@ func buildModelRiskDrivers(metric agentmodel.ModelSignalsMetricSet) []modelRiskD
 			label:        "Failure pressure",
 			value:        metric.FailurePressure,
 			formatter:    func(value float64) string { return formatSignalRate(value, 2) + "/session" },
-			contribution: rangeRiskScore(metric.FailurePressure, 0.05, 0.95) * 0.18,
+			contribution: agentmodel.RiskRangeScore(metric.FailurePressure, 0.05, 0.95) * 0.18,
 			weight:       0.18,
 			explanation:  "Model or tool failures are concentrated per session.",
 		}),
@@ -238,7 +238,7 @@ func buildModelRiskDrivers(metric agentmodel.ModelSignalsMetricSet) []modelRiskD
 			label:        "Tool failures",
 			value:        metric.ToolFailureRate,
 			formatter:    formatSignalPercent,
-			contribution: rangeRiskScore(metric.ToolFailureRate, 0.08, 0.42) * 0.10,
+			contribution: agentmodel.RiskRangeScore(metric.ToolFailureRate, 0.08, 0.42) * 0.10,
 			weight:       0.10,
 			explanation:  "Tool failures are taking a larger share of tool calls.",
 		}),
@@ -247,7 +247,7 @@ func buildModelRiskDrivers(metric agentmodel.ModelSignalsMetricSet) []modelRiskD
 			label:        "Cache misses",
 			value:        metric.CacheMissRate,
 			formatter:    formatSignalPercent,
-			contribution: rangeRiskScore(metric.CacheMissRate, 0.70, 0.30) * 0.08,
+			contribution: agentmodel.RiskRangeScore(metric.CacheMissRate, 0.70, 0.30) * 0.08,
 			weight:       0.08,
 			explanation:  "A high uncached input share can make the same work slower or more expensive.",
 		}),
@@ -256,7 +256,7 @@ func buildModelRiskDrivers(metric agentmodel.ModelSignalsMetricSet) []modelRiskD
 			label:        "Retry pressure",
 			value:        metric.AvgModelCallsPerSession,
 			formatter:    func(value float64) string { return formatSignalRate(value, 2) + "/session" },
-			contribution: rangeRiskScore(metric.AvgModelCallsPerSession, 1.5, 2.5) * 0.07,
+			contribution: agentmodel.RiskRangeScore(metric.AvgModelCallsPerSession, 1.5, 2.5) * 0.07,
 			weight:       0.07,
 			explanation:  "More model calls per session can indicate repair loops or unstable responses.",
 		}),
@@ -265,7 +265,7 @@ func buildModelRiskDrivers(metric agentmodel.ModelSignalsMetricSet) []modelRiskD
 			label:        "Output expansion",
 			value:        metric.OutputExpansionRate,
 			formatter:    func(value float64) string { return formatSignalRate(value, 2) + "x" },
-			contribution: rangeRiskScore(metric.OutputExpansionRate, 3.0, 5.0) * 0.05,
+			contribution: agentmodel.RiskRangeScore(metric.OutputExpansionRate, 3.0, 5.0) * 0.05,
 			weight:       0.05,
 			explanation:  "Generated output is large relative to input, changing latency and cost.",
 		}),
@@ -274,7 +274,7 @@ func buildModelRiskDrivers(metric agentmodel.ModelSignalsMetricSet) []modelRiskD
 			label:        "Reasoning overhead",
 			value:        metric.ReasoningOverheadRate,
 			formatter:    func(value float64) string { return formatSignalRate(value, 2) + "x" },
-			contribution: rangeRiskScore(metric.ReasoningOverheadRate, 1.0, 4.0) * 0.04,
+			contribution: agentmodel.RiskRangeScore(metric.ReasoningOverheadRate, 1.0, 4.0) * 0.04,
 			weight:       0.04,
 			explanation:  "Hidden reasoning output is high relative to visible output.",
 		}),
@@ -282,7 +282,7 @@ func buildModelRiskDrivers(metric agentmodel.ModelSignalsMetricSet) []modelRiskD
 }
 
 func newModelRiskDriver(input modelRiskDriverInput) modelRiskDriver {
-	contribution := clampRisk01(input.contribution)
+	contribution := agentmodel.ClampRiskScore(input.contribution)
 	normalized := 0.0
 	if input.weight > 0 {
 		normalized = contribution / input.weight
@@ -363,44 +363,4 @@ func firstPositiveFloat(values ...float64) float64 {
 		}
 	}
 	return 0
-}
-
-func thresholdRiskScore(value, warning, critical float64) float64 {
-	if value <= warning || warning >= critical {
-		return 0
-	}
-	if value >= critical {
-		return 1
-	}
-	return clampRisk01((value - warning) / (critical - warning))
-}
-
-func inverseThresholdRiskScore(value, warning, critical float64) float64 {
-	if value <= 0 || warning <= critical {
-		return 0
-	}
-	if value >= warning {
-		return 0
-	}
-	if value <= critical {
-		return 1
-	}
-	return clampRisk01((warning - value) / (warning - critical))
-}
-
-func rangeRiskScore(value, warning, criticalDelta float64) float64 {
-	if value <= warning {
-		return 0
-	}
-	return clampRisk01((value - warning) / criticalDelta)
-}
-
-func clampRisk01(value float64) float64 {
-	if !finiteSignal(value) || value < 0 {
-		return 0
-	}
-	if value > 1 {
-		return 1
-	}
-	return value
 }
