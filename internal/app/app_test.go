@@ -250,11 +250,23 @@ func TestPrivacyStatusIncludesSourceOptionsWhenMultipleSourcesAreIndexed(t *test
 			if err != nil {
 				t.Fatal(err)
 			}
-			stable, err := db.EnsureSource(ctx, conn, tt.target, privacyTargetLabel(tt.target), stableRoot, filepath.Join(stableRoot, "sessions"), "test")
+			stable, err := db.EnsureSource(ctx, conn, db.SourceInput{
+				Kind:         tt.target,
+				Name:         privacyTargetLabel(tt.target),
+				RootPath:     stableRoot,
+				SessionsPath: filepath.Join(stableRoot, "sessions"),
+				Platform:     "test",
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := db.EnsureSource(ctx, conn, tt.target, privacyTargetLabel(tt.target)+" nightly", nightlyRoot, filepath.Join(nightlyRoot, "sessions"), "test"); err != nil {
+			if _, err := db.EnsureSource(ctx, conn, db.SourceInput{
+				Kind:         tt.target,
+				Name:         privacyTargetLabel(tt.target) + " nightly",
+				RootPath:     nightlyRoot,
+				SessionsPath: filepath.Join(nightlyRoot, "sessions"),
+				Platform:     "test",
+			}); err != nil {
 				t.Fatal(err)
 			}
 			if err := conn.Close(); err != nil {
@@ -685,10 +697,22 @@ func TestPrivacyCodexHTTPChangesCanTargetIndexedSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.EnsureSource(ctx, conn, "codex", "Codex", stableRoot, filepath.Join(stableRoot, "sessions"), "test"); err != nil {
+	if _, err := db.EnsureSource(ctx, conn, db.SourceInput{
+		Kind:         "codex",
+		Name:         "Codex",
+		RootPath:     stableRoot,
+		SessionsPath: filepath.Join(stableRoot, "sessions"),
+		Platform:     "test",
+	}); err != nil {
 		t.Fatal(err)
 	}
-	nightly, err := db.EnsureSource(ctx, conn, "codex", "Codex nightly", nightlyRoot, filepath.Join(nightlyRoot, "sessions"), "test")
+	nightly, err := db.EnsureSource(ctx, conn, db.SourceInput{
+		Kind:         "codex",
+		Name:         "Codex nightly",
+		RootPath:     nightlyRoot,
+		SessionsPath: filepath.Join(nightlyRoot, "sessions"),
+		Platform:     "test",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -798,10 +822,22 @@ func TestPrivacyJSONHTTPChangesCanTargetIndexedSource(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := db.EnsureSource(ctx, conn, tt.target, privacyTargetLabel(tt.target), stableRoot, filepath.Join(stableRoot, "sessions"), "test"); err != nil {
+			if _, err := db.EnsureSource(ctx, conn, db.SourceInput{
+				Kind:         tt.target,
+				Name:         privacyTargetLabel(tt.target),
+				RootPath:     stableRoot,
+				SessionsPath: filepath.Join(stableRoot, "sessions"),
+				Platform:     "test",
+			}); err != nil {
 				t.Fatal(err)
 			}
-			nightly, err := db.EnsureSource(ctx, conn, tt.target, privacyTargetLabel(tt.target)+" nightly", nightlyRoot, filepath.Join(nightlyRoot, "sessions"), "test")
+			nightly, err := db.EnsureSource(ctx, conn, db.SourceInput{
+				Kind:         tt.target,
+				Name:         privacyTargetLabel(tt.target) + " nightly",
+				RootPath:     nightlyRoot,
+				SessionsPath: filepath.Join(nightlyRoot, "sessions"),
+				Platform:     "test",
+			})
 			if err != nil {
 				t.Fatal(err)
 			}

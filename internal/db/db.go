@@ -282,34 +282,42 @@ func backfillMigrationData(ctx context.Context, conn *sql.DB) error {
 	return nil
 }
 
-func EnsureSource(ctx context.Context, conn *sql.DB, kind, name, rootPath, sessionsPath, platform string) (model.Source, error) {
+type SourceInput struct {
+	Kind         string
+	Name         string
+	RootPath     string
+	SessionsPath string
+	Platform     string
+}
+
+func EnsureSource(ctx context.Context, conn *sql.DB, input SourceInput) (model.Source, error) {
 	now := time.Now().UTC()
 	var src model.Source
-	row := conn.QueryRowContext(ctx, `SELECT id, kind, name, root_path, sessions_path, platform, created_at, updated_at FROM sources WHERE kind = ? AND sessions_path = ?`, kind, sessionsPath)
+	row := conn.QueryRowContext(ctx, `SELECT id, kind, name, root_path, sessions_path, platform, created_at, updated_at FROM sources WHERE kind = ? AND sessions_path = ?`, input.Kind, input.SessionsPath)
 	if err := scanSource(row, &src); err == nil {
-		src.RootPath = rootPath
-		src.Platform = platform
-		src.Name = name
+		src.RootPath = input.RootPath
+		src.Platform = input.Platform
+		src.Name = input.Name
 		src.UpdatedAt = now
-		_, err := conn.ExecContext(ctx, `UPDATE sources SET name = ?, root_path = ?, platform = ?, updated_at = ? WHERE id = ?`, name, rootPath, platform, formatTime(now), src.ID)
+		_, err := conn.ExecContext(ctx, `UPDATE sources SET name = ?, root_path = ?, platform = ?, updated_at = ? WHERE id = ?`, input.Name, input.RootPath, input.Platform, formatTime(now), src.ID)
 		return src, err
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return src, err
 	}
 
 	res, err := conn.ExecContext(ctx, `INSERT INTO sources (kind, name, root_path, sessions_path, platform, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		kind, name, rootPath, sessionsPath, platform, formatTime(now), formatTime(now))
+		input.Kind, input.Name, input.RootPath, input.SessionsPath, input.Platform, formatTime(now), formatTime(now))
 	if err != nil {
 		return src, err
 	}
 	id, _ := res.LastInsertId()
 	src = model.Source{
 		ID:           id,
-		Kind:         kind,
-		Name:         name,
-		RootPath:     rootPath,
-		SessionsPath: sessionsPath,
-		Platform:     platform,
+		Kind:         input.Kind,
+		Name:         input.Name,
+		RootPath:     input.RootPath,
+		SessionsPath: input.SessionsPath,
+		Platform:     input.Platform,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}

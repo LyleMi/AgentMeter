@@ -143,7 +143,13 @@ func (i *Indexer) IndexSource(ctx context.Context, sessionsPath, label string, r
 		return result, fmt.Errorf("%s is not a directory", spec.SessionsPath)
 	}
 
-	source, err := db.EnsureSource(ctx, i.conn, spec.Kind, spec.Name, spec.RootPath, spec.SessionsPath, platform.PlatformName())
+	source, err := db.EnsureSource(ctx, i.conn, db.SourceInput{
+		Kind:         spec.Kind,
+		Name:         spec.Name,
+		RootPath:     spec.RootPath,
+		SessionsPath: spec.SessionsPath,
+		Platform:     platform.PlatformName(),
+	})
 	if err != nil {
 		return result, err
 	}
