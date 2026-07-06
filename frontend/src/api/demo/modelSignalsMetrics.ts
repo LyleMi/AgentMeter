@@ -13,6 +13,10 @@ import {
 import { cacheSavingsUsdFor, costSum } from './usageMetrics'
 import { sum } from './utils'
 
+const millisecondsPerSecond = 1000
+const millisecondsPerHour = 3_600_000
+const tokensPerThousand = 1000
+
 export function modelCallsForSession(session: Session): number {
   return Math.max(1, Math.ceil(session.eventCount / 55))
 }
@@ -79,11 +83,11 @@ function firstPositiveNumber(...values: Array<number | undefined>): number {
 }
 
 function sessionLatencyMsPer1kOutputTokens(session: Session): number {
-  return safeRate(session.modelDurationMs, session.tokenUsage.outputTokens / 1000)
+  return safeRate(session.modelDurationMs, session.tokenUsage.outputTokens / tokensPerThousand)
 }
 
 function sessionThroughputTokensPerSecond(session: Session): number {
-  return safeRate(session.tokenUsage.totalTokens, session.modelDurationMs / 1000)
+  return safeRate(session.tokenUsage.totalTokens, session.modelDurationMs / millisecondsPerSecond)
 }
 
 export function isSuccessfulToolStatus(status: string): boolean {
@@ -96,7 +100,7 @@ export function signalRatesFor(group: Session[], groupToolCalls: ToolCall[]): Mo
   const outputTokens = sum(group, (session) => session.tokenUsage.outputTokens)
   const reasoningOutputTokens = sum(group, (session) => session.tokenUsage.reasoningOutputTokens)
   const totalTokens = sum(group, (session) => session.tokenUsage.totalTokens)
-  const modelDurationSeconds = sum(group, (session) => session.modelDurationMs) / 1000
+  const modelDurationSeconds = sum(group, (session) => session.modelDurationMs) / millisecondsPerSecond
   const failedToolCalls = groupToolCalls.filter((call) => !isSuccessfulToolStatus(call.status)).length
 
   return {
@@ -188,16 +192,16 @@ function metricDerivedValues(totals: MetricTotals): MetricDerivedValues {
   const toolDurationMs = totals.toolDurationMs ?? 0
   const activeDurationMs = totals.activeDurationMs ?? totals.modelDurationMs + toolDurationMs
   const idleDurationMs = totals.idleDurationMs ?? Math.max(0, wallDurationMs - activeDurationMs)
-  const modelDurationSeconds = totals.modelDurationMs / 1000
-  const activeDurationHours = activeDurationMs / 3_600_000
-  const modelLatencyMsPer1kOutputTokens = safeRate(totals.modelDurationMs, totals.outputTokens / 1000)
+  const modelDurationSeconds = totals.modelDurationMs / millisecondsPerSecond
+  const activeDurationHours = activeDurationMs / millisecondsPerHour
+  const modelLatencyMsPer1kOutputTokens = safeRate(totals.modelDurationMs, totals.outputTokens / tokensPerThousand)
   const modelThroughputTokensPerSecond = safeRate(totals.totalTokens, modelDurationSeconds)
   const unpricedSessionCount = totals.unpricedSessionCount || 0
   const estimatedCostUsd = totals.estimatedCostUsd
   const hasCompletePricing = estimatedCostUsd !== undefined && unpricedSessionCount === 0
   const costPerSession = hasCompletePricing ? safeRate(estimatedCostUsd, totals.sessionCount) : undefined
   const costPerActiveHour = hasCompletePricing ? safeRate(estimatedCostUsd, activeDurationHours) : undefined
-  const costPer1kTokens = hasCompletePricing ? safeRate(estimatedCostUsd, totals.totalTokens / 1000) : undefined
+  const costPer1kTokens = hasCompletePricing ? safeRate(estimatedCostUsd, totals.totalTokens / tokensPerThousand) : undefined
   const failurePressure = safeRate((totals.failedModelCalls || 0) + totals.failedToolCalls, totals.sessionCount)
   const avgModelCallsPerSession = safeRate(totals.modelCalls, totals.sessionCount)
   const outputExpansionRate = safeRate(totals.outputTokens, totals.inputTokens)
