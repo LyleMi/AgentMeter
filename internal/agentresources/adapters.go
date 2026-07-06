@@ -16,11 +16,11 @@ import (
 func skillsForAgent(agent model.AgentResourceAgent) ([]model.AgentSkillResource, []string) {
 	switch agent.Kind {
 	case codexKind:
-		return codexSkills(filepath.Join(agent.RootPath, "skills"))
+		return codexSkills(filepath.Join(agent.RootPath, agentResourceSkills))
 	case "gemini":
-		return packageSkills(agent, filepath.Join(agent.RootPath, "skills"))
+		return packageSkills(agent, filepath.Join(agent.RootPath, agentResourceSkills))
 	case "claude", "codebuddy", "workbuddy":
-		items, warnings := packageSkills(agent, filepath.Join(agent.RootPath, "skills"))
+		items, warnings := packageSkills(agent, filepath.Join(agent.RootPath, agentResourceSkills))
 		commands, commandWarnings := markdownSkillResources(agent, filepath.Join(agent.RootPath, "commands"), "command")
 		agents, agentWarnings := markdownSkillResources(agent, filepath.Join(agent.RootPath, "agents"), "subagent")
 		items = append(items, commands...)
@@ -53,7 +53,7 @@ func mcpServersForAgent(agent model.AgentResourceAgent) ([]model.AgentMCPServerR
 func memoriesForAgent(agent model.AgentResourceAgent) ([]model.AgentMemoryResource, []string) {
 	switch agent.Kind {
 	case codexKind:
-		return codexMemories(filepath.Join(agent.RootPath, "memories"))
+		return codexMemories(filepath.Join(agent.RootPath, agentResourceMemories))
 	case "gemini":
 		return singleInstructionMemory(agent, "GEMINI.md", "primary")
 	case "claude":
@@ -430,7 +430,7 @@ func resolveMarkdownKind(agent model.AgentResourceAgent, candidate, relRoot, pri
 }
 
 func setPackageSkillEnabled(agent model.AgentResourceAgent, request model.AgentResourceToggleRequest, enabled bool) error {
-	skillsRoot := filepath.Join(agent.RootPath, "skills")
+	skillsRoot := filepath.Join(agent.RootPath, agentResourceSkills)
 	dir, err := resolvePathInRoot(skillsRoot, request.Path, request.RelativePath)
 	if err != nil {
 		return err
@@ -479,7 +479,7 @@ func geminiMCPServers(agent model.AgentResourceAgent) ([]model.AgentMCPServerRes
 	if err != nil {
 		return []model.AgentMCPServerResource{}, []string{"Unable to parse Gemini settings: " + err.Error()}
 	}
-	rawServers, _ := root["mcpServers"].(map[string]any)
+	rawServers, _ := root[agentResourceMCPServers].(map[string]any)
 	mcp, _ := root["mcp"].(map[string]any)
 	excluded := stringSetFromAny(mcp["excluded"])
 	allowed, hasAllowed := stringSetFromAnyWithPresence(mcp["allowed"])
@@ -508,7 +508,7 @@ func jsonMCPServers(agent model.AgentResourceAgent, configPath string) ([]model.
 	if err != nil {
 		return []model.AgentMCPServerResource{}, []string{"Unable to parse " + agent.Name + " MCP config: " + err.Error()}
 	}
-	rawServers, _ := root["mcpServers"].(map[string]any)
+	rawServers, _ := root[agentResourceMCPServers].(map[string]any)
 	return mcpResourcesFromMap(agent, rawServers, configPath, func(_ string, table map[string]any, status string) (bool, bool, string) {
 		enabled := true
 		canToggle := false
@@ -567,7 +567,7 @@ func setGeminiMCPEnabled(agent model.AgentResourceAgent, name string, enabled bo
 	if !exists {
 		return NotFound("Gemini settings were not found")
 	}
-	servers, _ := root["mcpServers"].(map[string]any)
+	servers, _ := root[agentResourceMCPServers].(map[string]any)
 	if _, ok := servers[name]; !ok {
 		return NotFound("MCP server was not found")
 	}
@@ -606,7 +606,7 @@ func setJSONMCPEnabled(agent model.AgentResourceAgent, name string, enabled bool
 	if !exists {
 		return NotFound("MCP config was not found")
 	}
-	servers, _ := root["mcpServers"].(map[string]any)
+	servers, _ := root[agentResourceMCPServers].(map[string]any)
 	raw, ok := servers[name]
 	if !ok {
 		return NotFound("MCP server was not found")
