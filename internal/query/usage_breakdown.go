@@ -70,7 +70,7 @@ func usageBreakdownQuery(shape usageBreakdownShape, where []string) string {
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
-		WHERE ` + strings.Join(where, " AND ") + `
+		WHERE ` + whereClause(where) + `
 		GROUP BY ` + shape.groupSQL + `, s.id, tu.id
 		ORDER BY ` + shape.orderSQL
 }

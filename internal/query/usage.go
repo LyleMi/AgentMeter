@@ -2,7 +2,6 @@ package query
 
 import (
 	"context"
-	"strings"
 
 	"github.com/LyleMi/AgentMeter/internal/model"
 )
@@ -89,7 +88,7 @@ func (s *Service) analyticsSessionCount(ctx context.Context, filters model.Analy
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
-		WHERE `+strings.Join(where, " AND "), args...).Scan(&count)
+		WHERE `+whereClause(where), args...).Scan(&count)
 	return count, err
 }
 
@@ -106,7 +105,7 @@ func (s *Service) usageTotals(ctx context.Context, filters model.AnalyticsFilter
 		FROM token_usage tu
 		JOIN sessions s ON s.id = tu.owner_id
 		JOIN sources src ON src.id = s.source_id
-		WHERE `+strings.Join(where, " AND "), args...).
+		WHERE `+whereClause(where), args...).
 		Scan(&usage.InputTokens, &usage.CachedInputTokens, &usage.OutputTokens, &usage.ReasoningOutputTokens, &usage.ContextCompressionTokens, &usage.TotalTokens)
 	return usage, err
 }
@@ -134,7 +133,7 @@ func (s *Service) analyticsSessions(ctx context.Context, filters model.Analytics
 	}
 	args = append(args, limit)
 	query := sessionSelect + `
-		WHERE ` + strings.Join(where, " AND ") + `
+		WHERE ` + whereClause(where) + `
 		ORDER BY ` + orderBy + `
 		LIMIT ?`
 	return s.scanSessions(ctx, query, args...)
@@ -158,7 +157,7 @@ func (s *Service) modelUsageWithFilters(ctx context.Context, filters model.Analy
 		FROM token_usage tu
 		JOIN sessions s ON s.id = tu.owner_id
 		JOIN sources src ON src.id = s.source_id
-		WHERE `+strings.Join(where, " AND ")+`
+		WHERE `+whereClause(where)+`
 		GROUP BY `+usageSessionModelExpr+`
 		ORDER BY SUM(tu.total_tokens) DESC, `+usageSessionModelExpr+` ASC`, args...)
 	if err != nil {
@@ -202,7 +201,7 @@ func (s *Service) agentUsageWithFilters(ctx context.Context, filters model.Analy
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
-		WHERE `+strings.Join(where, " AND ")+`
+		WHERE `+whereClause(where)+`
 		GROUP BY src.id
 		ORDER BY COUNT(*) DESC, src.name ASC`, args...)
 	if err != nil {

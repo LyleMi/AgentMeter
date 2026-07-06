@@ -27,7 +27,7 @@ func (s *Service) Sessions(ctx context.Context, filters model.SessionFilters) ([
 	query := fmt.Sprintf(`%s
 		WHERE %s
 		ORDER BY s.started_at DESC
-		LIMIT ? OFFSET ?`, sessionSelect, strings.Join(where, " AND "))
+		LIMIT ? OFFSET ?`, sessionSelect, whereClause(where))
 	return s.scanSessions(ctx, query, args...)
 }
 

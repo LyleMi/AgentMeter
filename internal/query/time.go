@@ -57,7 +57,7 @@ func (s *Service) toolCallCount(ctx context.Context, filters model.AnalyticsFilt
 		JOIN sessions s ON s.id = tc.session_id
 		JOIN sources src ON src.id = s.source_id
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
-		WHERE `+strings.Join(where, " AND "), args...).Scan(&count)
+		WHERE `+whereClause(where), args...).Scan(&count)
 	return count, err
 }
 
@@ -77,7 +77,7 @@ func (s *Service) suspectedNetworkToolTotalsWithFilters(ctx context.Context, tot
 		JOIN sessions s ON s.id = tc.session_id
 		JOIN sources src ON src.id = s.source_id
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
-		WHERE %s`, strings.Join(where, " AND "))
+		WHERE %s`, whereClause(where))
 	if err := s.conn.QueryRowContext(ctx, query, args...).Scan(&duration, &calls); err != nil {
 		return 0, 0, err
 	}
@@ -115,7 +115,7 @@ func (s *Service) toolTimeLeadersWithFilters(ctx context.Context, filters model.
 		WHERE %s
 		GROUP BY tc.tool_name
 		ORDER BY SUM(tc.duration_ms) DESC, tc.tool_name ASC
-		LIMIT 8`, networkCondition, strings.Join(where, " AND "))
+		LIMIT 8`, networkCondition, whereClause(where))
 	return scanQueryRows(ctx, s.conn, query, scanToolTimeUsage, args...)
 }
 
@@ -149,7 +149,7 @@ func (s *Service) agentTimeUsageWithFilters(ctx context.Context, filters model.A
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
 		WHERE %s
 		GROUP BY src.id
-		ORDER BY SUM(s.wall_duration_ms) DESC, src.name ASC`, networkCondition, strings.Join(where, " AND "))
+		ORDER BY SUM(s.wall_duration_ms) DESC, src.name ASC`, networkCondition, whereClause(where))
 	return scanQueryRows(ctx, s.conn, query, scanAgentTimeUsage, args...)
 }
 
@@ -171,7 +171,7 @@ func (s *Service) modelTimeUsageWithFilters(ctx context.Context, filters model.A
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
-		WHERE ` + strings.Join(where, " AND ") + `
+		WHERE ` + whereClause(where) + `
 		GROUP BY s.model
 		ORDER BY SUM(s.wall_duration_ms) DESC, s.model ASC`
 	return scanQueryRows(ctx, s.conn, query, scanModelTimeUsage, args...)

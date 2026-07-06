@@ -22,6 +22,10 @@ func appendSourceFilter(where []string, args []any, value string) ([]string, []a
 	return appendSourceFilterWithAlias(where, args, value, "src")
 }
 
+func whereClause(where []string) string {
+	return strings.Join(where, " AND ")
+}
+
 func appendSourceFilterWithAlias(where []string, args []any, value, alias string) ([]string, []any) {
 	value = strings.TrimSpace(value)
 	if value == "" {

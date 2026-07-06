@@ -291,7 +291,7 @@ func (s *Service) promptOccurrences(ctx context.Context, filters model.PromptSug
 		JOIN source_files sf ON sf.id = e.source_file_id
 		WHERE %s
 		ORDER BY e.timestamp DESC, e.id DESC
-		LIMIT ?`, strings.Join(where, " AND "))
+		LIMIT ?`, whereClause(where))
 	args = append(args, maxPromptOccurrenceScan)
 	rows, err := s.conn.QueryContext(ctx, query, args...)
 	if err != nil {

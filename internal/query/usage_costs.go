@@ -3,7 +3,6 @@ package query
 import (
 	"context"
 	"database/sql"
-	"strings"
 
 	"github.com/LyleMi/AgentMeter/internal/model"
 	"github.com/LyleMi/AgentMeter/internal/pricing"
@@ -28,7 +27,7 @@ func (s *Service) totalCostWithFilters(ctx context.Context, filters model.Analyt
 		FROM token_usage tu
 		JOIN sessions s ON s.id = tu.owner_id
 		JOIN sources src ON src.id = s.source_id
-		WHERE `+strings.Join(where, " AND "), args...)
+		WHERE `+whereClause(where), args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -54,7 +53,7 @@ func (s *Service) dailyCostsWithFilters(ctx context.Context, calculator pricing.
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
 		JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
-		WHERE `+strings.Join(where, " AND "), args...)
+		WHERE `+whereClause(where), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +77,7 @@ func (s *Service) modelCostsWithFilters(ctx context.Context, calculator pricing.
 		FROM token_usage tu
 		JOIN sessions s ON s.id = tu.owner_id
 		JOIN sources src ON src.id = s.source_id
-		WHERE `+strings.Join(where, " AND "), args...)
+		WHERE `+whereClause(where), args...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -104,7 +103,7 @@ func (s *Service) agentCostsWithFilters(ctx context.Context, calculator pricing.
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
 		JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
-		WHERE `+strings.Join(where, " AND "), args...)
+		WHERE `+whereClause(where), args...)
 	if err != nil {
 		return nil, nil, err
 	}

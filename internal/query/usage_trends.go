@@ -3,7 +3,6 @@ package query
 import (
 	"context"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/LyleMi/AgentMeter/internal/model"
@@ -27,7 +26,7 @@ func (s *Service) dailyUsageWithFilters(ctx context.Context, filters model.Analy
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
-		WHERE `+strings.Join(where, " AND ")+`
+		WHERE `+whereClause(where)+`
 		GROUP BY day
 		ORDER BY day DESC
 		LIMIT 30

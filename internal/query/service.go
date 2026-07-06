@@ -3,7 +3,6 @@ package query
 import (
 	"context"
 	"database/sql"
-	"strings"
 
 	"github.com/LyleMi/AgentMeter/internal/model"
 )
@@ -43,7 +42,7 @@ func (s *Service) OverviewWithFilters(ctx context.Context, filters model.Analyti
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
-		WHERE `+strings.Join(where, " AND "), args...).Scan(
+		WHERE `+whereClause(where), args...).Scan(
 		&overview.TotalSessions,
 		&overview.TotalWallDurationMS,
 		&overview.TotalActiveDurationMS,

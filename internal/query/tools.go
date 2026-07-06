@@ -25,7 +25,7 @@ func (s *Service) Tools(ctx context.Context, filters model.ToolFilters) ([]model
 		JOIN sources src ON src.id = sess.source_id
 		WHERE %s
 		GROUP BY tc.tool_name
-		ORDER BY COUNT(*) DESC, tc.tool_name ASC`, strings.Join(where, " AND "))
+		ORDER BY COUNT(*) DESC, tc.tool_name ASC`, whereClause(where))
 	rows, err := s.conn.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -81,13 +81,13 @@ func (s *Service) ToolCalls(ctx context.Context, filters model.ToolCallFilters) 
 		query := fmt.Sprintf(`%s
 		WHERE %s
 		ORDER BY %s
-		LIMIT ? OFFSET ?`, toolCallWithRiskSelect, strings.Join(where, " AND "), orderBy)
+		LIMIT ? OFFSET ?`, toolCallWithRiskSelect, whereClause(where), orderBy)
 		return s.scanToolCallsWithRisk(ctx, query, args...)
 	}
 	query := fmt.Sprintf(`%s
 		WHERE %s
 		ORDER BY %s
-		LIMIT ? OFFSET ?`, toolCallSelect, strings.Join(where, " AND "), orderBy)
+		LIMIT ? OFFSET ?`, toolCallSelect, whereClause(where), orderBy)
 	return s.scanToolCalls(ctx, query, args...)
 }
 
@@ -143,7 +143,7 @@ func (s *Service) ToolCallRisks(ctx context.Context, filters model.ToolCallRiskF
 		WHERE %s
 		GROUP BY af.tool_call_id
 		ORDER BY latest_started_at DESC, af.tool_call_id DESC
-		LIMIT ?`, strings.Join(where, " AND "))
+		LIMIT ?`, whereClause(where))
 	rows, err := s.conn.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err

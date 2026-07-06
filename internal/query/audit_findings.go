@@ -32,7 +32,7 @@ func (s *Service) AuditSummaryWithFilters(ctx context.Context, filters model.Aud
 		FROM audit_findings af
 		JOIN sessions sess ON sess.id = af.session_id
 		JOIN sources src ON src.id = sess.source_id
-		WHERE %s`, strings.Join(where, " AND "))
+		WHERE %s`, whereClause(where))
 	err := s.conn.QueryRowContext(ctx, query, args...).Scan(
 		&summary.TotalFindings,
 		&summary.CriticalFindings,
@@ -79,7 +79,7 @@ func (s *Service) AuditFindings(ctx context.Context, filters model.AuditFindingF
 	query := fmt.Sprintf(`%s
 		WHERE %s
 		ORDER BY af.timestamp DESC, af.id DESC
-		LIMIT ? OFFSET ?`, auditFindingSelect, strings.Join(where, " AND "))
+		LIMIT ? OFFSET ?`, auditFindingSelect, whereClause(where))
 	return s.scanAuditFindings(ctx, query, args...)
 }
 

@@ -130,7 +130,7 @@ func modelSignalSessionMetricsSQL(where []string) string {
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
 		LEFT JOIN model_call_stats mcs ON mcs.session_id = s.id
 		LEFT JOIN tool_call_stats tcs ON tcs.session_id = s.id
-		WHERE ` + strings.Join(where, " AND ") + `
+		WHERE ` + whereClause(where) + `
 		ORDER BY s.started_at ASC, s.id ASC`
 }
 
