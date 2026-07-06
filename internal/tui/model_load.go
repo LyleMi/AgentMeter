@@ -8,87 +8,127 @@ import (
 	agentmodel "github.com/LyleMi/AgentMeter/internal/model"
 )
 
+type loadRequest struct {
+	seq                 int
+	target              page
+	analyticsFilters    agentmodel.AnalyticsFilters
+	auditSummaryFilters agentmodel.AuditFindingFilters
+	auditFilters        agentmodel.AuditFindingFilters
+	toolCallFilters     agentmodel.ToolCallFilters
+	toolExplorerFilters agentmodel.ToolCallFilters
+	toolFilters         agentmodel.ToolFilters
+	toolsTab            toolsTab
+	toolCommand         string
+	breakdownGroup      string
+}
+
 func (s *state) load(target page) command {
+	request := s.newLoadRequest(target)
+	return func(ctx context.Context, ch chan<- message) {
+		sendMessage(ctx, ch, s.loadPage(request))
+	}
+}
+
+func (s *state) newLoadRequest(target page) loadRequest {
 	s.loadSeq++
-	seq := s.loadSeq
 	s.loading = true
 	s.err = nil
-	analyticsFilters := s.analyticsFilters()
-	auditSummaryFilters := s.auditSummaryFilters()
-	auditFilters := s.auditFilters()
-	toolCallFilters := s.toolCallFilters()
-	toolExplorerFilters := s.toolExplorerFilters()
-	toolFilters := agentmodel.ToolFilters{Agent: strings.TrimSpace(s.toolAgent)}
-	toolsTab := s.toolsTab
-	toolCommand := s.toolCommand
-	breakdownGroup := s.tokenBreakdownGroup
-	return func(ctx context.Context, ch chan<- message) {
-		msg := loadMsg{seq: seq, page: target}
-		switch target {
-		case pageOverview:
-			msg.overview, msg.err = s.service.GetOverviewWithFilters(analyticsFilters)
-			if msg.err == nil {
-				msg.scopeOverview, msg.scopeProjects = s.loadUsageScopeOptions(analyticsFilters, msg.overview)
-			}
-		case pageTime:
-			msg.overview, msg.err = s.service.GetOverviewWithFilters(analyticsFilters)
-			if msg.err == nil {
-				msg.scopeOverview, msg.scopeProjects = s.loadUsageScopeOptions(analyticsFilters, msg.overview)
-			}
-		case pageTokens:
-			msg.tokens, msg.err = s.service.GetTokenAnalyticsWithFilters(analyticsFilters)
-			if msg.err == nil && breakdownGroup != tokenBreakdownGlobal {
-				msg.breakdown, msg.err = s.service.GetUsageBreakdown(breakdownGroup, analyticsFilters)
-			}
-			if msg.err == nil {
-				msg.scopeOverview, msg.scopeProjects = s.loadUsageScopeOptions(analyticsFilters, agentmodel.Overview{})
-			}
-		case pageSessions:
-			msg.sessions, msg.err = s.service.ListSessions(agentmodel.SessionFilters{Limit: 200})
-		case pageTools:
-			msg.tools, msg.err = s.service.ListTools(toolFilters)
-			if msg.err == nil {
-				if value, err := s.service.GetOverview(); err == nil {
-					msg.scopeOverview = value
-				}
-			}
-			if msg.err == nil && (toolsTab == toolsTabShell || toolsTab == toolsTabCalls) {
-				msg.toolCalls, msg.err = listToolCallsForToolsContext(s.service, toolExplorerFilters, msg.tools, toolsTab, toolCommand)
-			}
-		case pageToolCalls:
-			msg.toolCalls, msg.err = s.service.ListToolCalls(toolCallFilters)
-		case pageModelSignals:
-			msg.signals, msg.err = s.service.GetModelSignalsWithFilters(analyticsFilters)
-			if msg.err == nil {
-				msg.scopeOverview, msg.scopeProjects = s.loadUsageScopeOptions(analyticsFilters, agentmodel.Overview{})
-			}
-		case pageModelRisk:
-			msg.signals, msg.err = s.service.GetModelSignalsWithFilters(analyticsFilters)
-			if msg.err == nil {
-				msg.scopeOverview, msg.scopeProjects = s.loadUsageScopeOptions(analyticsFilters, agentmodel.Overview{})
-			}
-		case pageAudit:
-			msg.audit, msg.err = s.service.GetAuditSummaryWithFilters(auditSummaryFilters)
-			if msg.err == nil {
-				if value, err := s.service.GetOverview(); err == nil {
-					msg.scopeOverview = value
-				}
-			}
-		case pageAuditFindings:
-			msg.findings, msg.err = s.service.ListAuditFindings(auditFilters)
-			if msg.err == nil {
-				if value, err := s.service.GetOverview(); err == nil {
-					msg.scopeOverview = value
-				}
-			}
-		case pageSettings:
-			msg.settings, msg.err = s.service.GetSettings()
-		case pagePrivacy:
-			msg.privacy, msg.err = s.service.GetPrivacyConfigs()
-		default:
-			msg.err = fmt.Errorf("unsupported page: %s", target.title())
-		}
-		sendMessage(ctx, ch, msg)
+
+	return loadRequest{
+		seq:                 s.loadSeq,
+		target:              target,
+		analyticsFilters:    s.analyticsFilters(),
+		auditSummaryFilters: s.auditSummaryFilters(),
+		auditFilters:        s.auditFilters(),
+		toolCallFilters:     s.toolCallFilters(),
+		toolExplorerFilters: s.toolExplorerFilters(),
+		toolFilters:         agentmodel.ToolFilters{Agent: strings.TrimSpace(s.toolAgent)},
+		toolsTab:            s.toolsTab,
+		toolCommand:         s.toolCommand,
+		breakdownGroup:      s.tokenBreakdownGroup,
+	}
+}
+
+func (s *state) loadPage(request loadRequest) loadMsg {
+	msg := loadMsg{seq: request.seq, page: request.target}
+	switch request.target {
+	case pageOverview, pageTime:
+		s.loadOverviewPage(&msg, request.analyticsFilters)
+	case pageTokens:
+		s.loadTokensPage(&msg, request)
+	case pageSessions:
+		msg.sessions, msg.err = s.service.ListSessions(agentmodel.SessionFilters{Limit: 200})
+	case pageTools:
+		s.loadToolsPage(&msg, request)
+	case pageToolCalls:
+		msg.toolCalls, msg.err = s.service.ListToolCalls(request.toolCallFilters)
+	case pageModelSignals, pageModelRisk:
+		s.loadModelSignalsPage(&msg, request.analyticsFilters)
+	case pageAudit:
+		s.loadAuditPage(&msg, request.auditSummaryFilters)
+	case pageAuditFindings:
+		s.loadAuditFindingsPage(&msg, request.auditFilters)
+	case pageSettings:
+		msg.settings, msg.err = s.service.GetSettings()
+	case pagePrivacy:
+		msg.privacy, msg.err = s.service.GetPrivacyConfigs()
+	default:
+		msg.err = fmt.Errorf("unsupported page: %s", request.target.title())
+	}
+	return msg
+}
+
+func (s *state) loadOverviewPage(msg *loadMsg, filters agentmodel.AnalyticsFilters) {
+	msg.overview, msg.err = s.service.GetOverviewWithFilters(filters)
+	if msg.err == nil {
+		msg.scopeOverview, msg.scopeProjects = s.loadUsageScopeOptions(filters, msg.overview)
+	}
+}
+
+func (s *state) loadTokensPage(msg *loadMsg, request loadRequest) {
+	msg.tokens, msg.err = s.service.GetTokenAnalyticsWithFilters(request.analyticsFilters)
+	if msg.err == nil && request.breakdownGroup != tokenBreakdownGlobal {
+		msg.breakdown, msg.err = s.service.GetUsageBreakdown(request.breakdownGroup, request.analyticsFilters)
+	}
+	if msg.err == nil {
+		msg.scopeOverview, msg.scopeProjects = s.loadUsageScopeOptions(request.analyticsFilters, agentmodel.Overview{})
+	}
+}
+
+func (s *state) loadToolsPage(msg *loadMsg, request loadRequest) {
+	msg.tools, msg.err = s.service.ListTools(request.toolFilters)
+	if msg.err == nil {
+		s.loadOverviewScope(msg)
+	}
+	if msg.err == nil && (request.toolsTab == toolsTabShell || request.toolsTab == toolsTabCalls) {
+		msg.toolCalls, msg.err = listToolCallsForToolsContext(s.service, request.toolExplorerFilters, msg.tools, request.toolsTab, request.toolCommand)
+	}
+}
+
+func (s *state) loadModelSignalsPage(msg *loadMsg, filters agentmodel.AnalyticsFilters) {
+	msg.signals, msg.err = s.service.GetModelSignalsWithFilters(filters)
+	if msg.err == nil {
+		msg.scopeOverview, msg.scopeProjects = s.loadUsageScopeOptions(filters, agentmodel.Overview{})
+	}
+}
+
+func (s *state) loadAuditPage(msg *loadMsg, filters agentmodel.AuditFindingFilters) {
+	msg.audit, msg.err = s.service.GetAuditSummaryWithFilters(filters)
+	if msg.err == nil {
+		s.loadOverviewScope(msg)
+	}
+}
+
+func (s *state) loadAuditFindingsPage(msg *loadMsg, filters agentmodel.AuditFindingFilters) {
+	msg.findings, msg.err = s.service.ListAuditFindings(filters)
+	if msg.err == nil {
+		s.loadOverviewScope(msg)
+	}
+}
+
+func (s *state) loadOverviewScope(msg *loadMsg) {
+	if value, err := s.service.GetOverview(); err == nil {
+		msg.scopeOverview = value
 	}
 }
 
