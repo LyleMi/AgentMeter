@@ -24,24 +24,25 @@ func modelSignalLines(signals agentmodel.ModelSignals, width int, tab modelSigna
 		return append(lines, "", "No model signals found. Press i to update the index.")
 	}
 
-	lines = appendModelSignalHeaderLines(lines, signals, width)
+	writer := newFittedLineWriter(lines, width)
+	appendModelSignalHeaderLines(writer, signals)
 	switch tab {
 	case modelSignalsTabOverview:
-		lines = appendModelSignalOverviewLines(lines, signals, width)
+		appendModelSignalOverviewLines(writer, signals)
 	case modelSignalsTabDaily:
-		lines = appendModelSignalDailyLines(lines, signals.DailyMetrics, width)
+		appendModelSignalDailyLines(writer, signals.DailyMetrics)
 	case modelSignalsTabCohorts:
-		lines = appendModelSignalCohortLines(lines, signals.Cohorts, width)
+		appendModelSignalCohortLines(writer, signals.Cohorts)
 	case modelSignalsTabMatrix:
-		lines = appendModelSignalMatrixLines(lines, signals.Matrix, width)
+		appendModelSignalMatrixLines(writer, signals.Matrix)
 	case modelSignalsTabProjects:
-		lines = appendModelSignalProjectLines(lines, signals, width)
+		appendModelSignalProjectLines(writer, signals)
 	case modelSignalsTabAnomalies:
-		lines = appendModelSignalAnomalyLines(lines, signals.AnomalySessions, width)
+		appendModelSignalAnomalyLines(writer, signals.AnomalySessions)
 	default:
-		lines = appendModelSignalMetricExplorerLines(lines, signals, width)
+		appendModelSignalMetricExplorerLines(writer, signals)
 	}
-	return lines
+	return writer.result()
 }
 
 func modelSignalTabLine(active modelSignalsTab, width int) string {
@@ -56,9 +57,9 @@ func modelSignalTabLine(active modelSignalsTab, width int) string {
 	return fit("Tabs: "+strings.Join(labels, "  "), width)
 }
 
-func appendModelSignalHeaderLines(lines []string, signals agentmodel.ModelSignals, width int) []string {
+func appendModelSignalHeaderLines(w *fittedLineWriter, signals agentmodel.ModelSignals) {
 	summary := signals.HealthSummary
-	lines = append(lines, "",
+	w.append("",
 		fmt.Sprintf("Health: %s  Current: %s  Baseline: %s",
 			modelSignalSeverityTag(summary.Severity),
 			formatSignalWindow(summary.CurrentWindow),
@@ -95,16 +96,14 @@ func appendModelSignalHeaderLines(lines []string, signals agentmodel.ModelSignal
 		),
 	)
 	if len(summary.TopReasons) > 0 {
-		lines = append(lines, fit("Top reasons: "+strings.Join(limitStrings(summary.TopReasons, 4), "; "), width))
+		w.appendFit("Top reasons: " + strings.Join(limitStrings(summary.TopReasons, 4), "; "))
 	}
-	return lines
 }
 
-func appendModelSignalOverviewLines(lines []string, signals agentmodel.ModelSignals, width int) []string {
-	lines = append(lines, "", bold("Health Overview"))
-	lines = appendModelSignalBreakdownLines(lines, signals.ModelBreakdown, width)
-	lines = appendModelSignalCohortLines(lines, signals.Cohorts, width)
-	return lines
+func appendModelSignalOverviewLines(w *fittedLineWriter, signals agentmodel.ModelSignals) {
+	w.append("", bold("Health Overview"))
+	appendModelSignalBreakdownLines(w, signals.ModelBreakdown)
+	appendModelSignalCohortLines(w, signals.Cohorts)
 }
 
 func modelSignalsEmpty(signals agentmodel.ModelSignals) bool {
@@ -118,63 +117,39 @@ func modelSignalsEmpty(signals agentmodel.ModelSignals) bool {
 		len(signals.AnomalySessions) == 0
 }
 
-func appendModelSignalMetricExplorerLines(lines []string, signals agentmodel.ModelSignals, width int) []string {
-	lines = append(lines, "", bold("Metric Explorer"))
-	lines = append(lines, dim("Terminal view of the Web chart metrics. Switch tabs for source tables."))
-	lines = append(lines, "", bold("Performance"))
-	lines = append(lines,
-		fit(fmt.Sprintf("  %-24s %-14s %s", "P90 latency", modelSignalBestLatency(signals.DailyMetrics, true), "slower is worse"),
-			width),
-		fit(fmt.Sprintf("  %-24s %-14s %s", "P50 latency", modelSignalBestLatency(signals.DailyMetrics, false), "typical ms/1k output"),
-			width),
-		fit(fmt.Sprintf("  %-24s %-14s %s", "P10 throughput", modelSignalWorstThroughput(signals.DailyMetrics, true), "lower tail tok/s"),
-			width),
-		fit(fmt.Sprintf("  %-24s %-14s %s", "Output throughput", formatSignalRate(signals.ModelThroughputOutputTokensPerSecond, 1)+" tok/s", "visible output speed"),
-			width),
-	)
-	lines = append(lines, "", bold("Cost"))
-	lines = append(lines,
-		fit(fmt.Sprintf("  %-24s %-14s %s", "Estimated cost", modelSignalTotalCost(signals), "priced indexed usage"),
-			width),
-		fit(fmt.Sprintf("  %-24s %-14s %s", "Cost/session", modelSignalLatestCostPerSession(signals.DailyMetrics), "latest daily cost burn"),
-			width),
-		fit(fmt.Sprintf("  %-24s %-14s %s", "Cost/active hour", modelSignalLatestCostPerActiveHour(signals.DailyMetrics), "active-time normalized"),
-			width),
-		fit(fmt.Sprintf("  %-24s %-14s %s", "Cache savings", modelSignalTotalCacheSavings(signals.DailyMetrics, signals.ProjectMetrics), "cached-input discount"),
-			width),
-	)
-	lines = append(lines, "", bold("Pressure"))
-	lines = append(lines,
-		fit(fmt.Sprintf("  %-24s %-14s %s", "Failure pressure", modelSignalLatestFailurePressure(signals.DailyMetrics), "failed model/tool calls per session"),
-			width),
-		fit(fmt.Sprintf("  %-24s %-14s %s", "Retry pressure", formatSignalRate(signals.AvgModelCallsPerSession, 2)+"/session", "model calls per session"),
-			width),
-		fit(fmt.Sprintf("  %-24s %-14s %s", "Model failure rate", modelSignalLatestModelFailureRate(signals.DailyMetrics), "failed model calls"),
-			width),
-		fit(fmt.Sprintf("  %-24s %-14s %s", "Tool failure rate", formatSignalPercent(signals.ToolFailureRate), "failed tool calls"),
-			width),
-	)
-	lines = append(lines, "", bold("Shape"))
-	lines = append(lines,
-		fit(fmt.Sprintf("  %-24s %-14s %s", "Cache miss", formatSignalPercent(signals.CacheMissRate), "uncached input share"),
-			width),
-		fit(fmt.Sprintf("  %-24s %-14s %s", "Reasoning share", formatSignalPercent(signals.ReasoningTokenShare), "reasoning output share"),
-			width),
-		fit(fmt.Sprintf("  %-24s %-14s %s", "Output/input", formatSignalRate(signals.OutputExpansionRate, 2)+"x", "generation expansion"),
-			width),
-		fit(fmt.Sprintf("  %-24s %-14s %s", "Tool dependency", formatSignalPercent(signals.ToolDependencyRate), "sessions with tools"),
-			width),
-	)
+func appendModelSignalMetricExplorerLines(w *fittedLineWriter, signals agentmodel.ModelSignals) {
+	w.append("", bold("Metric Explorer"))
+	w.append(dim("Terminal view of the Web chart metrics. Switch tabs for source tables."))
+	w.append("", bold("Performance"))
+	w.appendFit(fmt.Sprintf("  %-24s %-14s %s", "P90 latency", modelSignalBestLatency(signals.DailyMetrics, true), "slower is worse"))
+	w.appendFit(fmt.Sprintf("  %-24s %-14s %s", "P50 latency", modelSignalBestLatency(signals.DailyMetrics, false), "typical ms/1k output"))
+	w.appendFit(fmt.Sprintf("  %-24s %-14s %s", "P10 throughput", modelSignalWorstThroughput(signals.DailyMetrics, true), "lower tail tok/s"))
+	w.appendFit(fmt.Sprintf("  %-24s %-14s %s", "Output throughput", formatSignalRate(signals.ModelThroughputOutputTokensPerSecond, 1)+" tok/s", "visible output speed"))
+	w.append("", bold("Cost"))
+	w.appendFit(fmt.Sprintf("  %-24s %-14s %s", "Estimated cost", modelSignalTotalCost(signals), "priced indexed usage"))
+	w.appendFit(fmt.Sprintf("  %-24s %-14s %s", "Cost/session", modelSignalLatestCostPerSession(signals.DailyMetrics), "latest daily cost burn"))
+	w.appendFit(fmt.Sprintf("  %-24s %-14s %s", "Cost/active hour", modelSignalLatestCostPerActiveHour(signals.DailyMetrics), "active-time normalized"))
+	w.appendFit(fmt.Sprintf("  %-24s %-14s %s", "Cache savings", modelSignalTotalCacheSavings(signals.DailyMetrics, signals.ProjectMetrics), "cached-input discount"))
+	w.append("", bold("Pressure"))
+	w.appendFit(fmt.Sprintf("  %-24s %-14s %s", "Failure pressure", modelSignalLatestFailurePressure(signals.DailyMetrics), "failed model/tool calls per session"))
+	w.appendFit(fmt.Sprintf("  %-24s %-14s %s", "Retry pressure", formatSignalRate(signals.AvgModelCallsPerSession, 2)+"/session", "model calls per session"))
+	w.appendFit(fmt.Sprintf("  %-24s %-14s %s", "Model failure rate", modelSignalLatestModelFailureRate(signals.DailyMetrics), "failed model calls"))
+	w.appendFit(fmt.Sprintf("  %-24s %-14s %s", "Tool failure rate", formatSignalPercent(signals.ToolFailureRate), "failed tool calls"))
+	w.append("", bold("Shape"))
+	w.appendFit(fmt.Sprintf("  %-24s %-14s %s", "Cache miss", formatSignalPercent(signals.CacheMissRate), "uncached input share"))
+	w.appendFit(fmt.Sprintf("  %-24s %-14s %s", "Reasoning share", formatSignalPercent(signals.ReasoningTokenShare), "reasoning output share"))
+	w.appendFit(fmt.Sprintf("  %-24s %-14s %s", "Output/input", formatSignalRate(signals.OutputExpansionRate, 2)+"x", "generation expansion"))
+	w.appendFit(fmt.Sprintf("  %-24s %-14s %s", "Tool dependency", formatSignalPercent(signals.ToolDependencyRate), "sessions with tools"))
 	if len(signals.Trend) > 0 {
-		lines = append(lines, "", bold("Recent Trend"))
-		lines = append(lines, fit(fmt.Sprintf("  %-10s %8s %10s %10s %9s %9s %s",
-			"Date", "Sessions", "Tokens", "Tok/s", "Failure", "CacheMiss", "Note"), width))
+		w.append("", bold("Recent Trend"))
+		w.appendFit(fmt.Sprintf("  %-10s %8s %10s %10s %9s %9s %s",
+			"Date", "Sessions", "Tokens", "Tok/s", "Failure", "CacheMiss", "Note"))
 		for _, point := range recentTrendPoints(signals.Trend, 8) {
 			note := ""
 			if point.LowSample {
 				note = "low sample"
 			}
-			lines = append(lines, fit(fmt.Sprintf("  %-10s %8s %10s %10s %9s %9s %s",
+			w.appendFit(fmt.Sprintf("  %-10s %8s %10s %10s %9s %9s %s",
 				truncate(point.Date, 10),
 				formatInt(int64(point.SessionCount)),
 				formatInt(point.TotalTokens),
@@ -182,19 +157,18 @@ func appendModelSignalMetricExplorerLines(lines []string, signals agentmodel.Mod
 				formatSignalPercent(point.ToolFailureRate),
 				formatSignalPercent(point.CacheMissRate),
 				note,
-			), width))
+			))
 		}
 	}
-	return lines
 }
 
-func appendModelSignalBreakdownLines(lines []string, rows []agentmodel.ModelSignalsBreakdown, width int) []string {
-	lines = append(lines, "", bold("Model Breakdown"))
+func appendModelSignalBreakdownLines(w *fittedLineWriter, rows []agentmodel.ModelSignalsBreakdown) {
+	w.append("", bold("Model Breakdown"))
 	if len(rows) == 0 {
-		return append(lines, "No model breakdown rows.")
+		w.append("No model breakdown rows.")
+		return
 	}
-	return appendFittedRows(lines, fittedRowTable[agentmodel.ModelSignalsBreakdown]{
-		width: width,
+	appendFittedLineRows(w, fittedRowTable[agentmodel.ModelSignalsBreakdown]{
 		header: fmt.Sprintf("  %-24s %8s %8s %11s %9s %9s %9s %10s",
 			"Model", "Sessions", "Calls", "Tokens", "Cache", "Reason", "ToolFail", "Tok/s"),
 		rows:  rows,
@@ -214,13 +188,13 @@ func appendModelSignalBreakdownLines(lines []string, rows []agentmodel.ModelSign
 	})
 }
 
-func appendModelSignalCohortLines(lines []string, rows []agentmodel.ModelSignalsCohort, width int) []string {
-	lines = append(lines, "", bold("Top Drift Cohorts"))
+func appendModelSignalCohortLines(w *fittedLineWriter, rows []agentmodel.ModelSignalsCohort) {
+	w.append("", bold("Top Drift Cohorts"))
 	if len(rows) == 0 {
-		return append(lines, "No cohort drift rows.")
+		w.append("No cohort drift rows.")
+		return
 	}
-	return appendFittedRows(lines, fittedRowTable[agentmodel.ModelSignalsCohort]{
-		width: width,
+	appendFittedLineRows(w, fittedRowTable[agentmodel.ModelSignalsCohort]{
 		header: fmt.Sprintf("  %-14s %-18s %-20s %8s %12s %12s %10s %8s %-8s %-10s %s",
 			"Source", "Project", "Model", "Samples", "P90/P50", "P10/P50", "Out tok/s", "Failure", "Health", "Confidence", "Reason"),
 		rows:  topSignalCohorts(rows, 8),
@@ -244,13 +218,13 @@ func appendModelSignalCohortLines(lines []string, rows []agentmodel.ModelSignals
 	})
 }
 
-func appendModelSignalDailyLines(lines []string, rows []agentmodel.ModelSignalsDailyMetric, width int) []string {
-	lines = append(lines, "", bold("Daily Efficiency"))
+func appendModelSignalDailyLines(w *fittedLineWriter, rows []agentmodel.ModelSignalsDailyMetric) {
+	w.append("", bold("Daily Efficiency"))
 	if len(rows) == 0 {
-		return append(lines, "No daily efficiency rows.")
+		w.append("No daily efficiency rows.")
+		return
 	}
-	return appendFittedRows(lines, fittedRowTable[agentmodel.ModelSignalsDailyMetric]{
-		width: width,
+	appendFittedLineRows(w, fittedRowTable[agentmodel.ModelSignalsDailyMetric]{
 		header: fmt.Sprintf("  %-10s %8s %9s %9s %9s %8s %12s %12s %8s %8s %6s %-8s %s",
 			"Date", "Sessions", "Cost", "Cost/S", "Cost/H", "Saved", "P90/P50", "P10/P50", "Retry", "Failure", "Risk", "Health", "Reason"),
 		rows:  recentDailyMetrics(rows, 8),
@@ -275,17 +249,17 @@ func appendModelSignalDailyLines(lines []string, rows []agentmodel.ModelSignalsD
 	})
 }
 
-func appendModelSignalProjectLines(lines []string, signals agentmodel.ModelSignals, width int) []string {
+func appendModelSignalProjectLines(w *fittedLineWriter, signals agentmodel.ModelSignals) {
 	if len(signals.ProjectMetrics) > 0 {
-		return appendModelSignalProjectMetricLines(lines, signals.ProjectMetrics, width)
+		appendModelSignalProjectMetricLines(w, signals.ProjectMetrics)
+		return
 	}
-	return appendModelSignalProjectHotspotLines(lines, signals.ProjectHotspots, width)
+	appendModelSignalProjectHotspotLines(w, signals.ProjectHotspots)
 }
 
-func appendModelSignalProjectMetricLines(lines []string, rows []agentmodel.ModelSignalsProjectMetric, width int) []string {
-	lines = append(lines, "", bold("Project Hotspots"))
-	return appendFittedRows(lines, fittedRowTable[agentmodel.ModelSignalsProjectMetric]{
-		width: width,
+func appendModelSignalProjectMetricLines(w *fittedLineWriter, rows []agentmodel.ModelSignalsProjectMetric) {
+	w.append("", bold("Project Hotspots"))
+	appendFittedLineRows(w, fittedRowTable[agentmodel.ModelSignalsProjectMetric]{
 		header: fmt.Sprintf("  %-22s %8s %-20s %9s %8s %-8s %12s %12s %8s %6s %s",
 			"Project", "Sessions", "Dominant model", "Cost", "Saved", "Health", "P90/P50", "P10/P50", "Failure", "Risk", "Reason"),
 		rows:  rows,
@@ -309,13 +283,13 @@ func appendModelSignalProjectMetricLines(lines []string, rows []agentmodel.Model
 	})
 }
 
-func appendModelSignalProjectHotspotLines(lines []string, rows []agentmodel.ModelSignalsProjectHotspot, width int) []string {
-	lines = append(lines, "", bold("Project Hotspots"))
+func appendModelSignalProjectHotspotLines(w *fittedLineWriter, rows []agentmodel.ModelSignalsProjectHotspot) {
+	w.append("", bold("Project Hotspots"))
 	if len(rows) == 0 {
-		return append(lines, "No project hotspot rows.")
+		w.append("No project hotspot rows.")
+		return
 	}
-	return appendFittedRows(lines, fittedRowTable[agentmodel.ModelSignalsProjectHotspot]{
-		width: width,
+	appendFittedLineRows(w, fittedRowTable[agentmodel.ModelSignalsProjectHotspot]{
 		header: fmt.Sprintf("  %-24s %8s %7s %7s %10s %12s %12s %-8s %-10s %s",
 			"Project", "Sessions", "Models", "Sources", "Tokens", "P90/P50", "P10/P50", "Health", "Confidence", "Reason"),
 		rows:  rows,
@@ -338,16 +312,17 @@ func appendModelSignalProjectHotspotLines(lines []string, rows []agentmodel.Mode
 	})
 }
 
-func appendModelSignalMatrixLines(lines []string, rows []agentmodel.ModelSignalsMatrixRow, width int) []string {
-	lines = append(lines, "", bold("Source Model Matrix"))
+func appendModelSignalMatrixLines(w *fittedLineWriter, rows []agentmodel.ModelSignalsMatrixRow) {
+	w.append("", bold("Source Model Matrix"))
 	if len(rows) == 0 {
-		return append(lines, "No source/model matrix rows.")
+		w.append("No source/model matrix rows.")
+		return
 	}
-	lines = append(lines, fit(fmt.Sprintf("  %-18s %-24s %-8s %-10s %6s %-8s %-10s %-10s %s",
-		"Source", "Model", "Health", "Confidence", "Risk", "RiskLvl", "P90", "P10 tok/s", "Reason"), width))
+	w.appendFit(fmt.Sprintf("  %-18s %-24s %-8s %-10s %6s %-8s %-10s %-10s %s",
+		"Source", "Model", "Health", "Confidence", "Risk", "RiskLvl", "P90", "P10 tok/s", "Reason"))
 	for _, row := range limitMatrixRows(rows, 6) {
 		for _, cell := range limitMatrixCells(row.Cells, 4) {
-			lines = append(lines, fit(fmt.Sprintf("  %-18s %-24s %-8s %-10s %6s %-8s %-10s %-10s %s",
+			w.appendFit(fmt.Sprintf("  %-18s %-24s %-8s %-10s %6s %-8s %-10s %-10s %s",
 				truncate(modelSignalSourceName(row.SourceLabel, row.AgentName, row.AgentKind, row.SourceKey), 18),
 				truncate(modelProviderLabel(cell.ModelProvider, cell.Model), 24),
 				truncate(modelSignalSeverityLabel(cell.Severity), 8),
@@ -357,25 +332,24 @@ func appendModelSignalMatrixLines(lines []string, rows []agentmodel.ModelSignals
 				formatLatencyPer1K(cell.Current),
 				formatSignalRate(p10Throughput(cell.Current), 1),
 				truncate(matrixCellReason(cell), 36),
-			), width))
+			))
 		}
 		if len(row.Cells) > 4 {
-			lines = append(lines, fit(fmt.Sprintf("  %-18s %s",
+			w.appendFit(fmt.Sprintf("  %-18s %s",
 				truncate(modelSignalSourceName(row.SourceLabel, row.AgentName, row.AgentKind, row.SourceKey), 18),
 				fmt.Sprintf("+%d more model cells", len(row.Cells)-4),
-			), width))
+			))
 		}
 	}
-	return lines
 }
 
-func appendModelSignalAnomalyLines(lines []string, rows []agentmodel.ModelSignalsAnomalySession, width int) []string {
-	lines = append(lines, "", bold("Anomaly Sessions"))
+func appendModelSignalAnomalyLines(w *fittedLineWriter, rows []agentmodel.ModelSignalsAnomalySession) {
+	w.append("", bold("Anomaly Sessions"))
 	if len(rows) == 0 {
-		return append(lines, "No anomaly sessions.")
+		w.append("No anomaly sessions.")
+		return
 	}
-	return appendFittedRows(lines, fittedRowTable[agentmodel.ModelSignalsAnomalySession]{
-		width: width,
+	appendFittedLineRows(w, fittedRowTable[agentmodel.ModelSignalsAnomalySession]{
 		header: fmt.Sprintf("  %-13s %-12s %-18s %-18s %9s %6s %8s %8s %9s %8s %-11s %s",
 			"Session", "Source", "Project", "Model", "Tokens", "Failed", "Output", "Reason", "Cache", "Tok/s", "Started", "Signal"),
 		rows:  rows,

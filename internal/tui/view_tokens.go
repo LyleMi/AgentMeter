@@ -23,18 +23,19 @@ func tokenLines(tokens agentmodel.TokenAnalytics, breakdown agentmodel.UsageBrea
 	}
 
 	lines = appendTokenKpiLines(lines, tokens)
+	writer := newFittedLineWriter(lines, width)
 	switch tab {
 	case tokensTabTrends:
-		lines = appendTokenTrendLines(lines, tokens.CacheHitTrend, width)
+		appendTokenTrendLines(writer, tokens.CacheHitTrend)
 	case tokensTabBreakdown:
-		lines = appendTokenBreakdownLines(lines, tokens, breakdown, width, group)
+		appendTokenBreakdownLines(writer, tokens, breakdown, group)
 	case tokensTabSessions:
-		lines = appendTokenSessionLines(lines, tokens.HighTokenSessions, width)
+		appendTokenSessionLines(writer, tokens.HighTokenSessions)
 	default:
-		lines = appendTokenMixLines(lines, tokens)
-		lines = appendSourceCacheLines(lines, tokens.AgentUsage, width)
+		writer.lines = appendTokenMixLines(writer.lines, tokens)
+		appendSourceCacheLines(writer, tokens.AgentUsage)
 	}
-	return lines
+	return writer.result()
 }
 
 func tokenTabLine(active tokensTab, width int) string {
@@ -94,35 +95,36 @@ func tokenMixLine(label string, value int64, total float64) string {
 	return fmt.Sprintf("  %-22s %14s %8s", label, formatInt(value), formatPercent(ratio(float64(value), total)))
 }
 
-func appendSourceCacheLines(lines []string, rows []agentmodel.AgentUsage, width int) []string {
+func appendSourceCacheLines(w *fittedLineWriter, rows []agentmodel.AgentUsage) {
 	rows = rankedAgentUsageByCache(rows)
-	lines = append(lines, "", bold("Source Cache Hit Rate"))
+	w.append("", bold("Source Cache Hit Rate"))
 	if len(rows) == 0 {
-		return append(lines, "No source cache rows.")
+		w.append("No source cache rows.")
+		return
 	}
-	lines = append(lines, fit(fmt.Sprintf("  %-18s %-25s %12s %12s %8s %10s",
-		"Source", "Family/Path", "Input", "Cached", "Rate", "Tokens"), width))
+	w.appendFit(fmt.Sprintf("  %-18s %-25s %12s %12s %8s %10s",
+		"Source", "Family/Path", "Input", "Cached", "Rate", "Tokens"))
 	for _, row := range limitSlice(rows, 12) {
 		rate := row.CacheUtilizationRate
 		if rate == 0 && row.InputTokens > 0 {
 			rate = ratio(float64(row.CachedInputTokens), float64(row.InputTokens))
 		}
-		lines = append(lines, fit(fmt.Sprintf("  %-18s %-25s %12s %12s %8s %10s",
+		w.appendFit(fmt.Sprintf("  %-18s %-25s %12s %12s %8s %10s",
 			truncate(agentUsageSourceName(row), 18),
 			truncate(agentUsageContext(row), 25),
 			formatInt(row.InputTokens),
 			formatInt(row.CachedInputTokens),
 			formatPercent(rate),
 			formatInt(row.TotalTokens),
-		), width))
+		))
 	}
-	return lines
 }
 
-func appendTokenTrendLines(lines []string, rows []agentmodel.CacheHitTrendPoint, width int) []string {
-	lines = append(lines, "", bold("Cache Hit Trend"))
+func appendTokenTrendLines(w *fittedLineWriter, rows []agentmodel.CacheHitTrendPoint) {
+	w.append("", bold("Cache Hit Trend"))
 	if len(rows) == 0 {
-		return append(lines, "No cache trend rows.")
+		w.append("No cache trend rows.")
+		return
 	}
 	latest := latestCacheTrendPoint(rows)
 	lowVolume := 0
@@ -131,7 +133,7 @@ func appendTokenTrendLines(lines []string, rows []agentmodel.CacheHitTrendPoint,
 			lowVolume++
 		}
 	}
-	lines = append(lines,
+	w.append(
 		fmt.Sprintf("Latest hit rate: %-8s Date: %-10s Input: %-12s Rolling 7-day: %s",
 			formatPercent(latest.CacheUtilizationRate),
 			empty(latest.Date, "-"),
@@ -139,15 +141,15 @@ func appendTokenTrendLines(lines []string, rows []agentmodel.CacheHitTrendPoint,
 			formatPercent(latest.RollingCacheUtilizationRate),
 		),
 		fmt.Sprintf("Low-volume days: %s", formatInt(int64(lowVolume))),
-		fit(fmt.Sprintf("  %-10s %9s %12s %12s %8s %8s %s",
-			"Date", "Sessions", "Input", "Cached", "Hit", "Rolling", "Note"), width),
 	)
+	w.appendFit(fmt.Sprintf("  %-10s %9s %12s %12s %8s %8s %s",
+		"Date", "Sessions", "Input", "Cached", "Hit", "Rolling", "Note"))
 	for _, row := range recentCacheTrendPoints(rows, 16) {
 		note := ""
 		if row.LowInputVolume {
 			note = "low volume"
 		}
-		lines = append(lines, fit(fmt.Sprintf("  %-10s %9s %12s %12s %8s %8s %s",
+		w.appendFit(fmt.Sprintf("  %-10s %9s %12s %12s %8s %8s %s",
 			truncate(row.Date, 10),
 			formatInt(int64(row.SessionCount)),
 			formatInt(row.InputTokens),
@@ -155,26 +157,24 @@ func appendTokenTrendLines(lines []string, rows []agentmodel.CacheHitTrendPoint,
 			formatPercent(row.CacheUtilizationRate),
 			formatPercent(row.RollingCacheUtilizationRate),
 			note,
-		), width))
+		))
 	}
-	return lines
 }
 
-func appendTokenBreakdownLines(lines []string, tokens agentmodel.TokenAnalytics, breakdown agentmodel.UsageBreakdown, width int, group string) []string {
+func appendTokenBreakdownLines(w *fittedLineWriter, tokens agentmodel.TokenAnalytics, breakdown agentmodel.UsageBreakdown, group string) {
 	rows := tokenBreakdownRows(tokens, breakdown, group)
-	lines = append(lines, "", bold("Usage Breakdown"), "Group: "+tokenBreakdownGroupTitle(group)+"  (press d to cycle)")
+	w.append("", bold("Usage Breakdown"), "Group: "+tokenBreakdownGroupTitle(group)+"  (press d to cycle)")
 	if len(rows) == 0 {
-		lines = append(lines, "No usage rows match the current scope.")
+		w.append("No usage rows match the current scope.")
 	} else {
-		lines = appendTokenBreakdownRows(lines, rows, width, group, 16)
+		appendTokenBreakdownRows(w, rows, group, 16)
 	}
 
-	lines = append(lines, "", bold("Model Breakdown"))
+	w.append("", bold("Model Breakdown"))
 	if len(tokens.ModelUsage) == 0 {
-		lines = append(lines, "No model usage rows.")
+		w.append("No model usage rows.")
 	} else {
-		lines = appendFittedRows(lines, fittedRowTable[agentmodel.ModelUsage]{
-			width: width,
+		appendFittedLineRows(w, fittedRowTable[agentmodel.ModelUsage]{
 			header: fmt.Sprintf("  %-26s %8s %12s %12s %12s %10s",
 				"Model", "Sessions", "Tokens", "Cached", "Reasoning", "Cost"),
 			rows:  tokens.ModelUsage,
@@ -192,12 +192,12 @@ func appendTokenBreakdownLines(lines []string, tokens agentmodel.TokenAnalytics,
 		})
 	}
 
-	lines = append(lines, "", bold("Source Breakdown"))
+	w.append("", bold("Source Breakdown"))
 	if len(tokens.AgentUsage) == 0 {
-		return append(lines, "No source usage rows.")
+		w.append("No source usage rows.")
+		return
 	}
-	return appendFittedRows(lines, fittedRowTable[agentmodel.AgentUsage]{
-		width: width,
+	appendFittedLineRows(w, fittedRowTable[agentmodel.AgentUsage]{
 		header: fmt.Sprintf("  %-18s %-25s %8s %12s %12s %8s %10s",
 			"Source", "Family/Path", "Sessions", "Tokens", "Cached", "Tools", "Cost"),
 		rows:  tokens.AgentUsage,
@@ -216,9 +216,8 @@ func appendTokenBreakdownLines(lines []string, tokens agentmodel.TokenAnalytics,
 	})
 }
 
-func appendTokenBreakdownRows(lines []string, rows []agentmodel.UsageBreakdownBucket, width int, group string, limit int) []string {
-	return appendFittedRows(lines, fittedRowTable[agentmodel.UsageBreakdownBucket]{
-		width: width,
+func appendTokenBreakdownRows(w *fittedLineWriter, rows []agentmodel.UsageBreakdownBucket, group string, limit int) {
+	appendFittedLineRows(w, fittedRowTable[agentmodel.UsageBreakdownBucket]{
 		header: fmt.Sprintf("  %-30s %8s %12s %12s %12s %12s %12s %8s %10s",
 			tokenBreakdownGroupTitle(group), "Sessions", "Tokens", "Input", "Cached", "Output", "Compress", "Cache", "Cost"),
 		rows:  rows,
@@ -239,16 +238,16 @@ func appendTokenBreakdownRows(lines []string, rows []agentmodel.UsageBreakdownBu
 	})
 }
 
-func appendTokenSessionLines(lines []string, rows []agentmodel.Session, width int) []string {
-	lines = append(lines, "", bold("High Token Sessions"))
+func appendTokenSessionLines(w *fittedLineWriter, rows []agentmodel.Session) {
+	w.append("", bold("High Token Sessions"))
 	if len(rows) == 0 {
-		return append(lines, "No high-token sessions.")
+		w.append("No high-token sessions.")
+		return
 	}
-	lines = append(lines, sessionHeader(width))
+	w.append(sessionHeader(w.width))
 	for _, item := range limitSlice(rows, 16) {
-		lines = append(lines, sessionRow(item, false, width))
+		w.append(sessionRow(item, false, w.width))
 	}
-	return lines
 }
 
 func tokenBreakdownRows(tokens agentmodel.TokenAnalytics, breakdown agentmodel.UsageBreakdown, group string) []agentmodel.UsageBreakdownBucket {
