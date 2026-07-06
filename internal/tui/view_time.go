@@ -144,44 +144,52 @@ func appendTimeSourceRows(lines []string, rows []agentmodel.AgentTimeUsage, limi
 	if len(rows) == 0 {
 		return append(lines, "No source time rows.")
 	}
-	lines = append(lines, fit(fmt.Sprintf("  %-18s %-25s %8s %7s %11s %11s %11s %11s %9s %11s",
-		"Source", "Family/Path", "Sessions", "Calls", "Wall", "Active", "Model", "Tool", "Network", "Idle"), width))
-	for _, row := range limitSlice(rows, limit) {
-		lines = append(lines, fit(fmt.Sprintf("  %-18s %-25s %8s %7s %11s %11s %11s %11s %9s %11s",
-			truncate(agentTimeSourceName(row), 18),
-			truncate(sourceContext(row.AgentKind, row.AgentName, row.SourceRootPath, row.SourceSessionsPath), 25),
-			formatInt(int64(row.SessionCount)),
-			formatInt(int64(row.ToolCalls)),
-			formatDuration(row.WallDurationMS),
-			formatDuration(row.ActiveDurationMS),
-			formatDuration(row.ModelDurationMS),
-			formatDuration(row.ToolDurationMS),
-			formatDuration(row.SuspectedNetworkToolDurationMS),
-			formatDuration(row.IdleDurationMS),
-		), width))
-	}
-	return lines
+	return appendFittedRows(lines, fittedRowTable[agentmodel.AgentTimeUsage]{
+		width: width,
+		header: fmt.Sprintf("  %-18s %-25s %8s %7s %11s %11s %11s %11s %9s %11s",
+			"Source", "Family/Path", "Sessions", "Calls", "Wall", "Active", "Model", "Tool", "Network", "Idle"),
+		rows:  rows,
+		limit: limit,
+		rowLine: func(row agentmodel.AgentTimeUsage) string {
+			return fmt.Sprintf("  %-18s %-25s %8s %7s %11s %11s %11s %11s %9s %11s",
+				truncate(agentTimeSourceName(row), 18),
+				truncate(sourceContext(row.AgentKind, row.AgentName, row.SourceRootPath, row.SourceSessionsPath), 25),
+				formatInt(int64(row.SessionCount)),
+				formatInt(int64(row.ToolCalls)),
+				formatDuration(row.WallDurationMS),
+				formatDuration(row.ActiveDurationMS),
+				formatDuration(row.ModelDurationMS),
+				formatDuration(row.ToolDurationMS),
+				formatDuration(row.SuspectedNetworkToolDurationMS),
+				formatDuration(row.IdleDurationMS),
+			)
+		},
+	})
 }
 
 func appendTimeModelRows(lines []string, rows []agentmodel.ModelTimeUsage, limit int, width int) []string {
 	if len(rows) == 0 {
 		return append(lines, "No model time rows.")
 	}
-	lines = append(lines, fit(fmt.Sprintf("  %-26s %8s %11s %11s %11s %11s %11s %11s",
-		"Model", "Sessions", "Tokens", "Wall", "Active", "Model", "Tool", "Idle"), width))
-	for _, row := range limitSlice(rows, limit) {
-		lines = append(lines, fit(fmt.Sprintf("  %-26s %8s %11s %11s %11s %11s %11s %11s",
-			truncate(empty(row.Model, "unknown"), 26),
-			formatInt(int64(row.SessionCount)),
-			formatInt(row.TotalTokens),
-			formatDuration(row.WallDurationMS),
-			formatDuration(row.ActiveDurationMS),
-			formatDuration(row.ModelDurationMS),
-			formatDuration(row.ToolDurationMS),
-			formatDuration(row.IdleDurationMS),
-		), width))
-	}
-	return lines
+	return appendFittedRows(lines, fittedRowTable[agentmodel.ModelTimeUsage]{
+		width: width,
+		header: fmt.Sprintf("  %-26s %8s %11s %11s %11s %11s %11s %11s",
+			"Model", "Sessions", "Tokens", "Wall", "Active", "Model", "Tool", "Idle"),
+		rows:  rows,
+		limit: limit,
+		rowLine: func(row agentmodel.ModelTimeUsage) string {
+			return fmt.Sprintf("  %-26s %8s %11s %11s %11s %11s %11s %11s",
+				truncate(empty(row.Model, "unknown"), 26),
+				formatInt(int64(row.SessionCount)),
+				formatInt(row.TotalTokens),
+				formatDuration(row.WallDurationMS),
+				formatDuration(row.ActiveDurationMS),
+				formatDuration(row.ModelDurationMS),
+				formatDuration(row.ToolDurationMS),
+				formatDuration(row.IdleDurationMS),
+			)
+		},
+	})
 }
 
 func appendTimeToolLines(lines []string, rows []agentmodel.ToolTimeUsage, width int) []string {
@@ -191,25 +199,29 @@ func appendTimeToolLines(lines []string, rows []agentmodel.ToolTimeUsage, width 
 		return append(lines, "No tool duration rows.")
 	}
 	lines = append(lines, dim("Network-likely is inferred from tool names and shell/network activity."))
-	lines = append(lines, fit(fmt.Sprintf("  %-30s %8s %8s %8s %12s %12s %12s %8s",
-		"Tool", "Calls", "Success", "Failed", "Total", "Average", "Max", "Network"), width))
-	for _, row := range limitSlice(rows, 16) {
-		network := "no"
-		if row.SuspectedNetwork {
-			network = "likely"
-		}
-		lines = append(lines, fit(fmt.Sprintf("  %-30s %8s %8s %8s %12s %12s %12s %8s",
-			truncate(empty(row.ToolName, "unknown"), 30),
-			formatInt(int64(row.Calls)),
-			formatInt(int64(row.SuccessCalls)),
-			formatInt(int64(row.FailedCalls)),
-			formatDuration(row.TotalDurationMS),
-			formatDurationFloat(row.AvgDurationMS),
-			formatDuration(row.MaxDurationMS),
-			network,
-		), width))
-	}
-	return lines
+	return appendFittedRows(lines, fittedRowTable[agentmodel.ToolTimeUsage]{
+		width: width,
+		header: fmt.Sprintf("  %-30s %8s %8s %8s %12s %12s %12s %8s",
+			"Tool", "Calls", "Success", "Failed", "Total", "Average", "Max", "Network"),
+		rows:  rows,
+		limit: 16,
+		rowLine: func(row agentmodel.ToolTimeUsage) string {
+			network := "no"
+			if row.SuspectedNetwork {
+				network = "likely"
+			}
+			return fmt.Sprintf("  %-30s %8s %8s %8s %12s %12s %12s %8s",
+				truncate(empty(row.ToolName, "unknown"), 30),
+				formatInt(int64(row.Calls)),
+				formatInt(int64(row.SuccessCalls)),
+				formatInt(int64(row.FailedCalls)),
+				formatDuration(row.TotalDurationMS),
+				formatDurationFloat(row.AvgDurationMS),
+				formatDuration(row.MaxDurationMS),
+				network,
+			)
+		},
+	})
 }
 
 func appendTimeSessionLines(lines []string, rows []agentmodel.Session, width int) []string {

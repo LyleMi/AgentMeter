@@ -173,57 +173,70 @@ func appendTokenBreakdownLines(lines []string, tokens agentmodel.TokenAnalytics,
 	if len(tokens.ModelUsage) == 0 {
 		lines = append(lines, "No model usage rows.")
 	} else {
-		lines = append(lines, fit(fmt.Sprintf("  %-26s %8s %12s %12s %12s %10s",
-			"Model", "Sessions", "Tokens", "Cached", "Reasoning", "Cost"), width))
-		for _, row := range limitSlice(tokens.ModelUsage, 8) {
-			lines = append(lines, fit(fmt.Sprintf("  %-26s %8s %12s %12s %12s %10s",
-				truncate(empty(row.Model, "unknown"), 26),
-				formatInt(int64(row.SessionCount)),
-				formatInt(row.TotalTokens),
-				formatInt(row.CachedInputTokens),
-				formatInt(row.ReasoningOutputTokens),
-				formatCost(row.EstimatedCostUSD),
-			), width))
-		}
+		lines = appendFittedRows(lines, fittedRowTable[agentmodel.ModelUsage]{
+			width: width,
+			header: fmt.Sprintf("  %-26s %8s %12s %12s %12s %10s",
+				"Model", "Sessions", "Tokens", "Cached", "Reasoning", "Cost"),
+			rows:  tokens.ModelUsage,
+			limit: 8,
+			rowLine: func(row agentmodel.ModelUsage) string {
+				return fmt.Sprintf("  %-26s %8s %12s %12s %12s %10s",
+					truncate(empty(row.Model, "unknown"), 26),
+					formatInt(int64(row.SessionCount)),
+					formatInt(row.TotalTokens),
+					formatInt(row.CachedInputTokens),
+					formatInt(row.ReasoningOutputTokens),
+					formatCost(row.EstimatedCostUSD),
+				)
+			},
+		})
 	}
 
 	lines = append(lines, "", bold("Source Breakdown"))
 	if len(tokens.AgentUsage) == 0 {
 		return append(lines, "No source usage rows.")
 	}
-	lines = append(lines, fit(fmt.Sprintf("  %-18s %-25s %8s %12s %12s %8s %10s",
-		"Source", "Family/Path", "Sessions", "Tokens", "Cached", "Tools", "Cost"), width))
-	for _, row := range limitSlice(tokens.AgentUsage, 8) {
-		lines = append(lines, fit(fmt.Sprintf("  %-18s %-25s %8s %12s %12s %8s %10s",
-			truncate(agentUsageSourceName(row), 18),
-			truncate(agentUsageContext(row), 25),
-			formatInt(int64(row.SessionCount)),
-			formatInt(row.TotalTokens),
-			formatInt(row.CachedInputTokens),
-			formatInt(int64(row.ToolCalls)),
-			formatCost(row.EstimatedCostUSD),
-		), width))
-	}
-	return lines
+	return appendFittedRows(lines, fittedRowTable[agentmodel.AgentUsage]{
+		width: width,
+		header: fmt.Sprintf("  %-18s %-25s %8s %12s %12s %8s %10s",
+			"Source", "Family/Path", "Sessions", "Tokens", "Cached", "Tools", "Cost"),
+		rows:  tokens.AgentUsage,
+		limit: 8,
+		rowLine: func(row agentmodel.AgentUsage) string {
+			return fmt.Sprintf("  %-18s %-25s %8s %12s %12s %8s %10s",
+				truncate(agentUsageSourceName(row), 18),
+				truncate(agentUsageContext(row), 25),
+				formatInt(int64(row.SessionCount)),
+				formatInt(row.TotalTokens),
+				formatInt(row.CachedInputTokens),
+				formatInt(int64(row.ToolCalls)),
+				formatCost(row.EstimatedCostUSD),
+			)
+		},
+	})
 }
 
 func appendTokenBreakdownRows(lines []string, rows []agentmodel.UsageBreakdownBucket, width int, group string, limit int) []string {
-	lines = append(lines, fit(fmt.Sprintf("  %-30s %8s %12s %12s %12s %12s %12s %8s %10s",
-		tokenBreakdownGroupTitle(group), "Sessions", "Tokens", "Input", "Cached", "Output", "Compress", "Cache", "Cost"), width))
-	for _, row := range limitSlice(rows, limit) {
-		lines = append(lines, fit(fmt.Sprintf("  %-30s %8s %12s %12s %12s %12s %12s %8s %10s",
-			truncate(tokenBreakdownScope(row, group), 30),
-			formatInt(int64(row.SessionCount)),
-			formatInt(row.TotalTokens),
-			formatInt(row.InputTokens),
-			formatInt(row.CachedInputTokens),
-			formatInt(row.OutputTokens),
-			formatInt(row.ContextCompressionTokens),
-			formatPercent(row.CacheUtilizationRate),
-			formatCost(row.EstimatedCostUSD),
-		), width))
-	}
-	return lines
+	return appendFittedRows(lines, fittedRowTable[agentmodel.UsageBreakdownBucket]{
+		width: width,
+		header: fmt.Sprintf("  %-30s %8s %12s %12s %12s %12s %12s %8s %10s",
+			tokenBreakdownGroupTitle(group), "Sessions", "Tokens", "Input", "Cached", "Output", "Compress", "Cache", "Cost"),
+		rows:  rows,
+		limit: limit,
+		rowLine: func(row agentmodel.UsageBreakdownBucket) string {
+			return fmt.Sprintf("  %-30s %8s %12s %12s %12s %12s %12s %8s %10s",
+				truncate(tokenBreakdownScope(row, group), 30),
+				formatInt(int64(row.SessionCount)),
+				formatInt(row.TotalTokens),
+				formatInt(row.InputTokens),
+				formatInt(row.CachedInputTokens),
+				formatInt(row.OutputTokens),
+				formatInt(row.ContextCompressionTokens),
+				formatPercent(row.CacheUtilizationRate),
+				formatCost(row.EstimatedCostUSD),
+			)
+		},
+	})
 }
 
 func appendTokenSessionLines(lines []string, rows []agentmodel.Session, width int) []string {
