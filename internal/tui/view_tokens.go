@@ -217,23 +217,25 @@ func appendTokenBreakdownLines(w *fittedLineWriter, tokens agentmodel.TokenAnaly
 }
 
 func appendTokenBreakdownRows(w *fittedLineWriter, rows []agentmodel.UsageBreakdownBucket, group string, limit int) {
-	appendFittedLineRows(w, fittedRowTable[agentmodel.UsageBreakdownBucket]{
-		header: fmt.Sprintf("  %-30s %8s %12s %12s %12s %12s %12s %8s %10s",
-			tokenBreakdownGroupTitle(group), "Sessions", "Tokens", "Input", "Cached", "Output", "Compress", "Cache", "Cost"),
-		rows:  rows,
-		limit: limit,
-		rowLine: func(row agentmodel.UsageBreakdownBucket) string {
-			return fmt.Sprintf("  %-30s %8s %12s %12s %12s %12s %12s %8s %10s",
-				truncate(tokenBreakdownScope(row, group), 30),
-				formatInt(int64(row.SessionCount)),
-				formatInt(row.TotalTokens),
-				formatInt(row.InputTokens),
-				formatInt(row.CachedInputTokens),
-				formatInt(row.OutputTokens),
-				formatInt(row.ContextCompressionTokens),
-				formatPercent(row.CacheUtilizationRate),
-				formatCost(row.EstimatedCostUSD),
-			)
+	appendFittedLineSection(w, fittedRowSection[agentmodel.UsageBreakdownBucket]{
+		table: fittedRowTable[agentmodel.UsageBreakdownBucket]{
+			header: fmt.Sprintf("  %-30s %8s %12s %12s %12s %12s %12s %8s %10s",
+				tokenBreakdownGroupTitle(group), "Sessions", "Tokens", "Input", "Cached", "Output", "Compress", "Cache", "Cost"),
+			rows:  rows,
+			limit: limit,
+			rowLine: func(row agentmodel.UsageBreakdownBucket) string {
+				return fmt.Sprintf("  %-30s %8s %12s %12s %12s %12s %12s %8s %10s",
+					truncate(tokenBreakdownScope(row, group), 30),
+					formatInt(int64(row.SessionCount)),
+					formatInt(row.TotalTokens),
+					formatInt(row.InputTokens),
+					formatInt(row.CachedInputTokens),
+					formatInt(row.OutputTokens),
+					formatInt(row.ContextCompressionTokens),
+					formatPercent(row.CacheUtilizationRate),
+					formatCost(row.EstimatedCostUSD),
+				)
+			},
 		},
 	})
 }

@@ -8,6 +8,12 @@ type fittedRowTable[T any] struct {
 	rowLine func(T) string
 }
 
+type fittedRowSection[T any] struct {
+	title string
+	empty string
+	table fittedRowTable[T]
+}
+
 type fittedLineWriter struct {
 	lines []string
 	width int
@@ -43,4 +49,18 @@ func appendFittedRows[T any](lines []string, table fittedRowTable[T]) []string {
 func appendFittedLineRows[T any](w *fittedLineWriter, table fittedRowTable[T]) {
 	table.width = w.width
 	w.lines = appendFittedRows(w.lines, table)
+}
+
+func appendFittedLineSection[T any](w *fittedLineWriter, section fittedRowSection[T]) bool {
+	if section.title != "" {
+		w.append("", bold(section.title))
+	}
+	if len(section.table.rows) == 0 {
+		if section.empty != "" {
+			w.append(section.empty)
+		}
+		return false
+	}
+	appendFittedLineRows(w, section.table)
+	return true
 }
