@@ -34,9 +34,8 @@ func Open(path string) (*sql.DB, error) {
 	return conn, nil
 }
 
-func Migrate(ctx context.Context, conn *sql.DB) error {
-	statements := []string{
-		`CREATE TABLE IF NOT EXISTS sources (
+var migrationStatements = []string{
+	`CREATE TABLE IF NOT EXISTS sources (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			kind TEXT NOT NULL,
 			name TEXT NOT NULL,
@@ -47,7 +46,7 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			updated_at TEXT NOT NULL,
 			UNIQUE(kind, sessions_path)
 		)`,
-		`CREATE TABLE IF NOT EXISTS source_files (
+	`CREATE TABLE IF NOT EXISTS source_files (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
 			path TEXT NOT NULL UNIQUE,
@@ -59,8 +58,8 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			scan_status TEXT NOT NULL,
 			error TEXT NOT NULL DEFAULT ''
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_source_files_source ON source_files(source_id)`,
-		`CREATE TABLE IF NOT EXISTS sessions (
+	`CREATE INDEX IF NOT EXISTS idx_source_files_source ON source_files(source_id)`,
+	`CREATE TABLE IF NOT EXISTS sessions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
 			source_file_id INTEGER NOT NULL REFERENCES source_files(id) ON DELETE CASCADE,
@@ -84,10 +83,10 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			parse_status TEXT NOT NULL,
 			UNIQUE(source_file_id)
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions(started_at DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_sessions_model ON sessions(model)`,
-		`CREATE INDEX IF NOT EXISTS idx_sessions_source_started ON sessions(source_id, started_at DESC)`,
-		`CREATE TABLE IF NOT EXISTS events (
+	`CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions(started_at DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_sessions_model ON sessions(model)`,
+	`CREATE INDEX IF NOT EXISTS idx_sessions_source_started ON sessions(source_id, started_at DESC)`,
+	`CREATE TABLE IF NOT EXISTS events (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
 			source_file_id INTEGER NOT NULL REFERENCES source_files(id) ON DELETE CASCADE,
@@ -98,8 +97,8 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			summary TEXT NOT NULL,
 			raw_json TEXT NOT NULL
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_events_session_time ON events(session_id, timestamp)`,
-		`CREATE TABLE IF NOT EXISTS token_usage (
+	`CREATE INDEX IF NOT EXISTS idx_events_session_time ON events(session_id, timestamp)`,
+	`CREATE TABLE IF NOT EXISTS token_usage (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			owner_kind TEXT NOT NULL,
 			owner_id INTEGER NOT NULL,
@@ -113,11 +112,11 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			source TEXT NOT NULL,
 			UNIQUE(owner_kind, owner_id)
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_token_usage_owner ON token_usage(owner_kind, owner_id)`,
-		`DELETE FROM token_usage
+	`CREATE INDEX IF NOT EXISTS idx_token_usage_owner ON token_usage(owner_kind, owner_id)`,
+	`DELETE FROM token_usage
 			WHERE owner_kind = 'session'
 			AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.id = token_usage.owner_id)`,
-		`CREATE TABLE IF NOT EXISTS model_calls (
+	`CREATE TABLE IF NOT EXISTS model_calls (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
 			started_at TEXT NOT NULL,
@@ -134,8 +133,8 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			total_tokens INTEGER NOT NULL,
 			cost_usd REAL
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_model_calls_session ON model_calls(session_id)`,
-		`CREATE TABLE IF NOT EXISTS tool_calls (
+	`CREATE INDEX IF NOT EXISTS idx_model_calls_session ON model_calls(session_id)`,
+	`CREATE TABLE IF NOT EXISTS tool_calls (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
 			started_at TEXT NOT NULL,
@@ -148,12 +147,12 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			error TEXT NOT NULL,
 			raw_event_id INTEGER NOT NULL DEFAULT 0
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_tool_calls_name ON tool_calls(tool_name)`,
-		`CREATE INDEX IF NOT EXISTS idx_tool_calls_started_at ON tool_calls(started_at DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_tool_calls_name_started ON tool_calls(tool_name, started_at DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_tool_calls_duration ON tool_calls(duration_ms DESC)`,
-		`CREATE TABLE IF NOT EXISTS audit_runs (
+	`CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_tool_calls_name ON tool_calls(tool_name)`,
+	`CREATE INDEX IF NOT EXISTS idx_tool_calls_started_at ON tool_calls(started_at DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_tool_calls_name_started ON tool_calls(tool_name, started_at DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_tool_calls_duration ON tool_calls(duration_ms DESC)`,
+	`CREATE TABLE IF NOT EXISTS audit_runs (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			source_file_id INTEGER NOT NULL REFERENCES source_files(id) ON DELETE CASCADE,
 			session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -163,8 +162,8 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			audited_at TEXT NOT NULL,
 			UNIQUE(source_file_id)
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_runs_session ON audit_runs(session_id)`,
-		`CREATE TABLE IF NOT EXISTS audit_findings (
+	`CREATE INDEX IF NOT EXISTS idx_audit_runs_session ON audit_runs(session_id)`,
+	`CREATE TABLE IF NOT EXISTS audit_findings (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
 			tool_call_id INTEGER NOT NULL DEFAULT 0,
@@ -186,14 +185,14 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			decision TEXT NOT NULL DEFAULT 'observed',
 			created_at TEXT NOT NULL
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_findings_session ON audit_findings(session_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_findings_category_severity ON audit_findings(category, severity)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_findings_timestamp ON audit_findings(timestamp DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_findings_tool_call ON audit_findings(tool_call_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_findings_tool_call_severity_rule ON audit_findings(tool_call_id, severity, rule_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_findings_shell ON audit_findings(shell_family)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_findings_rule ON audit_findings(rule_id)`,
-		`CREATE TABLE IF NOT EXISTS pricing_models (
+	`CREATE INDEX IF NOT EXISTS idx_audit_findings_session ON audit_findings(session_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_audit_findings_category_severity ON audit_findings(category, severity)`,
+	`CREATE INDEX IF NOT EXISTS idx_audit_findings_timestamp ON audit_findings(timestamp DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_audit_findings_tool_call ON audit_findings(tool_call_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_audit_findings_tool_call_severity_rule ON audit_findings(tool_call_id, severity, rule_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_audit_findings_shell ON audit_findings(shell_family)`,
+	`CREATE INDEX IF NOT EXISTS idx_audit_findings_rule ON audit_findings(rule_id)`,
+	`CREATE TABLE IF NOT EXISTS pricing_models (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			model TEXT NOT NULL,
 			normalized_model TEXT NOT NULL UNIQUE,
@@ -204,12 +203,12 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			effective_from TEXT NOT NULL,
 			is_custom INTEGER NOT NULL DEFAULT 0
 		)`,
-		`CREATE TABLE IF NOT EXISTS app_config (
+	`CREATE TABLE IF NOT EXISTS app_config (
 			key TEXT PRIMARY KEY,
 			value TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS saved_prompts (
+	`CREATE TABLE IF NOT EXISTS saved_prompts (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			title TEXT NOT NULL,
 			content TEXT NOT NULL,
@@ -219,17 +218,33 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_saved_prompts_source_suggestion_key ON saved_prompts(source_suggestion_key)`,
-		`CREATE TABLE IF NOT EXISTS ignored_prompt_suggestions (
+	`CREATE INDEX IF NOT EXISTS idx_saved_prompts_source_suggestion_key ON saved_prompts(source_suggestion_key)`,
+	`CREATE TABLE IF NOT EXISTS ignored_prompt_suggestions (
 			suggestion_key TEXT PRIMARY KEY,
 			ignored_at TEXT NOT NULL
 		)`,
+}
+
+func Migrate(ctx context.Context, conn *sql.DB) error {
+	if err := execMigrationStatements(ctx, conn); err != nil {
+		return err
 	}
-	for _, stmt := range statements {
+	if err := ensureMigrationColumns(ctx, conn); err != nil {
+		return err
+	}
+	return backfillMigrationData(ctx, conn)
+}
+
+func execMigrationStatements(ctx context.Context, conn *sql.DB) error {
+	for _, stmt := range migrationStatements {
 		if _, err := conn.ExecContext(ctx, stmt); err != nil {
 			return err
 		}
 	}
+	return nil
+}
+
+func ensureMigrationColumns(ctx context.Context, conn *sql.DB) error {
 	if err := ensureColumn(ctx, conn, "sessions", "session_key", "session_key TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
@@ -254,6 +269,10 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 	if err := ensureColumn(ctx, conn, "pricing_models", "is_custom", "is_custom INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
+	return nil
+}
+
+func backfillMigrationData(ctx context.Context, conn *sql.DB) error {
 	if _, err := conn.ExecContext(ctx, `UPDATE sessions SET session_key = codex_session_id WHERE session_key = ''`); err != nil {
 		return err
 	}

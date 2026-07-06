@@ -1,4 +1,4 @@
-﻿package agent
+package agent
 
 import (
 	"os"
@@ -57,69 +57,97 @@ func ResolveSource(path string) SourceSpec {
 func UsageSources(spec SourceSpec) []UsageSource {
 	switch spec.Kind {
 	case "codex":
-		if !sourcepath.Equal(spec.RootPath, spec.SessionsPath) {
-			return []UsageSource{{Dir: spec.SessionsPath, DedupeScope: spec.SessionsPath}}
-		}
-		sessions := filepath.Join(spec.RootPath, "sessions")
-		archived := filepath.Join(spec.RootPath, "archived_sessions")
-		sources := make([]UsageSource, 0, 2)
-		if isDir(sessions) {
-			sources = append(sources, UsageSource{Dir: sessions, DedupeScope: spec.RootPath})
-		}
-		if isDir(archived) {
-			sources = append(sources, UsageSource{Dir: archived, DedupeScope: spec.RootPath})
-		}
-		if len(sources) > 0 {
+		if sources, ok := codexUsageSources(spec); ok {
 			return sources
 		}
 	case "claude":
-		if sourcepath.Equal(spec.RootPath, spec.SessionsPath) {
-			projects := filepath.Join(spec.RootPath, "projects")
-			if isDir(projects) {
-				return []UsageSource{{Dir: projects, DedupeScope: spec.RootPath}}
-			}
-		}
+		return rootChildUsageSources(spec, "projects")
 	case "codebuddy":
-		if sourcepath.Equal(spec.RootPath, spec.SessionsPath) {
-			projects := filepath.Join(spec.RootPath, "projects")
-			if isDir(projects) {
-				return []UsageSource{{Dir: projects, DedupeScope: spec.RootPath}}
-			}
-			sessions := filepath.Join(spec.RootPath, "sessions")
-			if isDir(sessions) {
-				return []UsageSource{{Dir: sessions, DedupeScope: spec.RootPath}}
-			}
-		}
+		return rootChildUsageSources(spec, "projects", "sessions")
 	case "workbuddy":
-		if sourcepath.Equal(spec.RootPath, spec.SessionsPath) ||
-			strings.EqualFold(filepath.Base(spec.SessionsPath), "sessions") {
-			projects := filepath.Join(spec.RootPath, "projects")
-			if isDir(projects) {
-				return []UsageSource{{Dir: projects, DedupeScope: spec.RootPath}}
-			}
-			sessions := filepath.Join(spec.RootPath, "sessions")
-			if isDir(sessions) {
-				return []UsageSource{{Dir: sessions, DedupeScope: spec.RootPath}}
-			}
+		if workbuddyCanUseRootChildren(spec) {
+			return firstExistingRootChildren(spec, "projects", "sessions")
 		}
 	case "cursor":
-		if sourcepath.Equal(spec.RootPath, spec.SessionsPath) {
-			projects := filepath.Join(spec.RootPath, "projects")
-			if isDir(projects) {
-				return []UsageSource{{Dir: projects, DedupeScope: spec.RootPath}}
-			}
-			workspaceStorage := filepath.Join(spec.RootPath, "User", "workspaceStorage")
-			if isDir(workspaceStorage) {
-				return []UsageSource{{Dir: workspaceStorage, DedupeScope: spec.RootPath}}
-			}
-		}
-		if strings.EqualFold(filepath.Base(spec.SessionsPath), "User") {
-			workspaceStorage := filepath.Join(spec.SessionsPath, "workspaceStorage")
-			if isDir(workspaceStorage) {
-				return []UsageSource{{Dir: workspaceStorage, DedupeScope: spec.RootPath}}
-			}
+		if sources, ok := cursorUsageSources(spec); ok {
+			return sources
 		}
 	}
+	return fallbackUsageSources(spec)
+}
+
+func codexUsageSources(spec SourceSpec) ([]UsageSource, bool) {
+	if !sourcepath.Equal(spec.RootPath, spec.SessionsPath) {
+		return fallbackUsageSources(spec), true
+	}
+	sources := existingRootChildSources(spec, "sessions", "archived_sessions")
+	return sources, len(sources) > 0
+}
+
+func rootChildUsageSources(spec SourceSpec, children ...string) []UsageSource {
+	if sourcepath.Equal(spec.RootPath, spec.SessionsPath) {
+		return firstExistingRootChildren(spec, children...)
+	}
+	return fallbackUsageSources(spec)
+}
+
+func firstExistingRootChildren(spec SourceSpec, children ...string) []UsageSource {
+	for _, child := range children {
+		if source, ok := existingRootChildSource(spec, child); ok {
+			return []UsageSource{source}
+		}
+	}
+	return fallbackUsageSources(spec)
+}
+
+func existingRootChildSources(spec SourceSpec, children ...string) []UsageSource {
+	sources := make([]UsageSource, 0, len(children))
+	for _, child := range children {
+		if source, ok := existingRootChildSource(spec, child); ok {
+			sources = append(sources, source)
+		}
+	}
+	return sources
+}
+
+func existingRootChildSource(spec SourceSpec, child string) (UsageSource, bool) {
+	return existingUsageSource(filepath.Join(spec.RootPath, child), spec.RootPath)
+}
+
+func existingUsageSource(dir string, dedupeScope string) (UsageSource, bool) {
+	if !isDir(dir) {
+		return UsageSource{}, false
+	}
+	return UsageSource{Dir: dir, DedupeScope: dedupeScope}, true
+}
+
+func workbuddyCanUseRootChildren(spec SourceSpec) bool {
+	return sourcepath.Equal(spec.RootPath, spec.SessionsPath) ||
+		strings.EqualFold(filepath.Base(spec.SessionsPath), "sessions")
+}
+
+func cursorUsageSources(spec SourceSpec) ([]UsageSource, bool) {
+	if sourcepath.Equal(spec.RootPath, spec.SessionsPath) {
+		if source, ok := existingRootChildSource(spec, "projects"); ok {
+			return []UsageSource{source}, true
+		}
+		return cursorWorkspaceStorageUsageSource(filepath.Join(spec.RootPath, "User"), spec.RootPath)
+	}
+	if strings.EqualFold(filepath.Base(spec.SessionsPath), "User") {
+		return cursorWorkspaceStorageUsageSource(spec.SessionsPath, spec.RootPath)
+	}
+	return nil, false
+}
+
+func cursorWorkspaceStorageUsageSource(userDir string, root string) ([]UsageSource, bool) {
+	source, ok := existingUsageSource(filepath.Join(userDir, "workspaceStorage"), root)
+	if !ok {
+		return nil, false
+	}
+	return []UsageSource{source}, true
+}
+
+func fallbackUsageSources(spec SourceSpec) []UsageSource {
 	return []UsageSource{{Dir: spec.SessionsPath, DedupeScope: spec.SessionsPath}}
 }
 

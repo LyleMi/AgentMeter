@@ -57,28 +57,40 @@ func (a *parseAccumulator) addWarnings(warnings []string) {
 }
 
 func (a *parseAccumulator) handleRecord(record parsedRawRecord) {
-	raw := record.raw
-	ts := record.ts
-	payloadType := record.payloadType
-	lineNo := record.lineNo
+	a.addEvent(record)
+	a.handleSessionRecord(record.raw)
+	a.handleRecordIdentity(record.raw)
+	a.handleRecordModel(record.raw)
+	a.handleCompactionSignals(record.raw)
+	a.handlePayloadRecord(record)
+	a.handleTopLevelToolRecord(record)
+	a.handleRawMessage(record)
+	a.handleHeadlessRecord(record)
+}
 
+func (a *parseAccumulator) addEvent(record parsedRawRecord) {
+	a.updateTimeBounds(record.ts)
+	a.parsed.Events = append(a.parsed.Events, model.Event{
+		SourceFileID: a.sourceFileID,
+		SourceLine:   record.lineNo,
+		Timestamp:    record.ts,
+		Kind:         classifyRecord(record.raw),
+		RawType:      record.rawType,
+		Summary:      summarizeRecord(record.raw),
+		RawJSON:      record.line,
+	})
+}
+
+func (a *parseAccumulator) updateTimeBounds(ts time.Time) {
 	if a.firstTime.IsZero() || ts.Before(a.firstTime) {
 		a.firstTime = ts
 	}
 	if a.lastTime.IsZero() || ts.After(a.lastTime) {
 		a.lastTime = ts
 	}
+}
 
-	a.parsed.Events = append(a.parsed.Events, model.Event{
-		SourceFileID: a.sourceFileID,
-		SourceLine:   lineNo,
-		Timestamp:    ts,
-		Kind:         classifyRecord(raw),
-		RawType:      record.rawType,
-		Summary:      summarizeRecord(raw),
-		RawJSON:      record.line,
-	})
-
+func (a *parseAccumulator) handleSessionRecord(raw rawRecord) {
 	switch raw.Type {
 	case "session_meta":
 		a.hasSessionMeta = true
@@ -97,7 +109,9 @@ func (a *parseAccumulator) handleRecord(record parsedRawRecord) {
 		a.provider = firstNonEmpty(a.provider, stringValue(raw.Payload, "model_provider"))
 		a.parsed.Session.ModelProvider = a.provider
 	}
+}
 
+func (a *parseAccumulator) handleRecordIdentity(raw rawRecord) {
 	if id := sessionIDFromRecord(raw); id != "" && a.parsed.Session.SessionKey == "" {
 		a.parsed.Session.SessionKey = id
 	}
@@ -117,49 +131,61 @@ func (a *parseAccumulator) handleRecord(record parsedRawRecord) {
 		a.provider = firstNonEmpty(stringValue(raw.Metadata, "model_provider"), stringValue(raw.Metadata, "provider"))
 		a.parsed.Session.ModelProvider = a.provider
 	}
+}
 
+func (a *parseAccumulator) handleRecordModel(raw rawRecord) {
 	if rawModel := modelFromRecord(raw); rawModel != "" {
 		a.currentModel = rawModel
 		a.parsed.Session.Model = firstNonEmpty(a.parsed.Session.Model, rawModel)
 	}
+}
 
+func (a *parseAccumulator) handleCompactionSignals(raw rawRecord) {
 	a.handleCompactMetadata(raw)
 	a.handleCodexCompacted(raw)
 	a.handleCodeBuddyCompacted(raw)
+}
 
-	switch payloadType {
+func (a *parseAccumulator) handlePayloadRecord(record parsedRawRecord) {
+	switch record.payloadType {
 	case "task_started":
-		a.modelBoundary = timestampFromPayload(raw.Payload, "started_at")
+		a.modelBoundary = timestampFromPayload(record.raw.Payload, "started_at")
 		if a.modelBoundary.IsZero() {
-			a.modelBoundary = ts
+			a.modelBoundary = record.ts
 		}
 	case "token_count":
-		a.handleTokenCount(raw, ts)
+		a.handleTokenCount(record.raw, record.ts)
 	case "function_call", "custom_tool_call", "web_search_call", "tool_search_call":
-		call := startTool(raw.Payload, payloadType, ts, lineNo)
+		call := startTool(record.raw.Payload, record.payloadType, record.ts, record.lineNo)
 		if call.callID != "" {
 			a.pending[call.callID] = call
 		}
 	case "function_call_output", "custom_tool_call_output", "web_search_end", "web_search_output", "tool_search_output", "patch_apply_end":
-		a.handlePayloadToolOutput(raw, payloadType, ts, lineNo)
+		a.handlePayloadToolOutput(record.raw, record.payloadType, record.ts, record.lineNo)
 	}
+}
 
-	switch raw.Type {
+func (a *parseAccumulator) handleTopLevelToolRecord(record parsedRawRecord) {
+	switch record.raw.Type {
 	case "function_call":
-		call := startToolRecord(raw, ts, lineNo)
+		call := startToolRecord(record.raw, record.ts, record.lineNo)
 		if call.callID != "" {
 			a.pending[call.callID] = call
 		}
 	case "function_call_result":
-		a.handleRecordToolResult(raw, ts, lineNo)
+		a.handleRecordToolResult(record.raw, record.ts, record.lineNo)
 	}
+}
 
-	if raw.Message != nil || topLevelRole(raw) != "" {
-		a.handleMessage(raw, ts, lineNo)
+func (a *parseAccumulator) handleRawMessage(record parsedRawRecord) {
+	if record.raw.Message != nil || topLevelRole(record.raw) != "" {
+		a.handleMessage(record.raw, record.ts, record.lineNo)
 	}
+}
 
-	if payloadType == "" {
-		a.handleHeadlessUsage(raw, ts)
+func (a *parseAccumulator) handleHeadlessRecord(record parsedRawRecord) {
+	if record.payloadType == "" {
+		a.handleHeadlessUsage(record.raw, record.ts)
 	}
 }
 

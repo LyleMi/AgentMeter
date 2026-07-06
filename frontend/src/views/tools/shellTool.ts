@@ -154,60 +154,84 @@ function commandSegments(tokens: string[]) {
 }
 
 function tokenizeCommand(command: string) {
-  const tokens: string[] = []
-  let current = ''
-  let quote = ''
-  let escaping = false
+  const tokenizer = new CommandTokenizer(command)
+  return tokenizer.tokens()
+}
 
-  const pushCurrent = () => {
-    if (current) tokens.push(current)
-    current = ''
+class CommandTokenizer {
+  constructor(private readonly command: string) {}
+
+  tokens() {
+    const tokens: string[] = []
+    let current = ''
+    let quote = ''
+    let escaping = false
+
+    const pushCurrent = () => {
+      if (current) tokens.push(current)
+      current = ''
+    }
+
+    for (let index = 0; index < this.command.length; index += 1) {
+      const char = this.command[index]
+      const next = this.command[index + 1] || ''
+      const state = { current, quote, escaping }
+      const result = this.consume(char, next, state, pushCurrent)
+      current = result.current
+      quote = result.quote
+      escaping = result.escaping
+      if (result.token) tokens.push(result.token)
+      if (result.skipNext) index += 1
+    }
+    pushCurrent()
+    return tokens
   }
 
-  for (let index = 0; index < command.length; index += 1) {
-    const char = command[index]
-    const next = command[index + 1] || ''
-
-    if (escaping) {
-      current += char
-      escaping = false
-      continue
+  private consume(char: string, next: string, state: TokenizerState, pushCurrent: () => void): TokenizerResult {
+    if (state.escaping) {
+      return { ...state, current: state.current + char, escaping: false }
     }
-
-    if (quote) {
-      if (char === '\\' && (next === quote || next === '\\')) {
-        escaping = true
-      } else if (char === quote) {
-        quote = ''
-      } else {
-        current += char
-      }
-      continue
+    if (state.quote) {
+      return this.consumeQuoted(char, next, state)
     }
-
     if (char === '"' || char === "'") {
-      quote = char
-      continue
+      return { ...state, quote: char }
     }
     if (/\s/.test(char)) {
       pushCurrent()
-      continue
+      return { ...state, current: '' }
     }
     if ((char === '&' && next === '&') || (char === '|' && next === '|')) {
       pushCurrent()
-      tokens.push(char + next)
-      index += 1
-      continue
+      return { ...state, current: '', token: char + next, skipNext: true }
     }
     if (char === ';' || char === '|') {
       pushCurrent()
-      tokens.push(char)
-      continue
+      return { ...state, current: '', token: char }
     }
-    current += char
+    return { ...state, current: state.current + char }
   }
-  pushCurrent()
-  return tokens
+
+  private consumeQuoted(char: string, next: string, state: TokenizerState): TokenizerResult {
+    if (char === '\\' && (next === state.quote || next === '\\')) {
+      return { ...state, escaping: true }
+    }
+    if (char === state.quote) {
+      return { ...state, quote: '' }
+    }
+    return { ...state, current: state.current + char }
+  }
+}
+
+interface TokenizerState {
+  current: string
+  quote: string
+  escaping: boolean
+}
+
+interface TokenizerResult extends TokenizerState {
+  token?: string
+  skipNext?: boolean
 }
 
 function nestedPosixShellCommand(tokens: string[]) {

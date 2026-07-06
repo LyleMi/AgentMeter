@@ -1,11 +1,9 @@
-﻿package privacy
+package privacy
 
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -13,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/LyleMi/AgentMeter/internal/jsonc"
 	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
@@ -179,83 +178,7 @@ func jsonSettingsPath(configPath, overrideEnv, configDirEnv, homeDirName string)
 }
 
 func parseJSONSettings(content []byte) (map[string]any, error) {
-	if strings.TrimSpace(string(content)) == "" {
-		return map[string]any{}, nil
-	}
-	var value any
-	decoder := json.NewDecoder(strings.NewReader(stripJSONComments(string(content))))
-	decoder.UseNumber()
-	if err := decoder.Decode(&value); err != nil {
-		return nil, err
-	}
-	var extra any
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return nil, errors.New("settings file contains trailing JSON data")
-		}
-		return nil, err
-	}
-	root, ok := value.(map[string]any)
-	if !ok {
-		return nil, errors.New("settings file is not a JSON object")
-	}
-	return root, nil
-}
-
-func stripJSONComments(content string) string {
-	var builder strings.Builder
-	inString := false
-	escaped := false
-	for index := 0; index < len(content); index++ {
-		ch := content[index]
-		if escaped {
-			builder.WriteByte(ch)
-			escaped = false
-			continue
-		}
-		if inString {
-			builder.WriteByte(ch)
-			if ch == '\\' {
-				escaped = true
-			} else if ch == '"' {
-				inString = false
-			}
-			continue
-		}
-		if ch == '"' {
-			inString = true
-			builder.WriteByte(ch)
-			continue
-		}
-		if ch == '/' && index+1 < len(content) {
-			next := content[index+1]
-			if next == '/' {
-				index += 2
-				for index < len(content) && content[index] != '\n' && content[index] != '\r' {
-					index++
-				}
-				if index < len(content) {
-					builder.WriteByte(content[index])
-				}
-				continue
-			}
-			if next == '*' {
-				index += 2
-				for index+1 < len(content) && !(content[index] == '*' && content[index+1] == '/') {
-					if content[index] == '\n' || content[index] == '\r' {
-						builder.WriteByte(content[index])
-					}
-					index++
-				}
-				if index+1 < len(content) {
-					index++
-				}
-				continue
-			}
-		}
-		builder.WriteByte(ch)
-	}
-	return builder.String()
+	return jsonc.ParseObject(content)
 }
 
 func applyJSONSettingsMutation(

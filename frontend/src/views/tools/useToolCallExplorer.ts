@@ -1,4 +1,4 @@
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch, type ComputedRef } from 'vue'
 import { useRoute, useRouter, type LocationQuery } from 'vue-router'
 import { api, type AgentUsage, type ToolCall, type ToolCallFilters, type ToolCallRiskSummary, type ToolStat } from '../../api'
 import {
@@ -22,205 +22,225 @@ export interface ShellCommandStat {
 export function useToolCallExplorer(mode: ToolCallExplorerMode) {
   const route = useRoute()
   const router = useRouter()
-  const loading = ref(true)
-  const callLoading = ref(true)
-  const toolLoading = ref(true)
-  const tools = ref<ToolStat[]>([])
-  const agents = ref<AgentUsage[]>([])
-  const toolCalls = ref<ToolCall[]>([])
-  const toolCallRisks = ref<ToolCallRiskSummary[]>([])
-  const commandOptions = ref<ShellCommandStat[]>([])
-  const toolFilter = ref<string | undefined>(stringRouteQueryValue(route.query.tool))
-  const commandFilter = ref<string | undefined>(mode === 'shell' ? stringRouteQueryValue(route.query.command) : undefined)
-  const riskOnlyFilter = ref(mode === 'shell' && stringRouteQueryValue(route.query.risk) === '1')
-  const agentFilter = ref<string | undefined>(stringRouteQueryValue(route.query.agent))
-  const fromFilter = ref(routeDateTimeInputValue(route.query, 'from'))
-  const toFilter = ref(routeDateTimeInputValue(route.query, 'to'))
-  const sortFilter = ref<ToolCallSort>(routeSortQuery(route.query))
-  const selectedToolCall = ref<ToolCall | null>(null)
-  const routePath = mode === 'shell' ? '/tools/shell' : '/tools/calls'
-  const availableTools = computed(() => (mode === 'shell' ? tools.value.filter((item) => isShellToolName(item.toolName)) : tools.value))
-  const riskByToolCallId = computed(() => riskMapFrom(toolCallRisks.value))
-  let applyingRouteUpdate = false
-
-  async function load() {
-    loading.value = true
-    callLoading.value = true
-    try {
-      const overviewRequest = api.getOverview()
-      const clearedTool = await loadToolOptions(true)
-      const overview = await overviewRequest
-      if (clearedTool) await replaceRouteQuery()
-      agents.value = overview?.agentUsage || []
-      toolCalls.value = await fetchToolCalls()
-    } finally {
-      loading.value = false
-      callLoading.value = false
-    }
+  const state = createToolCallExplorerState(route.query, mode)
+  const availableTools = computed(() => (mode === 'shell' ? state.tools.value.filter((item) => isShellToolName(item.toolName)) : state.tools.value))
+  const riskByToolCallId = computed(() => riskMapFrom(state.toolCallRisks.value))
+  const ctx: ToolCallExplorerContext = {
+    mode,
+    route,
+    router,
+    routePath: mode === 'shell' ? '/tools/shell' : '/tools/calls',
+    routeUpdate: { applying: false },
+    state,
+    availableTools
   }
 
-  async function loadToolCalls() {
-    callLoading.value = true
-    try {
-      toolCalls.value = await fetchToolCalls()
-    } finally {
-      callLoading.value = false
-    }
-  }
-
-  async function fetchToolCalls() {
-    if (mode === 'shell') return fetchShellToolCalls()
-    commandOptions.value = []
-    toolCallRisks.value = []
-    return (await api.listToolCalls(currentToolCallFilters())) || []
-  }
-
-  async function fetchShellToolCalls() {
-    let calls = ((await api.listToolCalls(currentToolCallFilters())) || []).filter((call) => isShellToolName(call.toolName))
-    toolCallRisks.value = calls
-      .filter((call) => call.riskScore || call.riskSeverity || call.riskCount || call.riskRuleIds?.length)
-      .map((call) => ({
-        toolCallId: call.id,
-        severity: call.riskSeverity || '',
-        riskScore: call.riskScore || 1,
-        riskCount: call.riskCount || 0,
-        ruleIds: call.riskRuleIds || []
-      }))
-    commandOptions.value = shellCommandStats(calls)
-    calls = filteredByCommand(calls, commandFilter.value)
-    return calls.slice(0, TOOL_CALL_LIMIT)
-  }
-
-  function currentToolCallFilters(): ToolCallFilters {
-    return {
-      tool: toolFilter.value,
-      agent: agentFilter.value,
-      from: dateTimeInputToQueryIso(fromFilter.value),
-      to: dateTimeInputToQueryIso(toFilter.value, 'end'),
-      sort: sortFilter.value === DEFAULT_SORT ? undefined : sortFilter.value,
-      shell: mode === 'shell',
-      riskOnly: mode === 'shell' && riskOnlyFilter.value,
-      includeRisk: mode === 'shell',
-      limit: TOOL_CALL_LIMIT
-    }
-  }
-
-  function clearMissingToolFilter() {
-    if (!toolFilter.value) return false
-    if (availableTools.value.some((item) => item.toolName === toolFilter.value)) return false
-    toolFilter.value = undefined
-    return true
-  }
-
-  async function loadToolOptions(clearInvalidTool = false) {
-    toolLoading.value = true
-    try {
-      tools.value = (await api.getTools({ agent: agentFilter.value })) || []
-      return clearInvalidTool ? clearMissingToolFilter() : false
-    } finally {
-      toolLoading.value = false
-    }
-  }
-
-  function currentRouteQuery() {
-    const query = copyStringRouteQuery(route.query)
-    setRouteQueryValue(query, 'tool', toolFilter.value)
-    setRouteQueryValue(query, 'command', mode === 'shell' ? commandFilter.value : undefined)
-    setRouteQueryValue(query, 'risk', mode === 'shell' && riskOnlyFilter.value ? '1' : undefined)
-    setRouteQueryValue(query, 'agent', agentFilter.value)
-    setRouteQueryValue(query, 'from', fromFilter.value || undefined)
-    setRouteQueryValue(query, 'to', toFilter.value || undefined)
-    setRouteQueryValue(query, 'sort', sortFilter.value === DEFAULT_SORT ? undefined : sortFilter.value)
-    return query
-  }
-
-  async function replaceRouteQuery() {
-    applyingRouteUpdate = true
-    try {
-      await router.replace({ path: routePath, query: currentRouteQuery() })
-    } finally {
-      applyingRouteUpdate = false
-    }
-  }
-
-  async function updateFilters(changedFilter?: 'agent') {
-    if (changedFilter === 'agent') await loadToolOptions(true)
-    await replaceRouteQuery()
-    loadToolCalls()
-  }
-
-  function syncFiltersFromRoute() {
-    toolFilter.value = stringRouteQueryValue(route.query.tool)
-    commandFilter.value = mode === 'shell' ? stringRouteQueryValue(route.query.command) : undefined
-    riskOnlyFilter.value = mode === 'shell' && stringRouteQueryValue(route.query.risk) === '1'
-    agentFilter.value = stringRouteQueryValue(route.query.agent)
-    fromFilter.value = routeDateTimeInputValue(route.query, 'from')
-    toFilter.value = routeDateTimeInputValue(route.query, 'to')
-    sortFilter.value = routeSortQuery(route.query)
-  }
-
-  function resetFilters() {
-    toolFilter.value = undefined
-    commandFilter.value = undefined
-    riskOnlyFilter.value = false
-    agentFilter.value = undefined
-    fromFilter.value = ''
-    toFilter.value = ''
-    sortFilter.value = DEFAULT_SORT
-    updateFilters('agent')
-  }
-
-  function openToolCall(call: ToolCall) {
-    selectedToolCall.value = call
-  }
-
-  function closeToolCall() {
-    selectedToolCall.value = null
-  }
-
-  function openSession(id: number) {
-    router.push(`/sessions/${id}`)
-  }
-
-  watch(
-    () => [route.query.tool, route.query.command, route.query.risk, route.query.agent, route.query.from, route.query.to, route.query.sort],
-    async () => {
-      if (applyingRouteUpdate) return
-      syncFiltersFromRoute()
-      const clearedTool = await loadToolOptions(true)
-      if (clearedTool) await replaceRouteQuery()
-      loadToolCalls()
-    }
-  )
-
-  onMounted(load)
+  registerRouteSync(ctx)
+  onMounted(() => loadExplorer(ctx))
 
   return {
-    loading,
-    callLoading,
-    toolLoading,
-    tools,
+    ...state,
     availableTools,
-    agents,
-    toolCalls,
-    toolCallRisks,
     riskByToolCallId,
-    commandOptions,
-    toolFilter,
-    commandFilter,
-    riskOnlyFilter,
-    agentFilter,
-    fromFilter,
-    toFilter,
-    sortFilter,
-    selectedToolCall,
-    load,
-    updateFilters,
-    resetFilters,
-    openToolCall,
-    closeToolCall,
-    openSession
+    load: () => loadExplorer(ctx),
+    updateFilters: (changedFilter?: 'agent') => updateFilters(ctx, changedFilter),
+    resetFilters: () => resetFilters(ctx),
+    openToolCall: (call: ToolCall) => openToolCall(ctx, call),
+    closeToolCall: () => closeToolCall(ctx),
+    openSession: (id: number) => openSession(ctx, id)
   }
+}
+
+function createToolCallExplorerState(query: LocationQuery, mode: ToolCallExplorerMode) {
+  return {
+    loading: ref(true),
+    callLoading: ref(true),
+    toolLoading: ref(true),
+    tools: ref<ToolStat[]>([]),
+    agents: ref<AgentUsage[]>([]),
+    toolCalls: ref<ToolCall[]>([]),
+    toolCallRisks: ref<ToolCallRiskSummary[]>([]),
+    commandOptions: ref<ShellCommandStat[]>([]),
+    toolFilter: ref<string | undefined>(stringRouteQueryValue(query.tool)),
+    commandFilter: ref<string | undefined>(mode === 'shell' ? stringRouteQueryValue(query.command) : undefined),
+    riskOnlyFilter: ref(mode === 'shell' && stringRouteQueryValue(query.risk) === '1'),
+    agentFilter: ref<string | undefined>(stringRouteQueryValue(query.agent)),
+    fromFilter: ref(routeDateTimeInputValue(query, 'from')),
+    toFilter: ref(routeDateTimeInputValue(query, 'to')),
+    sortFilter: ref<ToolCallSort>(routeSortQuery(query)),
+    selectedToolCall: ref<ToolCall | null>(null)
+  }
+}
+
+type ToolCallExplorerState = ReturnType<typeof createToolCallExplorerState>
+
+interface ToolCallExplorerContext {
+  mode: ToolCallExplorerMode
+  route: ReturnType<typeof useRoute>
+  router: ReturnType<typeof useRouter>
+  routePath: string
+  routeUpdate: { applying: boolean }
+  state: ToolCallExplorerState
+  availableTools: ComputedRef<ToolStat[]>
+}
+
+async function loadExplorer(ctx: ToolCallExplorerContext) {
+  ctx.state.loading.value = true
+  ctx.state.callLoading.value = true
+  try {
+    const overviewRequest = api.getOverview()
+    const clearedTool = await loadToolOptions(ctx, true)
+    const overview = await overviewRequest
+    if (clearedTool) await replaceRouteQuery(ctx)
+    ctx.state.agents.value = overview?.agentUsage || []
+    ctx.state.toolCalls.value = await fetchToolCalls(ctx)
+  } finally {
+    ctx.state.loading.value = false
+    ctx.state.callLoading.value = false
+  }
+}
+
+async function loadToolCalls(ctx: ToolCallExplorerContext) {
+  ctx.state.callLoading.value = true
+  try {
+    ctx.state.toolCalls.value = await fetchToolCalls(ctx)
+  } finally {
+    ctx.state.callLoading.value = false
+  }
+}
+
+async function fetchToolCalls(ctx: ToolCallExplorerContext) {
+  if (ctx.mode === 'shell') return fetchShellToolCalls(ctx)
+  ctx.state.commandOptions.value = []
+  ctx.state.toolCallRisks.value = []
+  return (await api.listToolCalls(currentToolCallFilters(ctx))) || []
+}
+
+async function fetchShellToolCalls(ctx: ToolCallExplorerContext) {
+  const calls = ((await api.listToolCalls(currentToolCallFilters(ctx))) || []).filter((call) => isShellToolName(call.toolName))
+  ctx.state.toolCallRisks.value = riskSummariesFromCalls(calls)
+  ctx.state.commandOptions.value = shellCommandStats(calls)
+  return filteredByCommand(calls, ctx.state.commandFilter.value).slice(0, TOOL_CALL_LIMIT)
+}
+
+function riskSummariesFromCalls(calls: ToolCall[]) {
+  return calls
+    .filter(hasRiskFields)
+    .map((call) => ({
+      toolCallId: call.id,
+      severity: call.riskSeverity || '',
+      riskScore: call.riskScore || 1,
+      riskCount: call.riskCount || 0,
+      ruleIds: call.riskRuleIds || []
+    }))
+}
+
+function hasRiskFields(call: ToolCall) {
+  return Boolean(call.riskScore || call.riskSeverity || call.riskCount || call.riskRuleIds?.length)
+}
+
+function currentToolCallFilters(ctx: ToolCallExplorerContext): ToolCallFilters {
+  return {
+    tool: ctx.state.toolFilter.value,
+    agent: ctx.state.agentFilter.value,
+    from: dateTimeInputToQueryIso(ctx.state.fromFilter.value),
+    to: dateTimeInputToQueryIso(ctx.state.toFilter.value, 'end'),
+    sort: ctx.state.sortFilter.value === DEFAULT_SORT ? undefined : ctx.state.sortFilter.value,
+    shell: ctx.mode === 'shell',
+    riskOnly: ctx.mode === 'shell' && ctx.state.riskOnlyFilter.value,
+    includeRisk: ctx.mode === 'shell',
+    limit: TOOL_CALL_LIMIT
+  }
+}
+
+function clearMissingToolFilter(ctx: ToolCallExplorerContext) {
+  if (!ctx.state.toolFilter.value) return false
+  if (ctx.availableTools.value.some((item) => item.toolName === ctx.state.toolFilter.value)) return false
+  ctx.state.toolFilter.value = undefined
+  return true
+}
+
+async function loadToolOptions(ctx: ToolCallExplorerContext, clearInvalidTool = false) {
+  ctx.state.toolLoading.value = true
+  try {
+    ctx.state.tools.value = (await api.getTools({ agent: ctx.state.agentFilter.value })) || []
+    return clearInvalidTool ? clearMissingToolFilter(ctx) : false
+  } finally {
+    ctx.state.toolLoading.value = false
+  }
+}
+
+function currentRouteQuery(ctx: ToolCallExplorerContext) {
+  const query = copyStringRouteQuery(ctx.route.query)
+  setRouteQueryValue(query, 'tool', ctx.state.toolFilter.value)
+  setRouteQueryValue(query, 'command', ctx.mode === 'shell' ? ctx.state.commandFilter.value : undefined)
+  setRouteQueryValue(query, 'risk', ctx.mode === 'shell' && ctx.state.riskOnlyFilter.value ? '1' : undefined)
+  setRouteQueryValue(query, 'agent', ctx.state.agentFilter.value)
+  setRouteQueryValue(query, 'from', ctx.state.fromFilter.value || undefined)
+  setRouteQueryValue(query, 'to', ctx.state.toFilter.value || undefined)
+  setRouteQueryValue(query, 'sort', ctx.state.sortFilter.value === DEFAULT_SORT ? undefined : ctx.state.sortFilter.value)
+  return query
+}
+
+async function replaceRouteQuery(ctx: ToolCallExplorerContext) {
+  ctx.routeUpdate.applying = true
+  try {
+    await ctx.router.replace({ path: ctx.routePath, query: currentRouteQuery(ctx) })
+  } finally {
+    ctx.routeUpdate.applying = false
+  }
+}
+
+async function updateFilters(ctx: ToolCallExplorerContext, changedFilter?: 'agent') {
+  if (changedFilter === 'agent') await loadToolOptions(ctx, true)
+  await replaceRouteQuery(ctx)
+  loadToolCalls(ctx)
+}
+
+function syncFiltersFromRoute(ctx: ToolCallExplorerContext) {
+  ctx.state.toolFilter.value = stringRouteQueryValue(ctx.route.query.tool)
+  ctx.state.commandFilter.value = ctx.mode === 'shell' ? stringRouteQueryValue(ctx.route.query.command) : undefined
+  ctx.state.riskOnlyFilter.value = ctx.mode === 'shell' && stringRouteQueryValue(ctx.route.query.risk) === '1'
+  ctx.state.agentFilter.value = stringRouteQueryValue(ctx.route.query.agent)
+  ctx.state.fromFilter.value = routeDateTimeInputValue(ctx.route.query, 'from')
+  ctx.state.toFilter.value = routeDateTimeInputValue(ctx.route.query, 'to')
+  ctx.state.sortFilter.value = routeSortQuery(ctx.route.query)
+}
+
+function resetFilters(ctx: ToolCallExplorerContext) {
+  ctx.state.toolFilter.value = undefined
+  ctx.state.commandFilter.value = undefined
+  ctx.state.riskOnlyFilter.value = false
+  ctx.state.agentFilter.value = undefined
+  ctx.state.fromFilter.value = ''
+  ctx.state.toFilter.value = ''
+  ctx.state.sortFilter.value = DEFAULT_SORT
+  updateFilters(ctx, 'agent')
+}
+
+function openToolCall(ctx: ToolCallExplorerContext, call: ToolCall) {
+  ctx.state.selectedToolCall.value = call
+}
+
+function closeToolCall(ctx: ToolCallExplorerContext) {
+  ctx.state.selectedToolCall.value = null
+}
+
+function openSession(ctx: ToolCallExplorerContext, id: number) {
+  ctx.router.push(`/sessions/${id}`)
+}
+
+function registerRouteSync(ctx: ToolCallExplorerContext) {
+  watch(
+    () => [ctx.route.query.tool, ctx.route.query.command, ctx.route.query.risk, ctx.route.query.agent, ctx.route.query.from, ctx.route.query.to, ctx.route.query.sort],
+    async () => {
+      if (ctx.routeUpdate.applying) return
+      syncFiltersFromRoute(ctx)
+      const clearedTool = await loadToolOptions(ctx, true)
+      if (clearedTool) await replaceRouteQuery(ctx)
+      loadToolCalls(ctx)
+    }
+  )
 }
 
 function riskMapFrom(risks: ToolCallRiskSummary[]) {

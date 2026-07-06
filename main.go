@@ -16,79 +16,103 @@ import (
 	"github.com/LyleMi/AgentMeter/internal/tui"
 )
 
+type runtimeConfig struct {
+	uiMode      string
+	httpAddr    string
+	staticDir   string
+	start       bool
+	skipBrowser bool
+	forceBuild  bool
+}
+
 func main() {
-	if len(os.Args) > 1 && cli.IsCommand(os.Args[1]) {
-		os.Exit(cli.Run(os.Args[1:], os.Stdout, os.Stderr))
+	if exitCode, ok := runCLICommand(os.Args[1:]); ok {
+		os.Exit(exitCode)
 	}
 
-	var uiMode string
-	var httpAddr string
-	var staticDir string
-	var start bool
-	var skipBrowser bool
-	var forceBuild bool
-	flag.StringVar(&uiMode, "ui", "web", "UI mode: web or tui")
-	flag.StringVar(&httpAddr, "http", "127.0.0.1:34115", "HTTP listen address, for example 127.0.0.1:34115")
-	flag.StringVar(&staticDir, "static", "frontend/dist", "directory containing the built frontend assets")
-	flag.BoolVar(&start, "start", false, "install/build frontend assets before starting web mode and open the browser")
-	flag.BoolVar(&skipBrowser, "skip-browser", false, "with -start, do not open the browser")
-	flag.BoolVar(&forceBuild, "force-build", false, "with -start, rebuild the frontend even when built assets look current")
+	config := parseRuntimeConfig(os.Args[1:])
+	service := newStartedApp()
+	runConfiguredUI(config, service)
+}
+
+func runCLICommand(args []string) (int, bool) {
+	if len(args) == 0 || !cli.IsCommand(args[0]) {
+		return 0, false
+	}
+	return cli.Run(args, os.Stdout, os.Stderr), true
+}
+
+func parseRuntimeConfig(args []string) runtimeConfig {
+	config := runtimeConfig{
+		uiMode:    "web",
+		httpAddr:  "127.0.0.1:34115",
+		staticDir: "frontend/dist",
+	}
+	flag.StringVar(&config.uiMode, "ui", config.uiMode, "UI mode: web or tui")
+	flag.StringVar(&config.httpAddr, "http", config.httpAddr, "HTTP listen address, for example 127.0.0.1:34115")
+	flag.StringVar(&config.staticDir, "static", config.staticDir, "directory containing the built frontend assets")
+	flag.BoolVar(&config.start, "start", false, "install/build frontend assets before starting web mode and open the browser")
+	flag.BoolVar(&config.skipBrowser, "skip-browser", false, "with -start, do not open the browser")
+	flag.BoolVar(&config.forceBuild, "force-build", false, "with -start, rebuild the frontend even when built assets look current")
 	flag.Usage = func() {
 		cli.PrintUsage(os.Stderr)
 		fmt.Fprintln(os.Stderr, "\nFlags:")
 		flag.PrintDefaults()
 	}
-	flag.CommandLine.Parse(normalizeCommandArgs(os.Args[1:]))
+	flag.CommandLine.Parse(normalizeCommandArgs(args))
 	if flag.NArg() > 0 {
 		fmt.Fprintf(os.Stderr, "unknown command or argument %q\n\n", flag.Arg(0))
 		cli.PrintUsage(os.Stderr)
 		os.Exit(cli.ExitUsage)
 	}
 
-	uiMode = strings.ToLower(strings.TrimSpace(uiMode))
-	if uiMode == "" {
-		uiMode = "web"
+	config.uiMode = strings.ToLower(strings.TrimSpace(config.uiMode))
+	if config.uiMode == "" {
+		config.uiMode = "web"
 	}
-
-	if strings.HasPrefix(httpAddr, ":") {
-		httpAddr = "127.0.0.1" + httpAddr
+	if strings.HasPrefix(config.httpAddr, ":") {
+		config.httpAddr = "127.0.0.1" + config.httpAddr
 	}
-
-	if (skipBrowser || forceBuild) && !start {
+	if (config.skipBrowser || config.forceBuild) && !config.start {
 		log.Fatal("-skip-browser and -force-build require -start")
 	}
-	if start {
-		if uiMode != "web" {
+	if config.start {
+		if config.uiMode != "web" {
 			log.Fatal("-start can only be used with -ui web")
 		}
-		preparedStaticDir, err := startup.PrepareWebAssets(staticDir, forceBuild)
+		preparedStaticDir, err := startup.PrepareWebAssets(config.staticDir, config.forceBuild)
 		if err != nil {
 			log.Fatalf("prepare frontend: %v", err)
 		}
-		staticDir = preparedStaticDir
+		config.staticDir = preparedStaticDir
 	}
+	return config
+}
 
+func newStartedApp() *app.App {
 	service, err := app.New()
 	if err != nil {
 		log.Fatalf("create app: %v", err)
 	}
-
 	if err := service.Startup(context.Background()); err != nil {
 		log.Fatalf("startup: %v", err)
 	}
+	return service
+}
 
-	switch uiMode {
+func runConfiguredUI(config runtimeConfig, service *app.App) {
+	switch config.uiMode {
 	case "web":
-		if start && !skipBrowser {
-			startup.OpenBrowserAfterDelay("http://"+httpAddr, 2*time.Second)
+		if config.start && !config.skipBrowser {
+			startup.OpenBrowserAfterDelay("http://"+config.httpAddr, 2*time.Second)
 		}
-		startWeb(service, httpAddr, staticDir)
+		startWeb(service, config.httpAddr, config.staticDir)
 	case "tui":
 		if err := tui.Run(context.Background(), service); err != nil {
 			log.Fatalf("tui: %v", err)
 		}
 	default:
-		log.Fatalf("unknown -ui mode %q; expected web or tui", uiMode)
+		log.Fatalf("unknown -ui mode %q; expected web or tui", config.uiMode)
 	}
 }
 

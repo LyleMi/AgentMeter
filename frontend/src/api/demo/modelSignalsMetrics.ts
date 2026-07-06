@@ -325,45 +325,101 @@ export function syntheticBaselineFor(current: ModelSignalMetricSet, key: string)
 }
 
 export function combineMetricSets(items: ModelSignalMetricSet[]): ModelSignalMetricSet {
-  const sessionCount = items.reduce((total, item) => total + item.sessionCount, 0)
-  const modelCalls = items.reduce((total, item) => total + item.modelCalls, 0)
-  const allPriced = items.every((item) => item.estimatedCostUsd !== undefined)
-  const allSavingsPriced = items.every((item) => item.cacheSavingsUsd !== undefined)
-  const latencySamples = items.flatMap((item) => [
-    item.p50ModelLatencyMsPer1kOutputTokens,
-    item.p90ModelLatencyMsPer1kOutputTokens,
-    item.modelLatencyMsPer1kOutputTokens
-  ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value)))
-  const throughputSamples = items.flatMap((item) => [
-    item.p10ModelThroughputTokensPerSecond,
-    item.p50ModelThroughputTokensPerSecond,
-    item.modelThroughputTokensPerSecond
-  ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value)))
-  const toolDependencyRate = safeRate(
+  return metricSetFromTotals(combinedMetricTotals(items))
+}
+
+type SummableMetricKey = keyof Pick<
+  ModelSignalMetricSet,
+  | 'sessionCount'
+  | 'modelCalls'
+  | 'failedModelCalls'
+  | 'toolCalls'
+  | 'failedToolCalls'
+  | 'totalTokens'
+  | 'inputTokens'
+  | 'cachedInputTokens'
+  | 'outputTokens'
+  | 'reasoningOutputTokens'
+  | 'modelDurationMs'
+  | 'toolDurationMs'
+  | 'idleDurationMs'
+  | 'unpricedSessionCount'
+>
+
+type OptionalPricedMetricKey = keyof Pick<ModelSignalMetricSet, 'estimatedCostUsd' | 'cacheSavingsUsd'>
+
+function combinedMetricTotals(items: ModelSignalMetricSet[]): MetricTotals {
+  const sessionCount = sumMetric(items, 'sessionCount')
+  return {
+    sessionCount,
+    modelCalls: sumMetric(items, 'modelCalls'),
+    failedModelCalls: sumMetric(items, 'failedModelCalls'),
+    toolCalls: sumMetric(items, 'toolCalls'),
+    failedToolCalls: sumMetric(items, 'failedToolCalls'),
+    totalTokens: sumMetric(items, 'totalTokens'),
+    inputTokens: sumMetric(items, 'inputTokens'),
+    cachedInputTokens: sumMetric(items, 'cachedInputTokens'),
+    outputTokens: sumMetric(items, 'outputTokens'),
+    reasoningOutputTokens: sumMetric(items, 'reasoningOutputTokens'),
+    modelDurationMs: sumMetric(items, 'modelDurationMs'),
+    wallDurationMs: sumMetricWithFallback(items, 'wallDurationMs', 'modelDurationMs'),
+    activeDurationMs: sumMetricWithFallback(items, 'activeDurationMs', 'modelDurationMs'),
+    toolDurationMs: sumMetric(items, 'toolDurationMs'),
+    idleDurationMs: sumMetric(items, 'idleDurationMs'),
+    estimatedCostUsd: pricedMetricSum(items, 'estimatedCostUsd'),
+    unpricedSessionCount: sumMetric(items, 'unpricedSessionCount'),
+    cacheSavingsUsd: pricedMetricSum(items, 'cacheSavingsUsd'),
+    latencySamples: finiteMetricSamples(items, [
+      'p50ModelLatencyMsPer1kOutputTokens',
+      'p90ModelLatencyMsPer1kOutputTokens',
+      'modelLatencyMsPer1kOutputTokens'
+    ]),
+    throughputSamples: finiteMetricSamples(items, [
+      'p10ModelThroughputTokensPerSecond',
+      'p50ModelThroughputTokensPerSecond',
+      'modelThroughputTokensPerSecond'
+    ]),
+    toolDependencyRate: weightedToolDependencyRate(items, sessionCount)
+  }
+}
+
+function sumMetric(items: ModelSignalMetricSet[], key: SummableMetricKey): number {
+  return items.reduce((total, item) => total + (item[key] || 0), 0)
+}
+
+function sumMetricWithFallback(
+  items: ModelSignalMetricSet[],
+  key: keyof Pick<ModelSignalMetricSet, 'wallDurationMs' | 'activeDurationMs'>,
+  fallbackKey: keyof Pick<ModelSignalMetricSet, 'modelDurationMs'>
+): number {
+  return items.reduce((total, item) => total + (item[key] || item[fallbackKey]), 0)
+}
+
+function pricedMetricSum(items: ModelSignalMetricSet[], key: OptionalPricedMetricKey): number | undefined {
+  if (items.some((item) => item[key] === undefined)) return undefined
+  return Number(items.reduce((total, item) => total + (item[key] || 0), 0).toFixed(4))
+}
+
+function finiteMetricSamples(
+  items: ModelSignalMetricSet[],
+  keys: Array<keyof Pick<
+    ModelSignalMetricSet,
+    | 'p50ModelLatencyMsPer1kOutputTokens'
+    | 'p90ModelLatencyMsPer1kOutputTokens'
+    | 'modelLatencyMsPer1kOutputTokens'
+    | 'p10ModelThroughputTokensPerSecond'
+    | 'p50ModelThroughputTokensPerSecond'
+    | 'modelThroughputTokensPerSecond'
+  >>
+): number[] {
+  return items.flatMap((item) => keys
+    .map((key) => item[key])
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value)))
+}
+
+function weightedToolDependencyRate(items: ModelSignalMetricSet[], sessionCount: number): number {
+  return safeRate(
     items.reduce((total, item) => total + item.toolDependencyRate * item.sessionCount, 0),
     sessionCount
   )
-  return metricSetFromTotals({
-    sessionCount,
-    modelCalls,
-    failedModelCalls: items.reduce((total, item) => total + (item.failedModelCalls || 0), 0),
-    toolCalls: items.reduce((total, item) => total + item.toolCalls, 0),
-    failedToolCalls: items.reduce((total, item) => total + item.failedToolCalls, 0),
-    totalTokens: items.reduce((total, item) => total + item.totalTokens, 0),
-    inputTokens: items.reduce((total, item) => total + item.inputTokens, 0),
-    cachedInputTokens: items.reduce((total, item) => total + item.cachedInputTokens, 0),
-    outputTokens: items.reduce((total, item) => total + item.outputTokens, 0),
-    reasoningOutputTokens: items.reduce((total, item) => total + item.reasoningOutputTokens, 0),
-    modelDurationMs: items.reduce((total, item) => total + item.modelDurationMs, 0),
-    wallDurationMs: items.reduce((total, item) => total + (item.wallDurationMs || item.modelDurationMs), 0),
-    activeDurationMs: items.reduce((total, item) => total + (item.activeDurationMs || item.modelDurationMs), 0),
-    toolDurationMs: items.reduce((total, item) => total + (item.toolDurationMs || 0), 0),
-    idleDurationMs: items.reduce((total, item) => total + (item.idleDurationMs || 0), 0),
-    estimatedCostUsd: allPriced ? Number(items.reduce((total, item) => total + (item.estimatedCostUsd || 0), 0).toFixed(4)) : undefined,
-    unpricedSessionCount: items.reduce((total, item) => total + (item.unpricedSessionCount || 0), 0),
-    cacheSavingsUsd: allSavingsPriced ? Number(items.reduce((total, item) => total + (item.cacheSavingsUsd || 0), 0).toFixed(4)) : undefined,
-    latencySamples,
-    throughputSamples,
-    toolDependencyRate
-  })
 }

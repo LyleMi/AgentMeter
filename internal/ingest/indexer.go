@@ -46,6 +46,21 @@ type indexRun struct {
 	existingFiles map[string]existingFile
 }
 
+type sourceFileRecord struct {
+	SourceID   int64
+	Path       string
+	SizeBytes  int64
+	ModifiedAt time.Time
+	Hash       string
+	Status     string
+	Message    string
+}
+
+type skipDecision struct {
+	Skip      bool
+	KnownHash string
+}
+
 func New(conn *sql.DB, dbPath string) *Indexer {
 	return &Indexer{conn: conn, dbPath: dbPath}
 }
@@ -174,35 +189,28 @@ func (r *indexRun) indexFile(ctx context.Context, source model.Source, path stri
 	if err != nil {
 		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
 	}
-	modified := stat.ModTime().UTC()
+	record := sourceFileRecord{
+		SourceID:   source.ID,
+		Path:       path,
+		SizeBytes:  stat.Size(),
+		ModifiedAt: stat.ModTime().UTC(),
+	}
 	existing, hasExisting := r.existingFiles[path]
-	knownHash := ""
-	if hasExisting && existing.SizeBytes == stat.Size() && existing.ModifiedAt.Equal(modified) {
-		knownHash = existing.ContentHash
-	}
-	hasCurrentParser := !hasExisting || existing.ParserVersion >= sourceFileParserVersion
-	if !force && hasCurrentParser && hasExisting && existing.SizeBytes == stat.Size() && existing.HasAuditRun && isCompleteScanStatus(existing.ScanStatus) {
-		if existing.ModifiedAt.Equal(modified) {
-			return 0, 1, 0, 0, nil
-		}
-		hash, err := sessionjsonl.HashFile(path)
-		if err != nil {
-			return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
-		}
-		if existing.ContentHash != "" && existing.ContentHash == hash {
-			if _, err := i.upsertSourceFile(ctx, source.ID, path, stat.Size(), modified, hash, existing.ScanStatus, existing.Message); err != nil {
-				return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
-			}
-			return 0, 1, 0, 0, nil
-		}
-		knownHash = hash
-	}
-
-	sourceFileID, err := i.upsertSourceFile(ctx, source.ID, path, stat.Size(), modified, knownHash, "scanning", "")
+	decision, err := r.skipDecision(ctx, record, existing, hasExisting, force)
 	if err != nil {
 		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
 	}
-	parsed, hash, err := r.parseFile(path, source.ID, sourceFileID, knownHash)
+	if decision.Skip {
+		return 0, 1, 0, 0, nil
+	}
+
+	record.Hash = decision.KnownHash
+	record.Status = "scanning"
+	sourceFileID, err := i.upsertSourceFile(ctx, record)
+	if err != nil {
+		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
+	}
+	parsed, hash, err := r.parseFile(path, source.ID, sourceFileID, decision.KnownHash)
 	if err != nil {
 		if hash == "" {
 			if fallbackHash, hashErr := sessionjsonl.HashFile(path); hashErr == nil {
@@ -226,6 +234,50 @@ func (r *indexRun) indexFile(ctx context.Context, source model.Source, path stri
 		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
 	}
 	return 1, 0, 0, 1, parsed.Warnings
+}
+
+func (r *indexRun) skipDecision(ctx context.Context, record sourceFileRecord, existing existingFile, hasExisting, force bool) (skipDecision, error) {
+	if !hasExisting || force {
+		return skipDecision{}, nil
+	}
+	decision := skipDecision{}
+	if existing.ModifiedAt.Equal(record.ModifiedAt) && existing.SizeBytes == record.SizeBytes {
+		decision.KnownHash = existing.ContentHash
+	}
+	if !fileSizeMatches(record, existing) {
+		return decision, nil
+	}
+	if !canSkipExistingFile(existing) {
+		return decision, nil
+	}
+	if existing.ModifiedAt.Equal(record.ModifiedAt) {
+		decision.Skip = true
+		return decision, nil
+	}
+	hash, err := sessionjsonl.HashFile(record.Path)
+	if err != nil {
+		return skipDecision{}, err
+	}
+	decision.KnownHash = hash
+	if existing.ContentHash == "" || existing.ContentHash != hash {
+		return decision, nil
+	}
+	record.Hash = hash
+	record.Status = existing.ScanStatus
+	record.Message = existing.Message
+	if _, err := r.indexer.upsertSourceFile(ctx, record); err != nil {
+		return skipDecision{}, err
+	}
+	decision.Skip = true
+	return decision, nil
+}
+
+func fileSizeMatches(record sourceFileRecord, existing existingFile) bool {
+	return existing.SizeBytes == record.SizeBytes
+}
+
+func canSkipExistingFile(existing existingFile) bool {
+	return existing.ParserVersion >= sourceFileParserVersion && existing.HasAuditRun && isCompleteScanStatus(existing.ScanStatus)
 }
 
 func (r *indexRun) parseFile(path string, sourceID, sourceFileID int64, knownHash string) (model.ParsedSession, string, error) {
@@ -266,7 +318,7 @@ func (i *Indexer) loadExistingFiles(ctx context.Context, sourceID int64) (map[st
 	return result, rows.Err()
 }
 
-func (i *Indexer) upsertSourceFile(ctx context.Context, sourceID int64, path string, size int64, modified time.Time, hash, status, message string) (int64, error) {
+func (i *Indexer) upsertSourceFile(ctx context.Context, record sourceFileRecord) (int64, error) {
 	now := time.Now().UTC()
 	_, err := i.conn.ExecContext(ctx, `INSERT INTO source_files
 		(source_id, path, size_bytes, modified_at, content_hash, last_scanned_at, scan_status, error)
@@ -279,12 +331,12 @@ func (i *Indexer) upsertSourceFile(ctx context.Context, sourceID int64, path str
 			last_scanned_at = excluded.last_scanned_at,
 			scan_status = excluded.scan_status,
 			error = excluded.error`,
-		sourceID, path, size, db.FormatTime(modified), hash, db.FormatTime(now), status, message)
+		record.SourceID, record.Path, record.SizeBytes, db.FormatTime(record.ModifiedAt), record.Hash, db.FormatTime(now), record.Status, record.Message)
 	if err != nil {
 		return 0, err
 	}
 	var id int64
-	err = i.conn.QueryRowContext(ctx, `SELECT id FROM source_files WHERE path = ?`, path).Scan(&id)
+	err = i.conn.QueryRowContext(ctx, `SELECT id FROM source_files WHERE path = ?`, record.Path).Scan(&id)
 	return id, err
 }
 
@@ -318,8 +370,50 @@ func (i *Indexer) deleteSourceFilesForRebuild(ctx context.Context, sourceID int6
 }
 
 func (i *Indexer) replaceParsedSession(ctx context.Context, source model.Source, sourceFileID int64, parsed model.ParsedSession, calculator pricing.Calculator) error {
-	modelCallCosts := make([]*float64, len(parsed.ModelCall))
-	for index, call := range parsed.ModelCall {
+	tx, err := i.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := clearParsedSessionRows(ctx, tx, sourceFileID); err != nil {
+		return err
+	}
+	session, err := insertParsedSession(ctx, tx, sourceFileID, parsed.Session)
+	if err != nil {
+		return err
+	}
+	events, err := insertSessionEvents(ctx, tx, session.ID, sourceFileID, parsed.Events)
+	if err != nil {
+		return err
+	}
+	if err := insertSessionUsage(ctx, tx, session.ID, parsed.Session.Model, parsed.Usage); err != nil {
+		return err
+	}
+	modelCallCosts := calculateModelCallCosts(parsed.ModelCall, calculator)
+	if err := insertModelCalls(ctx, tx, session.ID, parsed.ModelCall, modelCallCosts); err != nil {
+		return err
+	}
+	toolCalls, err := insertToolCalls(ctx, tx, session, parsed.ToolCall, events)
+	if err != nil {
+		return err
+	}
+	auditInput := auditReplacement{
+		Source:       source,
+		SourceFileID: sourceFileID,
+		Session:      session,
+		ToolCalls:    toolCalls,
+		Events:       events.Events,
+	}
+	if err := i.replaceAuditFindings(ctx, tx, auditInput); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func calculateModelCallCosts(calls []model.ModelCall, calculator pricing.Calculator) []*float64 {
+	costs := make([]*float64, len(calls))
+	for index, call := range calls {
 		usage := model.Usage{
 			Model:                    call.Model,
 			InputTokens:              call.InputTokens,
@@ -331,100 +425,111 @@ func (i *Indexer) replaceParsedSession(ctx context.Context, source model.Source,
 			Source:                   "actual",
 		}
 		cost, _ := calculator.Compute(usage)
-		modelCallCosts[index] = cost
+		costs[index] = cost
 	}
+	return costs
+}
 
-	tx, err := i.conn.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
+func clearParsedSessionRows(ctx context.Context, tx *sql.Tx, sourceFileID int64) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM token_usage
 		WHERE owner_kind = 'session'
 		AND owner_id IN (SELECT id FROM sessions WHERE source_file_id = ?)`, sourceFileID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE source_file_id = ?`, sourceFileID); err != nil {
-		return err
-	}
+	_, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE source_file_id = ?`, sourceFileID)
+	return err
+}
 
+func insertParsedSession(ctx context.Context, tx *sql.Tx, sourceFileID int64, session model.Session) (model.Session, error) {
 	res, err := tx.ExecContext(ctx, `INSERT INTO sessions
 		(source_id, source_file_id, session_key, codex_session_id, project_path, model, model_provider, originator, thread_source, agent_nickname, agent_role,
 		 started_at, ended_at, wall_duration_ms, active_duration_ms, model_duration_ms, tool_duration_ms, idle_duration_ms, event_count, parse_status)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		parsed.Session.SourceID,
+		session.SourceID,
 		sourceFileID,
-		parsed.Session.SessionKey,
-		parsed.Session.CodexSessionID,
-		parsed.Session.ProjectPath,
-		parsed.Session.Model,
-		parsed.Session.ModelProvider,
-		parsed.Session.Originator,
-		parsed.Session.ThreadSource,
-		parsed.Session.AgentNickname,
-		parsed.Session.AgentRole,
-		db.FormatTime(parsed.Session.StartedAt),
-		db.FormatTime(parsed.Session.EndedAt),
-		parsed.Session.WallDurationMS,
-		parsed.Session.ActiveDurationMS,
-		parsed.Session.ModelDurationMS,
-		parsed.Session.ToolDurationMS,
-		parsed.Session.IdleDurationMS,
-		parsed.Session.EventCount,
-		parsed.Session.ParseStatus)
+		session.SessionKey,
+		session.CodexSessionID,
+		session.ProjectPath,
+		session.Model,
+		session.ModelProvider,
+		session.Originator,
+		session.ThreadSource,
+		session.AgentNickname,
+		session.AgentRole,
+		db.FormatTime(session.StartedAt),
+		db.FormatTime(session.EndedAt),
+		session.WallDurationMS,
+		session.ActiveDurationMS,
+		session.ModelDurationMS,
+		session.ToolDurationMS,
+		session.IdleDurationMS,
+		session.EventCount,
+		session.ParseStatus)
 	if err != nil {
-		return err
+		return model.Session{}, err
 	}
 	sessionID, err := res.LastInsertId()
 	if err != nil {
-		return err
+		return model.Session{}, err
 	}
-	session := parsed.Session
 	session.ID = sessionID
 	session.SourceFileID = sourceFileID
+	return session, nil
+}
 
+type indexedSessionEvents struct {
+	RawEventIDs  map[int]int64
+	EventsByLine map[int]model.Event
+	Events       []model.Event
+}
+
+func insertSessionEvents(ctx context.Context, tx *sql.Tx, sessionID, sourceFileID int64, events []model.Event) (indexedSessionEvents, error) {
 	insertEvent, err := tx.PrepareContext(ctx, `INSERT INTO events
 		(session_id, source_file_id, source_line, timestamp, kind, raw_type, summary, raw_json)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
-		return err
+		return indexedSessionEvents{}, err
 	}
 	defer insertEvent.Close()
 
-	rawEventIDs := map[int]int64{}
-	eventsByLine := map[int]model.Event{}
-	indexedEvents := make([]model.Event, 0, len(parsed.Events))
-	for _, event := range parsed.Events {
+	indexed := indexedSessionEvents{
+		RawEventIDs:  map[int]int64{},
+		EventsByLine: map[int]model.Event{},
+		Events:       make([]model.Event, 0, len(events)),
+	}
+	for _, event := range events {
 		res, err := insertEvent.ExecContext(ctx,
 			sessionID, sourceFileID, event.SourceLine, db.FormatTime(event.Timestamp), event.Kind, event.RawType, event.Summary, event.RawJSON)
 		if err != nil {
-			return err
+			return indexedSessionEvents{}, err
 		}
 		eventID, _ := res.LastInsertId()
-		rawEventIDs[event.SourceLine] = eventID
+		indexed.RawEventIDs[event.SourceLine] = eventID
 		event.ID = eventID
 		event.SessionID = sessionID
 		event.SourceFileID = sourceFileID
-		eventsByLine[event.SourceLine] = event
-		indexedEvents = append(indexedEvents, event)
+		indexed.EventsByLine[event.SourceLine] = event
+		indexed.Events = append(indexed.Events, event)
 	}
+	return indexed, nil
+}
 
-	if parsed.Usage.Source == "" {
-		parsed.Usage.Source = "unknown"
+func insertSessionUsage(ctx context.Context, tx *sql.Tx, sessionID int64, sessionModel string, usage model.Usage) error {
+	if usage.Source == "" {
+		usage.Source = "unknown"
 	}
-	if parsed.Usage.Model == "" {
-		parsed.Usage.Model = parsed.Session.Model
+	if usage.Model == "" {
+		usage.Model = sessionModel
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO token_usage
+	_, err := tx.ExecContext(ctx, `INSERT INTO token_usage
 		(owner_kind, owner_id, model, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, context_compression_tokens, total_tokens, source)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		"session", sessionID, parsed.Usage.Model, parsed.Usage.InputTokens, parsed.Usage.CachedInputTokens,
-		parsed.Usage.OutputTokens, parsed.Usage.ReasoningOutputTokens, parsed.Usage.ContextCompressionTokens, parsed.Usage.TotalTokens, parsed.Usage.Source)
-	if err != nil {
-		return err
-	}
+		"session", sessionID, usage.Model, usage.InputTokens, usage.CachedInputTokens,
+		usage.OutputTokens, usage.ReasoningOutputTokens, usage.ContextCompressionTokens, usage.TotalTokens, usage.Source)
+	return err
+}
 
+func insertModelCalls(ctx context.Context, tx *sql.Tx, sessionID int64, calls []model.ModelCall, costs []*float64) error {
 	insertModelCall, err := tx.PrepareContext(ctx, `INSERT INTO model_calls
 		(session_id, started_at, ended_at, duration_ms, model, provider, status, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, context_compression_tokens, total_tokens, cost_usd)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -433,70 +538,76 @@ func (i *Indexer) replaceParsedSession(ctx context.Context, source model.Source,
 	}
 	defer insertModelCall.Close()
 
-	for index, call := range parsed.ModelCall {
+	for index, call := range calls {
 		_, err := insertModelCall.ExecContext(ctx,
 			sessionID, db.FormatTime(call.StartedAt), db.FormatTime(call.EndedAt), call.DurationMS, call.Model, call.Provider, call.Status,
-			call.InputTokens, call.CachedInputTokens, call.OutputTokens, call.ReasoningOutputTokens, call.ContextCompressionTokens, call.TotalTokens, nullableFloat(modelCallCosts[index]))
+			call.InputTokens, call.CachedInputTokens, call.OutputTokens, call.ReasoningOutputTokens, call.ContextCompressionTokens, call.TotalTokens, nullableFloat(costs[index]))
 		if err != nil {
 			return err
 		}
 	}
+	return nil
+}
 
+func insertToolCalls(ctx context.Context, tx *sql.Tx, session model.Session, calls []model.ToolCall, events indexedSessionEvents) ([]model.ToolCall, error) {
 	insertToolCall, err := tx.PrepareContext(ctx, `INSERT INTO tool_calls
 		(session_id, started_at, ended_at, duration_ms, tool_name, status, input_summary, output_summary, error, raw_event_id, call_id, raw_start_event_id, raw_end_event_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer insertToolCall.Close()
 
-	indexedToolCalls := make([]model.ToolCall, 0, len(parsed.ToolCall))
-	for _, call := range parsed.ToolCall {
+	indexedToolCalls := make([]model.ToolCall, 0, len(calls))
+	for _, call := range calls {
 		rawStartEventLine := firstNonZero(call.RawStartEventLine, call.RawEventLine)
-		rawStartEventID := rawEventIDs[rawStartEventLine]
-		rawEndEventID := rawEventIDs[call.RawEndEventLine]
+		rawStartEventID := events.RawEventIDs[rawStartEventLine]
+		rawEndEventID := events.RawEventIDs[call.RawEndEventLine]
 		res, err := insertToolCall.ExecContext(ctx,
-			sessionID, db.FormatTime(call.StartedAt), db.FormatTime(call.EndedAt), call.DurationMS,
+			session.ID, db.FormatTime(call.StartedAt), db.FormatTime(call.EndedAt), call.DurationMS,
 			call.ToolName, call.Status, call.InputSummary, call.OutputSummary, call.Error, rawStartEventID, call.CallID, rawStartEventID, rawEndEventID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		toolCallID, _ := res.LastInsertId()
 		call.ID = toolCallID
-		call.SessionID = sessionID
+		call.SessionID = session.ID
 		call.RawEventID = rawStartEventID
 		call.RawStartEventID = rawStartEventID
 		call.RawEndEventID = rawEndEventID
 		call.ProjectPath = session.ProjectPath
-		if startEvent, ok := eventsByLine[rawStartEventLine]; ok {
+		if startEvent, ok := events.EventsByLine[rawStartEventLine]; ok {
 			call.RawStartEventLine = startEvent.SourceLine
 			call.RawStartEventType = startEvent.RawType
 			call.RawStartEventSummary = startEvent.Summary
 			call.RawStartEventJSON = startEvent.RawJSON
 		}
-		if endEvent, ok := eventsByLine[call.RawEndEventLine]; ok {
+		if endEvent, ok := events.EventsByLine[call.RawEndEventLine]; ok {
 			call.RawEndEventType = endEvent.RawType
 			call.RawEndEventSummary = endEvent.Summary
 			call.RawEndEventJSON = endEvent.RawJSON
 		}
 		indexedToolCalls = append(indexedToolCalls, call)
 	}
-
-	if err := i.replaceAuditFindings(ctx, tx, source, sourceFileID, session, indexedToolCalls, indexedEvents); err != nil {
-		return err
-	}
-
-	return tx.Commit()
+	return indexedToolCalls, nil
 }
 
-func (i *Indexer) replaceAuditFindings(ctx context.Context, tx *sql.Tx, source model.Source, sourceFileID int64, session model.Session, toolCalls []model.ToolCall, events []model.Event) error {
-	findings := audit.AuditSession(session, toolCalls, events)
+type auditReplacement struct {
+	Source       model.Source
+	SourceFileID int64
+	Session      model.Session
+	ToolCalls    []model.ToolCall
+	Events       []model.Event
+}
+
+func (i *Indexer) replaceAuditFindings(ctx context.Context, tx *sql.Tx, input auditReplacement) error {
+	findings := audit.AuditSession(input.Session, input.ToolCalls, input.Events)
 	toolRawEvents := map[int64]int64{}
-	for _, call := range toolCalls {
+	for _, call := range input.ToolCalls {
 		toolRawEvents[call.ID] = call.RawStartEventID
 	}
 	eventIDsByLine := map[int]int64{}
-	for _, event := range events {
+	for _, event := range input.Events {
 		eventIDsByLine[event.SourceLine] = event.ID
 	}
 	now := db.FormatTime(time.Now().UTC())
@@ -511,7 +622,7 @@ func (i *Indexer) replaceAuditFindings(ctx context.Context, tx *sql.Tx, source m
 	for _, finding := range findings {
 		timestamp := finding.StartedAt
 		if timestamp.IsZero() {
-			timestamp = session.StartedAt
+			timestamp = input.Session.StartedAt
 		}
 		rawEventID := finding.EventID
 		if rawEventID == 0 && finding.ToolCallID != 0 {
@@ -522,9 +633,9 @@ func (i *Indexer) replaceAuditFindings(ctx context.Context, tx *sql.Tx, source m
 		}
 		description := auditDescription(finding)
 		_, err := insertFinding.ExecContext(ctx,
-			session.ID,
+			input.Session.ID,
 			finding.ToolCallID,
-			sourceFileID,
+			input.SourceFileID,
 			rawEventID,
 			finding.SourceLine,
 			db.FormatTime(timestamp),
@@ -538,7 +649,7 @@ func (i *Indexer) replaceAuditFindings(ctx context.Context, tx *sql.Tx, source m
 			finding.Evidence,
 			finding.Command,
 			string(finding.ShellFamily),
-			inferAuditPlatform(source, session, finding),
+			inferAuditPlatform(input.Source, input.Session, finding),
 			"observed",
 			now)
 		if err != nil {
@@ -554,7 +665,7 @@ func (i *Indexer) replaceAuditFindings(ctx context.Context, tx *sql.Tx, source m
 			status = excluded.status,
 			finding_count = excluded.finding_count,
 			audited_at = excluded.audited_at`,
-		sourceFileID, session.ID, "session_jsonl", "completed", len(findings), now)
+		input.SourceFileID, input.Session.ID, "session_jsonl", "completed", len(findings), now)
 	if err != nil {
 		return err
 	}

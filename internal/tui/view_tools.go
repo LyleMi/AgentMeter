@@ -529,47 +529,65 @@ func nestedShellCommand(tokens []string, flag string) string {
 }
 
 func stripWrapperPrefix(wrapper string, tokens *[]string) {
-	values := *tokens
+	*tokens = wrapperArgs(wrapper, *tokens)
+}
+
+func wrapperArgs(wrapper string, values []string) []string {
 	switch wrapper {
 	case "env":
-		for len(values) > 0 {
-			token := cleanCommandToken(values[0])
-			if strings.HasPrefix(token, "-") || isEnvironmentAssignment(token) {
-				values = values[1:]
-				continue
-			}
+		return stripEnvWrapperArgs(values)
+	case "sudo", "doas":
+		return stripOptionWrapperArgs(values, sudoOptionConsumesValue)
+	case "nice":
+		return stripOptionWrapperArgs(values, niceOptionConsumesValue)
+	default:
+		return stripPlainWrapperArgs(values)
+	}
+}
+
+func stripEnvWrapperArgs(values []string) []string {
+	for len(values) > 0 {
+		token := cleanCommandToken(values[0])
+		if !strings.HasPrefix(token, "-") && !isEnvironmentAssignment(token) {
 			break
 		}
-	case "sudo", "doas":
-		for len(values) > 0 {
-			option := cleanCommandToken(values[0])
-			if !strings.HasPrefix(option, "-") {
-				break
-			}
-			values = values[1:]
-			if option == "-g" || option == "-h" || option == "-p" || option == "-u" || option == "-C" {
-				if len(values) > 0 {
-					values = values[1:]
-				}
-			}
+		values = values[1:]
+	}
+	return values
+}
+
+func stripOptionWrapperArgs(values []string, consumesValue func(string) bool) []string {
+	for len(values) > 0 {
+		option := cleanCommandToken(values[0])
+		if !strings.HasPrefix(option, "-") {
+			break
 		}
-	case "nice":
-		for len(values) > 0 {
-			option := cleanCommandToken(values[0])
-			if !strings.HasPrefix(option, "-") {
-				break
-			}
-			values = values[1:]
-			if option == "-n" && len(values) > 0 {
-				values = values[1:]
-			}
-		}
-	default:
-		for len(values) > 0 && strings.HasPrefix(cleanCommandToken(values[0]), "-") {
+		values = values[1:]
+		if consumesValue(option) && len(values) > 0 {
 			values = values[1:]
 		}
 	}
-	*tokens = values
+	return values
+}
+
+func sudoOptionConsumesValue(option string) bool {
+	switch option {
+	case "-g", "-h", "-p", "-u", "-C":
+		return true
+	default:
+		return false
+	}
+}
+
+func niceOptionConsumesValue(option string) bool {
+	return option == "-n"
+}
+
+func stripPlainWrapperArgs(values []string) []string {
+	for len(values) > 0 && strings.HasPrefix(cleanCommandToken(values[0]), "-") {
+		values = values[1:]
+	}
+	return values
 }
 
 func cleanCommandToken(token string) string {

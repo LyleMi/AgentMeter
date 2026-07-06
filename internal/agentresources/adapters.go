@@ -3,13 +3,13 @@ package agentresources
 import (
 	"encoding/json"
 	"errors"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/LyleMi/AgentMeter/internal/jsonc"
 	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
@@ -111,13 +111,20 @@ func sortAgentResources(skills []model.AgentSkillResource, servers []model.Agent
 }
 
 func packageSkills(agent model.AgentResourceAgent, root string) ([]model.AgentSkillResource, []string) {
-	return scanSkillResourceFiles(agent, root, "skill", agent.Name+" skill", agent.Name+" skills", func(entry fs.DirEntry) (bool, bool) {
-		enabled := strings.EqualFold(entry.Name(), "SKILL.md")
-		if !enabled && !strings.EqualFold(entry.Name(), "SKILL.md.disabled") {
-			return false, false
-		}
-		return true, enabled
-	}, nil)
+	return scanSkillResourceFiles(skillResourceScan{
+		Agent:        agent,
+		Root:         root,
+		ResourceType: "skill",
+		InspectLabel: agent.Name + " skill",
+		ScanLabel:    agent.Name + " skills",
+		Match: func(entry fs.DirEntry) (bool, bool) {
+			enabled := strings.EqualFold(entry.Name(), "SKILL.md")
+			if !enabled && !strings.EqualFold(entry.Name(), "SKILL.md.disabled") {
+				return false, false
+			}
+			return true, enabled
+		},
+	})
 }
 
 func skillResourceFromFile(agent model.AgentResourceAgent, root, path, resourceType string, enabled bool) (model.AgentSkillResource, string) {
@@ -154,43 +161,69 @@ func skillResourceFromFile(agent model.AgentResourceAgent, root, path, resourceT
 }
 
 func markdownSkillResources(agent model.AgentResourceAgent, root, resourceType string) ([]model.AgentSkillResource, []string) {
-	return scanSkillResourceFiles(agent, root, resourceType, agent.Name+" "+resourceType, agent.Name+" "+resourceType+" resources", func(entry fs.DirEntry) (bool, bool) {
-		if !strings.EqualFold(filepath.Ext(entry.Name()), ".md") {
-			return false, false
-		}
-		return true, true
-	}, func(item *model.AgentSkillResource, path string) {
-		item.Path = path
-		item.RelativePath = relativePath(root, path)
-		item.CanToggle = false
-		item.Status = "configured"
+	return scanSkillResourceFiles(skillResourceScan{
+		Agent:        agent,
+		Root:         root,
+		ResourceType: resourceType,
+		InspectLabel: agent.Name + " " + resourceType,
+		ScanLabel:    agent.Name + " " + resourceType + " resources",
+		Match: func(entry fs.DirEntry) (bool, bool) {
+			if !strings.EqualFold(filepath.Ext(entry.Name()), ".md") {
+				return false, false
+			}
+			return true, true
+		},
+		Update: func(item *model.AgentSkillResource, path string) {
+			item.Path = path
+			item.RelativePath = relativePath(root, path)
+			item.CanToggle = false
+			item.Status = "configured"
+		},
 	})
 }
 
 func cursorRules(agent model.AgentResourceAgent) ([]model.AgentSkillResource, []string) {
 	root := filepath.Join(agent.RootPath, "rules")
-	return scanSkillResourceFiles(agent, root, "rule", "Cursor rule", "Cursor rules", func(entry fs.DirEntry) (bool, bool) {
-		ext := strings.ToLower(filepath.Ext(entry.Name()))
-		if ext != ".md" && ext != ".mdc" {
-			return false, false
-		}
-		return true, true
-	}, func(item *model.AgentSkillResource, path string) {
-		item.CanToggle = false
-		item.Path = path
-		item.RelativePath = relativePath(root, path)
+	return scanSkillResourceFiles(skillResourceScan{
+		Agent:        agent,
+		Root:         root,
+		ResourceType: "rule",
+		InspectLabel: "Cursor rule",
+		ScanLabel:    "Cursor rules",
+		Match: func(entry fs.DirEntry) (bool, bool) {
+			ext := strings.ToLower(filepath.Ext(entry.Name()))
+			if ext != ".md" && ext != ".mdc" {
+				return false, false
+			}
+			return true, true
+		},
+		Update: func(item *model.AgentSkillResource, path string) {
+			item.CanToggle = false
+			item.Path = path
+			item.RelativePath = relativePath(root, path)
+		},
 	})
 }
 
-func scanSkillResourceFiles(agent model.AgentResourceAgent, root, resourceType, inspectLabel, scanLabel string, match func(fs.DirEntry) (bool, bool), update func(*model.AgentSkillResource, string)) ([]model.AgentSkillResource, []string) {
-	if stat, err := os.Stat(root); err != nil || !stat.IsDir() {
+type skillResourceScan struct {
+	Agent        model.AgentResourceAgent
+	Root         string
+	ResourceType string
+	InspectLabel string
+	ScanLabel    string
+	Match        func(fs.DirEntry) (bool, bool)
+	Update       func(*model.AgentSkillResource, string)
+}
+
+func scanSkillResourceFiles(scan skillResourceScan) ([]model.AgentSkillResource, []string) {
+	if stat, err := os.Stat(scan.Root); err != nil || !stat.IsDir() {
 		return []model.AgentSkillResource{}, nil
 	}
 	items := []model.AgentSkillResource{}
 	warnings := []string{}
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+	err := filepath.WalkDir(scan.Root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
-			warnings = append(warnings, "Unable to inspect "+inspectLabel+" path "+path+": "+err.Error())
+			warnings = append(warnings, "Unable to inspect "+scan.InspectLabel+" path "+path+": "+err.Error())
 			return nil
 		}
 		if entry.IsDir() {
@@ -199,23 +232,23 @@ func scanSkillResourceFiles(agent model.AgentResourceAgent, root, resourceType, 
 			}
 			return nil
 		}
-		include, enabled := match(entry)
+		include, enabled := scan.Match(entry)
 		if !include {
 			return nil
 		}
-		item, warning := skillResourceFromFile(agent, root, path, resourceType, enabled)
+		item, warning := skillResourceFromFile(scan.Agent, scan.Root, path, scan.ResourceType, enabled)
 		if warning != "" {
 			warnings = append(warnings, warning)
 			return nil
 		}
-		if update != nil {
-			update(&item, path)
+		if scan.Update != nil {
+			scan.Update(&item, path)
 		}
 		items = append(items, item)
 		return nil
 	})
 	if err != nil {
-		warnings = append(warnings, "Unable to scan "+scanLabel+": "+err.Error())
+		warnings = append(warnings, "Unable to scan "+scan.ScanLabel+": "+err.Error())
 	}
 	return items, warnings
 }
@@ -236,44 +269,56 @@ func appendMarkdownResources(agent model.AgentResourceAgent, specs []markdownRes
 	warnings := []string{}
 	for _, spec := range specs {
 		if spec.RelativePath != "" {
-			path := filepath.Join(spec.Root, filepath.FromSlash(spec.RelativePath))
-			if item, ok, warning := memoryResourceFromFile(agent, spec.Root, path, spec.Kind, spec.CanEdit); warning != "" {
-				warnings = append(warnings, warning)
-			} else if ok {
-				items = append(items, item)
-			}
+			appendMarkdownFileResource(agent, spec, &items, &warnings)
 			continue
 		}
-		if stat, err := os.Stat(spec.Root); err != nil || !stat.IsDir() {
-			continue
-		}
-		err := filepath.WalkDir(spec.Root, func(path string, entry fs.DirEntry, err error) error {
-			if err != nil {
-				warnings = append(warnings, "Unable to inspect "+agent.Name+" markdown path "+path+": "+err.Error())
-				return nil
-			}
-			if entry.IsDir() {
-				if entry.Name() == ".git" {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			ext := strings.ToLower(filepath.Ext(entry.Name()))
-			if ext != ".md" && !(spec.Kind == "rule" && ext == ".mdc") {
-				return nil
-			}
-			if item, ok, warning := memoryResourceFromFile(agent, spec.Root, path, spec.Kind, spec.CanEdit); warning != "" {
-				warnings = append(warnings, warning)
-			} else if ok {
-				items = append(items, item)
-			}
-			return nil
-		})
-		if err != nil {
-			warnings = append(warnings, "Unable to scan "+agent.Name+" markdown resources: "+err.Error())
-		}
+		appendMarkdownDirectoryResources(agent, spec, &items, &warnings)
 	}
 	return items, warnings
+}
+
+func appendMarkdownFileResource(agent model.AgentResourceAgent, spec markdownResourceSpec, items *[]model.AgentMemoryResource, warnings *[]string) {
+	path := filepath.Join(spec.Root, filepath.FromSlash(spec.RelativePath))
+	appendMemoryResource(agent, spec, path, items, warnings)
+}
+
+func appendMarkdownDirectoryResources(agent model.AgentResourceAgent, spec markdownResourceSpec, items *[]model.AgentMemoryResource, warnings *[]string) {
+	if stat, err := os.Stat(spec.Root); err != nil || !stat.IsDir() {
+		return
+	}
+	err := filepath.WalkDir(spec.Root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			*warnings = append(*warnings, "Unable to inspect "+agent.Name+" markdown path "+path+": "+err.Error())
+			return nil
+		}
+		if entry.IsDir() {
+			if entry.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !isMarkdownResourceFile(entry.Name(), spec.Kind) {
+			return nil
+		}
+		appendMemoryResource(agent, spec, path, items, warnings)
+		return nil
+	})
+	if err != nil {
+		*warnings = append(*warnings, "Unable to scan "+agent.Name+" markdown resources: "+err.Error())
+	}
+}
+
+func isMarkdownResourceFile(name, kind string) bool {
+	ext := strings.ToLower(filepath.Ext(name))
+	return ext == ".md" || (kind == "rule" && ext == ".mdc")
+}
+
+func appendMemoryResource(agent model.AgentResourceAgent, spec markdownResourceSpec, path string, items *[]model.AgentMemoryResource, warnings *[]string) {
+	if item, ok, warning := memoryResourceFromFile(agent, spec.Root, path, spec.Kind, spec.CanEdit); warning != "" {
+		*warnings = append(*warnings, warning)
+	} else if ok {
+		*items = append(*items, item)
+	}
 }
 
 func memoryResourceFromFile(agent model.AgentResourceAgent, root, path, kind string, canEdit bool) (model.AgentMemoryResource, bool, string) {
@@ -609,83 +654,7 @@ func writeJSONSettings(path string, root map[string]any) error {
 }
 
 func parseJSONCObject(content []byte) (map[string]any, error) {
-	if strings.TrimSpace(string(content)) == "" {
-		return map[string]any{}, nil
-	}
-	var value any
-	decoder := json.NewDecoder(strings.NewReader(stripJSONComments(string(content))))
-	decoder.UseNumber()
-	if err := decoder.Decode(&value); err != nil {
-		return nil, err
-	}
-	var extra any
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return nil, errors.New("settings file contains trailing JSON data")
-		}
-		return nil, err
-	}
-	root, ok := value.(map[string]any)
-	if !ok {
-		return nil, errors.New("settings file is not a JSON object")
-	}
-	return root, nil
-}
-
-func stripJSONComments(content string) string {
-	var builder strings.Builder
-	inString := false
-	escaped := false
-	for index := 0; index < len(content); index++ {
-		ch := content[index]
-		if escaped {
-			builder.WriteByte(ch)
-			escaped = false
-			continue
-		}
-		if inString {
-			builder.WriteByte(ch)
-			if ch == '\\' {
-				escaped = true
-			} else if ch == '"' {
-				inString = false
-			}
-			continue
-		}
-		if ch == '"' {
-			inString = true
-			builder.WriteByte(ch)
-			continue
-		}
-		if ch == '/' && index+1 < len(content) {
-			next := content[index+1]
-			if next == '/' {
-				index += 2
-				for index < len(content) && content[index] != '\n' && content[index] != '\r' {
-					index++
-				}
-				if index < len(content) {
-					builder.WriteByte(content[index])
-				}
-				continue
-			}
-			if next == '*' {
-				index += 2
-				for index+1 < len(content) && !(content[index] == '*' && content[index+1] == '/') {
-					if content[index] == '\n' || content[index] == '\r' {
-						builder.WriteByte(content[index])
-					}
-					index++
-				}
-				if index+1 < len(content) {
-					index++
-				}
-				continue
-			}
-		}
-		builder.WriteByte(ch)
-	}
-	return builder.String()
+	return jsonc.ParseObject(content)
 }
 
 func stringSetFromAny(value any) map[string]bool {

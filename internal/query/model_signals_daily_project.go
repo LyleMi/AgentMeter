@@ -28,55 +28,19 @@ func buildModelSignalProjectHotspots(aggregates map[string]*modelSignalProjectAg
 }
 
 func buildModelSignalDailyMetrics(metrics []modelSignalSessionMetric) []model.ModelSignalsDailyMetric {
-	metricsByDay := map[string][]modelSignalSessionMetric{}
-	for _, metric := range metrics {
-		if metric.Day == "" {
-			continue
-		}
-		metricsByDay[metric.Day] = append(metricsByDay[metric.Day], metric)
-	}
+	metricsByDay := groupModelSignalMetricsByDay(metrics)
 	if len(metricsByDay) == 0 {
 		return []model.ModelSignalsDailyMetric{}
 	}
 
-	dates := make([]string, 0, len(metricsByDay))
-	for date := range metricsByDay {
-		dates = append(dates, date)
-	}
-	sort.Strings(dates)
-
+	dates := sortedModelSignalMetricDates(metricsByDay)
 	result := make([]model.ModelSignalsDailyMetric, 0, len(dates))
 	for _, date := range dates {
-		var current modelSignalMetricAccumulator
-		for _, metric := range metricsByDay[date] {
-			current.add(metric)
-		}
-
-		var baseline modelSignalMetricAccumulator
-		observedDays := 0
-		day, err := time.Parse(analyticsDateOnlyLayout, date)
-		for offset := 1; err == nil && offset <= 7; offset++ {
-			previous := metricsByDay[day.AddDate(0, 0, -offset).Format(analyticsDateOnlyLayout)]
-			if len(previous) == 0 {
-				continue
-			}
-			for _, metric := range previous {
-				baseline.add(metric)
-			}
-			observedDays++
-		}
-
-		currentSet := current.metricSet()
+		currentSet := accumulatedModelSignalMetrics(metricsByDay[date]).metricSet()
+		baseline, observedDays := modelSignalDailyBaseline(metricsByDay, date)
 		baselineSet := baseline.metricSet()
 		drift := compareModelSignalDrift(currentSet, baselineSet)
-		if observedDays < 7 && drift.Confidence != modelSignalConfidenceLow {
-			drift.Confidence = modelSignalConfidenceLow
-			drift.SampleNote = "insufficient baseline days"
-			drift.Reasons = appendUniqueString(drift.Reasons, drift.SampleNote)
-			if drift.Severity == modelSignalSeverityWarning || drift.Severity == modelSignalSeverityCritical {
-				drift.Severity = modelSignalSeverityUnknown
-			}
-		}
+		markDailyDriftLowConfidence(&drift, observedDays)
 		result = append(result, model.ModelSignalsDailyMetric{
 			Date:                  date,
 			ModelSignalsMetricSet: currentSet,
@@ -87,6 +51,66 @@ func buildModelSignalDailyMetrics(metrics []modelSignalSessionMetric) []model.Mo
 		})
 	}
 	return result
+}
+
+func groupModelSignalMetricsByDay(metrics []modelSignalSessionMetric) map[string][]modelSignalSessionMetric {
+	metricsByDay := map[string][]modelSignalSessionMetric{}
+	for _, metric := range metrics {
+		if metric.Day != "" {
+			metricsByDay[metric.Day] = append(metricsByDay[metric.Day], metric)
+		}
+	}
+	return metricsByDay
+}
+
+func sortedModelSignalMetricDates(metricsByDay map[string][]modelSignalSessionMetric) []string {
+	dates := make([]string, 0, len(metricsByDay))
+	for date := range metricsByDay {
+		dates = append(dates, date)
+	}
+	sort.Strings(dates)
+	return dates
+}
+
+func accumulatedModelSignalMetrics(metrics []modelSignalSessionMetric) modelSignalMetricAccumulator {
+	var accumulator modelSignalMetricAccumulator
+	for _, metric := range metrics {
+		accumulator.add(metric)
+	}
+	return accumulator
+}
+
+func modelSignalDailyBaseline(metricsByDay map[string][]modelSignalSessionMetric, date string) (modelSignalMetricAccumulator, int) {
+	var baseline modelSignalMetricAccumulator
+	day, err := time.Parse(analyticsDateOnlyLayout, date)
+	if err != nil {
+		return baseline, 0
+	}
+
+	observedDays := 0
+	for offset := 1; offset <= 7; offset++ {
+		previous := metricsByDay[day.AddDate(0, 0, -offset).Format(analyticsDateOnlyLayout)]
+		if len(previous) == 0 {
+			continue
+		}
+		for _, metric := range previous {
+			baseline.add(metric)
+		}
+		observedDays++
+	}
+	return baseline, observedDays
+}
+
+func markDailyDriftLowConfidence(drift *model.ModelSignalsDrift, observedDays int) {
+	if observedDays >= 7 || drift.Confidence == modelSignalConfidenceLow {
+		return
+	}
+	drift.Confidence = modelSignalConfidenceLow
+	drift.SampleNote = "insufficient baseline days"
+	drift.Reasons = appendUniqueString(drift.Reasons, drift.SampleNote)
+	if drift.Severity == modelSignalSeverityWarning || drift.Severity == modelSignalSeverityCritical {
+		drift.Severity = modelSignalSeverityUnknown
+	}
 }
 
 func buildModelSignalProjectMetrics(aggregates map[string]*modelSignalProjectAggregate) []model.ModelSignalsProjectMetric {

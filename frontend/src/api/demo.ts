@@ -31,22 +31,40 @@ function replaceAgentResources(next: typeof agentResources) {
 
 function filteredDemoToolCalls(filters: ToolCallFilters = {}) {
   const riskMap = new Map(filteredToolCallRisks(filters).map((risk) => [risk.toolCallId, risk]))
-  const includeRisk = Boolean(filters.includeRisk || filters.shell || filters.riskOnly || filters.sort === 'risk_desc' || filters.sort === 'risk_asc')
-  let calls = filteredToolCalls({
+  const calls = filteredToolCalls(toolCallFiltersWithoutRiskSort(filters))
+  const riskFilteredCalls = filters.riskOnly ? calls.filter((call) => riskMap.has(call.id)) : calls
+  const decoratedCalls = shouldIncludeDemoRisk(filters) ? riskFilteredCalls.map((call) => withDemoRisk(call, riskMap)) : riskFilteredCalls
+  return sortDemoToolCallsByRisk(decoratedCalls, filters.sort)
+}
+
+function toolCallFiltersWithoutRiskSort(filters: ToolCallFilters): ToolCallFilters {
+  return {
     ...filters,
-    sort: filters.sort === 'risk_desc' || filters.sort === 'risk_asc' ? undefined : filters.sort
-  })
-  if (filters.riskOnly) calls = calls.filter((call) => riskMap.has(call.id))
-  if (includeRisk) calls = calls.map((call) => withDemoRisk(call, riskMap))
-  if (filters.sort === 'risk_desc' || filters.sort === 'risk_asc') {
-    calls = [...calls].sort((left, right) => {
-      const direction = filters.sort === 'risk_desc'
-        ? (right.riskScore || 1) - (left.riskScore || 1)
-        : (left.riskScore || 1) - (right.riskScore || 1)
-      return direction || Date.parse(right.startedAt) - Date.parse(left.startedAt) || right.id - left.id
-    })
+    sort: isRiskSort(filters.sort) ? undefined : filters.sort
   }
-  return calls
+}
+
+function shouldIncludeDemoRisk(filters: ToolCallFilters) {
+  return Boolean(filters.includeRisk || filters.shell || filters.riskOnly || isRiskSort(filters.sort))
+}
+
+function isRiskSort(sort?: string) {
+  return sort === 'risk_desc' || sort === 'risk_asc'
+}
+
+function sortDemoToolCallsByRisk(calls: ToolCall[], sort?: string) {
+  if (!isRiskSort(sort)) return calls
+  const ascending = sort === 'risk_asc'
+  return [...calls].sort((left, right) => riskSortDirection(left, right, ascending) || newestToolCallFirst(left, right))
+}
+
+function riskSortDirection(left: ToolCall, right: ToolCall, ascending: boolean) {
+  const delta = (left.riskScore || 1) - (right.riskScore || 1)
+  return ascending ? delta : -delta
+}
+
+function newestToolCallFirst(left: ToolCall, right: ToolCall) {
+  return Date.parse(right.startedAt) - Date.parse(left.startedAt) || right.id - left.id
 }
 
 function withDemoRisk(call: ToolCall, riskMap: Map<number, ReturnType<typeof filteredToolCallRisks>[number]>): ToolCall {

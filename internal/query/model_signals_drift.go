@@ -202,39 +202,8 @@ func (rule modelSignalDriftRule) addTo(drift *model.ModelSignalsDrift, current, 
 func (rule modelSignalDriftRule) metric(current, baseline float64) (model.ModelSignalsDriftMetric, bool) {
 	delta := current - baseline
 	deltaPct := safeDeltaPct(current, baseline)
-	severity := ""
-	switch rule.kind {
-	case modelSignalDriftRelativeIncrease:
-		if baseline <= 0 || current <= baseline {
-			return model.ModelSignalsDriftMetric{}, false
-		}
-		if deltaPct >= rule.criticalThreshold && delta >= rule.minimumThreshold {
-			severity = modelSignalSeverityCritical
-		} else if deltaPct >= rule.warningThreshold && delta >= rule.minimumThreshold {
-			severity = modelSignalSeverityWarning
-		}
-	case modelSignalDriftRelativeDecrease:
-		if baseline <= 0 || current >= baseline {
-			return model.ModelSignalsDriftMetric{}, false
-		}
-		if deltaPct <= -rule.criticalThreshold && -delta >= rule.minimumThreshold {
-			severity = modelSignalSeverityCritical
-		} else if deltaPct <= -rule.warningThreshold && -delta >= rule.minimumThreshold {
-			severity = modelSignalSeverityWarning
-		}
-	case modelSignalDriftAbsoluteIncrease:
-		if current <= baseline || current < rule.minimumThreshold {
-			return model.ModelSignalsDriftMetric{}, false
-		}
-		if delta >= rule.criticalThreshold {
-			severity = modelSignalSeverityCritical
-		} else if delta >= rule.warningThreshold {
-			severity = modelSignalSeverityWarning
-		}
-	default:
-		return model.ModelSignalsDriftMetric{}, false
-	}
-	if severity == "" {
+	severity, ok := rule.severity(current, baseline, delta, deltaPct)
+	if !ok {
 		return model.ModelSignalsDriftMetric{}, false
 	}
 	return model.ModelSignalsDriftMetric{
@@ -247,6 +216,58 @@ func (rule modelSignalDriftRule) metric(current, baseline float64) (model.ModelS
 		Delta:     delta,
 		DeltaPct:  deltaPct,
 	}, true
+}
+
+func (rule modelSignalDriftRule) severity(current, baseline, delta, deltaPct float64) (string, bool) {
+	switch rule.kind {
+	case modelSignalDriftRelativeIncrease:
+		return rule.relativeIncreaseSeverity(current, baseline, delta, deltaPct)
+	case modelSignalDriftRelativeDecrease:
+		return rule.relativeDecreaseSeverity(current, baseline, delta, deltaPct)
+	case modelSignalDriftAbsoluteIncrease:
+		return rule.absoluteIncreaseSeverity(current, baseline, delta)
+	default:
+		return "", false
+	}
+}
+
+func (rule modelSignalDriftRule) relativeIncreaseSeverity(current, baseline, delta, deltaPct float64) (string, bool) {
+	if baseline <= 0 || current <= baseline || delta < rule.minimumThreshold {
+		return "", false
+	}
+	if deltaPct >= rule.criticalThreshold {
+		return modelSignalSeverityCritical, true
+	}
+	if deltaPct >= rule.warningThreshold {
+		return modelSignalSeverityWarning, true
+	}
+	return "", false
+}
+
+func (rule modelSignalDriftRule) relativeDecreaseSeverity(current, baseline, delta, deltaPct float64) (string, bool) {
+	if baseline <= 0 || current >= baseline || -delta < rule.minimumThreshold {
+		return "", false
+	}
+	if deltaPct <= -rule.criticalThreshold {
+		return modelSignalSeverityCritical, true
+	}
+	if deltaPct <= -rule.warningThreshold {
+		return modelSignalSeverityWarning, true
+	}
+	return "", false
+}
+
+func (rule modelSignalDriftRule) absoluteIncreaseSeverity(current, baseline, delta float64) (string, bool) {
+	if current <= baseline || current < rule.minimumThreshold {
+		return "", false
+	}
+	if delta >= rule.criticalThreshold {
+		return modelSignalSeverityCritical, true
+	}
+	if delta >= rule.warningThreshold {
+		return modelSignalSeverityWarning, true
+	}
+	return "", false
 }
 
 func (field modelSignalDriftField) value(item model.ModelSignalsMetricSet) float64 {
