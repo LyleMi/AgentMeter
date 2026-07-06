@@ -56,7 +56,7 @@ export interface MetricDefinition {
   value: (metric?: ModelSignalMetricSet) => number | undefined
 }
 
-export interface MetricGroup {
+interface MetricGroup {
   key: MetricGroupKey
   label: string
 }
