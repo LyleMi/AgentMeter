@@ -91,38 +91,26 @@ inspect directly. AgentMeter turns that data into answers you can use:
 
 ## Quick Start
 
-The easiest path is a packaged build: download the matching
-`AgentMeter-<platform>-<arch>` asset from
-[Releases](https://github.com/LyleMi/AgentMeter/releases), unpack it, and run
-`AgentMeter -start`.
+For most users, start with a packaged build:
 
-Go toolchain install:
+1. Download the matching `AgentMeter-<platform>-<arch>` archive from
+   [Releases](https://github.com/LyleMi/AgentMeter/releases).
+2. Unpack the archive.
+3. Start the local Web app.
 
-```sh
-go install github.com/LyleMi/AgentMeter@latest
-AgentMeter -start
+On Windows:
+
+```powershell
+.\AgentMeter.exe -start
 ```
 
-One-shot run without keeping a binary:
+On macOS or Linux:
 
 ```sh
-go run github.com/LyleMi/AgentMeter@latest start
+./AgentMeter -start
 ```
 
-For Go install/run, make sure your Go binary directory is on `PATH`. Web startup
-uses Node.js and npm the first time it needs to build the bundled frontend
-source. The old `go get` command is not recommended for installing binaries on
-modern Go versions; use `go install ...@latest`.
-
-From a source checkout:
-
-```sh
-go run . -start
-# same as:
-go run . start
-```
-
-Open:
+Open the dashboard if your browser does not open automatically:
 
 ```text
 http://127.0.0.1:34115
@@ -136,32 +124,9 @@ and so on) controls parser behavior and family-level filters. **Update Index**
 scans only new or changed JSONL files; **Rebuild Index** clears indexed files
 for enabled sources and parses them all again.
 
-For manual startup, frontend HMR, TUI mode, data locations, and development
-checks, see [Getting Started](docs/getting-started.md).
-
-Terminal UI shortcut:
-
-```sh
-go run . tui
-# or:
-go run . cli
-```
-
-Privacy config CLI:
-
-```sh
-go run . privacy status
-go run . privacy settings codex
-go run . privacy apply codex
-go run . privacy apply all recommended
-go run . privacy apply gemini strict
-```
-
-`privacy apply <target>` uses the recommended profile by default. Supported
-targets are `codex`, `gemini`, `claude`, and `codebuddy`; existing config files
-are backed up before AgentMeter writes changes. Privacy targets are user-level
-agent configs, not indexed source instances, so a write is not scoped to one
-manual source label.
+For alternate install methods, CLI modes, data locations, and developer
+workflows, see [Install](docs/install.md) and
+[Getting Started](docs/getting-started.md).
 
 ## Privacy Model
 
