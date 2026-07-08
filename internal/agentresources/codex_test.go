@@ -374,6 +374,43 @@ func TestSetSkillEnabledRenamesCodexSkillFile(t *testing.T) {
 	}
 }
 
+func TestSetSkillEnabledRenamesPackageSkillFile(t *testing.T) {
+	dir := t.TempDir()
+	isolateAgentHomes(t, dir)
+	root := filepath.Join(dir, ".gemini")
+	t.Setenv("AGENTMETER_GEMINI_SETTINGS_PATH", filepath.Join(root, "settings.json"))
+	writeFile(t, filepath.Join(root, "skills", "planner", "SKILL.md"), "---\nname: planner\n---\n# Planner\n")
+
+	request := model.AgentResourceToggleRequest{
+		AgentKind:    "gemini",
+		Name:         "planner",
+		RelativePath: "planner",
+		Enabled:      false,
+	}
+	result, err := SetSkillEnabled(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "skills", "planner", "SKILL.md.disabled")); err != nil {
+		t.Fatal(err)
+	}
+	if skill := findAgentSkill(t, result.Overview, "gemini", "planner"); skill.Enabled {
+		t.Fatalf("skill should be disabled: %+v", skill)
+	}
+
+	request.Enabled = true
+	result, err = SetSkillEnabled(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "skills", "planner", "SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
+	if skill := findAgentSkill(t, result.Overview, "gemini", "planner"); !skill.Enabled {
+		t.Fatalf("skill should be enabled: %+v", skill)
+	}
+}
+
 func TestSetSkillEnabledRejectsNonCodexAgentKind(t *testing.T) {
 	dir := t.TempDir()
 	isolateAgentHomes(t, dir)

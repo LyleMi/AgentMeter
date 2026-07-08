@@ -103,45 +103,51 @@ func SetMCPServerEnabled(_ context.Context, request model.AgentResourceToggleReq
 	if name == "" {
 		return model.AgentResourceOperationResult{}, BadRequest("MCP server name is required")
 	}
-	if agent.Kind == "gemini" {
-		if err := setGeminiMCPEnabled(agent, name, request.Enabled); err != nil {
-			return model.AgentResourceOperationResult{}, err
-		}
-		return operationResult(context.Background())
-	}
-	if agent.Kind != codexKind {
-		if err := setJSONMCPEnabled(agent, name, request.Enabled); err != nil {
-			return model.AgentResourceOperationResult{}, err
-		}
-		return operationResult(context.Background())
-	}
-	if err := ensurePathInside(agent.ConfigPath, agent.RootPath); err != nil {
+	if err := setMCPServerEnabledForAgent(agent, name, request.Enabled); err != nil {
 		return model.AgentResourceOperationResult{}, err
+	}
+	return operationResult(context.Background())
+}
+
+func setMCPServerEnabledForAgent(agent model.AgentResourceAgent, name string, enabled bool) error {
+	switch agent.Kind {
+	case "gemini":
+		return setGeminiMCPEnabled(agent, name, enabled)
+	case codexKind:
+		return setCodexMCPEnabled(agent, name, enabled)
+	default:
+		return setJSONMCPEnabled(agent, name, enabled)
+	}
+}
+
+func setCodexMCPEnabled(agent model.AgentResourceAgent, name string, enabled bool) error {
+	if err := ensurePathInside(agent.ConfigPath, agent.RootPath); err != nil {
+		return err
 	}
 	content, err := os.ReadFile(agent.ConfigPath)
 	if err != nil {
-		return model.AgentResourceOperationResult{}, err
+		return err
 	}
 	var root map[string]any
 	if err := toml.Unmarshal(content, &root); err != nil {
-		return model.AgentResourceOperationResult{}, err
+		return err
 	}
 	rawServers, _ := root["mcp_servers"].(map[string]any)
 	raw, ok := rawServers[name]
 	if !ok {
-		return model.AgentResourceOperationResult{}, NotFound("MCP server was not found")
+		return NotFound("MCP server was not found")
 	}
 	if _, ok := raw.(map[string]any); !ok {
-		return model.AgentResourceOperationResult{}, BadRequest("MCP server configuration is not editable")
+		return BadRequest("MCP server configuration is not editable")
 	}
-	updated, err := setMCPEnabledInTOML(content, name, request.Enabled)
+	updated, err := setMCPEnabledInTOML(content, name, enabled)
 	if err != nil {
-		return model.AgentResourceOperationResult{}, err
+		return err
 	}
 	if err := os.WriteFile(agent.ConfigPath, updated, 0o644); err != nil {
-		return model.AgentResourceOperationResult{}, err
+		return err
 	}
-	return operationResult(context.Background())
+	return nil
 }
 
 func MemoryDetail(_ context.Context, agentKind, path, relativePath string) (model.AgentMemoryDetail, error) {
@@ -563,44 +569,7 @@ func relativePathFromRoot(root, path string) string {
 
 func setCodexSkillEnabled(root string, request model.AgentResourceToggleRequest, enabled bool) error {
 	skillsRoot := filepath.Join(root, agentResourceSkills)
-	dir, err := resolvePathInRoot(skillsRoot, request.Path, request.RelativePath)
-	if err != nil {
-		return err
-	}
-	rel := relativePathFromRoot(skillsRoot, dir)
-	if rel == "." || strings.HasPrefix(filepath.ToSlash(rel), ".system/") {
-		return Unsupported("system skills cannot be toggled")
-	}
-	active := filepath.Join(dir, "SKILL.md")
-	disabled := filepath.Join(dir, "SKILL.md.disabled")
-	if err := ensurePathInside(active, skillsRoot); err != nil {
-		return err
-	}
-	if err := ensurePathInside(disabled, skillsRoot); err != nil {
-		return err
-	}
-	if enabled {
-		if _, err := os.Stat(active); err == nil {
-			return nil
-		}
-		if _, err := os.Stat(disabled); err != nil {
-			if os.IsNotExist(err) {
-				return NotFound("disabled skill file was not found")
-			}
-			return err
-		}
-		return os.Rename(disabled, active)
-	}
-	if _, err := os.Stat(disabled); err == nil {
-		return nil
-	}
-	if _, err := os.Stat(active); err != nil {
-		if os.IsNotExist(err) {
-			return NotFound("skill file was not found")
-		}
-		return err
-	}
-	return os.Rename(active, disabled)
+	return setSkillMarkdownEnabled(skillsRoot, request, enabled)
 }
 
 func resolveCodexMemoryPath(root, path, rel string) (string, error) {
