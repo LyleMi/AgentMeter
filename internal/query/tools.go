@@ -43,6 +43,19 @@ func (s *Service) Tools(ctx context.Context, filters model.ToolFilters) ([]model
 }
 
 func (s *Service) ToolCalls(ctx context.Context, filters model.ToolCallFilters) ([]model.ToolCall, error) {
+	where, args := toolCallFilters(filters)
+	limit, offset := clampLimitOffset(filters.Limit, filters.Offset, 500, 1000)
+	args = append(args, limit, offset)
+	orderBy := toolCallOrder(filters.Sort)
+	if toolCallNeedsRisk(filters) {
+		query := toolCallQuery(toolCallWithRiskSelect, where, orderBy)
+		return s.scanToolCallsWithRisk(ctx, query, args...)
+	}
+	query := toolCallQuery(toolCallSelect, where, orderBy)
+	return s.scanToolCalls(ctx, query, args...)
+}
+
+func toolCallFilters(filters model.ToolCallFilters) ([]string, []any) {
 	where := []string{"1 = 1"}
 	args := []any{}
 	if strings.TrimSpace(filters.ToolName) != "" {
@@ -64,9 +77,12 @@ func (s *Service) ToolCalls(ctx context.Context, filters model.ToolCallFilters) 
 	if filters.RiskOnly {
 		where = append(where, "COALESCE(risk.risk_count, 0) > 0")
 	}
-	limit, offset := clampLimitOffset(filters.Limit, filters.Offset, 500, 1000)
+	return where, args
+}
+
+func toolCallOrder(sortValue string) string {
 	orderBy := "tc.started_at DESC, tc.id DESC"
-	switch strings.TrimSpace(filters.Sort) {
+	switch strings.TrimSpace(sortValue) {
 	case "duration_desc":
 		orderBy = "tc.duration_ms DESC, tc.started_at DESC, tc.id DESC"
 	case "duration_asc":
@@ -76,19 +92,18 @@ func (s *Service) ToolCalls(ctx context.Context, filters model.ToolCallFilters) 
 	case "risk_asc":
 		orderBy = "CASE WHEN COALESCE(risk.risk_count, 0) > 0 THEN risk.risk_score ELSE 1 END ASC, tc.started_at DESC, tc.id DESC"
 	}
-	args = append(args, limit, offset)
-	if filters.IncludeRisk || filters.Shell || filters.RiskOnly || strings.HasPrefix(strings.TrimSpace(filters.Sort), "risk_") {
-		query := fmt.Sprintf(`%s
+	return orderBy
+}
+
+func toolCallNeedsRisk(filters model.ToolCallFilters) bool {
+	return filters.IncludeRisk || filters.Shell || filters.RiskOnly || strings.HasPrefix(strings.TrimSpace(filters.Sort), "risk_")
+}
+
+func toolCallQuery(selectClause string, where []string, orderBy string) string {
+	return fmt.Sprintf(`%s
 		WHERE %s
 		ORDER BY %s
-		LIMIT ? OFFSET ?`, toolCallWithRiskSelect, whereClause(where), orderBy)
-		return s.scanToolCallsWithRisk(ctx, query, args...)
-	}
-	query := fmt.Sprintf(`%s
-		WHERE %s
-		ORDER BY %s
-		LIMIT ? OFFSET ?`, toolCallSelect, whereClause(where), orderBy)
-	return s.scanToolCalls(ctx, query, args...)
+		LIMIT ? OFFSET ?`, selectClause, whereClause(where), orderBy)
 }
 
 func (s *Service) ToolCallRisks(ctx context.Context, filters model.ToolCallRiskFilters) ([]model.ToolCallRiskSummary, error) {

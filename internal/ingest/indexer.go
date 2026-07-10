@@ -13,12 +13,10 @@ import (
 	"time"
 
 	"github.com/LyleMi/AgentMeter/internal/agent"
-	"github.com/LyleMi/AgentMeter/internal/audit"
 	"github.com/LyleMi/AgentMeter/internal/db"
 	"github.com/LyleMi/AgentMeter/internal/model"
 	"github.com/LyleMi/AgentMeter/internal/platform"
 	"github.com/LyleMi/AgentMeter/internal/pricing"
-	"github.com/LyleMi/AgentMeter/internal/sessionjsonl"
 	"github.com/LyleMi/AgentMeter/internal/sourcepath"
 )
 
@@ -46,6 +44,12 @@ type indexRun struct {
 	existingFiles map[string]existingFile
 }
 
+type sourceIndex struct {
+	source model.Source
+	files  []string
+	run    indexRun
+}
+
 type sourceFileRecord struct {
 	SourceID   int64
 	Path       string
@@ -54,11 +58,6 @@ type sourceFileRecord struct {
 	Hash       string
 	Status     string
 	Message    string
-}
-
-type skipDecision struct {
-	Skip      bool
-	KnownHash string
 }
 
 func New(conn *sql.DB, dbPath string) *Indexer {
@@ -122,27 +121,56 @@ func (i *Indexer) Index(ctx context.Context, sessionsPath string, rebuild bool) 
 
 func (i *Indexer) IndexSource(ctx context.Context, sessionsPath, label string, rebuild bool) (model.IndexResult, error) {
 	start := time.Now()
-	spec := agent.ResolveSource(sessionsPath)
-	if cleanedLabel := strings.TrimSpace(label); cleanedLabel != "" {
-		spec.Name = cleanedLabel
-	}
+	spec := sourceSpec(sessionsPath, label)
 	result := model.IndexResult{
 		SourcePath:  spec.SessionsPath,
 		SourcePaths: []string{spec.SessionsPath},
 		Database:    i.dbPath,
 		Rebuild:     rebuild,
 	}
-	if spec.SessionsPath == "" {
-		return result, errors.New("source path is empty")
+	if err := validateSourcePath(spec.SessionsPath); err != nil {
+		return result, err
 	}
-	stat, err := os.Stat(spec.SessionsPath)
+	index, err := i.prepareSourceIndex(ctx, spec, rebuild)
 	if err != nil {
 		return result, err
 	}
-	if !stat.IsDir() {
-		return result, fmt.Errorf("%s is not a directory", spec.SessionsPath)
+	result.FilesSeen = len(index.files)
+	for _, path := range index.files {
+		fileResult := index.run.indexFile(ctx, index.source, path, rebuild)
+		result.Indexed += fileResult.Indexed
+		result.Skipped += fileResult.Skipped
+		result.Failed += fileResult.Failed
+		result.Sessions += fileResult.Sessions
+		result.Warnings = append(result.Warnings, fileResult.Warnings...)
 	}
+	result.DurationMS = time.Since(start).Milliseconds()
+	return result, nil
+}
 
+func sourceSpec(sessionsPath, label string) agent.SourceSpec {
+	spec := agent.ResolveSource(sessionsPath)
+	if cleanedLabel := strings.TrimSpace(label); cleanedLabel != "" {
+		spec.Name = cleanedLabel
+	}
+	return spec
+}
+
+func validateSourcePath(path string) error {
+	if path == "" {
+		return errors.New("source path is empty")
+	}
+	stat, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if !stat.IsDir() {
+		return fmt.Errorf("%s is not a directory", path)
+	}
+	return nil
+}
+
+func (i *Indexer) prepareSourceIndex(ctx context.Context, spec agent.SourceSpec, rebuild bool) (sourceIndex, error) {
 	source, err := db.EnsureSource(ctx, i.conn, db.SourceInput{
 		Kind:         spec.Kind,
 		Name:         spec.Name,
@@ -151,17 +179,16 @@ func (i *Indexer) IndexSource(ctx context.Context, sessionsPath, label string, r
 		Platform:     platform.PlatformName(),
 	})
 	if err != nil {
-		return result, err
+		return sourceIndex{}, err
 	}
 	if rebuild {
 		if err := i.deleteSourceFilesForRebuild(ctx, source.ID); err != nil {
-			return result, err
+			return sourceIndex{}, err
 		}
 	}
-
 	files, err := findJSONLFilesForSource(spec)
 	if err != nil {
-		return result, err
+		return sourceIndex{}, err
 	}
 	calculator, err := pricing.LoadCalculator(ctx, i.conn)
 	if err != nil {
@@ -169,133 +196,17 @@ func (i *Indexer) IndexSource(ctx context.Context, sessionsPath, label string, r
 	}
 	existingFiles, err := i.loadExistingFiles(ctx, source.ID)
 	if err != nil {
-		return result, err
+		return sourceIndex{}, err
 	}
-	run := indexRun{
-		indexer:       i,
-		calculator:    calculator,
-		existingFiles: existingFiles,
-	}
-	result.FilesSeen = len(files)
-	for _, path := range files {
-		indexed, skipped, failed, sessions, warnings := run.indexFile(ctx, source, path, rebuild)
-		result.Indexed += indexed
-		result.Skipped += skipped
-		result.Failed += failed
-		result.Sessions += sessions
-		result.Warnings = append(result.Warnings, warnings...)
-	}
-	result.DurationMS = time.Since(start).Milliseconds()
-	return result, nil
-}
-
-func (r *indexRun) indexFile(ctx context.Context, source model.Source, path string, force bool) (indexed, skipped, failed, sessions int, warnings []string) {
-	i := r.indexer
-	stat, err := os.Stat(path)
-	if err != nil {
-		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
-	}
-	record := sourceFileRecord{
-		SourceID:   source.ID,
-		Path:       path,
-		SizeBytes:  stat.Size(),
-		ModifiedAt: stat.ModTime().UTC(),
-	}
-	existing, hasExisting := r.existingFiles[path]
-	decision, err := r.skipDecision(ctx, record, existing, hasExisting, force)
-	if err != nil {
-		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
-	}
-	if decision.Skip {
-		return 0, 1, 0, 0, nil
-	}
-
-	record.Hash = decision.KnownHash
-	record.Status = "scanning"
-	sourceFileID, err := i.upsertSourceFile(ctx, record)
-	if err != nil {
-		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
-	}
-	parsed, hash, err := r.parseFile(path, source.ID, sourceFileID, decision.KnownHash)
-	if err != nil {
-		if hash == "" {
-			if fallbackHash, hashErr := sessionjsonl.HashFile(path); hashErr == nil {
-				hash = fallbackHash
-			}
-		}
-		_ = i.finishSourceFile(ctx, sourceFileID, hash, "error", err.Error())
-		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
-	}
-	if err := i.replaceParsedSession(ctx, source, sourceFileID, parsed, r.calculator); err != nil {
-		_ = i.finishSourceFile(ctx, sourceFileID, hash, "error", err.Error())
-		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
-	}
-	status := "indexed"
-	message := ""
-	if parsed.Session.ParseStatus == "warning" {
-		status = "warning"
-		message = joinWarnings(parsed.Warnings)
-	}
-	if err := i.finishSourceFile(ctx, sourceFileID, hash, status, message); err != nil {
-		return 0, 0, 1, 0, []string{fmt.Sprintf("%s: %v", path, err)}
-	}
-	return 1, 0, 0, 1, parsed.Warnings
-}
-
-func (r *indexRun) skipDecision(ctx context.Context, record sourceFileRecord, existing existingFile, hasExisting, force bool) (skipDecision, error) {
-	if !hasExisting || force {
-		return skipDecision{}, nil
-	}
-	decision := skipDecision{}
-	if existing.ModifiedAt.Equal(record.ModifiedAt) && existing.SizeBytes == record.SizeBytes {
-		decision.KnownHash = existing.ContentHash
-	}
-	if !fileSizeMatches(record, existing) {
-		return decision, nil
-	}
-	if !canSkipExistingFile(existing) {
-		return decision, nil
-	}
-	if existing.ModifiedAt.Equal(record.ModifiedAt) {
-		decision.Skip = true
-		return decision, nil
-	}
-	hash, err := sessionjsonl.HashFile(record.Path)
-	if err != nil {
-		return skipDecision{}, err
-	}
-	decision.KnownHash = hash
-	if existing.ContentHash == "" || existing.ContentHash != hash {
-		return decision, nil
-	}
-	record.Hash = hash
-	record.Status = existing.ScanStatus
-	record.Message = existing.Message
-	if _, err := r.indexer.upsertSourceFile(ctx, record); err != nil {
-		return skipDecision{}, err
-	}
-	decision.Skip = true
-	return decision, nil
-}
-
-func fileSizeMatches(record sourceFileRecord, existing existingFile) bool {
-	return existing.SizeBytes == record.SizeBytes
-}
-
-func canSkipExistingFile(existing existingFile) bool {
-	return existing.ParserVersion >= sourceFileParserVersion && existing.HasAuditRun && isCompleteScanStatus(existing.ScanStatus)
-}
-
-func (r *indexRun) parseFile(path string, sourceID, sourceFileID int64, knownHash string) (model.ParsedSession, string, error) {
-	if knownHash != "" {
-		parsed, err := sessionjsonl.ParseFile(path, sourceID, sourceFileID)
-		return parsed, knownHash, err
-	}
-	return sessionjsonl.ParseFileWithHash(path, sourceID, sourceFileID)
-}
-
-func isCompleteScanStatus(status string) bool {
-	return status == "indexed" || status == "warning"
+	return sourceIndex{
+		source: source,
+		files:  files,
+		run: indexRun{
+			indexer:       i,
+			calculator:    calculator,
+			existingFiles: existingFiles,
+		},
+	}, nil
 }
 
 func (i *Indexer) loadExistingFiles(ctx context.Context, sourceID int64) (map[string]existingFile, error) {
@@ -375,46 +286,84 @@ func (i *Indexer) deleteSourceFilesForRebuild(ctx context.Context, sourceID int6
 	return tx.Commit()
 }
 
+type parsedSessionWriter struct {
+	indexer      *Indexer
+	ctx          context.Context
+	tx           *sql.Tx
+	source       model.Source
+	sourceFileID int64
+	parsed       model.ParsedSession
+	calculator   pricing.Calculator
+	session      model.Session
+	events       indexedSessionEvents
+	toolCalls    []model.ToolCall
+}
+
 func (i *Indexer) replaceParsedSession(ctx context.Context, source model.Source, sourceFileID int64, parsed model.ParsedSession, calculator pricing.Calculator) error {
 	tx, err := i.conn.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-
-	if err := clearParsedSessionRows(ctx, tx, sourceFileID); err != nil {
+	writer := parsedSessionWriter{
+		indexer:      i,
+		ctx:          ctx,
+		tx:           tx,
+		source:       source,
+		sourceFileID: sourceFileID,
+		parsed:       parsed,
+		calculator:   calculator,
+	}
+	if err := writer.replaceSessionData(); err != nil {
 		return err
 	}
-	session, err := insertParsedSession(ctx, tx, sourceFileID, parsed.Session)
-	if err != nil {
+	if err := writer.replaceCalls(); err != nil {
 		return err
 	}
-	events, err := insertSessionEvents(ctx, tx, session.ID, sourceFileID, parsed.Events)
-	if err != nil {
-		return err
-	}
-	if err := insertSessionUsage(ctx, tx, session.ID, parsed.Session.Model, parsed.Usage); err != nil {
-		return err
-	}
-	modelCallCosts := calculateModelCallCosts(parsed.ModelCall, calculator)
-	if err := insertModelCalls(ctx, tx, session.ID, parsed.ModelCall, modelCallCosts); err != nil {
-		return err
-	}
-	toolCalls, err := insertToolCalls(ctx, tx, session, parsed.ToolCall, events)
-	if err != nil {
-		return err
-	}
-	auditInput := auditReplacement{
-		Source:       source,
-		SourceFileID: sourceFileID,
-		Session:      session,
-		ToolCalls:    toolCalls,
-		Events:       events.Events,
-	}
-	if err := i.replaceAuditFindings(ctx, tx, auditInput); err != nil {
+	if err := writer.replaceAudit(); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+func (w *parsedSessionWriter) replaceSessionData() error {
+	if err := clearParsedSessionRows(w.ctx, w.tx, w.sourceFileID); err != nil {
+		return err
+	}
+	session, err := insertParsedSession(w.ctx, w.tx, w.sourceFileID, w.parsed.Session)
+	if err != nil {
+		return err
+	}
+	w.session = session
+	events, err := insertSessionEvents(w.ctx, w.tx, session.ID, w.sourceFileID, w.parsed.Events)
+	if err != nil {
+		return err
+	}
+	w.events = events
+	return insertSessionUsage(w.ctx, w.tx, session.ID, w.parsed.Session.Model, w.parsed.Usage)
+}
+
+func (w *parsedSessionWriter) replaceCalls() error {
+	modelCallCosts := calculateModelCallCosts(w.parsed.ModelCall, w.calculator)
+	if err := insertModelCalls(w.ctx, w.tx, w.session.ID, w.parsed.ModelCall, modelCallCosts); err != nil {
+		return err
+	}
+	toolCalls, err := insertToolCalls(w.ctx, w.tx, w.session, w.parsed.ToolCall, w.events)
+	if err != nil {
+		return err
+	}
+	w.toolCalls = toolCalls
+	return nil
+}
+
+func (w *parsedSessionWriter) replaceAudit() error {
+	return w.indexer.replaceAuditFindings(w.ctx, w.tx, auditReplacement{
+		Source:       w.source,
+		SourceFileID: w.sourceFileID,
+		Session:      w.session,
+		ToolCalls:    w.toolCalls,
+		Events:       w.events.Events,
+	})
 }
 
 func calculateModelCallCosts(calls []model.ModelCall, calculator pricing.Calculator) []*float64 {
@@ -596,124 +545,6 @@ func insertToolCalls(ctx context.Context, tx *sql.Tx, session model.Session, cal
 		indexedToolCalls = append(indexedToolCalls, call)
 	}
 	return indexedToolCalls, nil
-}
-
-type auditReplacement struct {
-	Source       model.Source
-	SourceFileID int64
-	Session      model.Session
-	ToolCalls    []model.ToolCall
-	Events       []model.Event
-}
-
-func (i *Indexer) replaceAuditFindings(ctx context.Context, tx *sql.Tx, input auditReplacement) error {
-	findings := audit.AuditSession(input.Session, input.ToolCalls, input.Events)
-	toolRawEvents := map[int64]int64{}
-	for _, call := range input.ToolCalls {
-		toolRawEvents[call.ID] = call.RawStartEventID
-	}
-	eventIDsByLine := map[int]int64{}
-	for _, event := range input.Events {
-		eventIDsByLine[event.SourceLine] = event.ID
-	}
-	now := db.FormatTime(time.Now().UTC())
-	insertFinding, err := tx.PrepareContext(ctx, `INSERT INTO audit_findings
-		(session_id, tool_call_id, source_file_id, raw_event_id, source_line, timestamp, source, event_type, category, severity, rule_id, title, description, evidence, command, shell_family, platform, decision, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-	if err != nil {
-		return err
-	}
-	defer insertFinding.Close()
-
-	for _, finding := range findings {
-		timestamp := finding.StartedAt
-		if timestamp.IsZero() {
-			timestamp = input.Session.StartedAt
-		}
-		rawEventID := finding.EventID
-		if rawEventID == 0 && finding.ToolCallID != 0 {
-			rawEventID = toolRawEvents[finding.ToolCallID]
-		}
-		if rawEventID == 0 && finding.SourceLine != 0 {
-			rawEventID = eventIDsByLine[finding.SourceLine]
-		}
-		description := auditDescription(finding)
-		_, err := insertFinding.ExecContext(ctx,
-			input.Session.ID,
-			finding.ToolCallID,
-			input.SourceFileID,
-			rawEventID,
-			finding.SourceLine,
-			db.FormatTime(timestamp),
-			"session_jsonl",
-			firstNonEmptyString(finding.Source, "finding"),
-			firstNonEmptyString(finding.Category, "command"),
-			firstNonEmptyString(finding.Severity, "low"),
-			finding.RuleID,
-			finding.Title,
-			description,
-			finding.Evidence,
-			finding.Command,
-			string(finding.ShellFamily),
-			inferAuditPlatform(input.Source, input.Session, finding),
-			"observed",
-			now)
-		if err != nil {
-			return err
-		}
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO audit_runs
-		(source_file_id, session_id, source, status, finding_count, audited_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT(source_file_id) DO UPDATE SET
-			session_id = excluded.session_id,
-			source = excluded.source,
-			status = excluded.status,
-			finding_count = excluded.finding_count,
-			audited_at = excluded.audited_at`,
-		input.SourceFileID, input.Session.ID, "session_jsonl", "completed", len(findings), now)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func auditDescription(finding audit.Finding) string {
-	var parts []string
-	if finding.ToolName != "" {
-		parts = append(parts, "tool: "+finding.ToolName)
-	}
-	if finding.Field != "" {
-		parts = append(parts, "field: "+finding.Field)
-	}
-	if finding.Source != "" {
-		parts = append(parts, "source: "+finding.Source)
-	}
-	return strings.Join(parts, "; ")
-}
-
-func inferAuditPlatform(source model.Source, session model.Session, finding audit.Finding) string {
-	switch finding.ShellFamily {
-	case audit.ShellPowerShell, audit.ShellCmd:
-		return "windows"
-	case audit.ShellPosix:
-		return "posix"
-	}
-	path := firstNonEmptyString(finding.ProjectPath, session.ProjectPath, source.RootPath, source.SessionsPath)
-	if looksLikeWindowsPath(path) {
-		return "windows"
-	}
-	if strings.HasPrefix(path, "/") {
-		return "posix"
-	}
-	return firstNonEmptyString(source.Platform, platform.PlatformName())
-}
-
-func looksLikeWindowsPath(path string) bool {
-	if len(path) >= 3 && ((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) && path[1] == ':' && (path[2] == '\\' || path[2] == '/') {
-		return true
-	}
-	return strings.HasPrefix(path, `\\`) || strings.Contains(path, `\`)
 }
 
 func findJSONLFiles(root string) ([]string, error) {

@@ -3,7 +3,6 @@ package query
 import (
 	"context"
 	"sort"
-	"time"
 
 	"github.com/LyleMi/AgentMeter/internal/model"
 )
@@ -130,35 +129,9 @@ func cacheTrendLowInputThreshold(daily []model.DailyUsage) int64 {
 }
 
 func fillDailyUsageGaps(daily []model.DailyUsage) []model.DailyUsage {
-	if len(daily) <= 1 {
-		return daily
-	}
-	sorted := append([]model.DailyUsage(nil), daily...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Date < sorted[j].Date })
-	start, err := time.Parse(analyticsDateOnlyLayout, sorted[0].Date)
-	if err != nil {
-		return sorted
-	}
-	end, err := time.Parse(analyticsDateOnlyLayout, sorted[len(sorted)-1].Date)
-	if err != nil || end.Before(start) {
-		return sorted
-	}
-	spanDays := int(end.Sub(start).Hours()/24) + 1
-	if spanDays <= len(sorted) || spanDays > 62 {
-		return sorted
-	}
-	byDate := make(map[string]model.DailyUsage, len(sorted))
-	for _, item := range sorted {
-		byDate[item.Date] = item
-	}
-	filled := make([]model.DailyUsage, 0, spanDays)
-	for day := start; !day.After(end); day = day.AddDate(0, 0, 1) {
-		date := day.Format(analyticsDateOnlyLayout)
-		if item, ok := byDate[date]; ok {
-			filled = append(filled, item)
-		} else {
-			filled = append(filled, model.DailyUsage{Date: date})
-		}
-	}
-	return filled
+	return fillAnalyticsDateGaps(
+		daily,
+		func(item model.DailyUsage) string { return item.Date },
+		func(date string) model.DailyUsage { return model.DailyUsage{Date: date} },
+	)
 }

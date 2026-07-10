@@ -205,54 +205,6 @@ func cursorRules(agent model.AgentResourceAgent) ([]model.AgentSkillResource, []
 	})
 }
 
-type skillResourceScan struct {
-	Agent        model.AgentResourceAgent
-	Root         string
-	ResourceType string
-	InspectLabel string
-	ScanLabel    string
-	Match        func(fs.DirEntry) (bool, bool)
-	Update       func(*model.AgentSkillResource, string)
-}
-
-func scanSkillResourceFiles(scan skillResourceScan) ([]model.AgentSkillResource, []string) {
-	if stat, err := os.Stat(scan.Root); err != nil || !stat.IsDir() {
-		return []model.AgentSkillResource{}, nil
-	}
-	items := []model.AgentSkillResource{}
-	warnings := []string{}
-	err := filepath.WalkDir(scan.Root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			warnings = append(warnings, "Unable to inspect "+scan.InspectLabel+" path "+path+": "+err.Error())
-			return nil
-		}
-		if entry.IsDir() {
-			if entry.Name() == ".git" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		include, enabled := scan.Match(entry)
-		if !include {
-			return nil
-		}
-		item, warning := skillResourceFromFile(scan.Agent, scan.Root, path, scan.ResourceType, enabled)
-		if warning != "" {
-			warnings = append(warnings, warning)
-			return nil
-		}
-		if scan.Update != nil {
-			scan.Update(&item, path)
-		}
-		items = append(items, item)
-		return nil
-	})
-	if err != nil {
-		warnings = append(warnings, "Unable to scan "+scan.ScanLabel+": "+err.Error())
-	}
-	return items, warnings
-}
-
 type markdownResourceSpec struct {
 	Root         string
 	RelativePath string
@@ -353,18 +305,18 @@ func memoryResourceFromFile(agent model.AgentResourceAgent, root, path, kind str
 }
 
 func genericMemoryDetail(agent model.AgentResourceAgent, path, relativePath string) (model.AgentMemoryDetail, error) {
-	memoryPath, root, kind, err := resolveGenericMemoryPath(agent, path, relativePath)
+	location, err := resolveGenericMemoryPath(agent, path, relativePath)
 	if err != nil {
 		return model.AgentMemoryDetail{}, err
 	}
-	item, ok, warning := memoryResourceFromFile(agent, root, memoryPath, kind, true)
+	item, ok, warning := memoryResourceFromFile(agent, location.root, location.path, location.kind, true)
 	if warning != "" {
 		return model.AgentMemoryDetail{}, errors.New(warning)
 	}
 	if !ok {
 		return model.AgentMemoryDetail{}, NotFound("memory file was not found")
 	}
-	content, err := os.ReadFile(memoryPath)
+	content, err := os.ReadFile(location.path)
 	if err != nil {
 		return model.AgentMemoryDetail{}, err
 	}
@@ -372,61 +324,84 @@ func genericMemoryDetail(agent model.AgentResourceAgent, path, relativePath stri
 }
 
 func updateGenericMemory(agent model.AgentResourceAgent, request model.AgentMemoryUpdateRequest) (model.AgentMemoryDetail, error) {
-	memoryPath, _, _, err := resolveGenericMemoryPath(agent, request.Path, request.RelativePath)
+	location, err := resolveGenericMemoryPath(agent, request.Path, request.RelativePath)
 	if err != nil {
 		return model.AgentMemoryDetail{}, err
 	}
-	if !strings.EqualFold(filepath.Ext(memoryPath), ".md") && !strings.EqualFold(filepath.Ext(memoryPath), ".mdc") {
+	if !strings.EqualFold(filepath.Ext(location.path), ".md") && !strings.EqualFold(filepath.Ext(location.path), ".mdc") {
 		return model.AgentMemoryDetail{}, BadRequest("memory path must be a markdown file")
 	}
-	if err := os.MkdirAll(filepath.Dir(memoryPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(location.path), 0o755); err != nil {
 		return model.AgentMemoryDetail{}, err
 	}
-	if err := os.WriteFile(memoryPath, []byte(request.Content), 0o644); err != nil {
+	if err := os.WriteFile(location.path, []byte(request.Content), 0o644); err != nil {
 		return model.AgentMemoryDetail{}, err
 	}
-	return genericMemoryDetail(agent, memoryPath, "")
+	return genericMemoryDetail(agent, location.path, "")
 }
 
-func resolveGenericMemoryPath(agent model.AgentResourceAgent, path, rel string) (string, string, string, error) {
+type genericMemoryLocation struct {
+	path string
+	root string
+	kind string
+}
+
+type genericMemoryRules struct {
+	primary     string
+	directories map[string]string
+}
+
+var genericMemoryRulesByAgent = map[string]genericMemoryRules{
+	"gemini":    {primary: "GEMINI.md"},
+	"claude":    {primary: "CLAUDE.md", directories: map[string]string{"commands": "command", "agents": "subagent"}},
+	"codebuddy": {primary: "CODEBUDDY.md", directories: map[string]string{"commands": "command", "agents": "subagent"}},
+	"workbuddy": {primary: "WORKBUDDY.md", directories: map[string]string{"commands": "command", "agents": "subagent"}},
+}
+
+func resolveGenericMemoryPath(agent model.AgentResourceAgent, path, rel string) (genericMemoryLocation, error) {
 	candidate, err := resolvePathInRoot(agent.RootPath, path, rel)
 	if err != nil {
-		return "", "", "", err
+		return genericMemoryLocation{}, err
 	}
 	relRoot := filepath.ToSlash(relativePath(agent.RootPath, candidate))
 	if relRoot == "." || strings.HasPrefix(relRoot, "../") || filepath.IsAbs(relRoot) {
-		return "", "", "", BadRequest("path is outside the known agent resource root")
+		return genericMemoryLocation{}, BadRequest("path is outside the known agent resource root")
 	}
-	switch agent.Kind {
-	case "gemini":
-		if relRoot == "GEMINI.md" {
-			return candidate, agent.RootPath, "primary", nil
-		}
-	case "claude":
-		return resolveMarkdownKind(agent, candidate, relRoot, "CLAUDE.md")
-	case "codebuddy":
-		return resolveMarkdownKind(agent, candidate, relRoot, "CODEBUDDY.md")
-	case "workbuddy":
-		return resolveMarkdownKind(agent, candidate, relRoot, "WORKBUDDY.md")
-	case "cursor":
-		if strings.HasPrefix(relRoot, "rules/") && (strings.EqualFold(filepath.Ext(candidate), ".md") || strings.EqualFold(filepath.Ext(candidate), ".mdc")) {
-			return candidate, filepath.Join(agent.RootPath, "rules"), "rule", nil
-		}
+	if agent.Kind == "cursor" {
+		return resolveCursorMemoryLocation(agent, candidate, relRoot)
 	}
-	return "", "", "", BadRequest("memory path is not a supported " + agent.Name + " markdown resource")
+	rules, ok := genericMemoryRulesByAgent[agent.Kind]
+	if !ok {
+		return genericMemoryLocation{}, unsupportedMemoryPath(agent)
+	}
+	return resolveMarkdownLocation(agent, candidate, relRoot, rules)
 }
 
-func resolveMarkdownKind(agent model.AgentResourceAgent, candidate, relRoot, primaryName string) (string, string, string, error) {
-	if relRoot == primaryName {
-		return candidate, agent.RootPath, "primary", nil
+func resolveMarkdownLocation(agent model.AgentResourceAgent, candidate, relRoot string, rules genericMemoryRules) (genericMemoryLocation, error) {
+	if relRoot == rules.primary {
+		return genericMemoryLocation{path: candidate, root: agent.RootPath, kind: "primary"}, nil
 	}
-	if strings.HasPrefix(relRoot, "commands/") && strings.EqualFold(filepath.Ext(candidate), ".md") {
-		return candidate, filepath.Join(agent.RootPath, "commands"), "command", nil
+	if !strings.EqualFold(filepath.Ext(candidate), ".md") {
+		return genericMemoryLocation{}, unsupportedMemoryPath(agent)
 	}
-	if strings.HasPrefix(relRoot, "agents/") && strings.EqualFold(filepath.Ext(candidate), ".md") {
-		return candidate, filepath.Join(agent.RootPath, "agents"), "subagent", nil
+	for directory, kind := range rules.directories {
+		if strings.HasPrefix(relRoot, directory+"/") {
+			return genericMemoryLocation{path: candidate, root: filepath.Join(agent.RootPath, directory), kind: kind}, nil
+		}
 	}
-	return "", "", "", BadRequest("memory path is not a supported " + agent.Name + " markdown resource")
+	return genericMemoryLocation{}, unsupportedMemoryPath(agent)
+}
+
+func resolveCursorMemoryLocation(agent model.AgentResourceAgent, candidate, relRoot string) (genericMemoryLocation, error) {
+	extension := strings.ToLower(filepath.Ext(candidate))
+	if strings.HasPrefix(relRoot, "rules/") && (extension == ".md" || extension == ".mdc") {
+		return genericMemoryLocation{path: candidate, root: filepath.Join(agent.RootPath, "rules"), kind: "rule"}, nil
+	}
+	return genericMemoryLocation{}, unsupportedMemoryPath(agent)
+}
+
+func unsupportedMemoryPath(agent model.AgentResourceAgent) error {
+	return BadRequest("memory path is not a supported " + agent.Name + " markdown resource")
 }
 
 func setPackageSkillEnabled(agent model.AgentResourceAgent, request model.AgentResourceToggleRequest, enabled bool) error {
@@ -517,76 +492,6 @@ func mcpResourcesFromMap(agent model.AgentResourceAgent, rawServers map[string]a
 		})
 	}
 	return servers
-}
-
-func setGeminiMCPEnabled(agent model.AgentResourceAgent, name string, enabled bool) error {
-	if err := ensurePathInside(agent.ConfigPath, agent.RootPath); err != nil {
-		return err
-	}
-	root, exists, err := readJSONSettings(agent.ConfigPath)
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	if !exists {
-		return NotFound("Gemini settings were not found")
-	}
-	servers, _ := root[agentResourceMCPServers].(map[string]any)
-	if _, ok := servers[name]; !ok {
-		return NotFound("MCP server was not found")
-	}
-	mcp, _ := root["mcp"].(map[string]any)
-	if mcp == nil {
-		mcp = map[string]any{}
-		root["mcp"] = mcp
-	}
-	if enabled {
-		mcp["excluded"] = removeStringFromAnyList(mcp["excluded"], name)
-		if _, ok := mcp["allowed"]; ok {
-			mcp["allowed"] = addStringToAnyList(mcp["allowed"], name)
-		}
-	} else {
-		mcp["excluded"] = addStringToAnyList(mcp["excluded"], name)
-	}
-	return writeJSONSettings(agent.ConfigPath, root)
-}
-
-func setJSONMCPEnabled(agent model.AgentResourceAgent, name string, enabled bool) error {
-	configPath := agent.ConfigPath
-	rootForSafety := agent.RootPath
-	if agent.Kind == "claude" {
-		if stat, err := os.Stat(claudeMCPConfigPath()); err == nil && !stat.IsDir() {
-			configPath = claudeMCPConfigPath()
-			rootForSafety = filepath.Dir(configPath)
-		}
-	}
-	if err := ensurePathInside(configPath, rootForSafety); err != nil {
-		return err
-	}
-	root, exists, err := readJSONSettings(configPath)
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	if !exists {
-		return NotFound("MCP config was not found")
-	}
-	servers, _ := root[agentResourceMCPServers].(map[string]any)
-	raw, ok := servers[name]
-	if !ok {
-		return NotFound("MCP server was not found")
-	}
-	table, ok := raw.(map[string]any)
-	if !ok {
-		return BadRequest("MCP server configuration is not editable")
-	}
-	if _, ok := table["enabled"].(bool); ok {
-		table["enabled"] = enabled
-		return writeJSONSettings(configPath, root)
-	}
-	if _, ok := table["disabled"].(bool); ok {
-		table["disabled"] = !enabled
-		return writeJSONSettings(configPath, root)
-	}
-	return Unsupported("MCP server does not expose a supported enable field")
 }
 
 func readJSONSettings(path string) (map[string]any, bool, error) {

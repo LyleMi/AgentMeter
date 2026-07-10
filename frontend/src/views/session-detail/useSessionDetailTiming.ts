@@ -56,6 +56,11 @@ interface TimingRowInput {
   endMs: number
 }
 
+interface RelativeCallBounds {
+  startMs: number | null
+  endMs: number | null
+}
+
 function safeDurationMs(value: number | undefined): number {
   return Number.isFinite(value) ? Math.max(0, value || 0) : 0
 }
@@ -85,35 +90,46 @@ function normalizeCallBounds(
   const declaredDurationMs = safeDurationMs(durationMs)
   const startTimestampMs = safeTimestampMs(startedAt)
   const endTimestampMs = safeTimestampMs(endedAt)
-  let startMs: number | null = null
-  let endMs: number | null = null
-
-  if (sessionStartMs !== null) {
-    if (startTimestampMs !== null) startMs = startTimestampMs - sessionStartMs
-    if (endTimestampMs !== null) endMs = endTimestampMs - sessionStartMs
-  } else if (startTimestampMs !== null && endTimestampMs !== null) {
-    startMs = 0
-    endMs = endTimestampMs - startTimestampMs
-  }
-
-  if (startMs === null && endMs !== null) startMs = endMs - declaredDurationMs
-  if (endMs === null && startMs !== null) endMs = startMs + declaredDurationMs
-  if (startMs === null && endMs === null) {
-    startMs = 0
-    endMs = declaredDurationMs
-  }
-  const resolvedStartMs = startMs ?? 0
-  let resolvedEndMs = endMs ?? resolvedStartMs
-  if (resolvedEndMs < resolvedStartMs) resolvedEndMs = resolvedStartMs
-
-  const boundedStartMs = clamp(resolvedStartMs, 0, totalMs)
-  const boundedEndMs = clamp(Math.max(resolvedEndMs, resolvedStartMs), 0, totalMs)
+  const relative = relativeCallBounds(startTimestampMs, endTimestampMs, sessionStartMs)
+  const resolved = resolveCallBounds(relative, declaredDurationMs)
+  const boundedStartMs = clamp(resolved.startMs, 0, totalMs)
+  const boundedEndMs = clamp(resolved.endMs, 0, totalMs)
   const normalizedEndMs = Math.max(boundedStartMs, boundedEndMs)
   return {
     startMs: boundedStartMs,
     endMs: normalizedEndMs,
     durationMs: normalizedEndMs - boundedStartMs
   }
+}
+
+function relativeCallBounds(startTimestampMs: number | null, endTimestampMs: number | null, sessionStartMs: number | null): RelativeCallBounds {
+  if (sessionStartMs !== null) {
+    return {
+      startMs: startTimestampMs === null ? null : startTimestampMs - sessionStartMs,
+      endMs: endTimestampMs === null ? null : endTimestampMs - sessionStartMs
+    }
+  }
+  if (startTimestampMs !== null && endTimestampMs !== null) {
+    return { startMs: 0, endMs: endTimestampMs - startTimestampMs }
+  }
+  return { startMs: null, endMs: null }
+}
+
+function resolveCallBounds(bounds: RelativeCallBounds, durationMs: number): { startMs: number; endMs: number } {
+  if (bounds.startMs === null && bounds.endMs !== null) {
+    return orderedCallBounds(bounds.endMs - durationMs, bounds.endMs)
+  }
+  if (bounds.startMs !== null && bounds.endMs === null) {
+    return orderedCallBounds(bounds.startMs, bounds.startMs + durationMs)
+  }
+  if (bounds.startMs === null || bounds.endMs === null) {
+    return { startMs: 0, endMs: durationMs }
+  }
+  return orderedCallBounds(bounds.startMs, bounds.endMs)
+}
+
+function orderedCallBounds(startMs: number, endMs: number): { startMs: number; endMs: number } {
+  return { startMs, endMs: Math.max(startMs, endMs) }
 }
 
 function createTimingRow(input: TimingRowInput, totalMs: number): TimingRow {

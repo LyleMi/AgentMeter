@@ -7,6 +7,7 @@ import (
 
 	"github.com/LyleMi/AgentMeter/internal/db"
 	"github.com/LyleMi/AgentMeter/internal/model"
+	"github.com/LyleMi/AgentMeter/internal/pricing"
 )
 
 func sourceInstanceKey(id int64) string {
@@ -43,45 +44,61 @@ func (s *Service) events(ctx context.Context, sessionID int64) ([]model.Event, e
 
 func (s *Service) modelCalls(ctx context.Context, sessionID int64) ([]model.ModelCall, error) {
 	calculator := s.pricingCalculator(ctx)
-	rows, err := s.conn.QueryContext(ctx, `SELECT id, session_id, started_at, ended_at, duration_ms, model, provider, status,
+	return scanQueryRows(ctx, s.conn, `SELECT id, session_id, started_at, ended_at, duration_ms, model, provider, status,
 		input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, context_compression_tokens, total_tokens, cost_usd
-		FROM model_calls WHERE session_id = ? ORDER BY started_at, id`, sessionID)
-	if err != nil {
-		return nil, err
+		FROM model_calls WHERE session_id = ? ORDER BY started_at, id`, func(rows *sql.Rows) (model.ModelCall, error) {
+		return scanPricedModelCall(rows, calculator)
+	}, sessionID)
+}
+
+type storedModelCall struct {
+	item    model.ModelCall
+	started string
+	ended   string
+	cost    sql.NullFloat64
+}
+
+func (scan *storedModelCall) destinations() []any {
+	return []any{
+		&scan.item.ID, &scan.item.SessionID, &scan.started, &scan.ended, &scan.item.DurationMS,
+		&scan.item.Model, &scan.item.Provider, &scan.item.Status, &scan.item.InputTokens,
+		&scan.item.CachedInputTokens, &scan.item.OutputTokens, &scan.item.ReasoningOutputTokens,
+		&scan.item.ContextCompressionTokens, &scan.item.TotalTokens, &scan.cost,
 	}
-	defer rows.Close()
-	var result []model.ModelCall
-	for rows.Next() {
-		var item model.ModelCall
-		var started, ended string
-		var cost sql.NullFloat64
-		if err := rows.Scan(&item.ID, &item.SessionID, &started, &ended, &item.DurationMS, &item.Model, &item.Provider, &item.Status,
-			&item.InputTokens, &item.CachedInputTokens, &item.OutputTokens, &item.ReasoningOutputTokens, &item.ContextCompressionTokens, &item.TotalTokens, &cost); err != nil {
-			return nil, err
-		}
-		item.StartedAt = db.ParseTime(started)
-		item.EndedAt = db.ParseTime(ended)
-		currentCost, unpriced := calculator.Compute(model.Usage{
-			Model:                    item.Model,
-			InputTokens:              item.InputTokens,
-			CachedInputTokens:        item.CachedInputTokens,
-			OutputTokens:             item.OutputTokens,
-			ReasoningOutputTokens:    item.ReasoningOutputTokens,
-			ContextCompressionTokens: item.ContextCompressionTokens,
-			TotalTokens:              item.TotalTokens,
-			Source:                   "model_call",
-		})
-		if currentCost != nil || unpriced {
-			item.CostUSD = currentCost
-			item.Unpriced = unpriced
-		} else if cost.Valid {
-			item.CostUSD = &cost.Float64
-		} else if item.TotalTokens > 0 {
-			item.Unpriced = true
-		}
-		result = append(result, item)
+}
+
+func scanPricedModelCall(rows *sql.Rows, calculator pricing.Calculator) (model.ModelCall, error) {
+	var stored storedModelCall
+	if err := rows.Scan(stored.destinations()...); err != nil {
+		return model.ModelCall{}, err
 	}
-	return result, rows.Err()
+	stored.item.StartedAt = db.ParseTime(stored.started)
+	stored.item.EndedAt = db.ParseTime(stored.ended)
+	applyModelCallCost(&stored.item, stored.cost, calculator)
+	return stored.item, nil
+}
+
+func applyModelCallCost(item *model.ModelCall, storedCost sql.NullFloat64, calculator pricing.Calculator) {
+	currentCost, unpriced := calculator.Compute(model.Usage{
+		Model:                    item.Model,
+		InputTokens:              item.InputTokens,
+		CachedInputTokens:        item.CachedInputTokens,
+		OutputTokens:             item.OutputTokens,
+		ReasoningOutputTokens:    item.ReasoningOutputTokens,
+		ContextCompressionTokens: item.ContextCompressionTokens,
+		TotalTokens:              item.TotalTokens,
+		Source:                   "model_call",
+	})
+	if currentCost != nil || unpriced {
+		item.CostUSD = currentCost
+		item.Unpriced = unpriced
+		return
+	}
+	if storedCost.Valid {
+		item.CostUSD = &storedCost.Float64
+		return
+	}
+	item.Unpriced = item.TotalTokens > 0
 }
 
 func (s *Service) toolCalls(ctx context.Context, sessionID int64) ([]model.ToolCall, error) {

@@ -1,12 +1,50 @@
-﻿package platform
+package platform
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/LyleMi/AgentMeter/internal/sourcepath"
 )
+
+func TestDefaultDatabaseDirByPlatform(t *testing.T) {
+	tests := []struct {
+		name string
+		goos string
+		env  map[string]string
+		want string
+	}{
+		{name: "windows local app data", goos: "windows", env: map[string]string{"LOCALAPPDATA": `C:\\Local`, "APPDATA": `C:\\Roaming`}, want: filepath.Join(`C:\\Local`, "AgentMeter")},
+		{name: "windows roaming fallback", goos: "windows", env: map[string]string{"APPDATA": `C:\\Roaming`}, want: filepath.Join(`C:\\Roaming`, "AgentMeter")},
+		{name: "windows home fallback", goos: "windows", want: filepath.Join("/home/test", ".agentmeter")},
+		{name: "mac application support", goos: "darwin", want: filepath.Join("/home/test", "Library", "Application Support", "AgentMeter")},
+		{name: "linux xdg", goos: "linux", env: map[string]string{"XDG_DATA_HOME": "/data"}, want: filepath.Join("/data", "AgentMeter")},
+		{name: "linux home fallback", goos: "linux", want: filepath.Join("/home/test", ".local", "share", "AgentMeter")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			getenv := func(name string) string { return tt.env[name] }
+			got, err := defaultDatabaseDir(tt.goos, getenv, func() (string, error) { return "/home/test", nil })
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Fatalf("defaultDatabaseDir() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDefaultDatabaseDirReturnsHomeError(t *testing.T) {
+	want := errors.New("home unavailable")
+	_, err := defaultDatabaseDir("darwin", func(string) string { return "" }, func() (string, error) { return "", want })
+	if !errors.Is(err, want) {
+		t.Fatalf("error = %v, want %v", err, want)
+	}
+}
 
 func TestDefaultAgentSourcePathsDiscoversHomeVariantsConservatively(t *testing.T) {
 	dir := t.TempDir()

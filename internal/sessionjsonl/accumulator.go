@@ -112,25 +112,33 @@ func (a *parseAccumulator) handleSessionRecord(raw rawRecord) {
 }
 
 func (a *parseAccumulator) handleRecordIdentity(raw rawRecord) {
-	if id := sessionIDFromRecord(raw); id != "" && a.parsed.Session.SessionKey == "" {
-		a.parsed.Session.SessionKey = id
-	}
-	if cwd := firstNonEmpty(stringFromAny(raw.CWD), stringValue(raw.Metadata, "cwd"), stringValue(mapFromAny(raw.Message), "cwd")); cwd != "" && a.parsed.Session.ProjectPath == "" {
-		a.parsed.Session.ProjectPath = cwd
-	}
-	if agentName := stringValue(raw.ProviderData, "agent"); agentName != "" && a.parsed.Session.AgentNickname == "" {
-		a.parsed.Session.AgentNickname = agentName
-	}
+	setFirstNonEmpty(&a.parsed.Session.SessionKey, sessionIDFromRecord(raw))
+	setFirstNonEmpty(
+		&a.parsed.Session.ProjectPath,
+		stringFromAny(raw.CWD),
+		stringValue(raw.Metadata, "cwd"),
+		stringValue(mapFromAny(raw.Message), "cwd"),
+	)
+	setFirstNonEmpty(&a.parsed.Session.AgentNickname, stringValue(raw.ProviderData, "agent"))
 	if boolValue(raw.ProviderData, "isSubAgent") && a.parsed.Session.AgentRole == "" {
 		a.parsed.Session.AgentRole = "subagent"
 	}
-	if originator := firstNonEmpty(stringValue(raw.Metadata, "originator"), stringValue(raw.Metadata, "source")); originator != "" && a.parsed.Session.Originator == "" {
-		a.parsed.Session.Originator = originator
-	}
+	setFirstNonEmpty(
+		&a.parsed.Session.Originator,
+		stringValue(raw.Metadata, "originator"),
+		stringValue(raw.Metadata, "source"),
+	)
 	if a.provider == "" {
 		a.provider = firstNonEmpty(stringValue(raw.Metadata, "model_provider"), stringValue(raw.Metadata, "provider"))
 		a.parsed.Session.ModelProvider = a.provider
 	}
+}
+
+func setFirstNonEmpty(target *string, values ...string) {
+	if *target != "" {
+		return
+	}
+	*target = firstNonEmpty(values...)
 }
 
 func (a *parseAccumulator) handleRecordModel(raw rawRecord) {
@@ -212,21 +220,8 @@ func (a *parseAccumulator) handleCodexCompacted(raw rawRecord) {
 }
 
 func (a *parseAccumulator) handleTokenCount(raw rawRecord, ts time.Time) {
-	total := readUsage(raw.Payload, "total_token_usage")
-	last := readUsage(raw.Payload, "last_token_usage")
-	eventModel := firstNonEmpty(modelFromPayloadInfo(raw.Payload), a.currentModel, a.parsed.Session.Model)
-	if eventModel != "" {
-		a.currentModel = eventModel
-		a.parsed.Session.Model = firstNonEmpty(a.parsed.Session.Model, eventModel)
-	}
-	callUsage := last
-	if !hasUsage(callUsage) && hasUsage(total) {
-		callUsage = subtractUsage(total, a.previousTotalUsage)
-	}
-	if hasUsage(total) {
-		totalCopy := total
-		a.previousTotalUsage = &totalCopy
-	}
+	eventModel := a.updateTokenCountModel(raw.Payload)
+	callUsage := a.tokenCountUsage(raw.Payload)
 	if a.handlePendingCodexCompaction(callUsage) {
 		a.modelBoundary = ts
 		return
@@ -234,6 +229,32 @@ func (a *parseAccumulator) handleTokenCount(raw rawRecord, ts time.Time) {
 	if !hasUsage(callUsage) {
 		return
 	}
+	a.recordTokenCountCall(callUsage, eventModel, ts)
+}
+
+func (a *parseAccumulator) updateTokenCountModel(payload map[string]any) string {
+	eventModel := firstNonEmpty(modelFromPayloadInfo(payload), a.currentModel, a.parsed.Session.Model)
+	if eventModel != "" {
+		a.currentModel = eventModel
+		a.parsed.Session.Model = firstNonEmpty(a.parsed.Session.Model, eventModel)
+	}
+	return eventModel
+}
+
+func (a *parseAccumulator) tokenCountUsage(payload map[string]any) model.Usage {
+	total := readUsage(payload, "total_token_usage")
+	usage := readUsage(payload, "last_token_usage")
+	if !hasUsage(usage) && hasUsage(total) {
+		usage = subtractUsage(total, a.previousTotalUsage)
+	}
+	if hasUsage(total) {
+		totalCopy := total
+		a.previousTotalUsage = &totalCopy
+	}
+	return usage
+}
+
+func (a *parseAccumulator) recordTokenCountCall(callUsage model.Usage, eventModel string, ts time.Time) {
 	callUsage.Model = firstNonEmpty(eventModel, a.currentModel, a.parsed.Session.Model)
 	callUsage.Source = "actual"
 	addUsage(&a.parsed.Usage, callUsage)
@@ -316,29 +337,14 @@ func (a *parseAccumulator) handlePayloadToolOutput(raw rawRecord, payloadType st
 	if callID == "" {
 		return
 	}
-	call := a.pending[callID]
-	if call.callID == "" {
-		call = pendingTool{
-			callID:       callID,
-			name:         toolName(payloadType, raw.Payload),
-			startedAt:    ts,
-			rawLine:      lineNo,
-			inputSummary: "",
-			status:       "completed",
-		}
-	}
 	status, errText := outputStatus(raw.Payload)
-	toolCall, duration := finishToolCall(call, completedTool{
+	a.completeTool(completedTool{
 		callID:        callID,
 		name:          toolName(payloadType, raw.Payload),
 		status:        status,
 		outputSummary: outputSummary(raw.Payload),
 		error:         errText,
 	}, ts, lineNo)
-	a.toolDurationMS += duration
-	a.parsed.ToolCall = append(a.parsed.ToolCall, toolCall)
-	delete(a.pending, callID)
-	a.modelBoundary = ts
 }
 
 func (a *parseAccumulator) handleRecordToolResult(raw rawRecord, ts time.Time, lineNo int) {
@@ -346,68 +352,76 @@ func (a *parseAccumulator) handleRecordToolResult(raw rawRecord, ts time.Time, l
 	if callID == "" {
 		return
 	}
-	call := a.pending[callID]
-	if call.callID == "" {
-		call = pendingTool{
-			callID:       callID,
-			name:         recordToolName(raw),
-			startedAt:    ts,
-			rawLine:      lineNo,
-			inputSummary: "",
-			status:       "completed",
-		}
-	}
 	status, errText := outputStatusRecord(raw)
-	toolCall, duration := finishToolCall(call, completedTool{
+	a.completeTool(completedTool{
 		callID:        callID,
 		name:          recordToolName(raw),
 		status:        status,
 		outputSummary: outputSummaryRecord(raw),
 		error:         errText,
 	}, ts, lineNo)
-	a.toolDurationMS += duration
-	a.parsed.ToolCall = append(a.parsed.ToolCall, toolCall)
-	delete(a.pending, callID)
-	a.modelBoundary = ts
 }
 
 func (a *parseAccumulator) handleMessage(raw rawRecord, ts time.Time, lineNo int) {
-	message := mapFromAny(raw.Message)
-	if message == nil {
-		message = topLevelMessage(raw)
+	message := messageFromRecord(raw)
+	a.updateMessageModel(message)
+	if isAssistantMessage(raw, message) {
+		a.startMessageTools(message, ts, lineNo)
 	}
-	role := stringValue(message, "role")
+	if !isUserMessage(raw, message) {
+		return
+	}
+	for _, result := range toolResultsFromMessage(message, ts, lineNo) {
+		a.completeTool(result, ts, lineNo)
+	}
+}
+
+func messageFromRecord(raw rawRecord) map[string]any {
+	if message := mapFromAny(raw.Message); message != nil {
+		return message
+	}
+	return topLevelMessage(raw)
+}
+
+func (a *parseAccumulator) updateMessageModel(message map[string]any) {
 	if messageModel := modelFromMap(message); messageModel != "" {
 		a.currentModel = messageModel
 		a.parsed.Session.Model = firstNonEmpty(a.parsed.Session.Model, messageModel)
 	}
-	if role == "assistant" || raw.Type == "assistant" {
-		for _, call := range toolUsesFromMessage(message, ts, lineNo) {
-			if call.callID != "" {
-				a.pending[call.callID] = call
-			}
+}
+
+func isAssistantMessage(raw rawRecord, message map[string]any) bool {
+	return stringValue(message, "role") == "assistant" || raw.Type == "assistant"
+}
+
+func isUserMessage(raw rawRecord, message map[string]any) bool {
+	return stringValue(message, "role") == "user" || raw.Type == "user"
+}
+
+func (a *parseAccumulator) startMessageTools(message map[string]any, ts time.Time, lineNo int) {
+	for _, call := range toolUsesFromMessage(message, ts, lineNo) {
+		if call.callID != "" {
+			a.pending[call.callID] = call
 		}
 	}
-	if role != "user" && raw.Type != "user" {
-		return
-	}
-	for _, result := range toolResultsFromMessage(message, ts, lineNo) {
-		call := a.pending[result.callID]
-		if call.callID == "" {
-			call = pendingTool{
-				callID:    result.callID,
-				name:      result.name,
-				startedAt: ts,
-				rawLine:   lineNo,
-				status:    result.status,
-			}
+}
+
+func (a *parseAccumulator) completeTool(result completedTool, ts time.Time, lineNo int) {
+	call := a.pending[result.callID]
+	if call.callID == "" {
+		call = pendingTool{
+			callID:    result.callID,
+			name:      result.name,
+			startedAt: ts,
+			rawLine:   lineNo,
+			status:    firstNonEmpty(result.status, "completed"),
 		}
-		toolCall, duration := finishToolCall(call, result, ts, lineNo)
-		a.toolDurationMS += duration
-		a.parsed.ToolCall = append(a.parsed.ToolCall, toolCall)
-		delete(a.pending, result.callID)
-		a.modelBoundary = ts
 	}
+	toolCall, duration := finishToolCall(call, result, ts, lineNo)
+	a.toolDurationMS += duration
+	a.parsed.ToolCall = append(a.parsed.ToolCall, toolCall)
+	delete(a.pending, result.callID)
+	a.modelBoundary = ts
 }
 
 func topLevelMessage(raw rawRecord) map[string]any {
@@ -480,6 +494,14 @@ func (a *parseAccumulator) handleHeadlessUsage(raw rawRecord, ts time.Time) {
 }
 
 func (a *parseAccumulator) finalize() model.ParsedSession {
+	a.finalizePendingTools()
+	a.finalizeSessionIdentity()
+	a.finalizeSessionTiming()
+	a.finalizeSessionContents()
+	return a.parsed
+}
+
+func (a *parseAccumulator) finalizePendingTools() {
 	for _, call := range a.pending {
 		a.parsed.ToolCall = append(a.parsed.ToolCall, model.ToolCall{
 			StartedAt:         call.startedAt,
@@ -493,7 +515,9 @@ func (a *parseAccumulator) finalize() model.ParsedSession {
 			RawStartEventLine: call.rawLine,
 		})
 	}
+}
 
+func (a *parseAccumulator) finalizeSessionIdentity() {
 	if a.parsed.Session.SessionKey == "" {
 		a.parsed.Session.SessionKey = strings.TrimSuffix(filepath.Base(a.path), filepath.Ext(a.path))
 		if !a.hasHeadlessUsage && !a.hasSessionMeta {
@@ -512,6 +536,9 @@ func (a *parseAccumulator) finalize() model.ParsedSession {
 	if a.parsed.Session.ModelProvider == "" {
 		a.parsed.Session.ModelProvider = a.provider
 	}
+}
+
+func (a *parseAccumulator) finalizeSessionTiming() {
 	a.parsed.Session.StartedAt = a.firstTime
 	a.parsed.Session.EndedAt = a.lastTime
 	a.parsed.Session.WallDurationMS = durationMS(a.firstTime, a.lastTime)
@@ -522,6 +549,9 @@ func (a *parseAccumulator) finalize() model.ParsedSession {
 	if a.parsed.Session.IdleDurationMS < 0 {
 		a.parsed.Session.IdleDurationMS = 0
 	}
+}
+
+func (a *parseAccumulator) finalizeSessionContents() {
 	a.parsed.Session.EventCount = len(a.parsed.Events)
 	if a.parsed.Usage.Model == "" {
 		a.parsed.Usage.Model = a.parsed.Session.Model
@@ -530,5 +560,4 @@ func (a *parseAccumulator) finalize() model.ParsedSession {
 		a.parsed.Session.ParseStatus = "warning"
 		a.parsed.Warnings = append(a.parsed.Warnings, fmt.Sprintf("%s contains no parseable events", filepath.Base(a.path)))
 	}
-	return a.parsed
 }

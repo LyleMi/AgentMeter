@@ -5,6 +5,49 @@ import (
 	"testing"
 )
 
+func TestNormalizeRuntimeConfig(t *testing.T) {
+	tests := []struct {
+		name string
+		in   runtimeConfig
+		want runtimeConfig
+	}{
+		{name: "empty UI defaults to web", in: runtimeConfig{uiMode: "  ", httpAddr: "127.0.0.1:1"}, want: runtimeConfig{uiMode: "web", httpAddr: "127.0.0.1:1"}},
+		{name: "normalizes UI and local address", in: runtimeConfig{uiMode: " TUI ", httpAddr: ":34115"}, want: runtimeConfig{uiMode: "tui", httpAddr: "127.0.0.1:34115"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeRuntimeConfig(tt.in); !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("normalizeRuntimeConfig() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateRuntimeConfig(t *testing.T) {
+	valid := []runtimeConfig{
+		{uiMode: "web"},
+		{uiMode: "tui"},
+		{uiMode: "web", start: true, skipBrowser: true, forceBuild: true},
+	}
+	for _, config := range valid {
+		if err := validateRuntimeConfig(config); err != nil {
+			t.Errorf("validateRuntimeConfig(%+v) = %v", config, err)
+		}
+	}
+
+	invalid := []runtimeConfig{
+		{uiMode: "web", skipBrowser: true},
+		{uiMode: "web", forceBuild: true},
+		{uiMode: "tui", start: true},
+	}
+	for _, config := range invalid {
+		if err := validateRuntimeConfig(config); err == nil {
+			t.Errorf("validateRuntimeConfig(%+v) unexpectedly succeeded", config)
+		}
+	}
+}
+
 func TestNormalizeCommandArgs(t *testing.T) {
 	tests := []struct {
 		name string

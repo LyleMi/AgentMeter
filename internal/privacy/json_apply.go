@@ -89,59 +89,13 @@ func (a jsonPrivacyAdapter) applyProfile(profile string) (model.PrivacyConfigApp
 }
 
 func (a jsonPrivacyAdapter) buildStatus(file privacyConfigFile) model.PrivacyConfigStatus {
-	root, err := parseJSONSettings(file.content)
-	canApply := true
-	if err != nil {
-		canApply = false
-		file.warnings = append(file.warnings, fmt.Sprintf("%s settings.json could not be parsed: %v", a.agentName, err))
-		root = map[string]any{}
-	}
-
+	root, canApply := parseJSONStatusFile(&file, a.agentName)
 	settings := make([]model.PrivacyConfigSetting, 0, len(a.definitions))
 	summary := model.PrivacyConfigSummary{Total: len(a.definitions)}
 	for _, definition := range a.definitions {
-		current, ok := nestedJSONValue(root, definition.Key)
-		status := statusAttention
-		var currentValue any
-		if ok {
-			currentValue = current
-			if jsonSettingHardened(current, ok, definition) {
-				status = statusHardened
-			}
-		} else if definition.DefaultSafe && canApply {
-			status = statusImplicit
-		}
-
-		switch status {
-		case statusHardened:
-			summary.Hardened++
-		case statusImplicit:
-			summary.Implicit++
-		default:
-			summary.Attention++
-		}
-
-		strict := definition.Desired
-		if definition.MergeArray {
-			strict = jsonSettingAfter(current, ok, definition)
-		}
-		settings = append(settings, model.PrivacyConfigSetting{
-			ID:            definition.ID,
-			Group:         definition.Group,
-			Title:         definition.Title,
-			Description:   definition.Description,
-			Key:           definition.Key,
-			DesiredValue:  definition.Desired,
-			StrictValue:   strict,
-			ProfileValues: privacyProfileValues(definition.Recommended, strict, strict),
-			ValueType:     jsonValueType(definition.Desired),
-			Configured:    ok,
-			SupportsUnset: canApply,
-			CurrentValue:  currentValue,
-			Status:        status,
-			Impact:        definition.Impact,
-			CanApply:      canApply,
-		})
+		setting := buildJSONPrivacySetting(root, definition, canApply)
+		addJSONStatusSummary(&summary, setting.Status)
+		settings = append(settings, setting)
 	}
 	if summary.Total > 0 {
 		summary.Score = ((summary.Hardened + summary.Implicit) * 100) / summary.Total
@@ -155,6 +109,66 @@ func (a jsonPrivacyAdapter) buildStatus(file privacyConfigFile) model.PrivacyCon
 		Summary:    summary,
 		Settings:   settings,
 		Warnings:   file.warnings,
+	}
+}
+
+func parseJSONStatusFile(file *privacyConfigFile, agentName string) (map[string]any, bool) {
+	root, err := parseJSONSettings(file.content)
+	if err == nil {
+		return root, true
+	}
+	file.warnings = append(file.warnings, fmt.Sprintf("%s settings.json could not be parsed: %v", agentName, err))
+	return map[string]any{}, false
+}
+
+func buildJSONPrivacySetting(root map[string]any, definition jsonSettingDefinition, canApply bool) model.PrivacyConfigSetting {
+	current, configured := nestedJSONValue(root, definition.Key)
+	status := jsonPrivacySettingStatus(current, configured, definition, canApply)
+	strict := definition.Desired
+	if definition.MergeArray {
+		strict = jsonSettingAfter(current, configured, definition)
+	}
+	var currentValue any
+	if configured {
+		currentValue = current
+	}
+	return model.PrivacyConfigSetting{
+		ID:            definition.ID,
+		Group:         definition.Group,
+		Title:         definition.Title,
+		Description:   definition.Description,
+		Key:           definition.Key,
+		DesiredValue:  definition.Desired,
+		StrictValue:   strict,
+		ProfileValues: privacyProfileValues(definition.Recommended, strict, strict),
+		ValueType:     jsonValueType(definition.Desired),
+		Configured:    configured,
+		SupportsUnset: canApply,
+		CurrentValue:  currentValue,
+		Status:        status,
+		Impact:        definition.Impact,
+		CanApply:      canApply,
+	}
+}
+
+func jsonPrivacySettingStatus(current any, configured bool, definition jsonSettingDefinition, canApply bool) string {
+	if configured && jsonSettingHardened(current, true, definition) {
+		return statusHardened
+	}
+	if !configured && definition.DefaultSafe && canApply {
+		return statusImplicit
+	}
+	return statusAttention
+}
+
+func addJSONStatusSummary(summary *model.PrivacyConfigSummary, status string) {
+	switch status {
+	case statusHardened:
+		summary.Hardened++
+	case statusImplicit:
+		summary.Implicit++
+	default:
+		summary.Attention++
 	}
 }
 
@@ -578,57 +592,88 @@ func applyJSONEdits(root map[string]any, edits []model.PrivacyConfigEdit, defini
 	definitionsByID := jsonDefinitionsByID(definitions)
 
 	for _, edit := range edits {
-		id := strings.TrimSpace(edit.ID)
-		definition, ok := definitionsByID[id]
+		definition, ok := definitionsByID[strings.TrimSpace(edit.ID)]
 		if !ok {
-			if id != "" {
+			if id := strings.TrimSpace(edit.ID); id != "" {
 				unknown[id] = struct{}{}
 			}
 			continue
 		}
-
-		op := strings.TrimSpace(strings.ToLower(edit.Op))
-		if op != "set" && op != "unset" {
-			return nil, nil, invalidJSONEditOpError(agentName, edit.Op, edit.ID)
+		change, err := applyJSONEdit(root, definition, edit, agentName)
+		if err != nil {
+			return nil, nil, err
 		}
-
-		current, configured := nestedJSONValue(root, definition.Key)
-		var before any
-		if configured {
-			before = current
-		}
-
-		switch op {
-		case "set":
-			value, err := editableJSONValue(definition, edit.Value, agentName)
-			if err != nil {
-				return nil, nil, err
-			}
-			if configured && jsonValuesEqual(current, value) {
-				continue
-			}
-			setNestedJSONValue(root, definition.Key, value)
-			changes = append(changes, model.PrivacyConfigChange{
-				ID:     definition.ID,
-				Key:    definition.Key,
-				Before: before,
-				After:  cloneJSONValue(value),
-			})
-		case "unset":
-			if !configured {
-				continue
-			}
-			unsetNestedJSONValue(root, definition.Key)
-			changes = append(changes, model.PrivacyConfigChange{
-				ID:     definition.ID,
-				Key:    definition.Key,
-				Before: before,
-				After:  nil,
-			})
+		if change != nil {
+			changes = append(changes, *change)
 		}
 	}
 
 	return changes, unknownJSONSettingWarnings(unknown, agentName), nil
+}
+
+func applyJSONEdit(root map[string]any, definition jsonSettingDefinition, edit model.PrivacyConfigEdit, agentName string) (*model.PrivacyConfigChange, error) {
+	current, configured := nestedJSONValue(root, definition.Key)
+	context := jsonEditContext{
+		root:       root,
+		definition: definition,
+		current:    current,
+		configured: configured,
+		agentName:  agentName,
+	}
+	switch strings.TrimSpace(strings.ToLower(edit.Op)) {
+	case privacyProfileOpSet:
+		return context.set(edit.Value)
+	case privacyProfileOpUnset:
+		return context.unset(), nil
+	default:
+		return nil, invalidJSONEditOpError(agentName, edit.Op, edit.ID)
+	}
+}
+
+type jsonEditContext struct {
+	root       map[string]any
+	definition jsonSettingDefinition
+	current    any
+	configured bool
+	agentName  string
+}
+
+func (c jsonEditContext) set(rawValue any) (*model.PrivacyConfigChange, error) {
+	value, err := editableJSONValue(c.definition, rawValue, c.agentName)
+	if err != nil {
+		return nil, err
+	}
+	if c.configured && jsonValuesEqual(c.current, value) {
+		return nil, nil
+	}
+	setNestedJSONValue(c.root, c.definition.Key, value)
+	change := jsonPrivacyChange(c.definition, configuredJSONValue(c.current, c.configured), cloneJSONValue(value))
+	return &change, nil
+}
+
+func (c jsonEditContext) unset() *model.PrivacyConfigChange {
+	if !c.configured {
+		return nil
+	}
+	unsetNestedJSONValue(c.root, c.definition.Key)
+	change := jsonPrivacyChange(c.definition, c.current, nil)
+	return &change
+}
+
+func configuredJSONValue(value any, configured bool) any {
+	if !configured {
+		return nil
+	}
+	return value
+}
+
+func jsonPrivacyChange(definition jsonSettingDefinition, before, after any) model.PrivacyConfigChange {
+	return model.PrivacyConfigChange{
+		ID:     definition.ID,
+		Key:    definition.Key,
+		Before: before,
+		After:  after,
+	}
 }
 
 func jsonDefinitionsByID(definitions []jsonSettingDefinition) map[string]jsonSettingDefinition {

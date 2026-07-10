@@ -1,9 +1,8 @@
-﻿package query
+package query
 
 import (
 	"context"
 	"sort"
-	"time"
 
 	"github.com/LyleMi/AgentMeter/internal/model"
 )
@@ -24,57 +23,70 @@ func (s *Service) ModelSignalsWithFilters(ctx context.Context, filters model.Ana
 
 func buildModelSignals(metrics []modelSignalSessionMetric) model.ModelSignals {
 	var result model.ModelSignals
-	var totals modelSignalMetricAccumulator
-	breakdowns := map[string]*modelSignalMetricAccumulator{}
-	trendByDay := map[string]*modelSignalMetricAccumulator{}
-
-	for _, metric := range metrics {
-		totals.add(metric)
-
-		breakdown := breakdowns[metric.Model]
-		if breakdown == nil {
-			breakdown = &modelSignalMetricAccumulator{}
-			breakdowns[metric.Model] = breakdown
-		}
-		breakdown.add(metric)
-
-		if metric.Day != "" {
-			point := trendByDay[metric.Day]
-			if point == nil {
-				point = &modelSignalMetricAccumulator{}
-				trendByDay[metric.Day] = point
-			}
-			point.add(metric)
-		}
-	}
-
-	applyModelSignalsTotals(&result, totals.metricSet())
-
-	for modelName, breakdown := range breakdowns {
-		result.ModelBreakdown = append(result.ModelBreakdown, modelSignalsBreakdownFromMetricSet(modelName, breakdown.metricSet()))
-	}
-	sort.Slice(result.ModelBreakdown, func(i, j int) bool {
-		left := result.ModelBreakdown[i]
-		right := result.ModelBreakdown[j]
-		if left.TotalTokens != right.TotalTokens {
-			return left.TotalTokens > right.TotalTokens
-		}
-		return left.Model < right.Model
-	})
-
-	for day, point := range trendByDay {
-		result.Trend = append(result.Trend, modelSignalsTrendPointFromMetricSet(day, point.metricSet()))
-	}
-	sort.Slice(result.Trend, func(i, j int) bool { return result.Trend[i].Date < result.Trend[j].Date })
-	if len(result.Trend) > 30 {
-		result.Trend = result.Trend[len(result.Trend)-30:]
-	}
-	result.Trend = fillModelSignalsTrendGaps(result.Trend)
-	applyModelSignalsRollingRates(result.Trend)
+	aggregates := aggregateModelSignalMetrics(metrics)
+	applyModelSignalsTotals(&result, aggregates.totals.metricSet())
+	result.ModelBreakdown = buildModelSignalsBreakdown(aggregates.breakdowns)
+	result.Trend = buildModelSignalsTrend(aggregates.trendByDay)
 
 	result.AnomalySessions = rankModelSignalAnomalies(metrics, 8)
 	result.DailyMetrics = buildModelSignalDailyMetrics(metrics)
 	result.HealthSummary, result.Cohorts, result.Matrix, result.ProjectHotspots, result.ProjectMetrics = buildModelSignalHealthReadModels(metrics)
+	return result
+}
+
+type modelSignalAggregates struct {
+	totals     modelSignalMetricAccumulator
+	breakdowns map[string]*modelSignalMetricAccumulator
+	trendByDay map[string]*modelSignalMetricAccumulator
+}
+
+func aggregateModelSignalMetrics(metrics []modelSignalSessionMetric) modelSignalAggregates {
+	aggregates := modelSignalAggregates{
+		breakdowns: map[string]*modelSignalMetricAccumulator{},
+		trendByDay: map[string]*modelSignalMetricAccumulator{},
+	}
+	for _, metric := range metrics {
+		aggregates.totals.add(metric)
+		accumulatorFor(aggregates.breakdowns, metric.Model).add(metric)
+		if metric.Day != "" {
+			accumulatorFor(aggregates.trendByDay, metric.Day).add(metric)
+		}
+	}
+	return aggregates
+}
+
+func accumulatorFor(values map[string]*modelSignalMetricAccumulator, key string) *modelSignalMetricAccumulator {
+	if values[key] == nil {
+		values[key] = &modelSignalMetricAccumulator{}
+	}
+	return values[key]
+}
+
+func buildModelSignalsBreakdown(breakdowns map[string]*modelSignalMetricAccumulator) []model.ModelSignalsBreakdown {
+	result := make([]model.ModelSignalsBreakdown, 0, len(breakdowns))
+	for modelName, breakdown := range breakdowns {
+		result = append(result, modelSignalsBreakdownFromMetricSet(modelName, breakdown.metricSet()))
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].TotalTokens != result[j].TotalTokens {
+			return result[i].TotalTokens > result[j].TotalTokens
+		}
+		return result[i].Model < result[j].Model
+	})
+	return result
+}
+
+func buildModelSignalsTrend(trends map[string]*modelSignalMetricAccumulator) []model.ModelSignalsTrendPoint {
+	result := make([]model.ModelSignalsTrendPoint, 0, len(trends))
+	for day, point := range trends {
+		result = append(result, modelSignalsTrendPointFromMetricSet(day, point.metricSet()))
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Date < result[j].Date })
+	if len(result) > 30 {
+		result = result[len(result)-30:]
+	}
+	result = fillModelSignalsTrendGaps(result)
+	applyModelSignalsRollingRates(result)
 	return result
 }
 
@@ -172,35 +184,11 @@ func applyModelSignalsRollingRates(points []model.ModelSignalsTrendPoint) {
 }
 
 func fillModelSignalsTrendGaps(points []model.ModelSignalsTrendPoint) []model.ModelSignalsTrendPoint {
-	if len(points) <= 1 {
-		return points
-	}
-	start, err := time.Parse(analyticsDateOnlyLayout, points[0].Date)
-	if err != nil {
-		return points
-	}
-	end, err := time.Parse(analyticsDateOnlyLayout, points[len(points)-1].Date)
-	if err != nil || end.Before(start) {
-		return points
-	}
-	spanDays := int(end.Sub(start).Hours()/24) + 1
-	if spanDays <= len(points) || spanDays > 62 {
-		return points
-	}
-	byDate := make(map[string]model.ModelSignalsTrendPoint, len(points))
-	for _, point := range points {
-		byDate[point.Date] = point
-	}
-	filled := make([]model.ModelSignalsTrendPoint, 0, spanDays)
-	for day := start; !day.After(end); day = day.AddDate(0, 0, 1) {
-		date := day.Format(analyticsDateOnlyLayout)
-		if point, ok := byDate[date]; ok {
-			filled = append(filled, point)
-		} else {
-			filled = append(filled, model.ModelSignalsTrendPoint{Date: date})
-		}
-	}
-	return filled
+	return fillAnalyticsDateGaps(
+		points,
+		func(point model.ModelSignalsTrendPoint) string { return point.Date },
+		func(date string) model.ModelSignalsTrendPoint { return model.ModelSignalsTrendPoint{Date: date} },
+	)
 }
 
 func normalizeModelSignalsSlices(result *model.ModelSignals) {

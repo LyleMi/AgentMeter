@@ -248,51 +248,50 @@ func replaceAssignmentValue(line, value string) string {
 }
 
 func splitValueComment(raw string) (string, string) {
-	inSingle := false
-	inDouble := false
-	escaped := false
-	for index, r := range raw {
-		switch {
-		case escaped:
-			escaped = false
-		case inDouble && r == '\\':
-			escaped = true
-		case !inDouble && r == '\'':
-			inSingle = !inSingle
-		case !inSingle && r == '"':
-			inDouble = !inDouble
-		case !inSingle && !inDouble && r == '#':
-			commentStart := index
-			for commentStart > 0 {
-				previous := raw[commentStart-1]
-				if previous != ' ' && previous != '\t' {
-					break
-				}
-				commentStart--
-			}
-			return raw[:commentStart], raw[commentStart:]
-		}
+	commentStart := indexUnquoted(raw, '#')
+	if commentStart < 0 {
+		return raw, ""
 	}
-	return raw, ""
+	for commentStart > 0 {
+		previous := raw[commentStart-1]
+		if previous != ' ' && previous != '\t' {
+			break
+		}
+		commentStart--
+	}
+	return raw[:commentStart], raw[commentStart:]
 }
 
 func indexUnquoted(line string, target rune) int {
-	inSingle := false
-	inDouble := false
-	escaped := false
+	var state quotedTextState
 	for index, r := range line {
-		switch {
-		case escaped:
-			escaped = false
-		case inDouble && r == '\\':
-			escaped = true
-		case !inDouble && r == '\'':
-			inSingle = !inSingle
-		case !inSingle && r == '"':
-			inDouble = !inDouble
-		case !inSingle && !inDouble && r == target:
+		if state.unquoted() && r == target {
 			return index
 		}
+		state.consume(r)
 	}
 	return -1
+}
+
+type quotedTextState struct {
+	inSingle bool
+	inDouble bool
+	escaped  bool
+}
+
+func (s quotedTextState) unquoted() bool {
+	return !s.inSingle && !s.inDouble
+}
+
+func (s *quotedTextState) consume(r rune) {
+	switch {
+	case s.escaped:
+		s.escaped = false
+	case s.inDouble && r == '\\':
+		s.escaped = true
+	case !s.inDouble && r == '\'':
+		s.inSingle = !s.inSingle
+	case !s.inSingle && r == '"':
+		s.inDouble = !s.inDouble
+	}
 }

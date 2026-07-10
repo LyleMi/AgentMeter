@@ -258,41 +258,64 @@ func addCost(target **float64, cost float64) {
 }
 
 func sortUsageBreakdownBuckets(buckets []model.UsageBreakdownBucket, groupBy string) {
-	sort.Slice(buckets, func(i, j int) bool {
-		left := buckets[i]
-		right := buckets[j]
-		switch groupBy {
-		case "day":
-			if left.Date != right.Date {
-				return left.Date < right.Date
-			}
-			return left.TotalTokens > right.TotalTokens
-		case "agent":
-			if left.SessionCount != right.SessionCount {
-				return left.SessionCount > right.SessionCount
-			}
-			if left.SourceLabel != right.SourceLabel {
-				return left.SourceLabel < right.SourceLabel
-			}
-			return left.SourceID < right.SourceID
-		case "agent,model":
-			if left.TotalTokens != right.TotalTokens {
-				return left.TotalTokens > right.TotalTokens
-			}
-			if left.SourceLabel != right.SourceLabel {
-				return left.SourceLabel < right.SourceLabel
-			}
-			return left.Model < right.Model
-		case "project":
-			if left.TotalTokens != right.TotalTokens {
-				return left.TotalTokens > right.TotalTokens
-			}
-			return sourcepath.Key(sourcepath.Normalize(left.ProjectPath)) < sourcepath.Key(sourcepath.Normalize(right.ProjectPath))
-		default:
-			if left.TotalTokens != right.TotalTokens {
-				return left.TotalTokens > right.TotalTokens
-			}
-			return left.Model < right.Model
-		}
-	})
+	less := usageBreakdownLess(groupBy)
+	sort.Slice(buckets, func(i, j int) bool { return less(buckets[i], buckets[j]) })
+}
+
+type usageBreakdownComparator func(model.UsageBreakdownBucket, model.UsageBreakdownBucket) bool
+
+func usageBreakdownLess(groupBy string) usageBreakdownComparator {
+	switch groupBy {
+	case "day":
+		return dailyUsageBreakdownLess
+	case "agent":
+		return agentUsageBreakdownLess
+	case "agent,model":
+		return agentModelUsageBreakdownLess
+	case "project":
+		return projectUsageBreakdownLess
+	default:
+		return modelUsageBreakdownLess
+	}
+}
+
+func dailyUsageBreakdownLess(left, right model.UsageBreakdownBucket) bool {
+	if left.Date != right.Date {
+		return left.Date < right.Date
+	}
+	return left.TotalTokens > right.TotalTokens
+}
+
+func agentUsageBreakdownLess(left, right model.UsageBreakdownBucket) bool {
+	if left.SessionCount != right.SessionCount {
+		return left.SessionCount > right.SessionCount
+	}
+	if left.SourceLabel != right.SourceLabel {
+		return left.SourceLabel < right.SourceLabel
+	}
+	return left.SourceID < right.SourceID
+}
+
+func agentModelUsageBreakdownLess(left, right model.UsageBreakdownBucket) bool {
+	if left.TotalTokens != right.TotalTokens {
+		return left.TotalTokens > right.TotalTokens
+	}
+	if left.SourceLabel != right.SourceLabel {
+		return left.SourceLabel < right.SourceLabel
+	}
+	return left.Model < right.Model
+}
+
+func projectUsageBreakdownLess(left, right model.UsageBreakdownBucket) bool {
+	if left.TotalTokens != right.TotalTokens {
+		return left.TotalTokens > right.TotalTokens
+	}
+	return sourcepath.Key(sourcepath.Normalize(left.ProjectPath)) < sourcepath.Key(sourcepath.Normalize(right.ProjectPath))
+}
+
+func modelUsageBreakdownLess(left, right model.UsageBreakdownBucket) bool {
+	if left.TotalTokens != right.TotalTokens {
+		return left.TotalTokens > right.TotalTokens
+	}
+	return left.Model < right.Model
 }

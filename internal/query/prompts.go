@@ -940,43 +940,34 @@ func promptTextFromEnvelope(raw map[string]any) string {
 
 	topType := promptLowerString(raw["type"])
 	role := promptLowerString(raw["role"])
-	switch {
-	case topType == "user_message":
+	if topType == "user_message" || role == "user" {
 		return promptTextFromFields(raw, "content", "message", "text", "input")
-	case topType == "message" && role == "user":
-		return promptTextFromFields(raw, "content", "message", "text", "input")
-	case topType == "" && role == "user":
-		return promptTextFromFields(raw, "content", "message", "text", "input")
-	case topType == "user":
-		if message, ok := raw["message"].(map[string]any); ok {
-			messageRole := promptLowerString(message["role"])
-			if messageRole == "" || messageRole == "user" {
-				if text := promptTextFromFields(message, "content", "message", "text", "input"); text != "" {
-					return text
-				}
+	}
+	if topType == "user" {
+		return promptTextFromTopLevelUser(raw)
+	}
+	return ""
+}
+
+func promptTextFromTopLevelUser(raw map[string]any) string {
+	if message, ok := raw["message"].(map[string]any); ok {
+		messageRole := promptLowerString(message["role"])
+		if messageRole == "" || messageRole == "user" {
+			if text := promptTextFromFields(message, "content", "message", "text", "input"); text != "" {
+				return text
 			}
 		}
-		return promptTextFromFields(raw, "content", "message", "text", "input")
-	case role == "user":
-		return promptTextFromFields(raw, "content", "message", "text", "input")
-	default:
-		return ""
 	}
+	return promptTextFromFields(raw, "content", "message", "text", "input")
 }
 
 func promptTextFromPayload(payload map[string]any) string {
 	payloadType := promptLowerString(payload["type"])
 	role := promptLowerString(payload["role"])
-	switch {
-	case payloadType == "user_message":
+	if payloadType == "user_message" || role == "user" {
 		return promptTextFromFields(payload, "content", "message", "text", "input")
-	case payloadType == "message" && role == "user":
-		return promptTextFromFields(payload, "content", "message", "text", "input")
-	case role == "user":
-		return promptTextFromFields(payload, "content", "message", "text", "input")
-	default:
-		return ""
 	}
+	return ""
 }
 
 func promptTextFromFields(payload map[string]any, keys ...string) string {

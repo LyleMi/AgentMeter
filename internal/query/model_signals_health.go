@@ -379,11 +379,25 @@ func modelSignalProjectPath(value string) string {
 }
 
 func (a *modelSignalMetricAccumulator) add(metric modelSignalSessionMetric) {
+	a.addCounts(metric)
+	a.addTokens(metric)
+	a.addDurations(metric)
+	a.addCosts(metric)
+	a.addSamples(metric)
+}
+
+func (a *modelSignalMetricAccumulator) addCounts(metric modelSignalSessionMetric) {
 	a.set.SessionCount++
 	a.set.ModelCalls += metric.ModelCalls
 	a.set.FailedModelCalls += metric.FailedModelCalls
 	a.set.ToolCalls += metric.ToolCalls
 	a.set.FailedToolCalls += metric.FailedToolCalls
+	if metric.ToolCalls > 0 {
+		a.sessionsWithTools++
+	}
+}
+
+func (a *modelSignalMetricAccumulator) addTokens(metric modelSignalSessionMetric) {
 	a.set.TotalTokens += metric.TotalTokens
 	a.set.InputTokens += metric.InputTokens
 	a.set.CachedInputTokens += metric.CachedInputTokens
@@ -391,11 +405,17 @@ func (a *modelSignalMetricAccumulator) add(metric modelSignalSessionMetric) {
 	a.set.ReasoningOutputTokens += metric.ReasoningOutputTokens
 	a.set.VisibleOutputTokens += metric.VisibleOutputTokens
 	a.set.BillableOutputTokens += metric.BillableOutputTokens
+}
+
+func (a *modelSignalMetricAccumulator) addDurations(metric modelSignalSessionMetric) {
 	a.set.WallDurationMS += metric.WallDurationMS
 	a.set.ActiveDurationMS += metric.ActiveDurationMS
 	a.set.ModelDurationMS += metric.ModelDurationMS
 	a.set.ToolDurationMS += metric.ToolDurationMS
 	a.set.IdleDurationMS += metric.IdleDurationMS
+}
+
+func (a *modelSignalMetricAccumulator) addCosts(metric modelSignalSessionMetric) {
 	if metric.EstimatedCostUSD != nil {
 		addCost(&a.set.EstimatedCostUSD, *metric.EstimatedCostUSD)
 	}
@@ -405,6 +425,9 @@ func (a *modelSignalMetricAccumulator) add(metric modelSignalSessionMetric) {
 	if metric.CacheSavingsUSD != nil {
 		addCost(&a.set.CacheSavingsUSD, *metric.CacheSavingsUSD)
 	}
+}
+
+func (a *modelSignalMetricAccumulator) addSamples(metric modelSignalSessionMetric) {
 	for _, latency := range metric.LatencySamples {
 		if latency > 0 {
 			a.latencySamples = append(a.latencySamples, latency)
@@ -415,13 +438,18 @@ func (a *modelSignalMetricAccumulator) add(metric modelSignalSessionMetric) {
 			a.throughputSamples = append(a.throughputSamples, throughput)
 		}
 	}
-	if metric.ToolCalls > 0 {
-		a.sessionsWithTools++
-	}
 }
 
 func (a modelSignalMetricAccumulator) metricSet() model.ModelSignalsMetricSet {
 	item := a.set
+	a.applyRates(&item)
+	applyModelSignalCostRates(&item)
+	a.applyPercentiles(&item)
+	item.DegradationRiskScore = modelSignalDegradationRiskScore(item)
+	return item
+}
+
+func (a modelSignalMetricAccumulator) applyRates(item *model.ModelSignalsMetricSet) {
 	item.ToolFailureRate = safeRateInt(item.FailedToolCalls, item.ToolCalls)
 	item.ToolDependencyRate = safeRateInt(a.sessionsWithTools, item.SessionCount)
 	item.AvgModelCallsPerSession = safeRateInt(item.ModelCalls, item.SessionCount)
@@ -435,6 +463,9 @@ func (a modelSignalMetricAccumulator) metricSet() model.ModelSignalsMetricSet {
 	item.ModelThroughputTokensPerSecond = throughputPerSecond(item.TotalTokens, item.ModelDurationMS)
 	item.ModelThroughputOutputTokensPerSecond = throughputPerSecond(item.OutputTokens, item.ModelDurationMS)
 	item.ModelLatencyMsPer1kOutputTokens = modelLatencyMSPer1kOutputTokens(item.OutputTokens, item.ModelDurationMS)
+}
+
+func applyModelSignalCostRates(item *model.ModelSignalsMetricSet) {
 	if item.EstimatedCostUSD != nil && item.UnpricedSessionCount == 0 && item.SessionCount > 0 {
 		value := *item.EstimatedCostUSD / float64(item.SessionCount)
 		item.CostPerSession = &value
@@ -447,12 +478,13 @@ func (a modelSignalMetricAccumulator) metricSet() model.ModelSignalsMetricSet {
 		value := *item.EstimatedCostUSD / (float64(item.TotalTokens) / 1_000)
 		item.CostPer1kTokens = &value
 	}
+}
+
+func (a modelSignalMetricAccumulator) applyPercentiles(item *model.ModelSignalsMetricSet) {
 	item.P50ModelLatencyMsPer1kOutputTokens = percentileNearest(a.latencySamples, 0.50)
 	item.P90ModelLatencyMsPer1kOutputTokens = percentileNearest(a.latencySamples, 0.90)
 	item.P50ModelThroughputTokensPerSecond = percentileNearest(a.throughputSamples, 0.50)
 	item.P10ModelThroughputTokensPerSecond = percentileNearest(a.throughputSamples, 0.10)
-	item.DegradationRiskScore = modelSignalDegradationRiskScore(item)
-	return item
 }
 
 func buildModelSignalMatrixRows(aggregates map[string]*modelSignalMatrixCellAggregate) []model.ModelSignalsMatrixRow {

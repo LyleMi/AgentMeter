@@ -1,10 +1,8 @@
 package agentresources
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -150,82 +148,6 @@ func setCodexMCPEnabled(agent model.AgentResourceAgent, name string, enabled boo
 	return nil
 }
 
-func MemoryDetail(_ context.Context, agentKind, path, relativePath string) (model.AgentMemoryDetail, error) {
-	agent, err := requireAgentForKind(agentKind)
-	if err != nil {
-		return model.AgentMemoryDetail{}, err
-	}
-	if agent.Kind != codexKind {
-		return genericMemoryDetail(agent, path, relativePath)
-	}
-	memoryPath, err := resolveCodexMemoryPath(agent.RootPath, path, relativePath)
-	if err != nil {
-		return model.AgentMemoryDetail{}, err
-	}
-	rel := relativePathFromRoot(filepath.Join(agent.RootPath, agentResourceMemories), memoryPath)
-	if !isCodexMemoryFile(rel) {
-		return model.AgentMemoryDetail{}, BadRequest("memory path is not a supported Codex memory file")
-	}
-	info, err := os.Stat(memoryPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return model.AgentMemoryDetail{}, NotFound("memory file was not found")
-		}
-		return model.AgentMemoryDetail{}, err
-	}
-	if info.IsDir() {
-		return model.AgentMemoryDetail{}, BadRequest("memory path must be a file")
-	}
-	content, err := os.ReadFile(memoryPath)
-	if err != nil {
-		return model.AgentMemoryDetail{}, err
-	}
-	name := strings.TrimSuffix(filepath.Base(memoryPath), filepath.Ext(memoryPath))
-	return model.AgentMemoryDetail{
-		AgentMemoryResource: model.AgentMemoryResource{
-			AgentKind:    codexKind,
-			Name:         name,
-			Title:        firstNonEmpty(markdownTitle(content), name),
-			Path:         memoryPath,
-			RelativePath: rel,
-			Kind:         memoryKind(rel),
-			Preview:      textPreview(content, 260),
-			CanEdit:      true,
-			SizeBytes:    info.Size(),
-			ModifiedAt:   info.ModTime().UTC(),
-		},
-		Content: string(content),
-	}, nil
-}
-
-func UpdateMemory(_ context.Context, request model.AgentMemoryUpdateRequest) (model.AgentMemoryDetail, error) {
-	agent, err := requireAgentForKind(request.AgentKind)
-	if err != nil {
-		return model.AgentMemoryDetail{}, err
-	}
-	if agent.Kind != codexKind {
-		return updateGenericMemory(agent, request)
-	}
-	memoryPath, err := resolveCodexMemoryPath(agent.RootPath, request.Path, request.RelativePath)
-	if err != nil {
-		return model.AgentMemoryDetail{}, err
-	}
-	if !strings.EqualFold(filepath.Ext(memoryPath), ".md") {
-		return model.AgentMemoryDetail{}, BadRequest("memory path must be a markdown file")
-	}
-	rel := relativePathFromRoot(filepath.Join(agent.RootPath, agentResourceMemories), memoryPath)
-	if !isCodexMemoryFile(rel) {
-		return model.AgentMemoryDetail{}, BadRequest("memory path is not a supported Codex memory file")
-	}
-	if err := os.MkdirAll(filepath.Dir(memoryPath), 0o755); err != nil {
-		return model.AgentMemoryDetail{}, err
-	}
-	if err := os.WriteFile(memoryPath, []byte(request.Content), 0o644); err != nil {
-		return model.AgentMemoryDetail{}, err
-	}
-	return MemoryDetail(context.Background(), codexKind, memoryPath, "")
-}
-
 func operationResult(ctx context.Context) (model.AgentResourceOperationResult, error) {
 	overview, err := Overview(ctx)
 	if err != nil {
@@ -293,70 +215,6 @@ func codexRoot() string {
 	return sourcepath.Normalize(platform.DefaultCodexRoot())
 }
 
-func codexSkills(root string) ([]model.AgentSkillResource, []string) {
-	if stat, err := os.Stat(root); err != nil || !stat.IsDir() {
-		return []model.AgentSkillResource{}, nil
-	}
-	items := []model.AgentSkillResource{}
-	warnings := []string{}
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			warnings = append(warnings, "Unable to inspect skill path "+path+": "+err.Error())
-			return nil
-		}
-		if entry.IsDir() {
-			if entry.Name() == ".git" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		enabled := strings.EqualFold(entry.Name(), "SKILL.md")
-		if !enabled && !strings.EqualFold(entry.Name(), "SKILL.md.disabled") {
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
-			warnings = append(warnings, "Unable to inspect skill file "+path+": "+err.Error())
-			return nil
-		}
-		content, err := os.ReadFile(path)
-		if err != nil {
-			warnings = append(warnings, "Unable to read skill file "+path+": "+err.Error())
-			return nil
-		}
-		dir := filepath.Dir(path)
-		rel := relativePath(root, dir)
-		meta := skillMetadata(content)
-		name := firstNonEmpty(meta["name"], filepath.Base(dir))
-		items = append(items, model.AgentSkillResource{
-			AgentKind:    codexKind,
-			ResourceType: "skill",
-			Name:         name,
-			Title:        firstNonEmpty(markdownTitle(content), name),
-			Description:  meta["description"],
-			Path:         dir,
-			RelativePath: rel,
-			System:       strings.HasPrefix(filepath.ToSlash(rel), ".system/"),
-			Enabled:      enabled,
-			CanToggle:    !strings.HasPrefix(filepath.ToSlash(rel), ".system/"),
-			Status:       enabledStatus(enabled),
-			SizeBytes:    info.Size(),
-			ModifiedAt:   info.ModTime().UTC(),
-		})
-		return nil
-	})
-	if err != nil {
-		warnings = append(warnings, "Unable to scan Codex skills: "+err.Error())
-	}
-	sort.Slice(items, func(i, j int) bool {
-		if items[i].System != items[j].System {
-			return !items[i].System
-		}
-		return strings.ToLower(items[i].Name) < strings.ToLower(items[j].Name)
-	})
-	return items, warnings
-}
-
 func codexMCPServers(configPath string) ([]model.AgentMCPServerResource, []string) {
 	content, err := os.ReadFile(configPath)
 	if os.IsNotExist(err) {
@@ -403,114 +261,6 @@ func codexMCPServers(configPath string) ([]model.AgentMCPServerResource, []strin
 		return strings.ToLower(servers[i].Name) < strings.ToLower(servers[j].Name)
 	})
 	return servers, nil
-}
-
-func codexMemories(root string) ([]model.AgentMemoryResource, []string) {
-	if stat, err := os.Stat(root); err != nil || !stat.IsDir() {
-		return []model.AgentMemoryResource{}, nil
-	}
-	items := []model.AgentMemoryResource{}
-	warnings := []string{}
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			warnings = append(warnings, "Unable to inspect memory path "+path+": "+err.Error())
-			return nil
-		}
-		if entry.IsDir() {
-			rel := relativePath(root, path)
-			if shouldSkipCodexMemoryDir(rel, entry.Name()) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.EqualFold(filepath.Ext(entry.Name()), ".md") {
-			return nil
-		}
-		rel := relativePath(root, path)
-		if !isCodexMemoryFile(rel) {
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
-			warnings = append(warnings, "Unable to inspect memory file "+path+": "+err.Error())
-			return nil
-		}
-		content, err := os.ReadFile(path)
-		if err != nil {
-			warnings = append(warnings, "Unable to read memory file "+path+": "+err.Error())
-			return nil
-		}
-		name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-		items = append(items, model.AgentMemoryResource{
-			AgentKind:    codexKind,
-			Name:         name,
-			Title:        firstNonEmpty(markdownTitle(content), name),
-			Path:         path,
-			RelativePath: rel,
-			Kind:         memoryKind(rel),
-			Preview:      textPreview(content, 260),
-			CanEdit:      true,
-			SizeBytes:    info.Size(),
-			ModifiedAt:   info.ModTime().UTC(),
-		})
-		return nil
-	})
-	if err != nil {
-		warnings = append(warnings, "Unable to scan Codex memories: "+err.Error())
-	}
-	sort.Slice(items, func(i, j int) bool {
-		return strings.ToLower(items[i].RelativePath) < strings.ToLower(items[j].RelativePath)
-	})
-	return items, warnings
-}
-
-func skillMetadata(content []byte) map[string]string {
-	meta := map[string]string{}
-	trimmed := bytes.TrimLeft(content, "\xef\xbb\xbf\r\n\t ")
-	if !bytes.HasPrefix(trimmed, []byte("---")) {
-		return meta
-	}
-	lines := strings.Split(strings.ReplaceAll(string(trimmed), "\r\n", "\n"), "\n")
-	for index := 1; index < len(lines); index++ {
-		line := lines[index]
-		if strings.TrimSpace(line) == "---" {
-			break
-		}
-		key, value, ok := strings.Cut(line, ":")
-		if !ok {
-			continue
-		}
-		key = strings.TrimSpace(key)
-		if key == "" {
-			continue
-		}
-		cleanValue := strings.TrimSpace(value)
-		if cleanValue == "|" || cleanValue == ">" {
-			var block []string
-			for index+1 < len(lines) {
-				next := lines[index+1]
-				if strings.TrimSpace(next) == "---" || (strings.TrimSpace(next) != "" && !strings.HasPrefix(next, " ") && !strings.HasPrefix(next, "\t")) {
-					break
-				}
-				block = append(block, strings.TrimSpace(next))
-				index++
-			}
-			meta[key] = strings.Join(nonEmptyStrings(block), " ")
-			continue
-		}
-		meta[key] = strings.Trim(cleanValue, `"'`)
-	}
-	return meta
-}
-
-func nonEmptyStrings(values []string) []string {
-	result := make([]string, 0, len(values))
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			result = append(result, strings.TrimSpace(value))
-		}
-	}
-	return result
 }
 
 func markdownTitle(content []byte) string {
@@ -637,50 +387,6 @@ func boolValue(value any, fallback bool) bool {
 		return fallback
 	}
 	return typed
-}
-
-func setMCPEnabledInTOML(content []byte, name string, enabled bool) ([]byte, error) {
-	text := string(content)
-	separator := "\n"
-	if strings.Contains(text, "\r\n") {
-		separator = "\r\n"
-		text = strings.ReplaceAll(text, "\r\n", "\n")
-	}
-	lines := strings.Split(text, "\n")
-	header := "[mcp_servers." + name + "]"
-	start := -1
-	for index, line := range lines {
-		if strings.TrimSpace(line) == header {
-			start = index
-			break
-		}
-	}
-	if start < 0 {
-		return nil, BadRequest("MCP server table uses an unsupported TOML table style")
-	}
-	end := len(lines)
-	for index := start + 1; index < len(lines); index++ {
-		trimmed := strings.TrimSpace(lines[index])
-		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
-			end = index
-			break
-		}
-	}
-	valueLine := "enabled = " + strconv.FormatBool(enabled)
-	for index := start + 1; index < end; index++ {
-		trimmed := strings.TrimSpace(lines[index])
-		key, _, ok := strings.Cut(trimmed, "=")
-		if ok && strings.TrimSpace(key) == "enabled" {
-			prefix := lines[index][:len(lines[index])-len(strings.TrimLeft(lines[index], " \t"))]
-			lines[index] = prefix + valueLine
-			return []byte(strings.Join(lines, separator)), nil
-		}
-	}
-	updated := make([]string, 0, len(lines)+1)
-	updated = append(updated, lines[:start+1]...)
-	updated = append(updated, valueLine)
-	updated = append(updated, lines[start+1:]...)
-	return []byte(strings.Join(updated, separator)), nil
 }
 
 func jsonAgentRoot(overrideEnv, configDirEnv, homeDirName string) string {

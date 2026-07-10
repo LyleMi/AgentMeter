@@ -89,6 +89,29 @@ func TestExtractShellCommandCrossPlatform(t *testing.T) {
 	}
 }
 
+func TestExtractCommandTextUnwrapsStructuredInputs(t *testing.T) {
+	tests := []struct {
+		name             string
+		text             string
+		allowRawFallback bool
+		want             string
+	}{
+		{name: "nested JSON string", text: `"{\"command\":\"go test ./...\"}"`, want: "go test ./..."},
+		{name: "command field wins", text: `{"z":{"command":"wrong"},"command":"right"}`, want: "right"},
+		{name: "stable nested key order", text: `{"z":{"command":"second"},"a":{"command":"first"}}`, want: "first"},
+		{name: "structured without command", text: `{"message":"none"}`, allowRawFallback: true, want: ""},
+		{name: "raw fallback", text: "go test ./...", allowRawFallback: true, want: "go test ./..."},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := extractCommandText(tt.text, tt.allowRawFallback); got != tt.want {
+				t.Fatalf("extractCommandText() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAuditSessionCommandRiskFindingsAreDeterministic(t *testing.T) {
 	session := model.Session{SessionKey: "sess-1", ProjectPath: "/workspace/project"}
 	calls := []model.ToolCall{

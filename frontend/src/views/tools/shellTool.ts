@@ -35,9 +35,18 @@ const SKIPPED_COMMANDS = new Set([
   'true'
 ])
 const WRAPPER_COMMANDS = new Set(['builtin', 'command', 'doas', 'exec', 'env', 'nice', 'nohup', 'sudo', 'time'])
-const POSIX_SHELL_COMMANDS = new Set(['bash', 'sh', 'zsh'])
-const CMD_SHELL_COMMANDS = new Set(['cmd'])
-const POWERSHELL_COMMANDS = new Set(['powershell', 'pwsh'])
+const WRAPPER_OPTIONS_WITH_VALUE = new Map<string, Set<string>>([
+  ['sudo', new Set(['-C', '-g', '-h', '-p', '-u'])],
+  ['nice', new Set(['-n'])]
+])
+const NESTED_SHELL_COMMANDS = new Map<string, (tokens: string[]) => string>([
+  ['bash', nestedPosixShellCommand],
+  ['sh', nestedPosixShellCommand],
+  ['zsh', nestedPosixShellCommand],
+  ['cmd', nestedCmdShellCommand],
+  ['powershell', nestedPowerShellCommand],
+  ['pwsh', nestedPowerShellCommand]
+])
 
 export function isShellToolName(toolName?: string) {
   const normalized = normalizeToolName(toolName)
@@ -109,22 +118,12 @@ function isCommandField(field: ToolInputField) {
 function commandNameFromSegment(segment: string[], depth: number): string {
   const tokens = [...segment]
   while (tokens.length > 0) {
-    const token = cleanCommandToken(tokens.shift() || '')
-    if (!token || isEnvironmentAssignment(token) || isRedirectionToken(token)) continue
+    const name = nextExecutableName(tokens)
+    if (!name) return ''
 
-    const name = normalizeExecutableName(token)
-    if (!name) continue
-
-    if (POSIX_SHELL_COMMANDS.has(name)) {
-      const nested = nestedPosixShellCommand(tokens)
-      return nested ? commandNameFromText(nested, depth + 1) || name : name
-    }
-    if (CMD_SHELL_COMMANDS.has(name)) {
-      const nested = nestedCmdShellCommand(tokens)
-      return nested ? commandNameFromText(nested, depth + 1) || name : name
-    }
-    if (POWERSHELL_COMMANDS.has(name)) {
-      const nested = nestedPowerShellCommand(tokens)
+    const nestedCommand = NESTED_SHELL_COMMANDS.get(name)
+    if (nestedCommand) {
+      const nested = nestedCommand(tokens)
       return nested ? commandNameFromText(nested, depth + 1) || name : name
     }
     if (WRAPPER_COMMANDS.has(name)) {
@@ -134,6 +133,16 @@ function commandNameFromSegment(segment: string[], depth: number): string {
     if (SKIPPED_COMMANDS.has(name)) return ''
 
     return name
+  }
+  return ''
+}
+
+function nextExecutableName(tokens: string[]): string {
+  while (tokens.length > 0) {
+    const token = cleanCommandToken(tokens.shift() || '')
+    if (!token || isEnvironmentAssignment(token) || isRedirectionToken(token)) continue
+    const name = normalizeExecutableName(token)
+    if (name) return name
   }
   return ''
 }
@@ -264,16 +273,23 @@ function nestedPowerShellCommand(tokens: string[]) {
 
 function stripWrapperPrefix(wrapper: string, tokens: string[]) {
   if (wrapper === 'env') {
-    while (tokens.length && (cleanCommandToken(tokens[0]).startsWith('-') || isEnvironmentAssignment(cleanCommandToken(tokens[0])))) {
-      tokens.shift()
-    }
+    stripEnvWrapperArgs(tokens)
     return
   }
 
+  stripOptionWrapperArgs(tokens, WRAPPER_OPTIONS_WITH_VALUE.get(wrapper))
+}
+
+function stripEnvWrapperArgs(tokens: string[]) {
+  while (tokens.length && (cleanCommandToken(tokens[0]).startsWith('-') || isEnvironmentAssignment(cleanCommandToken(tokens[0])))) {
+    tokens.shift()
+  }
+}
+
+function stripOptionWrapperArgs(tokens: string[], optionsWithValue: Set<string> | undefined) {
   while (tokens.length && cleanCommandToken(tokens[0]).startsWith('-')) {
     const option = cleanCommandToken(tokens.shift() || '')
-    if (wrapper === 'sudo' && ['-g', '-h', '-p', '-u'].includes(option) && tokens.length) tokens.shift()
-    if (wrapper === 'nice' && option === '-n' && tokens.length) tokens.shift()
+    if (optionsWithValue?.has(option) && tokens.length) tokens.shift()
   }
 }
 

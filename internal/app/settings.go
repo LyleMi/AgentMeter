@@ -97,38 +97,72 @@ func (a *App) configuredSourceEntries(ctx context.Context, conn *sql.DB) ([]mode
 }
 
 func (a *App) ensureSourcePathsConfig(ctx context.Context, conn *sql.DB) error {
-	_, hasSourceEntries, err := db.GetConfig(ctx, conn, sourceEntriesConfigKey)
+	state, err := a.loadSourcePathsConfig(ctx, conn)
 	if err != nil {
 		return err
+	}
+	if len(state.sourceEntries) == 0 {
+		return initializeSourcePathsConfig(ctx, conn, state.defaultSourcePaths)
+	}
+	return reconcileSourcePathsConfig(ctx, conn, state)
+}
+
+type sourcePathsConfigState struct {
+	sourceEntries      []model.SourceEntry
+	hasSourceEntries   bool
+	autoDefaults       []string
+	hasAutoDefaults    bool
+	defaultSourcePaths []string
+	candidates         []string
+}
+
+func (a *App) loadSourcePathsConfig(ctx context.Context, conn *sql.DB) (sourcePathsConfigState, error) {
+	_, hasSourceEntries, err := db.GetConfig(ctx, conn, sourceEntriesConfigKey)
+	if err != nil {
+		return sourcePathsConfigState{}, err
 	}
 	sourceEntries, err := a.configuredSourceEntries(ctx, conn)
 	if err != nil {
-		return err
+		return sourcePathsConfigState{}, err
 	}
-	defaultSourcePaths := platform.DefaultAgentSourcePaths()
+	state := sourcePathsConfigState{
+		sourceEntries:      sourceEntries,
+		hasSourceEntries:   hasSourceEntries,
+		defaultSourcePaths: platform.DefaultAgentSourcePaths(),
+	}
 	if len(sourceEntries) == 0 {
-		if err := setSourceEntries(ctx, conn, sourcepath.SourceEntriesFromPaths(defaultSourcePaths, true)); err != nil {
-			return err
-		}
-		return setAutoDefaultSourcePaths(ctx, conn, defaultSourcePaths)
+		return state, nil
 	}
-
 	autoDefaults, hasAutoDefaults, err := getAutoDefaultSourcePaths(ctx, conn)
 	if err != nil {
+		return sourcePathsConfigState{}, err
+	}
+	state.autoDefaults = autoDefaults
+	state.hasAutoDefaults = hasAutoDefaults
+	state.candidates = platform.DefaultAgentSourceCandidates()
+	return state, nil
+}
+
+func initializeSourcePathsConfig(ctx context.Context, conn *sql.DB, defaultSourcePaths []string) error {
+	if err := setSourceEntries(ctx, conn, sourcepath.SourceEntriesFromPaths(defaultSourcePaths, true)); err != nil {
 		return err
 	}
-	candidates := platform.DefaultAgentSourceCandidates()
-	if !hasAutoDefaults {
-		autoDefaults = configuredDefaultSourcePaths(sourcepath.SourceEntryPaths(sourceEntries), candidates)
-	}
+	return setAutoDefaultSourcePaths(ctx, conn, defaultSourcePaths)
+}
 
-	merged, nextAutoDefaults, changed := mergeAutoDefaultSourcePaths(sourcepath.SourceEntryPaths(sourceEntries), defaultSourcePaths, autoDefaults, candidates)
-	if !hasSourceEntries || changed {
-		if err := setSourceEntries(ctx, conn, mergeSourceEntriesForPaths(sourceEntries, merged)); err != nil {
+func reconcileSourcePathsConfig(ctx context.Context, conn *sql.DB, state sourcePathsConfigState) error {
+	sourcePaths := sourcepath.SourceEntryPaths(state.sourceEntries)
+	autoDefaults := state.autoDefaults
+	if !state.hasAutoDefaults {
+		autoDefaults = configuredDefaultSourcePaths(sourcePaths, state.candidates)
+	}
+	merged, nextAutoDefaults, changed := mergeAutoDefaultSourcePaths(sourcePaths, state.defaultSourcePaths, autoDefaults, state.candidates)
+	if !state.hasSourceEntries || changed {
+		if err := setSourceEntries(ctx, conn, mergeSourceEntriesForPaths(state.sourceEntries, merged)); err != nil {
 			return err
 		}
 	}
-	if !hasAutoDefaults || !sameSourcePaths(autoDefaults, nextAutoDefaults) {
+	if !state.hasAutoDefaults || !sameSourcePaths(autoDefaults, nextAutoDefaults) {
 		return setAutoDefaultSourcePaths(ctx, conn, nextAutoDefaults)
 	}
 	return nil

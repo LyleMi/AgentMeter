@@ -245,31 +245,29 @@ func execMigrationStatements(ctx context.Context, conn *sql.DB) error {
 }
 
 func ensureMigrationColumns(ctx context.Context, conn *sql.DB) error {
-	if err := ensureColumn(ctx, conn, "sessions", "session_key", "session_key TEXT NOT NULL DEFAULT ''"); err != nil {
-		return err
-	}
-	if err := ensureColumn(ctx, conn, "tool_calls", "call_id", "call_id TEXT NOT NULL DEFAULT ''"); err != nil {
-		return err
-	}
-	if err := ensureColumn(ctx, conn, "tool_calls", "raw_start_event_id", "raw_start_event_id INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-	if err := ensureColumn(ctx, conn, "tool_calls", "raw_end_event_id", "raw_end_event_id INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-	if err := ensureColumn(ctx, conn, "token_usage", "context_compression_tokens", "context_compression_tokens INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-	if err := ensureColumn(ctx, conn, "model_calls", "context_compression_tokens", "context_compression_tokens INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-	if err := ensureColumn(ctx, conn, "source_files", "parser_version", "parser_version INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-	if err := ensureColumn(ctx, conn, "pricing_models", "is_custom", "is_custom INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
+	for _, column := range migrationColumns {
+		if err := ensureColumn(ctx, conn, column.table, column.name, column.definition); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+type migrationColumn struct {
+	table      string
+	name       string
+	definition string
+}
+
+var migrationColumns = []migrationColumn{
+	{table: "sessions", name: "session_key", definition: "session_key TEXT NOT NULL DEFAULT ''"},
+	{table: "tool_calls", name: "call_id", definition: "call_id TEXT NOT NULL DEFAULT ''"},
+	{table: "tool_calls", name: "raw_start_event_id", definition: "raw_start_event_id INTEGER NOT NULL DEFAULT 0"},
+	{table: "tool_calls", name: "raw_end_event_id", definition: "raw_end_event_id INTEGER NOT NULL DEFAULT 0"},
+	{table: "token_usage", name: "context_compression_tokens", definition: "context_compression_tokens INTEGER NOT NULL DEFAULT 0"},
+	{table: "model_calls", name: "context_compression_tokens", definition: "context_compression_tokens INTEGER NOT NULL DEFAULT 0"},
+	{table: "source_files", name: "parser_version", definition: "parser_version INTEGER NOT NULL DEFAULT 0"},
+	{table: "pricing_models", name: "is_custom", definition: "is_custom INTEGER NOT NULL DEFAULT 0"},
 }
 
 func backfillMigrationData(ctx context.Context, conn *sql.DB) error {

@@ -307,60 +307,80 @@ func applyCodexEditsToContent(content []byte, edits []model.PrivacyConfigEdit) (
 	definitions := codexDefinitionByID()
 
 	for _, edit := range edits {
-		id := strings.TrimSpace(edit.ID)
-		definition, ok := definitions[id]
+		definition, ok := definitions[strings.TrimSpace(edit.ID)]
 		if !ok {
-			if id != "" {
+			if id := strings.TrimSpace(edit.ID); id != "" {
 				unknown[id] = struct{}{}
 			}
 			continue
 		}
-
-		op := strings.TrimSpace(strings.ToLower(edit.Op))
-		if op != "set" && op != "unset" {
-			return nil, nil, nil, fmt.Errorf("invalid Codex privacy change op %q for %q", edit.Op, edit.ID)
+		result, err := applyCodexEdit(updated, definition, edit)
+		if err != nil {
+			return nil, nil, nil, err
 		}
-
-		doc := parseTOML(updated)
-		current, configured := doc.Value(definition.FullKey())
-		var before any
-		if configured {
-			before = current.JSON()
-		}
-
-		switch op {
-		case "set":
-			value, err := configValueFromJSON(definition, edit.Value)
-			if err != nil {
-				return nil, nil, nil, err
-			}
-			if configured && current.Equal(value) {
-				continue
-			}
-			doc.Set(definition.Table, definition.Key, value)
-			updated = doc.Bytes()
-			changes = append(changes, model.PrivacyConfigChange{
-				ID:     definition.ID,
-				Key:    definition.FullKey(),
-				Before: before,
-				After:  value.JSON(),
-			})
-		case "unset":
-			if !configured {
-				continue
-			}
-			doc.Unset(definition.Table, definition.Key)
-			updated = doc.Bytes()
-			changes = append(changes, model.PrivacyConfigChange{
-				ID:     definition.ID,
-				Key:    definition.FullKey(),
-				Before: before,
-				After:  nil,
-			})
+		updated = result.content
+		if result.change != nil {
+			changes = append(changes, *result.change)
 		}
 	}
 
 	return updated, changes, unknownSettingWarnings(unknown), nil
+}
+
+type codexEditResult struct {
+	content []byte
+	change  *model.PrivacyConfigChange
+}
+
+func applyCodexEdit(content []byte, definition settingDefinition, edit model.PrivacyConfigEdit) (codexEditResult, error) {
+	doc := parseTOML(content)
+	current, configured := doc.Value(definition.FullKey())
+	switch strings.TrimSpace(strings.ToLower(edit.Op)) {
+	case privacyProfileOpSet:
+		return applyCodexSet(&doc, definition, current, configured, edit.Value)
+	case privacyProfileOpUnset:
+		return applyCodexUnset(&doc, definition, current, configured), nil
+	default:
+		return codexEditResult{}, fmt.Errorf("invalid Codex privacy change op %q for %q", edit.Op, edit.ID)
+	}
+}
+
+func applyCodexSet(doc *tomlDocument, definition settingDefinition, current configValue, configured bool, rawValue any) (codexEditResult, error) {
+	value, err := configValueFromJSON(definition, rawValue)
+	if err != nil {
+		return codexEditResult{}, err
+	}
+	if configured && current.Equal(value) {
+		return codexEditResult{content: doc.Bytes()}, nil
+	}
+	doc.Set(definition.Table, definition.Key, value)
+	change := codexPrivacyChange(definition, configuredValue(current, configured), value.JSON())
+	return codexEditResult{content: doc.Bytes(), change: &change}, nil
+}
+
+func applyCodexUnset(doc *tomlDocument, definition settingDefinition, current configValue, configured bool) codexEditResult {
+	if !configured {
+		return codexEditResult{content: doc.Bytes()}
+	}
+	doc.Unset(definition.Table, definition.Key)
+	change := codexPrivacyChange(definition, current.JSON(), nil)
+	return codexEditResult{content: doc.Bytes(), change: &change}
+}
+
+func configuredValue(value configValue, configured bool) any {
+	if !configured {
+		return nil
+	}
+	return value.JSON()
+}
+
+func codexPrivacyChange(definition settingDefinition, before, after any) model.PrivacyConfigChange {
+	return model.PrivacyConfigChange{
+		ID:     definition.ID,
+		Key:    definition.FullKey(),
+		Before: before,
+		After:  after,
+	}
 }
 
 func codexDefinitionByID() map[string]settingDefinition {

@@ -23,18 +23,28 @@ const (
 )
 
 func PrepareWebAssets(staticDir string, forceBuild bool) (string, error) {
-	staticDir = strings.TrimSpace(staticDir)
-	if staticDir == "" {
-		staticDir = DefaultStaticDir
-	}
-
+	staticDir = normalizedStaticDir(staticDir)
 	if repoRoot, err := FindRepoRoot("."); err == nil {
-		if err := EnsureWebAssets(repoRoot, forceBuild); err != nil {
-			return "", err
-		}
-		return filepath.Abs(resolveStaticDir(repoRoot, staticDir))
+		return prepareCheckoutWebAssets(repoRoot, staticDir, forceBuild)
 	}
+	return prepareFallbackWebAssets(staticDir, forceBuild)
+}
 
+func normalizedStaticDir(staticDir string) string {
+	if staticDir = strings.TrimSpace(staticDir); staticDir != "" {
+		return staticDir
+	}
+	return DefaultStaticDir
+}
+
+func prepareCheckoutWebAssets(repoRoot, staticDir string, forceBuild bool) (string, error) {
+	if err := EnsureWebAssets(repoRoot, forceBuild); err != nil {
+		return "", err
+	}
+	return filepath.Abs(resolveStaticDir(repoRoot, staticDir))
+}
+
+func prepareFallbackWebAssets(staticDir string, forceBuild bool) (string, error) {
 	staticPath, err := filepath.Abs(staticDir)
 	if err != nil {
 		return "", err
@@ -87,29 +97,48 @@ func HasFrontendBuild(staticDir string) bool {
 
 func EnsureWebAssets(repoRoot string, forceBuild bool) error {
 	frontendDir := filepath.Join(repoRoot, "frontend")
-
-	install, err := NeedsNPMInstall(frontendDir)
+	plan, err := planWebAssets(frontendDir, forceBuild)
 	if err != nil {
 		return err
 	}
-	build, err := NeedsFrontendBuild(frontendDir, forceBuild)
-	if err != nil {
-		return err
-	}
-	if !install && !build {
+	if !plan.required() {
 		return nil
 	}
 	if _, err := exec.LookPath("npm"); err != nil {
 		return errors.New("npm was not found on PATH")
 	}
+	return executeWebAssetPlan(frontendDir, plan)
+}
 
-	if install {
+type webAssetPlan struct {
+	install bool
+	build   bool
+}
+
+func planWebAssets(frontendDir string, forceBuild bool) (webAssetPlan, error) {
+	install, err := NeedsNPMInstall(frontendDir)
+	if err != nil {
+		return webAssetPlan{}, err
+	}
+	build, err := NeedsFrontendBuild(frontendDir, forceBuild)
+	if err != nil {
+		return webAssetPlan{}, err
+	}
+	return webAssetPlan{install: install, build: build}, nil
+}
+
+func (plan webAssetPlan) required() bool {
+	return plan.install || plan.build
+}
+
+func executeWebAssetPlan(frontendDir string, plan webAssetPlan) error {
+	if plan.install {
 		fmt.Fprintln(os.Stdout, "Installing frontend dependencies...")
 		if err := run(frontendDir, "npm", "ci"); err != nil {
 			return err
 		}
 	}
-	if build {
+	if plan.build {
 		fmt.Fprintln(os.Stdout, "Building frontend...")
 		if err := run(frontendDir, "npm", "run", "build"); err != nil {
 			return err

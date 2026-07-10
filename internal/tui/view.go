@@ -243,64 +243,6 @@ func (s *state) statusLine() string {
 	return dim("Ready")
 }
 
-func (s *state) footerLine() string {
-	var text string
-	switch s.page {
-	case pageOverview:
-		text = "Keys: u source  v model  w project  e range  U clear scope  tab cycle  up/down scroll  r refresh  i update index  I rebuild index  q quit"
-	case pageTime:
-		text = "Keys: [/]/h/l time tabs  u/v/w/e scope  U clear  up/down scroll  tab cycle pages  r refresh  i update index  I rebuild index  q quit"
-	case pageTokens:
-		if s.tokensTab == tokensTabBreakdown {
-			text = "Keys: [/]/h/l token tabs  d group  u/v/w/e scope  U clear  up/down scroll  r refresh  i update index  I rebuild index  q quit"
-			break
-		}
-		text = "Keys: [/]/h/l token tabs  u/v/w/e scope  U clear  up/down scroll  tab cycle pages  r refresh  i update index  I rebuild index  q quit"
-	case pageSessionDetail:
-		text = "Keys: b/esc back  up/down scroll  r refresh  i update index  I rebuild index  q quit"
-	case pageSessions:
-		text = "Keys: enter detail  up/down select  tab cycle  r refresh  i update index  I rebuild index  q quit"
-	case pageTools:
-		if s.toolsTab == toolsTabShell {
-			text = "Keys: [/]/h/l tool tabs  enter detail  v command  u source  e range  d sort  U clear  up/down select  r refresh  i update index  I rebuild index  q quit"
-			break
-		}
-		if s.toolsTab == toolsTabCalls {
-			text = "Keys: [/]/h/l tool tabs  enter detail  u source  e range  d sort  U clear  up/down select  r refresh  i update index  I rebuild index  q quit"
-			break
-		}
-		text = "Keys: [/]/h/l tool tabs  enter calls  c all calls  u source  U clear  up/down select  tab cycle  r refresh  i update index  I rebuild index  q quit"
-	case pageToolCalls:
-		text = "Keys: enter detail  b/esc tools  u source  e range  d sort  U clear  up/down select  r refresh  i update index  I rebuild index  q quit"
-	case pageToolCallDetail:
-		text = "Keys: b/esc back  up/down scroll  r refresh  i update index  I rebuild index  q quit"
-	case pageModelSignals:
-		text = "Keys: [/]/h/l signal tabs  u/v/w/e scope  U clear  up/down scroll  tab cycle pages  r refresh  i update index  I rebuild index  q quit"
-	case pageModelRisk:
-		text = "Keys: u/v/w/e scope  U clear  up/down scroll  tab cycle pages  r refresh  i update index  I rebuild index  q quit"
-	case pageAudit:
-		text = "Keys: enter detail  f findings  u source  U clear filters  up/down select  tab cycle  r refresh  i update index  I rebuild index  q quit"
-	case pageAuditFindings:
-		text = "Keys: enter detail  c category  v severity  y shell  u source  U clear  b/esc summary  up/down select  r refresh  i update index  I rebuild index  q quit"
-	case pageAuditDetail:
-		text = "Keys: b/esc back  u source  U clear filters  up/down scroll  r refresh  i update index  I rebuild index  q quit"
-	case pagePrivacy:
-		if s.privacyPending != nil {
-			text = "Keys: enter write profile  esc cancel  q quit"
-			break
-		}
-		text = "Keys: up/down target  enter recommended  A strict  u defaults  pgup/pgdn detail  r refresh  q quit"
-	case pageSettings:
-		text = "Keys: up/down scroll  tab cycle  r refresh  i update index  I rebuild index  q quit"
-	default:
-		text = "Keys: 1-9/0 switch  tab cycle  up/down select/scroll  r refresh  i update index  I rebuild index  q quit"
-	}
-	if position := s.positionLabel(); position != "" {
-		text += "  " + position
-	}
-	return dim(text)
-}
-
 func (s *state) positionLabel() string {
 	count := s.itemCount()
 	if count <= 0 {

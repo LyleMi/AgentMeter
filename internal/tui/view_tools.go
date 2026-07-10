@@ -386,6 +386,24 @@ func commandNameFromText(command string, depth int) string {
 	return ""
 }
 
+var nestedShellFlags = map[string]string{
+	"bash":       "-c",
+	"sh":         "-c",
+	"zsh":        "-c",
+	"cmd":        "/c",
+	"powershell": "-command",
+	"pwsh":       "-command",
+}
+
+var wrapperCommands = map[string]struct{}{
+	"env": {}, "sudo": {}, "doas": {}, "time": {}, "command": {},
+	"builtin": {}, "exec": {}, "nice": {}, "nohup": {},
+}
+
+var skippedCommands = map[string]struct{}{
+	"cd": {}, "echo": {}, "set": {}, "export": {}, "true": {}, "false": {},
+}
+
 func commandNameFromSegment(segment []string, depth int) string {
 	tokens := append([]string(nil), segment...)
 	for len(tokens) > 0 {
@@ -398,41 +416,27 @@ func commandNameFromSegment(segment []string, depth int) string {
 		if name == "" {
 			continue
 		}
-		switch name {
-		case "bash", "sh", "zsh":
-			if nested := nestedShellCommand(tokens, "-c"); nested != "" {
-				if inner := commandNameFromText(nested, depth+1); inner != "" {
-					return inner
-				}
-			}
-			return name
-		case "cmd":
-			if nested := nestedShellCommand(tokens, "/c"); nested != "" {
-				if inner := commandNameFromText(nested, depth+1); inner != "" {
-					return inner
-				}
-			}
-			return name
-		case "powershell", "pwsh":
-			if nested := nestedShellCommand(tokens, "-command"); nested != "" {
-				if inner := commandNameFromText(nested, depth+1); inner != "" {
-					return inner
-				}
-			}
-			return name
-		case "env":
-			stripWrapperPrefix(name, &tokens)
-			continue
-		case "sudo", "doas", "time", "command", "builtin", "exec", "nice", "nohup":
-			stripWrapperPrefix(name, &tokens)
-			continue
-		case "cd", "echo", "set", "export", "true", "false":
-			return ""
-		default:
-			return name
+		if flag, isShell := nestedShellFlags[name]; isShell {
+			return nestedCommandName(name, tokens, flag, depth)
 		}
+		if _, isWrapper := wrapperCommands[name]; isWrapper {
+			stripWrapperPrefix(name, &tokens)
+			continue
+		}
+		if _, skipped := skippedCommands[name]; skipped {
+			return ""
+		}
+		return name
 	}
 	return ""
+}
+
+func nestedCommandName(shell string, tokens []string, flag string, depth int) string {
+	nested := nestedShellCommand(tokens, flag)
+	if nested == "" {
+		return shell
+	}
+	return firstNonEmpty(commandNameFromText(nested, depth+1), shell)
 }
 
 func tokenizeCommand(command string) []string {

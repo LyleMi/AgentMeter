@@ -134,48 +134,48 @@ func shellFamilyFromTool(toolName string) ShellFamily {
 	}
 }
 
-func shellFamilyFromCommand(command string) ShellFamily {
-	trimmed := strings.TrimSpace(command)
-	lower := strings.ToLower(trimmed)
-	switch {
-	case strings.HasPrefix(lower, "powershell ") || strings.HasPrefix(lower, "powershell.exe ") ||
-		strings.HasPrefix(lower, "pwsh ") || strings.HasPrefix(lower, "pwsh.exe "):
-		return ShellPowerShell
-	case strings.HasPrefix(lower, "cmd /") || strings.HasPrefix(lower, "cmd.exe /"):
-		return ShellCmd
-	}
+type shellFamilyRule struct {
+	family ShellFamily
+	clues  []string
+}
 
-	powerShellClues := []string{
+var shellCommandPrefixRules = []shellFamilyRule{
+	{family: ShellPowerShell, clues: []string{"powershell ", "powershell.exe ", "pwsh ", "pwsh.exe "}},
+	{family: ShellCmd, clues: []string{"cmd /", "cmd.exe /"}},
+}
+
+var shellCommandClueRules = []shellFamilyRule{
+	{family: ShellPowerShell, clues: []string{
 		"set-executionpolicy", "invoke-webrequest", "invoke-restmethod", "invoke-expression",
 		"remove-item", "get-childitem", "set-itemproperty", "new-itemproperty", "remove-itemproperty",
 		"start-process", "$env:", " env:", "hklm:", "hkcu:", "-executionpolicy",
-	}
-	for _, clue := range powerShellClues {
-		if strings.Contains(lower, clue) {
-			return ShellPowerShell
-		}
-	}
-
-	cmdClues := []string{
+	}},
+	{family: ShellCmd, clues: []string{
 		"del /", "rmdir /", "rd /", "copy ", "xcopy ", "robocopy ", "%userprofile%", "%appdata%",
 		"reg add", "reg delete", "sc.exe ", "sc create", "sc delete", "net start", "net stop",
-	}
-	for _, clue := range cmdClues {
-		if strings.Contains(lower, clue) {
-			return ShellCmd
-		}
-	}
-
-	posixClues := []string{
+	}},
+	{family: ShellPosix, clues: []string{
 		"sudo ", "doas ", "su -", "rm -", "chmod ", "chown ", "curl ", "wget ", "apt-get ",
 		"apt ", "brew ", "export ", "$home", "~/", "#!/bin/sh", "#!/usr/bin/env bash",
+	}},
+}
+
+func shellFamilyFromCommand(command string) ShellFamily {
+	lower := strings.ToLower(strings.TrimSpace(command))
+	if family := matchingShellFamily(lower, shellCommandPrefixRules, strings.HasPrefix); family != ShellUnknown {
+		return family
 	}
-	for _, clue := range posixClues {
-		if strings.Contains(lower, clue) {
-			return ShellPosix
+	return matchingShellFamily(lower, shellCommandClueRules, strings.Contains)
+}
+
+func matchingShellFamily(command string, rules []shellFamilyRule, matches func(string, string) bool) ShellFamily {
+	for _, rule := range rules {
+		for _, clue := range rule.clues {
+			if matches(command, clue) {
+				return rule.family
+			}
 		}
 	}
-
 	return ShellUnknown
 }
 
@@ -187,25 +187,14 @@ func extractCommandText(text string, allowRawFallback bool) string {
 
 	current := trimmed
 	for depth := 0; depth < 3; depth++ {
-		var value any
-		if err := json.Unmarshal([]byte(current), &value); err == nil {
-			if command := commandFromValue(value, 0); command != "" {
-				return command
-			}
-			if unwrapped, ok := value.(string); ok {
-				current = strings.TrimSpace(unwrapped)
-				if current == "" {
-					return ""
-				}
-				continue
-			}
-			return ""
+		result := unwrapCommandText(current)
+		if result.command != "" || result.done {
+			return result.command
 		}
-		if unquoted, err := strconv.Unquote(current); err == nil && unquoted != current {
-			current = strings.TrimSpace(unquoted)
-			continue
+		if result.next == current {
+			break
 		}
-		break
+		current = result.next
 	}
 
 	if command := commandFromLooseFields(current); command != "" {
@@ -217,6 +206,32 @@ func extractCommandText(text string, allowRawFallback bool) string {
 	return ""
 }
 
+type commandTextUnwrap struct {
+	command string
+	next    string
+	done    bool
+}
+
+func unwrapCommandText(current string) commandTextUnwrap {
+	var value any
+	if err := json.Unmarshal([]byte(current), &value); err == nil {
+		if command := commandFromValue(value, 0); command != "" {
+			return commandTextUnwrap{command: command, done: true}
+		}
+		unwrapped, ok := value.(string)
+		if !ok {
+			return commandTextUnwrap{done: true}
+		}
+		next := strings.TrimSpace(unwrapped)
+		return commandTextUnwrap{next: next, done: next == ""}
+	}
+	unquoted, err := strconv.Unquote(current)
+	if err != nil || unquoted == current {
+		return commandTextUnwrap{next: current}
+	}
+	return commandTextUnwrap{next: strings.TrimSpace(unquoted)}
+}
+
 var commandFieldNames = []string{"command", "cmd", "script", "arguments", "input"}
 
 func commandFromValue(value any, depth int) string {
@@ -225,28 +240,38 @@ func commandFromValue(value any, depth int) string {
 	}
 	switch typed := value.(type) {
 	case map[string]any:
-		for _, fieldName := range commandFieldNames {
-			if fieldValue, ok := lookupField(typed, fieldName); ok {
-				if command := commandFromFieldValue(fieldValue, depth+1); command != "" {
-					return command
-				}
-			}
-		}
-		keys := make([]string, 0, len(typed))
-		for key := range typed {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		for _, key := range keys {
-			if command := commandFromValue(typed[key], depth+1); command != "" {
-				return command
-			}
-		}
+		return commandFromMap(typed, depth)
 	case []any:
-		for _, item := range typed {
-			if command := commandFromValue(item, depth+1); command != "" {
+		return commandFromArray(typed, depth)
+	}
+	return ""
+}
+
+func commandFromMap(value map[string]any, depth int) string {
+	for _, fieldName := range commandFieldNames {
+		if fieldValue, ok := lookupField(value, fieldName); ok {
+			if command := commandFromFieldValue(fieldValue, depth+1); command != "" {
 				return command
 			}
+		}
+	}
+	keys := make([]string, 0, len(value))
+	for key := range value {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if command := commandFromValue(value[key], depth+1); command != "" {
+			return command
+		}
+	}
+	return ""
+}
+
+func commandFromArray(value []any, depth int) string {
+	for _, item := range value {
+		if command := commandFromValue(item, depth+1); command != "" {
+			return command
 		}
 	}
 	return ""

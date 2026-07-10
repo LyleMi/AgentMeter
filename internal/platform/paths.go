@@ -1,4 +1,4 @@
-﻿package platform
+package platform
 
 import (
 	"os"
@@ -193,44 +193,57 @@ func DefaultAgentSourcePath() string {
 }
 
 func DefaultDatabasePath() (string, error) {
-	base := ""
-	switch runtime.GOOS {
-	case "windows":
-		base = os.Getenv("LOCALAPPDATA")
-		if base == "" {
-			base = os.Getenv("APPDATA")
-		}
-		if base != "" {
-			base = filepath.Join(base, "AgentMeter")
-		}
-	case "darwin":
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		base = filepath.Join(home, "Library", "Application Support", "AgentMeter")
-	default:
-		if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
-			base = filepath.Join(xdg, "AgentMeter")
-		} else {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return "", err
-			}
-			base = filepath.Join(home, ".local", "share", "AgentMeter")
-		}
-	}
-	if base == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		base = filepath.Join(home, ".agentmeter")
+	base, err := defaultDatabaseDir(runtime.GOOS, os.Getenv, os.UserHomeDir)
+	if err != nil {
+		return "", err
 	}
 	if err := os.MkdirAll(base, 0o755); err != nil {
 		return "", err
 	}
 	return filepath.Join(base, "agentmeter.sqlite"), nil
+}
+
+func defaultDatabaseDir(goos string, getenv func(string) string, userHome func() (string, error)) (string, error) {
+	switch goos {
+	case "windows":
+		return windowsDatabaseDir(getenv, userHome)
+	case "darwin":
+		return homeDatabaseDir(userHome, "Library", "Application Support", "AgentMeter")
+	default:
+		return unixDatabaseDir(getenv, userHome)
+	}
+}
+
+func windowsDatabaseDir(getenv func(string) string, userHome func() (string, error)) (string, error) {
+	base := firstEnvironmentValue(getenv, "LOCALAPPDATA", "APPDATA")
+	if base != "" {
+		return filepath.Join(base, "AgentMeter"), nil
+	}
+	return homeDatabaseDir(userHome, ".agentmeter")
+}
+
+func unixDatabaseDir(getenv func(string) string, userHome func() (string, error)) (string, error) {
+	if base := getenv("XDG_DATA_HOME"); base != "" {
+		return filepath.Join(base, "AgentMeter"), nil
+	}
+	return homeDatabaseDir(userHome, ".local", "share", "AgentMeter")
+}
+
+func homeDatabaseDir(userHome func() (string, error), parts ...string) (string, error) {
+	home, err := userHome()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(append([]string{home}, parts...)...), nil
+}
+
+func firstEnvironmentValue(getenv func(string) string, names ...string) string {
+	for _, name := range names {
+		if value := getenv(name); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func PlatformName() string {

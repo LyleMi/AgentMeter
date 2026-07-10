@@ -11,6 +11,13 @@ type Service struct {
 	conn *sql.DB
 }
 
+type overviewLoader struct {
+	service  *Service
+	ctx      context.Context
+	filters  model.AnalyticsFilters
+	overview *model.Overview
+}
+
 func New(conn *sql.DB) *Service {
 	return &Service{conn: conn}
 }
@@ -30,6 +37,28 @@ func (s *Service) Overview(ctx context.Context) (model.Overview, error) {
 }
 
 func (s *Service) OverviewWithFilters(ctx context.Context, filters model.AnalyticsFilters) (model.Overview, error) {
+	overview, err := s.overviewSessionTotals(ctx, filters)
+	if err != nil {
+		return overview, err
+	}
+	loader := overviewLoader{service: s, ctx: ctx, filters: filters, overview: &overview}
+	if err := loader.populateTotals(); err != nil {
+		return overview, err
+	}
+	if err := loader.populateUsage(); err != nil {
+		return overview, err
+	}
+	if err := loader.populateTimeUsage(); err != nil {
+		return overview, err
+	}
+	if err := loader.populateSessions(); err != nil {
+		return overview, err
+	}
+	normalizeOverviewSlices(&overview)
+	return overview, nil
+}
+
+func (s *Service) overviewSessionTotals(ctx context.Context, filters model.AnalyticsFilters) (model.Overview, error) {
 	var overview model.Overview
 	where, args := analyticsSessionWhere(filters)
 	err := s.conn.QueryRowContext(ctx, `SELECT
@@ -50,63 +79,69 @@ func (s *Service) OverviewWithFilters(ctx context.Context, filters model.Analyti
 		&overview.TotalToolDurationMS,
 		&overview.TotalIdleDurationMS,
 	)
-	if err != nil {
-		return overview, err
-	}
-	usage, err := s.usageTotals(ctx, filters)
-	if err != nil {
-		return overview, err
-	}
-	overview.TotalInputTokens = usage.InputTokens
-	overview.TotalCachedInputTokens = usage.CachedInputTokens
-	overview.TotalOutputTokens = usage.OutputTokens
-	overview.TotalReasoningTokens = usage.ReasoningOutputTokens
-	overview.TotalContextCompressionTokens = usage.ContextCompressionTokens
-	overview.TotalTokens = usage.TotalTokens
-	overview.TotalToolCalls, err = s.toolCallCount(ctx, filters)
-	if err != nil {
-		return overview, err
-	}
-	overview.SuspectedNetworkToolDurationMS, overview.SuspectedNetworkToolCalls, err = s.suspectedNetworkToolTotalsWithFilters(ctx, overview.TotalToolDurationMS, filters)
-	if err != nil {
-		return overview, err
-	}
-	overview.EstimatedCostUSD, overview.UnpricedSessions, err = s.totalCostWithFilters(ctx, filters)
-	if err != nil {
-		return overview, err
-	}
-	overview.DailyUsage, err = s.dailyUsageWithFilters(ctx, filters)
-	if err != nil {
-		return overview, err
-	}
-	overview.CacheHitTrend = cacheHitTrendFromDailyUsage(overview.DailyUsage)
-	overview.ModelUsage, err = s.modelUsageWithFilters(ctx, filters)
-	if err != nil {
-		return overview, err
-	}
-	overview.AgentUsage, err = s.agentUsageWithFilters(ctx, filters)
-	if err != nil {
-		return overview, err
-	}
-	overview.ToolTimeLeaders, err = s.toolTimeLeadersWithFilters(ctx, filters)
-	if err != nil {
-		return overview, err
-	}
-	overview.AgentTimeUsage, err = s.agentTimeUsageWithFilters(ctx, filters)
-	if err != nil {
-		return overview, err
-	}
-	overview.ModelTimeUsage, err = s.modelTimeUsageWithFilters(ctx, filters)
-	if err != nil {
-		return overview, err
-	}
-	overview.RecentSessions, err = s.analyticsSessions(ctx, filters, 6, "s.started_at DESC, s.id DESC", false)
-	if err != nil {
-		return overview, err
-	}
-	overview.SlowSessions, err = s.slowSessionsWithFilters(ctx, filters)
-	normalizeOverviewSlices(&overview)
 	return overview, err
+}
+
+func (l overviewLoader) populateTotals() error {
+	usage, err := l.service.usageTotals(l.ctx, l.filters)
+	if err != nil {
+		return err
+	}
+	l.overview.TotalInputTokens = usage.InputTokens
+	l.overview.TotalCachedInputTokens = usage.CachedInputTokens
+	l.overview.TotalOutputTokens = usage.OutputTokens
+	l.overview.TotalReasoningTokens = usage.ReasoningOutputTokens
+	l.overview.TotalContextCompressionTokens = usage.ContextCompressionTokens
+	l.overview.TotalTokens = usage.TotalTokens
+	l.overview.TotalToolCalls, err = l.service.toolCallCount(l.ctx, l.filters)
+	if err != nil {
+		return err
+	}
+	l.overview.SuspectedNetworkToolDurationMS, l.overview.SuspectedNetworkToolCalls, err = l.service.suspectedNetworkToolTotalsWithFilters(l.ctx, l.overview.TotalToolDurationMS, l.filters)
+	if err != nil {
+		return err
+	}
+	l.overview.EstimatedCostUSD, l.overview.UnpricedSessions, err = l.service.totalCostWithFilters(l.ctx, l.filters)
+	return err
+}
+
+func (l overviewLoader) populateUsage() error {
+	var err error
+	l.overview.DailyUsage, err = l.service.dailyUsageWithFilters(l.ctx, l.filters)
+	if err != nil {
+		return err
+	}
+	l.overview.CacheHitTrend = cacheHitTrendFromDailyUsage(l.overview.DailyUsage)
+	l.overview.ModelUsage, err = l.service.modelUsageWithFilters(l.ctx, l.filters)
+	if err != nil {
+		return err
+	}
+	l.overview.AgentUsage, err = l.service.agentUsageWithFilters(l.ctx, l.filters)
+	return err
+}
+
+func (l overviewLoader) populateTimeUsage() error {
+	var err error
+	l.overview.ToolTimeLeaders, err = l.service.toolTimeLeadersWithFilters(l.ctx, l.filters)
+	if err != nil {
+		return err
+	}
+	l.overview.AgentTimeUsage, err = l.service.agentTimeUsageWithFilters(l.ctx, l.filters)
+	if err != nil {
+		return err
+	}
+	l.overview.ModelTimeUsage, err = l.service.modelTimeUsageWithFilters(l.ctx, l.filters)
+	return err
+}
+
+func (l overviewLoader) populateSessions() error {
+	var err error
+	l.overview.RecentSessions, err = l.service.analyticsSessions(l.ctx, l.filters, 6, "s.started_at DESC, s.id DESC", false)
+	if err != nil {
+		return err
+	}
+	l.overview.SlowSessions, err = l.service.slowSessionsWithFilters(l.ctx, l.filters)
+	return err
 }
 
 func normalizeOverviewSlices(overview *model.Overview) {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -43,29 +44,53 @@ func runCLICommand(args []string) (int, bool) {
 }
 
 func parseRuntimeConfig(args []string) runtimeConfig {
-	config := runtimeConfig{
-		uiMode:    "web",
-		httpAddr:  "127.0.0.1:34115",
-		staticDir: "frontend/dist",
-	}
+	config := defaultRuntimeConfig()
 	flag.StringVar(&config.uiMode, "ui", config.uiMode, "UI mode: web or tui")
 	flag.StringVar(&config.httpAddr, "http", config.httpAddr, "HTTP listen address, for example 127.0.0.1:34115")
 	flag.StringVar(&config.staticDir, "static", config.staticDir, "directory containing the built frontend assets")
 	flag.BoolVar(&config.start, "start", false, "install/build frontend assets before starting web mode and open the browser")
 	flag.BoolVar(&config.skipBrowser, "skip-browser", false, "with -start, do not open the browser")
 	flag.BoolVar(&config.forceBuild, "force-build", false, "with -start, rebuild the frontend even when built assets look current")
+	configureRuntimeFlagUsage()
+	flag.CommandLine.Parse(normalizeCommandArgs(args))
+	requireNoRuntimeArgs()
+
+	config = normalizeRuntimeConfig(config)
+	if err := validateRuntimeConfig(config); err != nil {
+		log.Fatal(err)
+	}
+	config, err := prepareRuntimeConfig(config)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return config
+}
+
+func defaultRuntimeConfig() runtimeConfig {
+	return runtimeConfig{
+		uiMode:    "web",
+		httpAddr:  "127.0.0.1:34115",
+		staticDir: "frontend/dist",
+	}
+}
+
+func configureRuntimeFlagUsage() {
 	flag.Usage = func() {
 		cli.PrintUsage(os.Stderr)
 		fmt.Fprintln(os.Stderr, "\nFlags:")
 		flag.PrintDefaults()
 	}
-	flag.CommandLine.Parse(normalizeCommandArgs(args))
+}
+
+func requireNoRuntimeArgs() {
 	if flag.NArg() > 0 {
 		fmt.Fprintf(os.Stderr, "unknown command or argument %q\n\n", flag.Arg(0))
 		cli.PrintUsage(os.Stderr)
 		os.Exit(cli.ExitUsage)
 	}
+}
 
+func normalizeRuntimeConfig(config runtimeConfig) runtimeConfig {
 	config.uiMode = strings.ToLower(strings.TrimSpace(config.uiMode))
 	if config.uiMode == "" {
 		config.uiMode = "web"
@@ -73,20 +98,29 @@ func parseRuntimeConfig(args []string) runtimeConfig {
 	if strings.HasPrefix(config.httpAddr, ":") {
 		config.httpAddr = "127.0.0.1" + config.httpAddr
 	}
-	if (config.skipBrowser || config.forceBuild) && !config.start {
-		log.Fatal("-skip-browser and -force-build require -start")
-	}
-	if config.start {
-		if config.uiMode != "web" {
-			log.Fatal("-start can only be used with -ui web")
-		}
-		preparedStaticDir, err := startup.PrepareWebAssets(config.staticDir, config.forceBuild)
-		if err != nil {
-			log.Fatalf("prepare frontend: %v", err)
-		}
-		config.staticDir = preparedStaticDir
-	}
 	return config
+}
+
+func validateRuntimeConfig(config runtimeConfig) error {
+	if (config.skipBrowser || config.forceBuild) && !config.start {
+		return errors.New("-skip-browser and -force-build require -start")
+	}
+	if config.start && config.uiMode != "web" {
+		return errors.New("-start can only be used with -ui web")
+	}
+	return nil
+}
+
+func prepareRuntimeConfig(config runtimeConfig) (runtimeConfig, error) {
+	if !config.start {
+		return config, nil
+	}
+	preparedStaticDir, err := startup.PrepareWebAssets(config.staticDir, config.forceBuild)
+	if err != nil {
+		return runtimeConfig{}, fmt.Errorf("prepare frontend: %w", err)
+	}
+	config.staticDir = preparedStaticDir
+	return config, nil
 }
 
 func newStartedApp() *app.App {

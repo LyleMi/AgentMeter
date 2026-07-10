@@ -1,4 +1,4 @@
-﻿package tui
+package tui
 
 import (
 	"context"
@@ -10,75 +10,82 @@ import (
 
 func (s *state) handlePrivacyKey(k keyMsg) (command, bool, bool) {
 	if s.privacyPending != nil {
-		switch k.typ {
-		case keyEnter:
-			action := *s.privacyPending
-			s.privacyPending = nil
-			return s.applyPrivacyProfile(action), false, true
-		case keyEsc:
-			action := *s.privacyPending
-			s.privacyPending = nil
-			s.status = fmt.Sprintf("cancelled %s profile for %s", action.profile, action.targetName)
-			return nil, false, true
-		case keyRune:
-			if k.ch == 'q' || k.ch == 'Q' {
-				return nil, true, true
-			}
-		}
-		action := *s.privacyPending
-		s.status = fmt.Sprintf("pending %s profile for %s; Enter writes config, Esc cancels", action.profile, action.targetName)
+		return s.handlePendingPrivacyKey(k)
+	}
+	if s.privacyApplying && isPrivacyApplyKey(k) {
+		s.status = "privacy profile already applying"
 		return nil, false, true
 	}
-	if s.privacyApplying {
-		if k.typ == keyEnter || (k.typ == keyRune && isPrivacyProfileKey(k.ch)) {
-			s.status = "privacy profile already applying"
-			return nil, false, true
+	if cmd, quit, handled := s.handlePrivacyNavigationKey(k); handled {
+		return cmd, quit, handled
+	}
+	if k.typ == keyRune {
+		return s.handlePrivacyRuneKey(k.ch)
+	}
+	return nil, false, false
+}
+
+func (s *state) handlePendingPrivacyKey(k keyMsg) (command, bool, bool) {
+	action := *s.privacyPending
+	switch k.typ {
+	case keyEnter:
+		s.privacyPending = nil
+		return s.applyPrivacyProfile(action), false, true
+	case keyEsc:
+		s.privacyPending = nil
+		s.status = fmt.Sprintf("cancelled %s profile for %s", action.profile, action.targetName)
+		return nil, false, true
+	case keyRune:
+		if k.ch == 'q' || k.ch == 'Q' {
+			return nil, true, true
 		}
 	}
+	s.status = fmt.Sprintf("pending %s profile for %s; Enter writes config, Esc cancels", action.profile, action.targetName)
+	return nil, false, true
+}
+
+func isPrivacyApplyKey(k keyMsg) bool {
+	return k.typ == keyEnter || (k.typ == keyRune && isPrivacyProfileKey(k.ch))
+}
+
+func (s *state) handlePrivacyNavigationKey(k keyMsg) (command, bool, bool) {
 	switch k.typ {
 	case keyEnter:
 		s.queuePrivacyProfile("recommended")
-		return nil, false, true
 	case keyUp:
 		s.movePrivacyTarget(-1)
-		return nil, false, true
 	case keyDown:
 		s.movePrivacyTarget(1)
-		return nil, false, true
 	case keyHome:
 		s.movePrivacyTargetTo(0)
-		return nil, false, true
 	case keyEnd:
 		s.movePrivacyTargetTo(len(s.privacy) - 1)
-		return nil, false, true
 	case keyPageUp:
 		s.movePrivacyDetail(-s.pageStep())
-		return nil, false, true
 	case keyPageDown:
 		s.movePrivacyDetail(s.pageStep())
-		return nil, false, true
-	}
-	if k.typ != keyRune {
+	default:
 		return nil, false, false
 	}
-	switch k.ch {
+	return nil, false, true
+}
+
+func (s *state) handlePrivacyRuneKey(ch rune) (command, bool, bool) {
+	switch ch {
 	case '[', 'k', 'K':
 		s.movePrivacyTarget(-1)
-		return nil, false, true
 	case ']', 'j', 'J':
 		s.movePrivacyTarget(1)
-		return nil, false, true
 	case 'a':
 		s.queuePrivacyProfile("recommended")
-		return nil, false, true
 	case 'A':
 		s.queuePrivacyProfile("strict")
-		return nil, false, true
 	case 'u':
 		s.queuePrivacyProfile("default")
-		return nil, false, true
+	default:
+		return nil, false, false
 	}
-	return nil, false, false
+	return nil, false, true
 }
 
 func isPrivacyProfileKey(ch rune) bool {
