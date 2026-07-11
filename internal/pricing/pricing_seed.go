@@ -67,6 +67,9 @@ func newSeedSources() seedSources {
 
 func openAISeedRates(s seedSources) []Rate {
 	return []Rate{
+		{Model: "gpt-5.6-sol", NormalizedModel: "gpt-5.6-sol", InputPer1M: 5.00, CachedInputPer1M: 0.50, OutputPer1M: 30.00, Source: s.openaiPricing, EffectiveFrom: s.verified},
+		{Model: "gpt-5.6-terra", NormalizedModel: "gpt-5.6-terra", InputPer1M: 2.50, CachedInputPer1M: 0.25, OutputPer1M: 15.00, Source: s.openaiPricing, EffectiveFrom: s.verified},
+		{Model: "gpt-5.6-luna", NormalizedModel: "gpt-5.6-luna", InputPer1M: 1.00, CachedInputPer1M: 0.10, OutputPer1M: 6.00, Source: s.openaiPricing, EffectiveFrom: s.verified},
 		{Model: "gpt-5.5", NormalizedModel: "gpt-5.5", InputPer1M: 5.00, CachedInputPer1M: 0.50, OutputPer1M: 30.00, Source: s.openaiPricing, EffectiveFrom: s.verified},
 		{Model: "gpt-5.5-short-context", NormalizedModel: "gpt-5.5-short-context", InputPer1M: 5.00, CachedInputPer1M: 0.50, OutputPer1M: 30.00, Source: s.openaiPricing, EffectiveFrom: s.verified},
 		{Model: "gpt-5.5-long-context", NormalizedModel: "gpt-5.5-long-context", InputPer1M: 10.00, CachedInputPer1M: 1.00, OutputPer1M: 45.00, Source: s.openaiPricing, EffectiveFrom: s.verified},
@@ -76,6 +79,7 @@ func openAISeedRates(s seedSources) []Rate {
 		{Model: "gpt-5.4-mini", NormalizedModel: "gpt-5.4-mini", InputPer1M: 0.75, CachedInputPer1M: 0.075, OutputPer1M: 4.50, Source: s.openaiPricing, EffectiveFrom: s.verified},
 		{Model: "gpt-5.4-nano", NormalizedModel: "gpt-5.4-nano", InputPer1M: 0.20, CachedInputPer1M: 0.02, OutputPer1M: 1.25, Source: s.openaiPricing, EffectiveFrom: s.verified},
 		{Model: "gpt-5.3-codex", NormalizedModel: "gpt-5.3-codex", InputPer1M: 1.75, CachedInputPer1M: 0.175, OutputPer1M: 14.00, Source: s.openaiPricing, EffectiveFrom: s.verified},
+		{Model: "gpt-5.2-codex", NormalizedModel: "gpt-5.2-codex", InputPer1M: 1.75, CachedInputPer1M: 0.175, OutputPer1M: 14.00, Source: s.openaiPricing, EffectiveFrom: s.verified},
 		{Model: "chat-latest", NormalizedModel: "chat-latest", InputPer1M: 5.00, CachedInputPer1M: 0.50, OutputPer1M: 30.00, Source: s.openaiPricing, EffectiveFrom: s.verified},
 		{Model: "gpt-5", NormalizedModel: "gpt-5", InputPer1M: 1.25, CachedInputPer1M: 0.125, OutputPer1M: 10.00, Source: s.openaiGPT5, EffectiveFrom: s.verified},
 		{Model: "gpt-5-mini", NormalizedModel: "gpt-5-mini", InputPer1M: 0.25, CachedInputPer1M: 0.025, OutputPer1M: 2.00, Source: s.openaiGPT5Mini, EffectiveFrom: s.verified},
@@ -101,6 +105,7 @@ func anthropicSeedRates(s seedSources) []Rate {
 		{Model: "claude-opus-4.5", NormalizedModel: "claude-opus-4.5", InputPer1M: 5.00, CachedInputPer1M: 0.50, OutputPer1M: 25.00, Source: s.anthropicPricing, EffectiveFrom: s.verified},
 		{Model: "claude-opus-4.1", NormalizedModel: "claude-opus-4.1", InputPer1M: 15.00, CachedInputPer1M: 1.50, OutputPer1M: 75.00, Source: s.anthropicPricing, EffectiveFrom: s.verified},
 		{Model: "claude-opus-4", NormalizedModel: "claude-opus-4", InputPer1M: 15.00, CachedInputPer1M: 1.50, OutputPer1M: 75.00, Source: s.anthropicPricing, EffectiveFrom: s.verified},
+		{Model: "claude-sonnet-5", NormalizedModel: "claude-sonnet-5", InputPer1M: 2.00, CachedInputPer1M: 0.20, OutputPer1M: 10.00, Source: s.anthropicPricing, EffectiveFrom: s.verified},
 		{Model: "claude-sonnet-4.6", NormalizedModel: "claude-sonnet-4.6", InputPer1M: 3.00, CachedInputPer1M: 0.30, OutputPer1M: 15.00, Source: s.anthropicPricing, EffectiveFrom: s.verified},
 		{Model: "claude-sonnet-4.6-1m", NormalizedModel: "claude-sonnet-4.6-1m", InputPer1M: 3.00, CachedInputPer1M: 0.30, OutputPer1M: 15.00, Source: s.anthropicPricing, EffectiveFrom: s.verified},
 		{Model: "claude-sonnet-4.5", NormalizedModel: "claude-sonnet-4.5", InputPer1M: 3.00, CachedInputPer1M: 0.30, OutputPer1M: 15.00, Source: s.anthropicPricing, EffectiveFrom: s.verified},

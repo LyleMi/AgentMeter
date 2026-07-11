@@ -1,4 +1,4 @@
-﻿package pricing
+package pricing
 
 import (
 	"context"
@@ -56,6 +56,64 @@ func TestComputeKnownRegistryRows(t *testing.T) {
 				OutputTokens: 1_000_000,
 			},
 			want: 30,
+		},
+		{
+			name: "gpt 5.6 alias",
+			usage: model.Usage{
+				Model:        "gpt-5.6",
+				InputTokens:  1_000_000,
+				OutputTokens: 1_000_000,
+			},
+			want: 35,
+		},
+		{
+			name: "gpt 5.6 terra",
+			usage: model.Usage{
+				Model:             "gpt-5.6-terra",
+				InputTokens:       1_000_000,
+				CachedInputTokens: 200_000,
+				OutputTokens:      500_000,
+			},
+			want: 9.55,
+		},
+		{
+			name: "gpt 5.6 luna",
+			usage: model.Usage{
+				Model:        "gpt-5.6-luna",
+				InputTokens:  1_000_000,
+				OutputTokens: 1_000_000,
+			},
+			want: 7,
+		},
+		{
+			name: "claude fable 5",
+			usage: model.Usage{
+				Model:             "claude-fable-5",
+				InputTokens:       1_000_000,
+				CachedInputTokens: 200_000,
+				OutputTokens:      500_000,
+			},
+			want: 33.2,
+		},
+		{
+			name: "gpt 5.2 codex",
+			usage: model.Usage{
+				Model:             "gpt-5.2-codex",
+				InputTokens:       1_000_000,
+				CachedInputTokens: 200_000,
+				OutputTokens:      500_000,
+			},
+			want: 8.435,
+		},
+		{
+			name: "claude sonnet 5",
+			usage: model.Usage{
+				Model:             "claude-sonnet-5",
+				InputTokens:       1_000_000,
+				CachedInputTokens: 200_000,
+				OutputTokens:      500_000,
+			},
+			want: 6.64,
 		},
 		{
 			name: "deepseek suffix fallback",

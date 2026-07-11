@@ -135,6 +135,7 @@ var modelAliases = map[string]string{
 	"glm-5":               "glm-5.2",
 	"glm-5.1":             "glm-5.2",
 	"gpt-5.1-codex-mini":  "gpt-5-mini",
+	"gpt-5.6":             "gpt-5.6-sol",
 	"hy3":                 "hy3-preview",
 	"hunyuan-hy3":         "hy3-preview",
 	"hunyuan-hy3-preview": "hy3-preview",
