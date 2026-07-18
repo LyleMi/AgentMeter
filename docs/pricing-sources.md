@@ -4,7 +4,7 @@ Pricing registry rows are USD per 1M tokens. They are API list-price estimates
 for local usage analysis only; subscription usage in Codex, Claude Code, or
 other coding agents may not map one-to-one to API billing.
 
-Verified: 2026-06-29.
+Verified: 2026-07-17.
 
 ## Source Of Truth
 
@@ -26,6 +26,7 @@ manual price table here; it will drift from the registry. When pricing changes:
 ## Sources
 
 - OpenAI: https://developers.openai.com/api/docs/pricing
+- OpenAI GPT-5.6 Sol: https://developers.openai.com/api/docs/models/gpt-5.6-sol
 - OpenAI GPT-5: https://developers.openai.com/api/docs/models/gpt-5
 - OpenAI GPT-5 mini: https://developers.openai.com/api/docs/models/gpt-5-mini
 - OpenAI GPT-5 nano: https://developers.openai.com/api/docs/models/gpt-5-nano
@@ -58,6 +59,9 @@ manual price table here; it will drift from the registry. When pricing changes:
 - OpenAI and Gemini long-context rows are explicit aliases. The default model
   row uses the standard context tier because local session logs do not reliably
   expose the billable prompt-length tier.
+- GPT-5.6 Sol uses the standard context tier. Its published cache-write premium
+  and long-context tier cannot be represented reliably by session-level token
+  aggregates, so cached input uses the published cache-read rate.
 - Gemini 3.1 Pro rows use the standard `<= 200k` tier. Explicit
   `-long-context` aliases use the `> 200k` tier. `gemini-3.1-pro` and
   `gemini-3.1-pro-preview` are treated as equivalent for this local estimate.

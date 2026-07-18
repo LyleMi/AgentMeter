@@ -21,6 +21,16 @@ func TestComputeKnownRegistryRows(t *testing.T) {
 		want  float64
 	}{
 		{
+			name: "gpt 5.6 sol",
+			usage: model.Usage{
+				Model:             "gpt-5.6-sol",
+				InputTokens:       1_000_000,
+				CachedInputTokens: 200_000,
+				OutputTokens:      500_000,
+			},
+			want: 19.1,
+		},
+		{
 			name: "gpt5 alias",
 			usage: model.Usage{
 				Model:        "gpt5.5",
@@ -114,6 +124,15 @@ func TestComputeKnownRegistryRows(t *testing.T) {
 				OutputTokens:      500_000,
 			},
 			want: 6.64,
+		},
+		{
+			name: "claude haiku punctuation alias",
+			usage: model.Usage{
+				Model:        "claude-haiku-4-5",
+				InputTokens:  1_000_000,
+				OutputTokens: 1_000_000,
+			},
+			want: 6,
 		},
 		{
 			name: "deepseek suffix fallback",

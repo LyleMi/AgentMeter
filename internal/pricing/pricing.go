@@ -126,6 +126,7 @@ func normalizedModelCandidates(value string) []string {
 
 var modelAliases = map[string]string{
 	"claude-4.5-haiku":    "claude-haiku-4.5",
+	"claude-haiku-4-5":    "claude-haiku-4.5",
 	"claude-4.6-opus":     "claude-opus-4.6",
 	"claude-4.6-sonnet":   "claude-sonnet-4.6",
 	"claude-4.7-opus":     "claude-opus-4.7",

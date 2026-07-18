@@ -5,7 +5,9 @@ import "time"
 type seedSources struct {
 	verified          time.Time
 	verifiedLatest    time.Time
+	verifiedCurrent   time.Time
 	openaiPricing     string
+	openaiGPT56Sol    string
 	openaiGPT5        string
 	openaiGPT5Mini    string
 	openaiGPT5Nano    string
@@ -44,10 +46,13 @@ func seedRates() []Rate {
 func newSeedSources() seedSources {
 	verified := time.Date(2026, 6, 27, 0, 0, 0, 0, time.UTC)
 	verifiedLatest := time.Date(2026, 6, 29, 0, 0, 0, 0, time.UTC)
+	verifiedCurrent := time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)
 	return seedSources{
 		verified:          verified,
 		verifiedLatest:    verifiedLatest,
+		verifiedCurrent:   verifiedCurrent,
 		openaiPricing:     "OpenAI API pricing, https://developers.openai.com/api/docs/pricing, verified 2026-06-27",
+		openaiGPT56Sol:    "OpenAI GPT-5.6 Sol model page, https://developers.openai.com/api/docs/models/gpt-5.6-sol, verified 2026-07-17",
 		openaiGPT5:        "OpenAI GPT-5 model page, https://developers.openai.com/api/docs/models/gpt-5, verified 2026-06-27",
 		openaiGPT5Mini:    "OpenAI GPT-5 mini model page, https://developers.openai.com/api/docs/models/gpt-5-mini, verified 2026-06-27",
 		openaiGPT5Nano:    "OpenAI GPT-5 nano model page, https://developers.openai.com/api/docs/models/gpt-5-nano, verified 2026-06-27",
@@ -67,7 +72,7 @@ func newSeedSources() seedSources {
 
 func openAISeedRates(s seedSources) []Rate {
 	return []Rate{
-		{Model: "gpt-5.6-sol", NormalizedModel: "gpt-5.6-sol", InputPer1M: 5.00, CachedInputPer1M: 0.50, OutputPer1M: 30.00, Source: s.openaiPricing, EffectiveFrom: s.verified},
+		{Model: "gpt-5.6-sol", NormalizedModel: "gpt-5.6-sol", InputPer1M: 5.00, CachedInputPer1M: 0.50, OutputPer1M: 30.00, Source: s.openaiGPT56Sol, EffectiveFrom: s.verifiedCurrent},
 		{Model: "gpt-5.6-terra", NormalizedModel: "gpt-5.6-terra", InputPer1M: 2.50, CachedInputPer1M: 0.25, OutputPer1M: 15.00, Source: s.openaiPricing, EffectiveFrom: s.verified},
 		{Model: "gpt-5.6-luna", NormalizedModel: "gpt-5.6-luna", InputPer1M: 1.00, CachedInputPer1M: 0.10, OutputPer1M: 6.00, Source: s.openaiPricing, EffectiveFrom: s.verified},
 		{Model: "gpt-5.5", NormalizedModel: "gpt-5.5", InputPer1M: 5.00, CachedInputPer1M: 0.50, OutputPer1M: 30.00, Source: s.openaiPricing, EffectiveFrom: s.verified},
