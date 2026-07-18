@@ -24,8 +24,8 @@ For manual Web startup:
 
 ```sh
 cd frontend
-npm ci
-npm run build
+pnpm install --frozen-lockfile
+pnpm run build
 cd ..
 go run . -ui web -http 127.0.0.1:34115
 ```
@@ -59,8 +59,8 @@ go test ./...
 
 ```sh
 cd frontend
-npm ci
-npm run build
+pnpm install --frozen-lockfile
+pnpm run build
 cd ..
 ```
 
@@ -70,7 +70,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-api.ps1 -BaseU
 
 ```sh
 cd frontend
-npm run test:smoke
+pnpm run test:smoke
 cd ..
 ```
 

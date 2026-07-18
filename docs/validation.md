@@ -34,8 +34,8 @@ Run the Web build check:
 
 ```sh
 cd frontend
-npm ci
-npm run build
+pnpm install --frozen-lockfile
+pnpm run build
 cd ..
 ```
 
@@ -54,7 +54,8 @@ without triggering indexing, rebuilds, settings writes, or privacy config
 changes.
 
 API smoke covers overview, token analytics, model signals, day/project usage
-breakdowns, sessions, tools, audit, pricing, settings, and privacy status.
+breakdowns, sessions, tools, audit, pricing, settings, source-directory storage,
+and privacy status.
 Cache-related shape checks include `totalInputTokens`, `totalCachedInputTokens`,
 `cacheUtilizationRate`, `cacheHitTrend`, `dailyUsage.cachedInputTokens`, and
 usage-breakdown bucket `projectPath`/`cachedInputTokens`/
@@ -80,14 +81,14 @@ Frontend:
 
 ```sh
 cd frontend
-npm run dev
+pnpm run dev
 ```
 
 Run Playwright smoke:
 
 ```sh
 cd frontend
-npm run test:smoke
+pnpm run test:smoke
 cd ..
 ```
 
@@ -103,7 +104,7 @@ For preview changes, validate:
 ```powershell
 cd frontend
 $env:VITE_AGENTMETER_STATIC_DEMO='true'
-npm run build
+pnpm run build
 cd ..
 ```
 
@@ -192,8 +193,8 @@ TUI expectations where relevant:
 - [Roadmap](roadmap.md).
 
 For backend read-model changes, run `go test ./...`. If visible Web UI changed,
-also run the frontend build (`cd frontend; npm ci; npm run build`) and browser
-smoke (`cd frontend; npm run test:smoke`) against the appropriate local
+also run the frontend build (`cd frontend; pnpm install --frozen-lockfile; pnpm run build`) and browser
+smoke (`cd frontend; pnpm run test:smoke`) against the appropriate local
 backend/frontend services.
 
 ## Documentation-only Changes

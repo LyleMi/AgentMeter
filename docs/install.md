@@ -51,7 +51,7 @@ want to run the downloaded binary.
 Requirements:
 
 - Go matching the version in `go.mod`
-- Node.js and npm for Web startup when built Web assets are not already present
+- Node.js and pnpm 11.1.3 for Web startup when built Web assets are not already present
 
 Install the command:
 
@@ -86,7 +86,7 @@ one-shot run.
 Requirements:
 
 - Go matching the version in `go.mod`
-- Node.js and npm
+- Node.js and pnpm 11.1.3
 
 From the repository root:
 

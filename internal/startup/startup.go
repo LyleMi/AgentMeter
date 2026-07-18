@@ -104,8 +104,8 @@ func EnsureWebAssets(repoRoot string, forceBuild bool) error {
 	if !plan.required() {
 		return nil
 	}
-	if _, err := exec.LookPath("npm"); err != nil {
-		return errors.New("npm was not found on PATH")
+	if _, err := exec.LookPath("pnpm"); err != nil {
+		return errors.New("pnpm was not found on PATH")
 	}
 	return executeWebAssetPlan(frontendDir, plan)
 }
@@ -116,7 +116,7 @@ type webAssetPlan struct {
 }
 
 func planWebAssets(frontendDir string, forceBuild bool) (webAssetPlan, error) {
-	install, err := NeedsNPMInstall(frontendDir)
+	install, err := NeedsPNPMInstall(frontendDir)
 	if err != nil {
 		return webAssetPlan{}, err
 	}
@@ -134,36 +134,36 @@ func (plan webAssetPlan) required() bool {
 func executeWebAssetPlan(frontendDir string, plan webAssetPlan) error {
 	if plan.install {
 		fmt.Fprintln(os.Stdout, "Installing frontend dependencies...")
-		if err := run(frontendDir, "npm", "ci"); err != nil {
+		if err := run(frontendDir, "pnpm", "install", "--frozen-lockfile"); err != nil {
 			return err
 		}
 	}
 	if plan.build {
 		fmt.Fprintln(os.Stdout, "Building frontend...")
-		if err := run(frontendDir, "npm", "run", "build"); err != nil {
+		if err := run(frontendDir, "pnpm", "run", "build"); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func NeedsNPMInstall(frontendDir string) (bool, error) {
+func NeedsPNPMInstall(frontendDir string) (bool, error) {
 	nodeModules := filepath.Join(frontendDir, "node_modules")
 	if !dirExists(nodeModules) {
 		return true, nil
 	}
 
-	packageLock := filepath.Join(frontendDir, "package-lock.json")
-	if !fileExists(packageLock) {
+	pnpmLock := filepath.Join(frontendDir, "pnpm-lock.yaml")
+	if !fileExists(pnpmLock) {
 		return false, nil
 	}
 
-	nodeModulesLock := filepath.Join(nodeModules, ".package-lock.json")
+	nodeModulesLock := filepath.Join(nodeModules, ".pnpm", "lock.yaml")
 	if !fileExists(nodeModulesLock) {
 		return true, nil
 	}
 
-	packageLockInfo, err := os.Stat(packageLock)
+	pnpmLockInfo, err := os.Stat(pnpmLock)
 	if err != nil {
 		return false, err
 	}
@@ -171,7 +171,7 @@ func NeedsNPMInstall(frontendDir string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return packageLockInfo.ModTime().After(nodeModulesLockInfo.ModTime()), nil
+	return pnpmLockInfo.ModTime().After(nodeModulesLockInfo.ModTime()), nil
 }
 
 func NeedsFrontendBuild(frontendDir string, forceBuild bool) (bool, error) {
@@ -194,7 +194,8 @@ func NeedsFrontendBuild(frontendDir string, forceBuild bool) (bool, error) {
 		"public",
 		"index.html",
 		"package.json",
-		"package-lock.json",
+		"pnpm-lock.yaml",
+		"pnpm-workspace.yaml",
 		"tsconfig.json",
 		"tsconfig.node.json",
 		"vite.config.ts",

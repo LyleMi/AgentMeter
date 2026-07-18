@@ -7,27 +7,27 @@ import (
 	"time"
 )
 
-func TestNeedsNPMInstall(t *testing.T) {
+func TestNeedsPNPMInstall(t *testing.T) {
 	frontendDir := t.TempDir()
-	if install, err := NeedsNPMInstall(frontendDir); err != nil || !install {
+	if install, err := NeedsPNPMInstall(frontendDir); err != nil || !install {
 		t.Fatalf("missing node_modules install = %v, err = %v; want true, nil", install, err)
 	}
 
 	nodeModules := filepath.Join(frontendDir, "node_modules")
 	mustMkdir(t, nodeModules)
-	packageLock := mustWrite(t, frontendDir, "package-lock.json")
-	nodeModulesLock := mustWrite(t, nodeModules, ".package-lock.json")
+	pnpmLock := mustWrite(t, frontendDir, "pnpm-lock.yaml")
+	nodeModulesLock := mustWrite(t, filepath.Join(nodeModules, ".pnpm"), "lock.yaml")
 
 	older := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
 	newer := older.Add(time.Hour)
-	mustChtimes(t, packageLock, older)
+	mustChtimes(t, pnpmLock, older)
 	mustChtimes(t, nodeModulesLock, newer)
-	if install, err := NeedsNPMInstall(frontendDir); err != nil || install {
+	if install, err := NeedsPNPMInstall(frontendDir); err != nil || install {
 		t.Fatalf("current node_modules install = %v, err = %v; want false, nil", install, err)
 	}
 
-	mustChtimes(t, packageLock, newer.Add(time.Hour))
-	if install, err := NeedsNPMInstall(frontendDir); err != nil || !install {
+	mustChtimes(t, pnpmLock, newer.Add(time.Hour))
+	if install, err := NeedsPNPMInstall(frontendDir); err != nil || !install {
 		t.Fatalf("stale node_modules install = %v, err = %v; want true, nil", install, err)
 	}
 }
@@ -118,6 +118,8 @@ func TestPrepareEmbeddedFrontendSourceCopiesBundledFrontend(t *testing.T) {
 	}
 	for _, path := range []string{
 		filepath.Join(cacheRoot, "frontend", "package.json"),
+		filepath.Join(cacheRoot, "frontend", "pnpm-lock.yaml"),
+		filepath.Join(cacheRoot, "frontend", "pnpm-workspace.yaml"),
 		filepath.Join(cacheRoot, "frontend", "src", "main.ts"),
 		filepath.Join(cacheRoot, "frontend", "public", "favicon.png"),
 	} {

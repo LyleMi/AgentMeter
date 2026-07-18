@@ -3,7 +3,7 @@
 ## Requirements
 
 - Go matching the version in `go.mod`
-- Node.js and npm
+- Node.js and pnpm 11.1.3
 
 ## Recommended Local Start
 
@@ -69,8 +69,8 @@ Build the frontend and start local HTTP mode manually:
 
 ```sh
 cd frontend
-npm ci
-npm run build
+pnpm install --frozen-lockfile
+pnpm run build
 cd ..
 
 go run . -ui web -http 127.0.0.1:34115
@@ -103,7 +103,7 @@ Frontend:
 
 ```sh
 cd frontend
-npm run dev
+pnpm run dev
 ```
 
 Open:
@@ -168,8 +168,8 @@ go test ./...
 
 ```sh
 cd frontend
-npm ci
-npm run build
+pnpm install --frozen-lockfile
+pnpm run build
 cd ..
 ```
 
@@ -179,7 +179,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-api.ps1 -BaseU
 
 ```sh
 cd frontend
-npm run test:smoke
+pnpm run test:smoke
 cd ..
 ```
 

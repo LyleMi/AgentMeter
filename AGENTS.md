@@ -16,13 +16,13 @@ build assets are generated under `frontend/dist`.
 - `go run . -start`: installs/builds frontend assets if needed, starts the web
   app on `127.0.0.1:34115`, and serves built assets.
 - `go run . -http 127.0.0.1:34115`: starts the backend for frontend HMR work.
-- `cd frontend; npm run dev`: starts Vite HMR on `127.0.0.1:5173`.
+- `cd frontend; pnpm run dev`: starts Vite HMR on `127.0.0.1:5173`.
 - `go test ./...`: runs all Go unit tests.
-- `cd frontend; npm ci; npm run build`: installs frontend dependencies, runs
+- `cd frontend; pnpm install --frozen-lockfile; pnpm run build`: installs frontend dependencies, runs
   `vue-tsc`, and builds the Vite app.
 - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-api.ps1 -BaseUrl http://127.0.0.1:34115`:
   read-only API smoke test against a running backend.
-- `cd frontend; npm run test:smoke`: Playwright browser smoke tests against
+- `cd frontend; pnpm run test:smoke`: Playwright browser smoke tests against
   frontend HMR.
 
 See `docs/validation.md` for the full validation and smoke source of truth.
