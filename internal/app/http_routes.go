@@ -15,6 +15,10 @@ func registerSettingsHandlers(mux *http.ServeMux, service *App) {
 		value, err := service.GetSettings()
 		writeJSON(w, value, err)
 	})
+	mux.HandleFunc("GET /api/settings/storage", func(w http.ResponseWriter, r *http.Request) {
+		value, err := service.GetSourceStorage()
+		writeJSON(w, value, err)
+	})
 	mux.HandleFunc("POST /api/settings", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			SourceEntries []model.SourceEntry `json:"sourceEntries"`

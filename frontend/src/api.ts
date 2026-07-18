@@ -2,6 +2,7 @@ export { api, isStaticDemo } from './api/client'
 export type * from './api/types'
 export {
   formatCost,
+  formatBytes,
   formatDateTime,
   formatDisplayCost,
   formatDisplayNumber,

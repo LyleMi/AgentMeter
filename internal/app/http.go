@@ -138,7 +138,7 @@ func RegisterHTTPHandlers(mux *http.ServeMux, service *App, staticFS fs.FS) {
 func registerStaticHandlers(mux *http.ServeMux, staticFS fs.FS) {
 	if _, err := fs.Stat(staticFS, "index.html"); err != nil {
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			http.Error(w, "frontend build not found; run `cd frontend && npm run build`, or use `npm run dev` during development", http.StatusServiceUnavailable)
+			http.Error(w, "frontend build not found; run `cd frontend && pnpm run build`, or use `pnpm run dev` during development", http.StatusServiceUnavailable)
 		})
 		return
 	}

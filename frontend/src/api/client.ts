@@ -26,6 +26,7 @@ import type {
   SessionDetail,
   SessionFilters,
   Settings,
+  SourceStorage,
   SourceEntry,
   TokenAnalytics,
   ToolCall,
@@ -131,6 +132,7 @@ function agentResourceOverview(result: AgentResourceOverview | AgentResourceOper
 
 const fetchApi = {
   getSettings: () => request<Settings>('/api/settings'),
+  getSourceStorage: () => request<SourceStorage>('/api/settings/storage'),
   getAgentResources: () => request<AgentResourceOverview>('/api/agent-resources').then(normalizeAgentResourceOverview),
   setAgentSkillEnabled: (input: AgentResourceToggleInput) =>
     request<AgentResourceOverview | AgentResourceOperationResult>('/api/agent-resources/skills/enabled', {

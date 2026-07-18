@@ -759,6 +759,23 @@ export interface SourceEntry {
   label?: string
 }
 
+export interface SourceStorage {
+  totalSizeBytes: number
+  totalFileCount: number
+  directories: SourceDirectoryStorage[]
+  scannedAt: string
+}
+
+export interface SourceDirectoryStorage {
+  path: string
+  label?: string
+  enabled: boolean
+  exists: boolean
+  sizeBytes: number
+  fileCount: number
+  error?: string
+}
+
 export interface IndexResult {
   sourcePath: string
   sourcePaths: string[]

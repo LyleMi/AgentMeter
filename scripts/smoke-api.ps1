@@ -338,6 +338,27 @@ function Assert-Settings {
     Assert-ArrayProperty -Object $Payload -Name "pricingModels"
 }
 
+function Assert-SourceStorage {
+    param([Parameter(Mandatory = $true)][object]$Payload)
+
+    Assert-JsonObject -Value $Payload -Label "response"
+    Assert-NumberProperty -Object $Payload -Name "totalSizeBytes"
+    Assert-NumberProperty -Object $Payload -Name "totalFileCount"
+    Assert-ArrayProperty -Object $Payload -Name "directories"
+    Assert-StringProperty -Object $Payload -Name "scannedAt"
+
+    $directories = @((Get-JsonProperty -Object $Payload -Name "directories").Value)
+    if ($directories.Count -gt 0) {
+        $directory = $directories[0]
+        Assert-JsonObject -Value $directory -Label "source storage directory"
+        Assert-StringProperty -Object $directory -Name "path"
+        Assert-BoolProperty -Object $directory -Name "enabled"
+        Assert-BoolProperty -Object $directory -Name "exists"
+        Assert-NumberProperty -Object $directory -Name "sizeBytes"
+        Assert-NumberProperty -Object $directory -Name "fileCount"
+    }
+}
+
 function Assert-AgentResources {
     param([Parameter(Mandatory = $true)][object]$Payload)
 
@@ -718,6 +739,7 @@ function Assert-Pricing {
 
 $checks = @(
     [pscustomobject]@{ Path = "/api/settings"; Validate = { param($payload, $raw) Assert-Settings -Payload $payload } }
+    [pscustomobject]@{ Path = "/api/settings/storage"; Validate = { param($payload, $raw) Assert-SourceStorage -Payload $payload } }
     [pscustomobject]@{ Path = "/api/agent-resources"; Validate = { param($payload, $raw) Assert-AgentResources -Payload $payload } }
     [pscustomobject]@{ Path = "/api/privacy/codex"; Validate = { param($payload, $raw) Assert-PrivacyStatus -Payload $payload -ExpectedTarget "codex" } }
     [pscustomobject]@{ Path = "/api/privacy/gemini"; Validate = { param($payload, $raw) Assert-PrivacyStatus -Payload $payload -ExpectedTarget "gemini" } }

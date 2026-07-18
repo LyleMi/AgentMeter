@@ -16,7 +16,7 @@ import {
 } from './demo/prompts'
 import { privacyStatus } from './demo/privacy'
 import { filteredSessions, filteredToolCalls, sessionDetail, toolStatsFor } from './demo/sessions'
-import { indexResult, settings } from './demo/settings'
+import { indexResult, settings, sourceStorage } from './demo/settings'
 import { breakdown, overview, tokenAnalytics } from './demo/usage'
 import { clone, paginate } from './demo/utils'
 
@@ -81,6 +81,7 @@ function withDemoRisk(call: ToolCall, riskMap: Map<number, ReturnType<typeof fil
 
 export const demoApi: DemoApi = {
   getSettings: async () => clone(settings()),
+  getSourceStorage: async () => clone(sourceStorage()),
   getAgentResources: async () => clone(agentResources),
   setAgentSkillEnabled: async (input) => clone(replaceAgentResources({
     ...agentResources,

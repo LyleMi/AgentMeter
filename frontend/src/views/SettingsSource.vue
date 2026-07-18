@@ -8,7 +8,7 @@ import ASwitch from 'ant-design-vue/es/switch'
 import ATag from 'ant-design-vue/es/tag'
 import Typography from 'ant-design-vue/es/typography'
 import { DeleteOutlined, FolderAddOutlined, PlusOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons-vue'
-import { api, formatNumber, isStaticDemo, type Settings, type SourceEntry } from '../api'
+import { api, formatBytes, formatDateTime, formatNumber, isStaticDemo, type Settings, type SourceEntry, type SourceStorage } from '../api'
 import { notifyAppDataChanged } from '../events'
 import { useMessages } from '../i18n'
 
@@ -30,6 +30,14 @@ const { t } = useMessages({
     'source.meta.defaults': 'Defaults',
     'source.meta.active': 'Active',
     'source.meta.enabledSources': 'enabled sources',
+    'source.storage.title': 'Directory storage',
+    'source.storage.kicker': 'Space used by local model and session files',
+    'source.storage.total': 'Total size',
+    'source.storage.files': 'Files',
+    'source.storage.scanned': 'Scanned',
+    'source.storage.unavailable': 'Unavailable',
+    'source.storage.partial': 'Partial result',
+    'source.storage.empty': 'No directory storage is available',
     'source.state.unsaved': 'Unsaved',
     'source.state.demo': 'Static demo',
     'source.state.enabledSuffix': 'enabled',
@@ -58,6 +66,14 @@ const { t } = useMessages({
     'source.meta.defaults': '默认值',
     'source.meta.active': '当前',
     'source.meta.enabledSources': '个已启用来源',
+    'source.storage.title': '目录存储占用',
+    'source.storage.kicker': '本地模型与会话文件占用的空间',
+    'source.storage.total': '总占用',
+    'source.storage.files': '文件数',
+    'source.storage.scanned': '统计时间',
+    'source.storage.unavailable': '不可用',
+    'source.storage.partial': '部分结果',
+    'source.storage.empty': '暂无可统计的目录',
     'source.state.unsaved': '未保存',
     'source.state.demo': '静态演示',
     'source.state.enabledSuffix': '个已启用',
@@ -75,6 +91,7 @@ const { t } = useMessages({
 const loading = ref(true)
 const saving = ref(false)
 const settings = ref<Settings | null>(null)
+const storage = ref<SourceStorage | null>(null)
 const sourceEntries = ref<SourceEntry[]>([])
 const newSourcePath = ref('')
 
@@ -83,6 +100,7 @@ const savedEntries = computed(() => normalizeEntries(settings.value?.sourceEntri
 const enabledCount = computed(() => normalizedEntries.value.filter((entry) => entry.enabled).length)
 const disabledCount = computed(() => normalizedEntries.value.length - enabledCount.value)
 const entriesChanged = computed(() => JSON.stringify(normalizedEntries.value) !== JSON.stringify(savedEntries.value))
+const largestDirectorySize = computed(() => Math.max(0, ...(storage.value?.directories || []).map((item) => item.sizeBytes)))
 
 const sourceState = computed(() => {
   if (isStaticDemo) return { color: 'processing', label: t('source.state.demo') }
@@ -119,6 +137,11 @@ function copyEntries(entries: SourceEntry[]) {
   return entries.map((entry) => ({ path: entry.path, enabled: Boolean(entry.enabled), label: entry.label || '' }))
 }
 
+function storageBarWidth(sizeBytes: number) {
+  if (!sizeBytes || !largestDirectorySize.value) return '0%'
+  return `${Math.max(4, (sizeBytes / largestDirectorySize.value) * 100)}%`
+}
+
 function entriesFromPaths(paths: string[], enabled = true) {
   return paths.map((path) => ({ path, enabled, label: '' }))
 }
@@ -126,8 +149,9 @@ function entriesFromPaths(paths: string[], enabled = true) {
 async function load() {
   loading.value = true
   try {
-    const value = await api.getSettings()
+    const [value, storageValue] = await Promise.all([api.getSettings(), api.getSourceStorage()])
     settings.value = value
+    storage.value = storageValue
     const entries = value.sourceEntries?.length ? value.sourceEntries : entriesFromPaths(value.sourcePaths || [])
     sourceEntries.value = copyEntries(entries)
   } finally {
@@ -231,6 +255,48 @@ onMounted(load)
                 <div class="metadata-value">{{ formatNumber(settings?.defaultSourcePaths?.length || 0) }}</div>
               </div>
             </div>
+
+            <section class="source-storage-block" aria-labelledby="source-storage-title">
+              <div class="source-storage-header">
+                <div>
+                  <h3 id="source-storage-title" class="source-storage-title">{{ t('source.storage.title') }}</h3>
+                  <div class="muted">{{ t('source.storage.kicker') }}</div>
+                </div>
+                <div class="source-storage-totals">
+                  <div>
+                    <span>{{ t('source.storage.total') }}</span>
+                    <strong>{{ formatBytes(storage?.totalSizeBytes) }}</strong>
+                  </div>
+                  <div>
+                    <span>{{ t('source.storage.files') }}</span>
+                    <strong>{{ formatNumber(storage?.totalFileCount) }}</strong>
+                  </div>
+                </div>
+              </div>
+              <div v-if="storage?.directories.length" class="source-storage-list">
+                <div v-for="directory in storage.directories" :key="directory.path" class="source-storage-row" :class="{ 'is-disabled': !directory.enabled }">
+                  <div class="source-storage-row-heading">
+                    <div class="source-storage-identity">
+                      <span class="source-storage-name">{{ directory.label || directory.path }}</span>
+                      <a-tag v-if="!directory.exists" class="status-tag">{{ t('source.storage.unavailable') }}</a-tag>
+                      <a-tag v-else-if="directory.error" color="warning" class="status-tag">{{ t('source.storage.partial') }}</a-tag>
+                    </div>
+                    <div class="source-storage-measure">
+                      <strong>{{ formatBytes(directory.sizeBytes) }}</strong>
+                      <span>{{ formatNumber(directory.fileCount) }} {{ t('source.storage.files') }}</span>
+                    </div>
+                  </div>
+                  <div class="source-storage-path" :title="directory.path">{{ directory.path }}</div>
+                  <div class="source-storage-track" aria-hidden="true">
+                    <div class="source-storage-fill" :style="{ width: storageBarWidth(directory.sizeBytes) }" />
+                  </div>
+                </div>
+              </div>
+              <div v-else class="empty-state empty-state-compact">{{ t('source.storage.empty') }}</div>
+              <div v-if="storage?.scannedAt" class="source-storage-scanned">
+                {{ t('source.storage.scanned') }} · {{ formatDateTime(storage.scannedAt) }}
+              </div>
+            </section>
 
             <div class="source-entry-list">
               <div

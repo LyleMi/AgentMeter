@@ -14,6 +14,23 @@ type Settings struct {
 	LastIndexResult    *IndexResult   `json:"lastIndexResult,omitempty"`
 }
 
+type SourceStorage struct {
+	TotalSizeBytes int64                    `json:"totalSizeBytes"`
+	TotalFileCount int                      `json:"totalFileCount"`
+	Directories    []SourceDirectoryStorage `json:"directories"`
+	ScannedAt      time.Time                `json:"scannedAt"`
+}
+
+type SourceDirectoryStorage struct {
+	Path      string `json:"path"`
+	Label     string `json:"label,omitempty"`
+	Enabled   bool   `json:"enabled"`
+	Exists    bool   `json:"exists"`
+	SizeBytes int64  `json:"sizeBytes"`
+	FileCount int    `json:"fileCount"`
+	Error     string `json:"error,omitempty"`
+}
+
 type IndexResult struct {
 	SourcePath  string   `json:"sourcePath"`
 	SourcePaths []string `json:"sourcePaths"`

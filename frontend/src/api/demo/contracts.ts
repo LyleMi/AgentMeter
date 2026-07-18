@@ -25,6 +25,7 @@ import type {
   SessionDetail,
   SessionFilters,
   Settings,
+  SourceStorage,
   SourceEntry,
   TokenAnalytics,
   ToolCall,
@@ -50,6 +51,7 @@ export interface DemoSource {
 
 export type DemoApi = {
   getSettings: () => Promise<Settings>
+  getSourceStorage: () => Promise<SourceStorage>
   getAgentResources: () => Promise<AgentResourceOverview>
   setAgentSkillEnabled: (input: AgentResourceToggleInput) => Promise<AgentResourceOverview>
   setAgentMCPServerEnabled: (input: AgentResourceToggleInput) => Promise<AgentResourceOverview>
