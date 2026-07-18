@@ -33,7 +33,7 @@ const { t } = useMessages({
     'metric.cacheRateNote': '{count} cached input tokens',
     'metric.cost': 'Estimated Cost',
     'metric.costNoteCovered': 'Pricing covered for indexed usage',
-    'metric.costNoteMissing': '{count} unpriced usage rows',
+    'metric.costNoteMissing': '{count} unpriced: {models}',
     'metric.inputOutput': 'Input / Output',
     'metric.inputOutputNote': 'Prompt and response volume',
     'metric.contextCompression': 'Context Compression',
@@ -61,7 +61,7 @@ const { t } = useMessages({
     'metric.cacheRateNote': '{count} 个缓存输入 Token',
     'metric.cost': '预估费用',
     'metric.costNoteCovered': '已索引用量均有价格覆盖',
-    'metric.costNoteMissing': '{count} 条用量缺少价格',
+    'metric.costNoteMissing': '{count} 条未定价：{models}',
     'metric.inputOutput': '输入 / 输出',
     'metric.inputOutputNote': '提示词和响应规模',
     'metric.contextCompression': '上下文压缩',
@@ -146,13 +146,26 @@ const sourceCacheRows = computed<SourceCacheRow[]>(() => {
 })
 
 const cacheRatePercent = computed(() => Math.round(clampRatio(analytics.value?.cacheUtilizationRate || 0) * 100))
+const unpricedModels = computed(() => (analytics.value?.modelUsage || [])
+  .filter((item) => item.unpriced)
+  .sort((left, right) => right.sessionCount - left.sessionCount || left.model.localeCompare(right.model))
+  .map((item) => `${item.model} (${formatDisplayNumber(item.sessionCount).main})`)
+  .join(', '))
 const metricCards = computed(() => {
   const item = analytics.value
+  const missingPricingNote = item?.unpricedCount
+    ? t('metric.costNoteMissing', {
+        count: formatDisplayNumber(item.unpricedCount).main,
+        models: unpricedModels.value || t('fallback.unknown')
+      })
+    : t('metric.costNoteCovered')
   return [
     {
       label: t('metric.totalTokens'),
       value: formatDisplayNumber(item?.totalTokens),
       note: t('metric.totalTokensNote', { count: formatDisplayNumber(item?.totalSessions).main }),
+      noteTitle: '',
+      multilineNote: false,
       icon: DatabaseOutlined,
       tone: 'metric-primary'
     },
@@ -160,13 +173,17 @@ const metricCards = computed(() => {
       label: t('metric.cacheRate'),
       value: { main: `${cacheRatePercent.value}%`, full: `${cacheRatePercent.value}%`, suffix: '' },
       note: t('metric.cacheRateNote', { count: formatDisplayNumber(item?.totalCachedInputTokens).main }),
+      noteTitle: '',
+      multilineNote: false,
       icon: CheckCircleOutlined,
       tone: 'metric-success'
     },
     {
       label: t('metric.cost'),
       value: formatDisplayCost(item?.estimatedCostUsd),
-      note: item?.unpricedCount ? t('metric.costNoteMissing', { count: formatDisplayNumber(item.unpricedCount).main }) : t('metric.costNoteCovered'),
+      note: missingPricingNote,
+      noteTitle: missingPricingNote,
+      multilineNote: Boolean(item?.unpricedCount),
       icon: item?.unpricedCount ? WarningOutlined : DollarCircleOutlined,
       tone: item?.unpricedCount ? 'metric-warning' : 'metric-info'
     },
@@ -174,6 +191,8 @@ const metricCards = computed(() => {
       label: t('metric.inputOutput'),
       value: displayPair(item),
       note: t('metric.inputOutputNote'),
+      noteTitle: '',
+      multilineNote: false,
       icon: TableOutlined,
       tone: 'metric-neutral'
     },
@@ -181,6 +200,8 @@ const metricCards = computed(() => {
       label: t('metric.contextCompression'),
       value: formatDisplayNumber(item?.totalContextCompressionTokens),
       note: t('metric.contextCompressionNote', { percent: formatPercent(contextCompressionShare(item), { clamp: true, lessThanOne: true }) }),
+      noteTitle: '',
+      multilineNote: false,
       icon: CompressOutlined,
       tone: 'metric-neutral'
     }
@@ -236,7 +257,13 @@ function sourceCacheAria(row: SourceCacheRow) {
             </span>
           </div>
           <div class="metric-strip-value" :title="item.value.full">{{ item.value.main }}</div>
-          <div class="metric-strip-note">{{ item.note }}</div>
+          <div
+            class="metric-strip-note"
+            :class="{ 'tokens-pricing-note': item.multilineNote }"
+            :title="item.noteTitle"
+          >
+            {{ item.note }}
+          </div>
         </div>
       </section>
 
@@ -317,6 +344,14 @@ function sourceCacheAria(row: SourceCacheRow) {
 <style scoped>
 .tokens-metric-strip {
   grid-template-columns: repeat(5, minmax(150px, 1fr));
+}
+
+.tokens-pricing-note {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .tokens-summary-grid {

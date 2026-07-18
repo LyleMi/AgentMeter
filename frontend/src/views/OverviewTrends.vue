@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, watch } from 'vue'
 import ASpin from 'ant-design-vue/es/spin'
 import { BarChartOutlined } from '@ant-design/icons-vue'
-import { formatNumber } from '../api'
+import { formatCost, formatNumber } from '../api'
 import { chartPalette, usageChartColors } from '../chartPalette'
 import { useEChart } from '../composables/useEChart'
 import { useMessages } from '../i18n'
@@ -15,6 +15,7 @@ const { t, locale } = useMessages({
     'series.input': 'Input',
     'series.output': 'Output',
     'series.tools': 'Tools',
+    'series.cost': 'Estimated cost',
     'title': 'Daily Usage',
     'kicker': 'Input, output, and tool activity by day',
     'empty.title': 'No daily usage to chart',
@@ -24,6 +25,7 @@ const { t, locale } = useMessages({
     'series.input': '输入',
     'series.output': '输出',
     'series.tools': '工具',
+    'series.cost': '预估费用',
     'title': '每日用量',
     'kicker': '按天展示输入、输出和工具活动',
     'empty.title': '暂无每日用量可绘制',
@@ -57,7 +59,7 @@ function renderChart() {
       axisPointer: { type: 'shadow', shadowStyle: { color: chartPalette.pointer } },
       valueFormatter: (value: string | number) => formatNumber(Number(value))
     },
-    grid: { left: 56, right: 44, top: 50, bottom: 36 },
+    grid: { left: 56, right: 112, top: 50, bottom: 36 },
     legend: {
       top: 4,
       right: 8,
@@ -83,6 +85,17 @@ function renderChart() {
         type: 'value',
         axisLabel: { color: chartPalette.axis, fontSize: 11 },
         splitLine: { show: false }
+      },
+      {
+        type: 'value',
+        position: 'right',
+        offset: 64,
+        axisLabel: {
+          color: chartPalette.axis,
+          fontSize: 11,
+          formatter: (value: number) => formatCost(value)
+        },
+        splitLine: { show: false }
       }
     ],
     series: [
@@ -93,7 +106,8 @@ function renderChart() {
         data: dailyUsage.map((item) => item.inputTokens),
         barWidth: 16,
         itemStyle: { borderRadius: [0, 0, 4, 4] },
-        emphasis: { focus: 'series' }
+        emphasis: { focus: 'series' },
+        tooltip: { valueFormatter: (value: string | number) => formatNumber(Number(value)) }
       },
       {
         name: t('series.output'),
@@ -102,7 +116,8 @@ function renderChart() {
         data: dailyUsage.map((item) => item.outputTokens),
         barWidth: 16,
         itemStyle: { borderRadius: [4, 4, 0, 0] },
-        emphasis: { focus: 'series' }
+        emphasis: { focus: 'series' },
+        tooltip: { valueFormatter: (value: string | number) => formatNumber(Number(value)) }
       },
       {
         name: t('series.tools'),
@@ -111,7 +126,20 @@ function renderChart() {
         smooth: true,
         symbolSize: 6,
         lineStyle: { width: 2 },
-        data: dailyUsage.map((item) => item.toolCalls)
+        data: dailyUsage.map((item) => item.toolCalls),
+        tooltip: { valueFormatter: (value: string | number) => formatNumber(Number(value)) }
+      },
+      {
+        name: t('series.cost'),
+        type: 'line',
+        yAxisIndex: 2,
+        smooth: true,
+        connectNulls: false,
+        symbol: 'diamond',
+        symbolSize: 7,
+        lineStyle: { width: 2 },
+        data: dailyUsage.map((item) => item.estimatedCostUsd ?? null),
+        tooltip: { valueFormatter: (value: string | number) => formatCost(Number(value)) }
       }
     ]
   }, true)

@@ -19,5 +19,5 @@ export const chartPalette = {
   pointer: 'rgba(37, 99, 235, 0.12)'
 }
 
-export const usageChartColors = [chartPalette.primary, chartPalette.sky, chartPalette.indigo]
+export const usageChartColors = [chartPalette.primary, chartPalette.sky, chartPalette.indigo, chartPalette.warning]
 export const toolChartColors = [chartPalette.primary, chartPalette.danger]

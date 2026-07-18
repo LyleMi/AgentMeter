@@ -13,6 +13,7 @@ export const DEFAULT_BREAKDOWN_GROUP = 'global'
 export type TokenBreakdownGroup = typeof DEFAULT_BREAKDOWN_GROUP | UsageBreakdownGroupBy
 
 export interface TokensContext {
+  scopeFilters: Ref<UsageScopeForm>
   analytics: ComputedRef<TokenAnalytics | null>
   optionOverview: Ref<Overview | null>
   loading: Ref<boolean>

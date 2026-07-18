@@ -33,6 +33,7 @@ const router = createRouter({
       children: [
         { path: '', component: () => import('./views/tokens/TokensSummary.vue') },
         { path: 'summary', component: () => import('./views/tokens/TokensSummary.vue') },
+        { path: 'projects', component: () => import('./views/tokens/TokensProjects.vue') },
         { path: 'trends', component: () => import('./views/tokens/TokensTrends.vue') },
         { path: 'breakdown', component: () => import('./views/tokens/TokensBreakdown.vue') },
         { path: 'sessions', component: () => import('./views/tokens/TokensSessions.vue') }

@@ -27,6 +27,20 @@ export function formatNumber(value: number | undefined): string {
   return createNumberFormatter().format(value || 0)
 }
 
+export function formatBytes(value: number | undefined): string {
+  const bytes = Math.max(0, Number(value) || 0)
+  if (bytes < 1024) return `${formatNumber(bytes)} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let amount = bytes / 1024
+  let unit = units[0]
+  for (let index = 1; index < units.length && amount >= 1024; index++) {
+    amount /= 1024
+    unit = units[index]
+  }
+  const rounded = amount >= 100 ? Math.round(amount) : Math.round(amount * 10) / 10
+  return `${formatNumber(rounded)} ${unit}`
+}
+
 export function formatPercent(value: number | undefined, options: FormatPercentOptions = {}): string {
   const { clamp = false, lessThanOne = false, maximumFractionDigits = 0, ...formatterOptions } = options
   const numeric = Number(value)

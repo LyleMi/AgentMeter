@@ -5,6 +5,7 @@ import AAlert from 'ant-design-vue/es/alert'
 import {
   BarChartOutlined,
   DatabaseOutlined,
+  FolderOpenOutlined,
   HistoryOutlined,
   LineChartOutlined
 } from '@ant-design/icons-vue'
@@ -37,6 +38,7 @@ import {
 } from './tokens/tokensContext'
 
 const tokenTabMatches = [
+  { key: 'projects', pathPrefix: '/tokens/projects' },
   { key: 'trends', pathPrefix: '/tokens/trends' },
   { key: 'breakdown', pathPrefix: '/tokens/breakdown' },
   { key: 'sessions', pathPrefix: '/tokens/sessions' }
@@ -62,6 +64,7 @@ const { t } = useMessages({
     'title': 'Tokens',
     'subtitle': 'Token usage, cache reuse, trend volatility, and estimated price consumption',
     'tab.summary': 'Summary',
+    'tab.projects': 'Projects',
     'tab.trends': 'Trends',
     'tab.breakdown': 'Breakdown',
     'tab.sessions': 'Sessions',
@@ -72,6 +75,7 @@ const { t } = useMessages({
     'title': 'Token',
     'subtitle': '查看 Token 用量、缓存复用、趋势波动和预估价格消耗',
     'tab.summary': '汇总',
+    'tab.projects': '项目',
     'tab.trends': '趋势',
     'tab.breakdown': '拆分',
     'tab.sessions': '会话',
@@ -82,6 +86,7 @@ const { t } = useMessages({
 
 const tabs = computed(() => [
   { key: 'summary', label: t('tab.summary'), path: tokenPath('/tokens'), icon: DatabaseOutlined },
+  { key: 'projects', label: t('tab.projects'), path: tokenPath('/tokens/projects'), icon: FolderOpenOutlined },
   { key: 'trends', label: t('tab.trends'), path: tokenPath('/tokens/trends'), icon: LineChartOutlined },
   { key: 'breakdown', label: t('tab.breakdown'), path: tokenPath('/tokens/breakdown', true), icon: BarChartOutlined },
   { key: 'sessions', label: t('tab.sessions'), path: tokenPath('/tokens/sessions'), icon: HistoryOutlined }
@@ -161,6 +166,10 @@ function load() {
 }
 
 async function loadBreakdownRows(item: TokenAnalytics, filters: UsageScopeFilters) {
+  if (route.path.startsWith('/tokens/projects')) {
+    const breakdown = await api.getUsageBreakdown({ ...filters, groupBy: 'project' })
+    return breakdown.buckets || []
+  }
   if (breakdownGroup.value === DEFAULT_BREAKDOWN_GROUP) return [globalBreakdownRow(item)]
   const breakdown = await api.getUsageBreakdown({
     ...filters,
@@ -232,7 +241,16 @@ watch(
   }
 )
 
+watch(
+  () => route.path,
+  (nextPath, previousPath) => {
+    const projectViewChanged = nextPath.startsWith('/tokens/projects') !== previousPath.startsWith('/tokens/projects')
+    if (projectViewChanged) void load()
+  }
+)
+
 const context: TokensContext = {
+  scopeFilters: scope.filters,
   analytics,
   optionOverview: scopeOptionData.optionOverview,
   loading,

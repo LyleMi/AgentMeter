@@ -12,6 +12,7 @@ const routes: SmokeRoute[] = [
   { path: '/#/time', hash: '#/time', title: /^(Time|耗时)$/ },
   { path: '/#/sessions', hash: '#/sessions', title: /^(Sessions|会话)$/ },
   { path: '/#/tokens', hash: '#/tokens', title: /^(Tokens|Token)$/, panelTitle: /^(Token Mix|Token 构成)$/ },
+  { path: '/#/tokens/projects', hash: '#/tokens/projects', title: /^(Tokens|Token)$/, panelTitle: /^(Project spend|项目消耗)$/ },
   { path: '/#/tokens/trends', hash: '#/tokens/trends', title: /^(Tokens|Token)$/, panelTitle: /^(Cache Hit Trend|缓存命中趋势)$/ },
   { path: '/#/tokens/breakdown', hash: '#/tokens/breakdown', title: /^(Tokens|Token)$/, panelTitle: /^(Usage Breakdown|用量拆分)$/ },
   { path: '/#/tokens/sessions', hash: '#/tokens/sessions', title: /^(Tokens|Token)$/, panelTitle: /^(High Token Sessions|高 Token 会话)$/ },
