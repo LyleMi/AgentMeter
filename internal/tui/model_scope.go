@@ -64,7 +64,7 @@ func (s *state) mergeScopeOptions(overview agentmodel.Overview, projects agentmo
 
 func (s *state) isUsageScopePage() bool {
 	switch s.page {
-	case pageOverview, pageTime, pageTokens, pageModelSignals, pageModelRisk:
+	case pageAttention, pageOverview, pageTime, pageTokens, pageModelSignals, pageModelRisk, pageSessions:
 		return true
 	default:
 		return false
@@ -110,17 +110,17 @@ func (s *state) cycleUsageRange() command {
 }
 
 func (s *state) clearUsageScope() command {
-	if s.usageAgent == "" && s.usageModel == "" && s.usageProject == "" && s.usageRange == usageRangeAll {
+	if s.usageAgent == "" && s.usageModel == "" && s.usageProject == "" && s.usageRange == usageRangeWeek {
 		s.status = "usage scope already clear"
 		return nil
 	}
 	s.usageAgent = ""
 	s.usageModel = ""
 	s.usageProject = ""
-	s.usageRange = usageRangeAll
+	s.usageRange = usageRangeWeek
 	s.selected = 0
 	s.scroll = 0
-	s.status = "usage scope cleared"
+	s.status = "usage scope reset to 7 days"
 	return s.load(s.page)
 }
 

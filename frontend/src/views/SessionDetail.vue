@@ -294,7 +294,8 @@ function indexStatusHint(session: SessionDetail['session']) {
 }
 
 function goBack() {
-  router.push('/sessions')
+  const returnTo = typeof route.query.returnTo === 'string' ? route.query.returnTo : ''
+  router.push(returnTo.startsWith('/') ? returnTo : '/sessions')
 }
 
 function openToolCall(call: ToolCall) {

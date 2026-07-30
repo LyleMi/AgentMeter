@@ -17,11 +17,18 @@ func (s *Service) Sessions(ctx context.Context, filters model.SessionFilters) ([
 		where = append(where, `(s.session_key LIKE ? OR s.codex_session_id LIKE ? OR s.project_path LIKE ? OR s.model LIKE ? OR sf.path LIKE ? OR src.kind LIKE ? OR src.name LIKE ? OR src.root_path LIKE ? OR src.sessions_path LIKE ?)`)
 		args = append(args, search, search, search, search, search, search, search, search, search)
 	}
-	if strings.TrimSpace(filters.Model) != "" {
-		where = append(where, `s.model = ?`)
-		args = append(args, strings.TrimSpace(filters.Model))
-	}
-	where, args = appendSourceFilter(where, args, filters.Agent)
+	where, args = appendAnalyticsFilters(where, args, model.AnalyticsFilters{
+		Agent:       filters.Agent,
+		Model:       filters.Model,
+		Project:     filters.Project,
+		StartedFrom: filters.StartedFrom,
+		StartedTo:   filters.StartedTo,
+	}, analyticsFilterSQLScope{
+		sourceAlias: "src",
+		modelExpr:   usageSessionModelExpr,
+		projectExpr: "s.project_path",
+		startedExpr: "s.started_at",
+	})
 	limit, offset := clampLimitOffset(filters.Limit, filters.Offset, 200, 500)
 	args = append(args, limit, offset)
 	query := fmt.Sprintf(`%s

@@ -141,26 +141,21 @@ UI contributors should follow the practical design guidance in
 [`docs/ui-design.md`](ui-design.md) for Web layout, visual quality, dense data
 tables, component consistency, and UI-state validation.
 
-The implemented Web product areas are:
+The implemented Web product areas are task-oriented:
 
-- Overview
-- Time
-- Tokens
-- Model Signals
-- Sessions
-- Session Detail
-- Tools
-- Audit
-- Agent Privacy
-- Settings
+- Attention
+- Analyze: Usage, Time, Models, and Tools
+- Sessions and Session Detail
+- Safety: Audit and Privacy
+- Resources: Prompts and Agent resources
+- Settings: Sources, Data, Pricing, and Display
 
 The implemented TUI product areas are:
 
-- Overview
-- Sessions
-- Session Detail
-- Tools
-- Agent Privacy status and profile apply
+- Attention
+- Analyze: Usage, Time, Models, and Tools
+- Sessions and nested details
+- Safety: Audit and Privacy
 - Settings
 
 Overview, Sessions, Session Detail, and Settings should be source-aware in both
@@ -186,8 +181,12 @@ Web and TUI modes stay synchronized by design:
 
 - Token totals, cost estimates, durations, model normalization, and status
   labels come from shared backend logic.
-- Overview, Sessions, Session Detail, Tools, Settings, Pricing, and implemented
-  Agent Privacy status data use shared query or app-service semantics.
+- Attention, analysis, Sessions, Session Detail, Tools, Settings, Pricing, and
+  implemented Privacy status data use shared query or app-service semantics.
+- Attention is a pure composition of Overview, Model Signals, Audit, Privacy,
+  and Settings read models. It does not store read/ignored/resolved state.
+- Selected-period health compares against the immediately preceding
+  equal-length UTC period. Daily model metrics compare with the previous day.
 - Source filters use `source:<id>` for one source instance; family filters use
   values such as `codex` or `claude` when all sources of that family should
   match. Existing API fields named `agent` may carry either form.

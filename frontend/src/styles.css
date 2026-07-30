@@ -101,6 +101,11 @@ body {
     flex-basis 0.18s ease;
 }
 
+.app-sider .ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -183,6 +188,28 @@ body {
   border-inline-end: none !important;
   padding: 6px 8px 10px;
   background: transparent !important;
+}
+
+.settings-nav-menu {
+  margin-top: auto;
+  border-top: 1px solid var(--am-border-subtle) !important;
+}
+
+.task-section-nav {
+  display: flex;
+  gap: 6px;
+  max-width: 1560px;
+  margin: 0 auto 14px;
+  padding: 6px;
+  overflow-x: auto;
+  background: var(--am-surface);
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius);
+  box-shadow: var(--am-shadow);
+}
+
+.task-section-nav .ant-btn {
+  flex: 0 0 auto;
 }
 
 .nav-menu .ant-menu-item {

@@ -27,14 +27,13 @@
 
 AgentMeter is an open-source Go + Vue dashboard for understanding local
 coding-agent session usage. It reads local agent JSONL session files, indexes
-them into SQLite, and shows tokens, estimated cost, timing, session history,
-models, projects, cache reuse, daily/project efficiency metrics, tool-call
-behavior, and model health/drift signals in the private local Web dashboard,
-with terminal summaries over the same local data.
+them into SQLite, and organizes tokens, cost, timing, model health, audit
+evidence, privacy, and local resources around the tasks users need to complete.
+The Web dashboard and terminal UI share the same local read models.
 
 No proxy, no cloud service, no telemetry.
 
-![AgentMeter overview screenshot](docs/assets/screenshots/overview.png)
+![AgentMeter Attention view](docs/assets/screenshots/overview.png)
 
 ## At A Glance
 
@@ -42,9 +41,9 @@ No proxy, no cloud service, no telemetry.
   JSONL directories.
 - **Privacy model:** session data stays on your machine in a local SQLite
   database; AgentMeter does not proxy traffic or upload telemetry.
-- **Primary views:** sessions, daily usage, models, projects, cache reuse,
-  estimated cost, model signals, tool-call analytics, and offline
-  command/privacy audit findings.
+- **Primary views:** Attention, Analyze, Sessions, Safety, Resources, and
+  Settings. Attention prioritizes index, pricing, audit, model, anomaly, and
+  privacy signals for the selected period.
 - **Interfaces:** local Web dashboard by default, plus a terminal UI over the
   same database and query behavior.
 - **Release assets:** cross-platform archives are published on

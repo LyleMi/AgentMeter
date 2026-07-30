@@ -15,6 +15,7 @@ const analyticsDateOnlyLayout = "2006-01-02"
 type analyticsFilterSQLScope struct {
 	sourceAlias string
 	modelExpr   string
+	projectExpr string
 	startedExpr string
 }
 
@@ -47,7 +48,7 @@ func appendAnalyticsFilters(where []string, args []any, filters model.AnalyticsF
 		where = append(where, scope.modelExpr+" = ?")
 		args = append(args, strings.TrimSpace(filters.Model))
 	}
-	where, args = appendProjectFilter(where, args, filters.Project, "s.project_path")
+	where, args = appendProjectFilter(where, args, filters.Project, scope.projectExpr)
 	if strings.TrimSpace(filters.StartedFrom) != "" {
 		where = append(where, scope.startedExpr+" >= ?")
 		args = append(args, normalizeAnalyticsDateBoundary(filters.StartedFrom, "start"))

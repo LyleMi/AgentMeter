@@ -9,6 +9,7 @@ import {
   stringRouteQueryValue
 } from '../routeQuery'
 import { invokedCommand, isShellToolName } from './shellTool'
+import { readUsageScopeQuery, usageScopeToApiFilters } from '../useUsageScope'
 
 export const DEFAULT_SORT = 'recent'
 export const TOOL_CALL_LIMIT = 500
@@ -29,7 +30,7 @@ export function useToolCallExplorer(mode: ToolCallExplorerMode) {
     mode,
     route,
     router,
-    routePath: mode === 'shell' ? '/tools/shell' : '/tools/calls',
+    routePath: mode === 'shell' ? '/analysis/tools/shell' : '/analysis/tools/calls',
     routeUpdate: { applying: false },
     state,
     availableTools
@@ -140,11 +141,14 @@ function hasRiskFields(call: ToolCall) {
 }
 
 function currentToolCallFilters(ctx: ToolCallExplorerContext): ToolCallFilters {
+  const shared = usageScopeToApiFilters(readUsageScopeQuery(ctx.route.query))
   return {
     tool: ctx.state.toolFilter.value,
-    agent: ctx.state.agentFilter.value,
-    from: dateTimeInputToQueryIso(ctx.state.fromFilter.value),
-    to: dateTimeInputToQueryIso(ctx.state.toFilter.value, 'end'),
+    agent: ctx.state.agentFilter.value || shared.agent,
+    model: shared.model,
+    project: shared.project,
+    from: dateTimeInputToQueryIso(ctx.state.fromFilter.value) || shared.from,
+    to: dateTimeInputToQueryIso(ctx.state.toFilter.value, 'end') || shared.to,
     sort: ctx.state.sortFilter.value === DEFAULT_SORT ? undefined : ctx.state.sortFilter.value,
     shell: ctx.mode === 'shell',
     riskOnly: ctx.mode === 'shell' && ctx.state.riskOnlyFilter.value,

@@ -11,8 +11,8 @@ to validate a state-changing flow.
 - Do not click **Update Index**, **Rebuild Index**, save settings, or change
   agent privacy settings during routine smoke checks unless the task explicitly
   requires that state change.
-- Browser smoke uses hash-router URLs such as `/#/overview/summary` and
-  `/#/time`.
+- Browser smoke uses task-oriented hash-router URLs such as `/#/attention` and
+  `/#/analysis/time`.
 - Web HMR smoke should target Vite at `http://127.0.0.1:5173`, with Vite
   proxying `/api` to the Go backend.
 - `go run . -start` is for built-asset local use, not the Vite HMR smoke path.
@@ -53,7 +53,7 @@ This smoke should remain read-only. It should verify API shape and availability
 without triggering indexing, rebuilds, settings writes, or privacy config
 changes.
 
-API smoke covers overview, token analytics, model signals, day/project usage
+API smoke covers attention, overview, token analytics, model signals, day/project usage
 breakdowns, sessions, tools, audit, pricing, settings, source-directory storage,
 and privacy status.
 Cache-related shape checks include `totalInputTokens`, `totalCachedInputTokens`,
@@ -112,8 +112,9 @@ cd ..
   `https://lylemi.github.io/AgentMeter/`;
 - built JS, CSS, favicon, and other Vite asset URLs are rooted at
   `/AgentMeter/`, not `/`;
-- hash-router navigation works for routes such as `/#/overview/summary`,
-  `/#/sessions`, `/#/tools`, `/#/audit/summary`, and `/#/agent-privacy`;
+- hash-router navigation works for routes such as `/#/attention`,
+  `/#/analysis/usage`, `/#/sessions`, `/#/safety/audit`, and
+  `/#/safety/privacy`; legacy object-oriented routes render Not Found;
 - desktop and mobile viewports have no page-level horizontal overflow;
 - `robots.txt`, `sitemap.xml`, `llms.txt`, canonical, and Open Graph metadata
   remain aligned with `https://lylemi.github.io/AgentMeter/`;
@@ -131,13 +132,13 @@ go run . -ui tui
 
 Manually cover:
 
-- startup and quit;
-- screen navigation;
+- startup on Attention and quit;
+- five-task navigation and Analyze/Safety tab switching;
 - session detail open/back flow;
 - refresh key behavior;
 - narrow and wide terminal resize behavior;
 - visible parse/index/pricing status labels;
-- source-aware Overview top agents, including source label and family/path
+- source-aware Analyze/Usage top agents, including source label and family/path
   context when multiple source instances exist;
 - session rows showing source label or agent name, not only family kind;
 - Session Detail showing source label, family kind, source root, sessions path,
@@ -145,7 +146,7 @@ Manually cover:
 - Settings source entries showing configured labels when labels are present;
 - Agent Privacy staying target-based while clearly showing backend status
   warnings for the selected target;
-- Overview totals, Session Detail values, Tools aggregates, and recent tool-call
+- Attention/Analyze totals, Session Detail values, Tools aggregates, and recent tool-call
   rows/details compared against Web mode for the same database.
 
 Index and rebuild keys are state-changing. Use them only when the task
@@ -164,14 +165,14 @@ TUI expectations where relevant:
   `modelBreakdown`, `anomalySessions`, `dailyMetrics`, `projectMetrics`,
   `healthSummary`, `cohorts`, `matrix`, `projectHotspots`, and empty arrays
   returned as `[]` rather than `null`;
-- Model Signals health/drift interpretation, including current window as the
-  latest observed 24h in scope, baseline as the preceding 30d when available,
+- Model Signals health/drift interpretation, including the selected current
+  window and the immediately preceding equal-length baseline,
   low-sample confidence states, and missing baseline not being labeled as
   regression;
 - Model Signals daily/project efficiency interpretation, including cost,
   cost-per-session, cost-per-active-hour, cost-per-1k-tokens, cache savings,
   p50/p90 latency, p50/p10 throughput, retry pressure, failure pressure,
-  model quality risk, preceding 7-calendar-day daily drift, project
+  model quality risk, previous-day daily drift, project
   current-versus-baseline drift, and missing pricing or low sample being labeled
   as confidence/completeness risk rather than failure;
 - Model Signals Web presentation, including single-axis chart metric controls,

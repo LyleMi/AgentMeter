@@ -1,4 +1,4 @@
-﻿package query
+package query
 
 import (
 	"context"
@@ -12,6 +12,41 @@ import (
 	"github.com/LyleMi/AgentMeter/internal/db"
 	"github.com/LyleMi/AgentMeter/internal/model"
 )
+
+func TestSelectedModelSignalHealthWindowsUseEqualPrecedingPeriods(t *testing.T) {
+	anchor := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name     string
+		duration time.Duration
+	}{
+		{name: "one day", duration: 24 * time.Hour},
+		{name: "seven days", duration: 7 * 24 * time.Hour},
+		{name: "thirty days", duration: 30 * 24 * time.Hour},
+		{name: "custom thirty six hours", duration: 36 * time.Hour},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			from := anchor.Add(-test.duration)
+			windows, current, expanded := selectedModelSignalHealthWindows(model.AnalyticsFilters{
+				StartedFrom: from.Format(time.RFC3339Nano),
+				StartedTo:   anchor.Format(time.RFC3339Nano),
+			}, anchor.Add(24*time.Hour))
+
+			if got, want := windows.currentFrom, from; !got.Equal(want) {
+				t.Fatalf("current from = %v, want %v", got, want)
+			}
+			if got, want := windows.baselineFrom, from.Add(-test.duration); !got.Equal(want) {
+				t.Fatalf("baseline from = %v, want %v", got, want)
+			}
+			if windows.baseline.To != windows.current.From {
+				t.Fatalf("baseline should end at current start: %#v", windows)
+			}
+			if current.StartedFrom != windows.current.From || expanded.StartedFrom != windows.baseline.From {
+				t.Fatalf("query filters do not match windows: current=%#v expanded=%#v windows=%#v", current, expanded, windows)
+			}
+		})
+	}
+}
 
 func TestModelSignalsAggregatesFiltersAndRanksAnomalies(t *testing.T) {
 	ctx := context.Background()
@@ -359,12 +394,12 @@ func TestModelSignalsDailyAndProjectEfficiencyMetrics(t *testing.T) {
 	if projectMetric.DominantModelProvider != "openai" || projectMetric.DominantModel != "gpt-5" {
 		t.Fatalf("dominant model = %+v", projectMetric)
 	}
-	assertFloat(t, projectMetric.DominantModelShare, 0.8)
-	if projectMetric.SessionCount != 5 || projectMetric.UnpricedSessionCount != 1 || projectMetric.Current.SessionCount != 3 || projectMetric.Baseline.SessionCount != 2 {
+	assertFloat(t, projectMetric.DominantModelShare, float64(2)/3)
+	if projectMetric.SessionCount != 3 || projectMetric.UnpricedSessionCount != 1 || projectMetric.Current.SessionCount != 3 || projectMetric.Baseline.SessionCount != 2 {
 		t.Fatalf("project windows = %+v", projectMetric)
 	}
-	assertCostUSD(t, projectMetric.EstimatedCostUSD, 0.0299)
-	assertCostUSD(t, projectMetric.CacheSavingsUSD, 0.00135)
+	assertCostUSD(t, projectMetric.EstimatedCostUSD, 0.017625)
+	assertCostUSD(t, projectMetric.CacheSavingsUSD, 0.001125)
 	if projectMetric.CostPerSession != nil || projectMetric.CostPerActiveHour != nil || projectMetric.CostPer1kTokens != nil {
 		t.Fatalf("mixed-priced project cost rates should be omitted: %+v", projectMetric)
 	}
@@ -425,7 +460,7 @@ func TestModelSignalsEmitsDriftCohortsMatrixAndHotspots(t *testing.T) {
 	if cohort.ModelProvider != "openai" || cohort.Model != "gpt-5" || cohort.ProjectPath != "/workspace/api" || cohort.CohortKey == "" {
 		t.Fatalf("cohort identity = %+v", cohort)
 	}
-	if cohort.SessionCount != 4 || cohort.Current.SessionCount != 2 || cohort.Baseline.SessionCount != 2 {
+	if cohort.SessionCount != 2 || cohort.Current.SessionCount != 2 || cohort.Baseline.SessionCount != 2 {
 		t.Fatalf("cohort windows = %+v", cohort)
 	}
 	if cohort.Drift.Severity != "critical" || cohort.Drift.Confidence != "high" {

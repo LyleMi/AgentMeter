@@ -6,8 +6,8 @@ import { useMessages } from '../i18n'
 import { useRouteTabKey } from './routeTabs'
 
 const settingsTabMatches = [
-  { key: 'database', pathPrefix: '/settings/database' },
-  { key: 'price', pathPrefix: '/settings/price' },
+  { key: 'database', pathPrefix: '/settings/data' },
+  { key: 'price', pathPrefix: '/settings/pricing' },
   { key: 'display', pathPrefix: '/settings/display' }
 ] as const
 
@@ -31,9 +31,9 @@ const { t } = useMessages({
 })
 
 const tabs = computed(() => [
-  { key: 'source', label: t('settings.tab.source'), path: '/settings/source', icon: FolderOpenOutlined },
-  { key: 'database', label: t('settings.tab.database'), path: '/settings/database', icon: DatabaseOutlined },
-  { key: 'price', label: t('settings.tab.price'), path: '/settings/price', icon: DollarOutlined },
+  { key: 'source', label: t('settings.tab.source'), path: '/settings/sources', icon: FolderOpenOutlined },
+  { key: 'database', label: t('settings.tab.database'), path: '/settings/data', icon: DatabaseOutlined },
+  { key: 'price', label: t('settings.tab.price'), path: '/settings/pricing', icon: DollarOutlined },
   { key: 'display', label: t('settings.tab.display'), path: '/settings/display', icon: EyeOutlined }
 ])
 

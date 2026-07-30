@@ -9,20 +9,14 @@ import message from 'ant-design-vue/es/message'
 import Tooltip from 'ant-design-vue/es/tooltip'
 import Typography from 'ant-design-vue/es/typography'
 import {
-  BarChartOutlined,
-  ApiOutlined,
-  DollarCircleOutlined,
-  FieldTimeOutlined,
-  FileTextOutlined,
+  AppstoreOutlined,
+  BulbOutlined,
   HistoryOutlined,
-  LineChartOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   PlayCircleOutlined,
-  ReloadOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
-  ToolOutlined,
   WarningOutlined
 } from '@ant-design/icons-vue'
 import { api, isStaticDemo, type Settings } from './api'
@@ -43,18 +37,20 @@ const router = useRouter()
 const { t } = useMessages({
   en: {
     'brand.subtitle': 'Local agent usage',
-    'nav.section': 'Inspect',
-    'nav.overview': 'Overview',
-    'nav.time': 'Time',
-    'nav.tokens': 'Tokens',
-    'nav.modelSignals': 'Model Signals',
-    'nav.modelRisk': 'Model Risk',
+    'nav.section': 'Workspace',
+    'nav.attention': 'Attention',
+    'nav.analyze': 'Analyze',
     'nav.sessions': 'Sessions',
-    'nav.prompts': 'Prompts',
-    'nav.agentResources': 'Agent Resources',
+    'nav.safety': 'Safety',
+    'nav.resources': 'Resources',
+    'nav.usage': 'Usage',
+    'nav.time': 'Time',
+    'nav.models': 'Models',
     'nav.tools': 'Tools',
     'nav.audit': 'Audit',
-    'nav.agentPrivacy': 'Agent Privacy',
+    'nav.privacy': 'Privacy',
+    'nav.prompts': 'Prompts',
+    'nav.agents': 'Agents',
     'nav.settings': 'Settings',
     'sidebar.expand': 'Expand sidebar',
     'sidebar.collapse': 'Collapse sidebar',
@@ -64,9 +60,7 @@ const { t } = useMessages({
     'source.count': '{count} local sources',
     'source.label': 'Local sources',
     'index.update': 'Update Index',
-    'index.rebuild': 'Rebuild Index',
     'index.updateHint': 'Scan enabled sources and parse only new or changed JSONL files.',
-    'index.rebuildHint': 'Clear indexed files for enabled sources, then parse every JSONL file again.',
     'index.result': '{indexed} indexed, {skipped} skipped, {failed} failed',
     'index.failed': 'Index failed',
     'index.failedWithMessage': 'Index failed: {message}',
@@ -79,18 +73,20 @@ const { t } = useMessages({
   },
   'zh-CN': {
     'brand.subtitle': '本地 Agent 用量',
-    'nav.section': '查看',
-    'nav.overview': '概览',
-    'nav.time': '耗时',
-    'nav.tokens': 'Token',
-    'nav.modelSignals': '模型表现',
-    'nav.modelRisk': '模型风险',
+    'nav.section': '工作区',
+    'nav.attention': '关注',
+    'nav.analyze': '分析',
     'nav.sessions': '会话',
-    'nav.prompts': 'Prompt',
-    'nav.agentResources': 'Agent 资源',
+    'nav.safety': '安全',
+    'nav.resources': '资源',
+    'nav.usage': '用量',
+    'nav.time': '耗时',
+    'nav.models': '模型',
     'nav.tools': '工具',
     'nav.audit': '审计',
-    'nav.agentPrivacy': 'Agent 隐私',
+    'nav.privacy': '隐私',
+    'nav.prompts': 'Prompt',
+    'nav.agents': 'Agent',
     'nav.settings': '设置',
     'sidebar.expand': '展开侧边栏',
     'sidebar.collapse': '收起侧边栏',
@@ -100,9 +96,7 @@ const { t } = useMessages({
     'source.count': '{count} 个本地来源',
     'source.label': '本地来源',
     'index.update': '更新索引',
-    'index.rebuild': '重建索引',
     'index.updateHint': '扫描已启用来源，并只解析新增或变更的 JSONL 文件。',
-    'index.rebuildHint': '清除已启用来源的索引记录，然后重新解析所有 JSONL 文件。',
     'index.result': '已索引 {indexed}，跳过 {skipped}，失败 {failed}',
     'index.failed': '索引失败',
     'index.failedWithMessage': '索引失败：{message}',
@@ -129,37 +123,46 @@ const sourceSummary = computed(() => {
 })
 const sidebarToggleLabel = computed(() => (sidebarCollapsed.value ? t('sidebar.expand') : t('sidebar.collapse')))
 const updateIndexHint = computed(() => (isStaticDemo ? t('demo.readOnly') : t('index.updateHint')))
-const rebuildIndexHint = computed(() => (isStaticDemo ? t('demo.readOnly') : t('index.rebuildHint')))
-
 const selectedKeys = computed(() => {
-  if (route.path.startsWith('/time')) return ['time']
-  if (route.path.startsWith('/tokens')) return ['tokens']
-  if (route.path.startsWith('/model-signals/risk')) return ['model-risk']
-  if (route.path.startsWith('/model-signals')) return ['model-signals']
+  if (route.path.startsWith('/attention')) return ['attention']
+  if (route.path.startsWith('/analysis')) return ['analyze']
   if (route.path.startsWith('/sessions')) return ['sessions']
-  if (route.path.startsWith('/prompts')) return ['prompts']
-  if (route.path.startsWith('/agent-resources')) return ['agent-resources']
-  if (route.path.startsWith('/tools')) return ['tools']
-  if (route.path.startsWith('/audit')) return ['audit']
-  if (route.path.startsWith('/agent-privacy')) return ['agent-privacy']
+  if (route.path.startsWith('/safety')) return ['safety']
+  if (route.path.startsWith('/resources')) return ['resources']
   if (route.path.startsWith('/settings')) return ['settings']
-  return ['overview']
+  return []
 })
 
 const menuItems = computed(() => [
-  { key: 'overview', icon: BarChartOutlined, label: t('nav.overview'), path: '/overview' },
-  { key: 'time', icon: FieldTimeOutlined, label: t('nav.time'), path: '/time' },
-  { key: 'tokens', icon: DollarCircleOutlined, label: t('nav.tokens'), path: '/tokens' },
-  { key: 'model-signals', icon: LineChartOutlined, label: t('nav.modelSignals'), path: '/model-signals' },
-  { key: 'model-risk', icon: SafetyCertificateOutlined, label: t('nav.modelRisk'), path: '/model-signals/risk' },
+  { key: 'attention', icon: WarningOutlined, label: t('nav.attention'), path: '/attention' },
+  { key: 'analyze', icon: AppstoreOutlined, label: t('nav.analyze'), path: '/analysis/usage' },
   { key: 'sessions', icon: HistoryOutlined, label: t('nav.sessions'), path: '/sessions' },
-  { key: 'prompts', icon: FileTextOutlined, label: t('nav.prompts'), path: '/prompts' },
-  { key: 'agent-resources', icon: ApiOutlined, label: t('nav.agentResources'), path: '/agent-resources' },
-  { key: 'tools', icon: ToolOutlined, label: t('nav.tools'), path: '/tools' },
-  { key: 'audit', icon: WarningOutlined, label: t('nav.audit'), path: '/audit' },
-  { key: 'agent-privacy', icon: SafetyCertificateOutlined, label: t('nav.agentPrivacy'), path: '/agent-privacy' },
-  { key: 'settings', icon: SettingOutlined, label: t('nav.settings'), path: '/settings' }
+  { key: 'safety', icon: SafetyCertificateOutlined, label: t('nav.safety'), path: '/safety/audit' },
+  { key: 'resources', icon: BulbOutlined, label: t('nav.resources'), path: '/resources/prompts' }
 ])
+const sectionTabs = computed(() => {
+  if (route.path.startsWith('/analysis')) {
+    return [
+      { label: t('nav.usage'), path: '/analysis/usage' },
+      { label: t('nav.time'), path: '/analysis/time' },
+      { label: t('nav.models'), path: '/analysis/models' },
+      { label: t('nav.tools'), path: '/analysis/tools' }
+    ]
+  }
+  if (route.path.startsWith('/safety')) {
+    return [
+      { label: t('nav.audit'), path: '/safety/audit' },
+      { label: t('nav.privacy'), path: '/safety/privacy' }
+    ]
+  }
+  if (route.path.startsWith('/resources')) {
+    return [
+      { label: t('nav.prompts'), path: '/resources/prompts' },
+      { label: t('nav.agents'), path: '/resources/agents' }
+    ]
+  }
+  return []
+})
 const languageOptions = computed(() =>
   localeOptions.map((option) => ({
     value: option.value,
@@ -179,14 +182,14 @@ async function handleAppDataChanged(event: Event) {
   }
 }
 
-async function indexNow(rebuild = false) {
+async function indexNow() {
   if (isStaticDemo) {
     message.info(t('demo.readOnly'))
     return
   }
   indexing.value = true
   try {
-    const result = await api.indexNow(rebuild)
+    const result = await api.indexNow(false)
     message.success(t('index.result', { indexed: result.indexed, skipped: result.skipped, failed: result.failed }))
     await loadSettings()
     refreshKey.value += 1
@@ -199,6 +202,14 @@ async function indexNow(rebuild = false) {
 
 function navigate(path: string) {
   router.push(path)
+}
+
+function navigateSection(path: string) {
+  router.push({ path, query: route.path.startsWith('/analysis') ? route.query : {} })
+}
+
+function sectionSelected(path: string) {
+  return route.path === path || route.path.startsWith(`${path}/`)
 }
 
 function toggleSidebar() {
@@ -295,6 +306,12 @@ onBeforeUnmount(() => {
             {{ item.label }}
           </a-menu-item>
         </a-menu>
+        <a-menu class="nav-menu settings-nav-menu" mode="inline" :selected-keys="selectedKeys">
+          <a-menu-item key="settings" @click="navigate('/settings/sources')">
+            <template #icon><SettingOutlined /></template>
+            {{ t('nav.settings') }}
+          </a-menu-item>
+        </a-menu>
       </a-layout-sider>
 
       <a-layout>
@@ -324,25 +341,27 @@ onBeforeUnmount(() => {
               </select>
             </div>
             <a-tooltip :title="updateIndexHint" placement="bottom">
-              <a-button type="primary" :loading="indexing" :disabled="isStaticDemo" @click="indexNow(false)">
+              <a-button type="primary" :loading="indexing" :disabled="isStaticDemo" @click="indexNow">
                 <template #icon>
                   <PlayCircleOutlined />
                 </template>
                 {{ t('index.update') }}
               </a-button>
             </a-tooltip>
-            <a-tooltip :title="rebuildIndexHint" placement="bottom">
-              <a-button :loading="indexing" :disabled="isStaticDemo" @click="indexNow(true)">
-                <template #icon>
-                  <ReloadOutlined />
-                </template>
-                {{ t('index.rebuild') }}
-              </a-button>
-            </a-tooltip>
           </div>
         </a-layout-header>
 
         <a-layout-content class="app-content">
+          <nav v-if="sectionTabs.length" class="task-section-nav" aria-label="Section">
+            <a-button
+              v-for="item in sectionTabs"
+              :key="item.path"
+              :type="sectionSelected(item.path) ? 'primary' : 'text'"
+              @click="navigateSection(item.path)"
+            >
+              {{ item.label }}
+            </a-button>
+          </nav>
           <router-view :key="`${route.fullPath}:${refreshKey}`" />
         </a-layout-content>
       </a-layout>

@@ -26,6 +26,7 @@ import {
   titleCaseFallback
 } from './auditSupport'
 import { optionalFirstTrimmedRouteQueryValue } from './routeQuery'
+import { readUsageScopeQuery, usageScopeToApiFilters } from './useUsageScope'
 
 const ATable = AntTable as unknown as DefineComponent
 const ATypographyText = Typography.Text
@@ -175,8 +176,9 @@ const rowCountText = computed(() => {
 })
 
 function currentFindingFilters() {
+  const scope = usageScopeToApiFilters(readUsageScopeQuery(route.query))
   return {
-    agent: selectedAgent.value,
+    ...scope,
     category: categoryFilter.value,
     severity: severityFilter.value,
     shell: shellFilter.value,
@@ -194,9 +196,9 @@ async function replaceRouteQuery() {
   applyingRouteUpdate = true
   try {
     await router.replace({
-      path: '/audit/findings',
+      path: '/safety/audit/findings',
       query: {
-        ...cleanRouteQuery({ agent: selectedAgent.value }),
+        ...cleanRouteQuery(route.query),
         ...cleanRouteQuery({
           category: categoryFilter.value,
           severity: severityFilter.value,
@@ -304,7 +306,7 @@ function safeDateTime(value?: string | null) {
 }
 
 function openFinding(record: AuditFinding) {
-  router.push(auditPath(`/audit/findings/${record.id}`, { agent: selectedAgent.value }))
+  router.push(auditPath(`/safety/audit/findings/${record.id}`, route.query))
 }
 
 watch(

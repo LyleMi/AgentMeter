@@ -20,6 +20,8 @@ type loadRequest struct {
 	toolsTab            toolsTab
 	toolCommand         string
 	breakdownGroup      string
+	analyzeTab          analyzeTab
+	safetyTab           safetyTab
 }
 
 func (s *state) load(target page) command {
@@ -46,18 +48,27 @@ func (s *state) newLoadRequest(target page) loadRequest {
 		toolsTab:            s.toolsTab,
 		toolCommand:         s.toolCommand,
 		breakdownGroup:      s.tokenBreakdownGroup,
+		analyzeTab:          s.analyzeTab,
+		safetyTab:           s.safetyTab,
 	}
 }
 
 func (s *state) loadPage(request loadRequest) loadMsg {
 	msg := loadMsg{seq: request.seq, page: request.target}
 	switch request.target {
-	case pageOverview, pageTime:
+	case pageAttention:
+		msg.attention, msg.err = s.service.GetAttention(request.analyticsFilters)
+		if msg.err == nil {
+			msg.scopeOverview, msg.scopeProjects = s.loadUsageScopeOptions(request.analyticsFilters, agentmodel.Overview{})
+		}
+	case pageOverview:
+		s.loadAnalyzePage(&msg, request)
+	case pageTime:
 		s.loadOverviewPage(&msg, request.analyticsFilters)
 	case pageTokens:
 		s.loadTokensPage(&msg, request)
 	case pageSessions:
-		msg.sessions, msg.err = s.service.ListSessions(agentmodel.SessionFilters{Limit: 200})
+		msg.sessions, msg.err = s.service.ListSessions(sessionFiltersFromAnalytics(request.analyticsFilters))
 	case pageTools:
 		s.loadToolsPage(&msg, request)
 	case pageToolCalls:
@@ -65,7 +76,7 @@ func (s *state) loadPage(request loadRequest) loadMsg {
 	case pageModelSignals, pageModelRisk:
 		s.loadModelSignalsPage(&msg, request.analyticsFilters)
 	case pageAudit:
-		s.loadAuditPage(&msg, request.auditSummaryFilters)
+		s.loadSafetyPage(&msg, request)
 	case pageAuditFindings:
 		s.loadAuditFindingsPage(&msg, request.auditFilters)
 	case pageSettings:
@@ -76,6 +87,50 @@ func (s *state) loadPage(request loadRequest) loadMsg {
 		msg.err = fmt.Errorf("unsupported page: %s", request.target.title())
 	}
 	return msg
+}
+
+func sessionFiltersFromAnalytics(filters agentmodel.AnalyticsFilters) agentmodel.SessionFilters {
+	return agentmodel.SessionFilters{
+		Agent:       filters.Agent,
+		Model:       filters.Model,
+		Project:     filters.Project,
+		StartedFrom: filters.StartedFrom,
+		StartedTo:   filters.StartedTo,
+		Limit:       200,
+	}
+}
+
+func (s *state) loadAnalyzePage(msg *loadMsg, request loadRequest) {
+	switch request.analyzeTab {
+	case analyzeTabTime:
+		s.loadOverviewPage(msg, request.analyticsFilters)
+	case analyzeTabModels:
+		s.loadModelSignalsPage(msg, request.analyticsFilters)
+	case analyzeTabTools:
+		msg.tools, msg.err = s.service.ListTools(agentmodel.ToolFilters{
+			Agent:       request.analyticsFilters.Agent,
+			Model:       request.analyticsFilters.Model,
+			Project:     request.analyticsFilters.Project,
+			StartedFrom: request.analyticsFilters.StartedFrom,
+			StartedTo:   request.analyticsFilters.StartedTo,
+		})
+		if msg.err == nil {
+			s.loadOverviewScope(msg)
+		}
+	default:
+		s.loadOverviewPage(msg, request.analyticsFilters)
+		if msg.err == nil {
+			msg.tokens, msg.err = s.service.GetTokenAnalyticsWithFilters(request.analyticsFilters)
+		}
+	}
+}
+
+func (s *state) loadSafetyPage(msg *loadMsg, request loadRequest) {
+	if request.safetyTab == safetyTabPrivacy {
+		msg.privacy, msg.err = s.service.GetPrivacyConfigs()
+		return
+	}
+	s.loadAuditPage(msg, request.auditSummaryFilters)
 }
 
 func (s *state) loadOverviewPage(msg *loadMsg, filters agentmodel.AnalyticsFilters) {

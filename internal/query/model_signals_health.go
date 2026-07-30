@@ -104,6 +104,11 @@ type modelSignalReadModelAggregates struct {
 }
 
 func buildModelSignalHealthReadModels(metrics []modelSignalSessionMetric) (model.ModelSignalsHealthSummary, []model.ModelSignalsCohort, []model.ModelSignalsMatrixRow, []model.ModelSignalsProjectHotspot, []model.ModelSignalsProjectMetric) {
+	anchor := latestModelSignalMetricStart(metrics)
+	return buildModelSignalHealthReadModelsWithWindows(metrics, modelSignalHealthWindowBounds(anchor))
+}
+
+func buildModelSignalHealthReadModelsWithWindows(metrics []modelSignalSessionMetric, windows modelSignalHealthWindows) (model.ModelSignalsHealthSummary, []model.ModelSignalsCohort, []model.ModelSignalsMatrixRow, []model.ModelSignalsProjectHotspot, []model.ModelSignalsProjectMetric) {
 	health := model.ModelSignalsHealthSummary{
 		Severity:   modelSignalSeverityUnknown,
 		TopReasons: []string{},
@@ -113,12 +118,10 @@ func buildModelSignalHealthReadModels(metrics []modelSignalSessionMetric) (model
 	hotspots := []model.ModelSignalsProjectHotspot{}
 	projectMetrics := []model.ModelSignalsProjectMetric{}
 
-	anchor := latestModelSignalMetricStart(metrics)
-	if anchor.IsZero() {
+	if windows.anchor.IsZero() {
 		return health, cohorts, matrix, hotspots, projectMetrics
 	}
 
-	windows := modelSignalHealthWindowBounds(anchor)
 	health.CurrentWindow = windows.current
 	health.BaselineWindow = windows.baseline
 
@@ -176,17 +179,20 @@ func (a *modelSignalReadModelAggregates) addMetrics(metrics []modelSignalSession
 
 func (a *modelSignalReadModelAggregates) addMetric(metric modelSignalSessionMetric, window modelSignalMetricWindow) {
 	cohort := modelSignalCohortAggregateFor(a.cohorts, metric)
-	cohort.total.add(metric)
 	cell := modelSignalMatrixAggregateFor(a.matrix, metric, cohort.CohortKey)
-	cell.total.add(metric)
 	project := modelSignalProjectAggregateFor(a.projects, metric)
-	project.total.add(metric)
 
 	switch window {
 	case modelSignalWindowCurrent:
+		cohort.total.add(metric)
 		cohort.current.add(metric)
+		cell.total.add(metric)
 		cell.current.add(metric)
+		project.total.add(metric)
 		project.current.add(metric)
+		provider := modelSignalProvider(metric.ModelProvider)
+		modelName := modelSignalModelName(metric.Model)
+		project.modelSessionCounts[provider+"\x00"+modelName]++
 		a.currentTotal.add(metric)
 	case modelSignalWindowBaseline:
 		cohort.baseline.add(metric)
@@ -348,7 +354,6 @@ func modelSignalProjectAggregateFor(aggregates map[string]*modelSignalProjectAgg
 	modelKey := provider + "\x00" + modelName
 	aggregate.modelKeys[modelKey] = struct{}{}
 	aggregate.modelIdentities[modelKey] = modelSignalModelIdentity{Provider: provider, Model: modelName}
-	aggregate.modelSessionCounts[modelKey]++
 	aggregate.sourceIDs[metric.SourceID] = struct{}{}
 	return aggregate
 }

@@ -21,11 +21,12 @@ const quickRangeDays: Record<string, number> = {
 }
 
 export function normalizeUsageScope(filters: Partial<UsageScopeForm>): UsageScopeForm {
+  const hasCustomDates = Boolean(filters.from?.trim() || filters.to?.trim())
   return {
     agent: filters.agent?.trim() || undefined,
     model: filters.model?.trim() || undefined,
     project: filters.project?.trim() || undefined,
-    range: normalizeQuickRange(filters.range),
+    range: hasCustomDates ? undefined : (normalizeQuickRange(filters.range) || 'week'),
     from: filters.from?.trim() || '',
     to: filters.to?.trim() || ''
   }
@@ -125,7 +126,7 @@ export function useUsageScopeRoute(onRouteScopeChange?: () => void | Promise<voi
   }
 
   async function clearFilters() {
-    await updateFilters({ from: '', to: '' })
+    await updateFilters({ range: 'week', from: '', to: '' })
   }
 
   watch(

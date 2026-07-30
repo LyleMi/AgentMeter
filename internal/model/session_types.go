@@ -153,9 +153,12 @@ type ParsedSession struct {
 }
 
 type SessionFilters struct {
-	Search string `json:"search"`
-	Model  string `json:"model"`
-	Agent  string `json:"agent"`
-	Limit  int    `json:"limit"`
-	Offset int    `json:"offset"`
+	Search      string `json:"search"`
+	Model       string `json:"model"`
+	Agent       string `json:"agent"`
+	Project     string `json:"project"`
+	StartedFrom string `json:"startedFrom"`
+	StartedTo   string `json:"startedTo"`
+	Limit       int    `json:"limit"`
+	Offset      int    `json:"offset"`
 }

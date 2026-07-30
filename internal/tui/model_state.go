@@ -8,6 +8,7 @@ import (
 
 type appService interface {
 	GetOverview() (agentmodel.Overview, error)
+	GetAttention(agentmodel.AnalyticsFilters) (agentmodel.AttentionResponse, error)
 	GetOverviewWithFilters(agentmodel.AnalyticsFilters) (agentmodel.Overview, error)
 	GetTokenAnalyticsWithFilters(agentmodel.AnalyticsFilters) (agentmodel.TokenAnalytics, error)
 	GetUsageBreakdown(groupBy string, filters agentmodel.AnalyticsFilters) (agentmodel.UsageBreakdown, error)
@@ -46,7 +47,48 @@ const (
 	pageAuditDetail
 	pageSettings
 	pagePrivacy
+	pageAttention
 )
+
+type analyzeTab int
+
+const (
+	analyzeTabUsage analyzeTab = iota
+	analyzeTabTime
+	analyzeTabModels
+	analyzeTabTools
+)
+
+var analyzeTabs = []analyzeTab{analyzeTabUsage, analyzeTabTime, analyzeTabModels, analyzeTabTools}
+
+func (t analyzeTab) title() string {
+	switch t {
+	case analyzeTabTime:
+		return "Time"
+	case analyzeTabModels:
+		return "Models"
+	case analyzeTabTools:
+		return "Tools"
+	default:
+		return "Usage"
+	}
+}
+
+type safetyTab int
+
+const (
+	safetyTabAudit safetyTab = iota
+	safetyTabPrivacy
+)
+
+var safetyTabs = []safetyTab{safetyTabAudit, safetyTabPrivacy}
+
+func (t safetyTab) title() string {
+	if t == safetyTabPrivacy {
+		return "Privacy"
+	}
+	return "Audit"
+}
 
 type timeTab int
 
@@ -177,7 +219,6 @@ const (
 )
 
 var usageRanges = []usageRange{
-	usageRangeAll,
 	usageRangeDay,
 	usageRangeWeek,
 	usageRangeMonth,
@@ -242,7 +283,7 @@ func (t modelSignalsTab) title() string {
 func (p page) title() string {
 	switch p {
 	case pageOverview:
-		return "Overview"
+		return "Analyze"
 	case pageTime:
 		return "Time"
 	case pageTokens:
@@ -262,7 +303,7 @@ func (p page) title() string {
 	case pageToolCallDetail:
 		return "Tool Call Detail"
 	case pageAudit:
-		return "Audit"
+		return "Safety"
 	case pageAuditFindings:
 		return "Audit Findings"
 	case pageAuditDetail:
@@ -271,6 +312,8 @@ func (p page) title() string {
 		return "Settings"
 	case pagePrivacy:
 		return "Agent Privacy"
+	case pageAttention:
+		return "Attention"
 	default:
 		return "Unknown"
 	}
@@ -321,6 +364,7 @@ type loadMsg struct {
 	auditSession  *agentmodel.SessionDetail
 	settings      agentmodel.Settings
 	privacy       []agentmodel.PrivacyConfigStatus
+	attention     agentmodel.AttentionResponse
 	err           error
 }
 
@@ -387,6 +431,7 @@ type state struct {
 	auditSession  *agentmodel.SessionDetail
 	settings      agentmodel.Settings
 	privacy       []agentmodel.PrivacyConfigStatus
+	attention     agentmodel.AttentionResponse
 
 	indexing  bool
 	lastIndex *agentmodel.IndexResult
@@ -410,6 +455,8 @@ type state struct {
 	usageModel          string
 	usageProject        string
 	usageRange          usageRange
+	analyzeTab          analyzeTab
+	safetyTab           safetyTab
 	auditAgent          string
 	auditCategory       string
 	auditSeverity       string

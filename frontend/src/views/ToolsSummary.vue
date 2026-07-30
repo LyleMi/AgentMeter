@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, type DefineComponent } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref, watch, type DefineComponent } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AButton from 'ant-design-vue/es/button'
 import AntTable from 'ant-design-vue/es/table'
 import ATag from 'ant-design-vue/es/tag'
@@ -9,11 +9,13 @@ import { ReloadOutlined } from '@ant-design/icons-vue'
 import { api, formatDuration, formatNumber, type ToolStat } from '../api'
 import Panel from '../components/ui/Panel.vue'
 import { useMessages } from '../i18n'
+import { readUsageScopeQuery, usageScopeToApiFilters } from './useUsageScope'
 
 const ATable = AntTable as unknown as DefineComponent
 const ATypographyText = Typography.Text
 
 const router = useRouter()
+const route = useRoute()
 const loading = ref(true)
 const tools = ref<ToolStat[]>([])
 const { t } = useMessages({
@@ -70,7 +72,7 @@ const tableLocale = computed(() => ({ emptyText: loading.value ? t('empty.loadin
 async function load() {
   loading.value = true
   try {
-    tools.value = (await api.getTools()) || []
+    tools.value = (await api.getTools(usageScopeToApiFilters(readUsageScopeQuery(route.query)))) || []
   } finally {
     loading.value = false
   }
@@ -99,13 +101,14 @@ function failureStatus(record: ToolStat) {
 }
 
 function selectTool(toolName: string) {
-  router.push({ path: '/tools/calls', query: toolName ? { tool: toolName } : {} })
+  router.push({ path: '/analysis/tools/calls', query: toolName ? { tool: toolName } : {} })
 }
 
 function toolStatRow(record: ToolStat) {
   return { class: 'is-clickable-row', onClick: () => selectTool(record.toolName) }
 }
 
+watch(() => route.query, load)
 onMounted(load)
 </script>
 

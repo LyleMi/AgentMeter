@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, type DefineComponent } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AButton from 'ant-design-vue/es/button'
 import AInput from 'ant-design-vue/es/input'
-import ASelect from 'ant-design-vue/es/select'
 import AntTable from 'ant-design-vue/es/table'
 import ATag from 'ant-design-vue/es/tag'
 import ATooltip from 'ant-design-vue/es/tooltip'
@@ -12,16 +11,23 @@ import { ArrowRightOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/
 import { api } from '../api/client'
 import type { Session } from '../api/types'
 import PageHeader from '../components/PageHeader.vue'
+import UsageScopeBar from '../components/UsageScopeBar.vue'
 import { useAsyncResource } from '../composables/useAsyncResource'
 import { useMessages } from '../i18n'
 import { formatCost, formatDateTime, formatDuration, formatNumber, projectDisplay, sessionFullLabel, sessionLabel, shortPath } from '../presentation/formatters'
 import { sourceDisplay, sourceFilterOptions } from '../presentation/sourceIdentity'
 import { statusClass, statusColor } from '../presentation/status'
+import { useUsageScopeRoute, type UsageScopeForm } from './useUsageScope'
+import { buildUsageProjectOptions } from './useUsageScopeOptions'
 
 const ATable = AntTable as unknown as DefineComponent
 const ATypographyText = Typography.Text
 
+const route = useRoute()
 const router = useRouter()
+const scope = useUsageScopeRoute(() => {
+  void load()
+})
 const { t } = useMessages({
   en: {
     'title': 'Sessions',
@@ -90,8 +96,6 @@ const loading = sessionRows.loading
 const sessions = computed(() => sessionRows.data.value.sessions)
 const catalogSessions = computed(() => sessionRows.data.value.catalogSessions)
 const search = ref('')
-const model = ref<string | undefined>()
-const agent = ref<string | undefined>()
 
 const columns = computed(() => [
   { title: t('column.session'), dataIndex: 'sessionKey', key: 'identity', width: 176 },
@@ -106,7 +110,7 @@ const columns = computed(() => [
   { title: '', key: 'open', width: 44, align: 'right' }
 ])
 
-const hasActiveFilters = computed(() => Boolean(search.value.trim() || model.value || agent.value))
+const hasActiveFilters = computed(() => Boolean(search.value.trim() || scope.hasActiveFilters.value))
 
 const modelOptions = computed(() => {
   const source = catalogSessions.value.length ? catalogSessions.value : sessions.value
@@ -118,6 +122,14 @@ const agentOptions = computed(() => {
   const source = catalogSessions.value.length ? catalogSessions.value : sessions.value
   return sourceFilterOptions(source, t('fallback.unknown'))
 })
+
+const projectOptions = computed(() =>
+  buildUsageProjectOptions({
+    projects: [catalogSessions.value, sessions.value],
+    selected: scope.filters.value.project,
+    fallback: t('fallback.unknown')
+  })
+)
 
 const rowCountText = computed(() => {
   const visible = formatNumber(sessions.value.length)
@@ -134,7 +146,7 @@ const emptyText = computed(() => {
 
 async function load() {
   await sessionRows.run(async () => {
-    const filters = { search: search.value.trim() || undefined, model: model.value, agent: agent.value, limit: 300 }
+    const filters = { search: search.value.trim() || undefined, ...scope.apiFilters.value, limit: 300 }
     const filtered = api.listSessions(filters)
     const catalog = hasActiveFilters.value ? api.listSessions({ limit: 300 }) : filtered
     const [nextSessions, nextCatalog] = await Promise.all([filtered, catalog])
@@ -142,11 +154,15 @@ async function load() {
   })
 }
 
-function resetFilters() {
+async function resetFilters() {
   search.value = ''
-  model.value = undefined
-  agent.value = undefined
-  load()
+  await scope.clearFilters()
+  await load()
+}
+
+async function updateScopeFilters(filters: UsageScopeForm) {
+  await scope.updateFilters(filters)
+  await load()
 }
 
 function indexStatusHint(record: Session) {
@@ -154,7 +170,7 @@ function indexStatusHint(record: Session) {
 }
 
 function openSession(id: number) {
-  router.push(`/sessions/${id}`)
+  router.push({ path: `/sessions/${id}`, query: { returnTo: route.fullPath } })
 }
 
 function sessionRow(record: Session) {
@@ -185,6 +201,17 @@ onMounted(load)
       </template>
     </PageHeader>
 
+    <UsageScopeBar
+      :filters="scope.filters.value"
+      :agent-options="agentOptions"
+      :model-options="modelOptions"
+      :project-options="projectOptions"
+      :loading="loading"
+      @update:filters="updateScopeFilters"
+      @refresh="load"
+      @clear="resetFilters"
+    />
+
     <section class="panel">
       <div class="panel-body">
         <div class="toolbar sessions-toolbar">
@@ -200,22 +227,6 @@ onMounted(load)
                 <SearchOutlined />
               </template>
             </a-input>
-            <a-select
-              v-model:value="agent"
-              class="sessions-model-filter control-medium"
-              allow-clear
-              :placeholder="t('filter.agentPlaceholder')"
-              :options="agentOptions"
-              @change="load"
-            />
-            <a-select
-              v-model:value="model"
-              class="sessions-model-filter control-medium"
-              allow-clear
-              :placeholder="t('filter.modelPlaceholder')"
-              :options="modelOptions"
-              @change="load"
-            />
             <a-button type="primary" @click="load">{{ t('action.apply') }}</a-button>
             <a-button @click="resetFilters">{{ t('action.reset') }}</a-button>
           </div>

@@ -192,12 +192,18 @@ type ToolStat struct {
 }
 
 type ToolFilters struct {
-	Agent string `json:"agent"`
+	Agent       string `json:"agent"`
+	Model       string `json:"model"`
+	Project     string `json:"project"`
+	StartedFrom string `json:"startedFrom"`
+	StartedTo   string `json:"startedTo"`
 }
 
 type ToolCallFilters struct {
 	ToolName    string `json:"toolName"`
 	Agent       string `json:"agent"`
+	Model       string `json:"model"`
+	Project     string `json:"project"`
 	StartedFrom string `json:"startedFrom"`
 	StartedTo   string `json:"startedTo"`
 	Sort        string `json:"sort"`
@@ -210,6 +216,8 @@ type ToolCallFilters struct {
 
 type ToolCallRiskFilters struct {
 	Agent       string `json:"agent"`
+	Model       string `json:"model"`
+	Project     string `json:"project"`
 	StartedFrom string `json:"startedFrom"`
 	StartedTo   string `json:"startedTo"`
 	Limit       int    `json:"limit"`

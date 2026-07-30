@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AAlert from 'ant-design-vue/es/alert'
 import AButton from 'ant-design-vue/es/button'
 import ASpin from 'ant-design-vue/es/spin'
@@ -32,11 +32,12 @@ import { buildModelSignalsTabs, type ModelSignalsTabKey } from './model-signals/
 import type { ProjectMetricRow } from './model-signals/types'
 
 const router = useRouter()
+const route = useRoute()
 const resource = useAsyncResource<ModelSignals | null>(null)
 const signals = computed(() => resource.data.value)
 const loading = resource.loading
 const error = resource.error
-const activeTab = ref<ModelSignalsTabKey>('charts')
+const activeTab = ref<ModelSignalsTabKey>(defaultTabForPath(route.path))
 const scope = useUsageScopeRoute(() => {
   void load()
 })
@@ -107,7 +108,20 @@ const projectOptions = computed(() =>
   })
 )
 
-const tabs = computed(() => buildModelSignalsTabs(t))
+const tabs = computed(() => {
+  const allowed = route.path.endsWith('/trends')
+    ? new Set<ModelSignalsTabKey>(['charts', 'daily'])
+    : route.path.endsWith('/compare')
+      ? new Set<ModelSignalsTabKey>(['cohorts', 'matrix', 'projects'])
+      : new Set<ModelSignalsTabKey>(['overview', 'anomalies'])
+  return buildModelSignalsTabs(t).filter((tab) => allowed.has(tab.key))
+})
+
+function defaultTabForPath(path: string): ModelSignalsTabKey {
+  if (path.endsWith('/trends')) return 'charts'
+  if (path.endsWith('/compare')) return 'cohorts'
+  return 'overview'
+}
 
 async function load() {
   return resource.run(async () => {
@@ -132,8 +146,17 @@ async function clearScopeFilters() {
 }
 
 function openSession(id: number) {
-  if (id) router.push(`/sessions/${id}`)
+  if (id) {
+    router.push({
+      path: `/sessions/${id}`,
+      query: { returnTo: route.fullPath }
+    })
+  }
 }
+
+watch(() => route.path, (path) => {
+  activeTab.value = defaultTabForPath(path)
+})
 
 onMounted(load)
 </script>

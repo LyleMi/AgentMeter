@@ -3,7 +3,10 @@ package query
 import (
 	"context"
 	"sort"
+	"strings"
+	"time"
 
+	"github.com/LyleMi/AgentMeter/internal/db"
 	"github.com/LyleMi/AgentMeter/internal/model"
 )
 
@@ -12,25 +15,120 @@ func (s *Service) ModelSignals(ctx context.Context) (model.ModelSignals, error) 
 }
 
 func (s *Service) ModelSignalsWithFilters(ctx context.Context, filters model.AnalyticsFilters) (model.ModelSignals, error) {
-	metrics, err := s.modelSignalSessionMetrics(ctx, filters)
+	if strings.TrimSpace(filters.StartedFrom) == "" && strings.TrimSpace(filters.StartedTo) == "" {
+		allMetrics, err := s.modelSignalSessionMetrics(ctx, filters)
+		if err != nil {
+			return model.ModelSignals{}, err
+		}
+		anchor := latestModelSignalMetricStart(allMetrics)
+		windows := modelSignalHealthWindowBounds(anchor)
+		result := buildModelSignalsForWindows(allMetrics, allMetrics, windows)
+		normalizeModelSignalsSlices(&result)
+		return result, nil
+	}
+	windows, _, expandedFilters := selectedModelSignalHealthWindows(filters, time.Now().UTC())
+	allMetrics, err := s.modelSignalSessionMetrics(ctx, expandedFilters)
 	if err != nil {
 		return model.ModelSignals{}, err
 	}
-	result := buildModelSignals(metrics)
+	currentMetrics := modelSignalMetricsInWindow(allMetrics, windows.currentFrom, windows.anchor)
+	result := buildModelSignalsForWindows(currentMetrics, allMetrics, windows)
 	normalizeModelSignalsSlices(&result)
 	return result, nil
 }
 
+func equalModelSignalHealthWindows(anchor time.Time, duration time.Duration) modelSignalHealthWindows {
+	if anchor.IsZero() {
+		return modelSignalHealthWindows{}
+	}
+	currentFrom := anchor.Add(-duration)
+	baselineFrom := currentFrom.Add(-duration)
+	return modelSignalHealthWindows{
+		anchor:       anchor,
+		currentFrom:  currentFrom,
+		baselineFrom: baselineFrom,
+		current: model.ModelSignalsWindow{
+			From: db.FormatTime(currentFrom),
+			To:   db.FormatTime(anchor),
+		},
+		baseline: model.ModelSignalsWindow{
+			From: db.FormatTime(baselineFrom),
+			To:   db.FormatTime(currentFrom),
+		},
+	}
+}
+
 func buildModelSignals(metrics []modelSignalSessionMetric) model.ModelSignals {
+	return buildModelSignalsForWindows(metrics, metrics, modelSignalHealthWindowBounds(latestModelSignalMetricStart(metrics)))
+}
+
+func buildModelSignalsForWindows(currentMetrics, allMetrics []modelSignalSessionMetric, windows modelSignalHealthWindows) model.ModelSignals {
 	var result model.ModelSignals
-	aggregates := aggregateModelSignalMetrics(metrics)
+	aggregates := aggregateModelSignalMetrics(currentMetrics)
 	applyModelSignalsTotals(&result, aggregates.totals.metricSet())
 	result.ModelBreakdown = buildModelSignalsBreakdown(aggregates.breakdowns)
 	result.Trend = buildModelSignalsTrend(aggregates.trendByDay)
 
-	result.AnomalySessions = rankModelSignalAnomalies(metrics, 8)
-	result.DailyMetrics = buildModelSignalDailyMetrics(metrics)
-	result.HealthSummary, result.Cohorts, result.Matrix, result.ProjectHotspots, result.ProjectMetrics = buildModelSignalHealthReadModels(metrics)
+	result.AnomalySessions = rankModelSignalAnomalies(currentMetrics, 8)
+	result.DailyMetrics = buildModelSignalDailyMetricsForPeriod(currentMetrics, allMetrics)
+	result.HealthSummary, result.Cohorts, result.Matrix, result.ProjectHotspots, result.ProjectMetrics = buildModelSignalHealthReadModelsWithWindows(allMetrics, windows)
+	return result
+}
+
+func selectedModelSignalHealthWindows(filters model.AnalyticsFilters, now time.Time) (modelSignalHealthWindows, model.AnalyticsFilters, model.AnalyticsFilters) {
+	to := modelSignalFilterBoundary(filters.StartedTo, now, true)
+	from := modelSignalFilterBoundary(filters.StartedFrom, to.AddDate(0, 0, -7), false)
+	if !from.Before(to) {
+		from = to.AddDate(0, 0, -7)
+	}
+	baselineFrom := from.Add(-to.Sub(from))
+	windows := modelSignalHealthWindows{
+		anchor:       to,
+		currentFrom:  from,
+		baselineFrom: baselineFrom,
+		current: model.ModelSignalsWindow{
+			From: db.FormatTime(from),
+			To:   db.FormatTime(to),
+		},
+		baseline: model.ModelSignalsWindow{
+			From: db.FormatTime(baselineFrom),
+			To:   db.FormatTime(from),
+		},
+	}
+	current := filters
+	current.StartedFrom = from.Format(time.RFC3339Nano)
+	current.StartedTo = to.Format(time.RFC3339Nano)
+	expanded := filters
+	expanded.StartedFrom = baselineFrom.Format(time.RFC3339Nano)
+	expanded.StartedTo = to.Format(time.RFC3339Nano)
+	return windows, current, expanded
+}
+
+func modelSignalFilterBoundary(value string, fallback time.Time, end bool) time.Time {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback.UTC()
+	}
+	if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil {
+		return parsed.UTC()
+	}
+	if parsed, err := time.ParseInLocation(analyticsDateOnlyLayout, value, time.UTC); err == nil {
+		if end {
+			return parsed.AddDate(0, 0, 1)
+		}
+		return parsed
+	}
+	return fallback.UTC()
+}
+
+func modelSignalMetricsInWindow(metrics []modelSignalSessionMetric, from, to time.Time) []modelSignalSessionMetric {
+	result := make([]modelSignalSessionMetric, 0, len(metrics))
+	for _, metric := range metrics {
+		started := db.ParseTime(metric.StartedAt)
+		if !started.IsZero() && !started.Before(from) && !started.After(to) {
+			result = append(result, metric)
+		}
+	}
 	return result
 }
 

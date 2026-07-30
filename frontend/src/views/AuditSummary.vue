@@ -20,6 +20,7 @@ import { useMessages } from '../i18n'
 import { formatDateTime, formatNumber, projectDisplay, sessionFullLabel, sessionLabel, shortPath } from '../presentation/formatters'
 import { sourceDisplay } from '../presentation/sourceIdentity'
 import { auditPath, categoryColor, cleanQueryValue, getAuditSummary, severityColor, titleCaseFallback } from './auditSupport'
+import { readUsageScopeQuery, usageScopeToApiFilters } from './useUsageScope'
 
 const ATable = AntTable as unknown as DefineComponent
 const route = useRoute()
@@ -156,7 +157,7 @@ const summaryCards = computed(() => {
 })
 
 function load() {
-  return summaryResource.run(() => getAuditSummary({ agent: selectedAgent.value }))
+  return summaryResource.run(() => getAuditSummary(usageScopeToApiFilters(readUsageScopeQuery(route.query))))
 }
 
 function title(record: AuditFinding) {
@@ -200,18 +201,18 @@ function sourceInfo(record: AuditFinding) {
 }
 
 function openFinding(record: AuditFinding) {
-  router.push(auditPath(`/audit/findings/${record.id}`, { agent: selectedAgent.value }))
+  router.push(auditPath(`/safety/audit/findings/${record.id}`, route.query))
 }
 
 function openList() {
-  router.push(auditPath('/audit/findings', { agent: selectedAgent.value }))
+  router.push(auditPath('/safety/audit/findings', route.query))
 }
 
 function summaryRow(record: AuditFinding) {
   return { class: 'is-clickable-row', onClick: () => openFinding(record) }
 }
 
-watch(() => route.query.agent, load)
+watch(() => route.query, load)
 onMounted(load)
 </script>
 

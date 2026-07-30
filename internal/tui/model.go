@@ -15,15 +15,16 @@ func newState(service appService, width, height int) *state {
 	}
 	return &state{
 		service:             service,
-		page:                pageOverview,
+		page:                pageAttention,
 		width:               width,
 		height:              height,
 		tokenBreakdownGroup: tokenBreakdownGlobal,
+		usageRange:          usageRangeWeek,
 	}
 }
 
 func (s *state) init() command {
-	return s.load(pageOverview)
+	return s.load(pageAttention)
 }
 
 func (s *state) update(msg message) (command, bool) {
@@ -57,8 +58,16 @@ func (s *state) handleLoadMsg(m loadMsg) {
 
 func (s *state) applyLoadMsg(m loadMsg) {
 	switch m.page {
+	case pageAttention:
+		s.attention = m.attention
+		s.mergeScopeOptions(m.scopeOverview, m.scopeProjects)
+		s.clampSelection(len(s.attention.Items))
 	case pageOverview, pageTime:
 		s.overview = m.overview
+		s.tokens = m.tokens
+		s.signals = m.signals
+		s.tools = m.tools
+		s.toolCalls = m.toolCalls
 		s.mergeScopeOptions(m.scopeOverview, m.scopeProjects)
 	case pageTokens:
 		s.applyTokenLoad(m)
@@ -81,6 +90,7 @@ func (s *state) applyLoadMsg(m loadMsg) {
 		s.applyToolCallDetailLoad(m)
 	case pageAudit:
 		s.audit = m.audit
+		s.privacy = m.privacy
 		s.clampSelection(len(s.audit.RecentFindings))
 		s.mergeScopeOptions(m.scopeOverview, agentmodel.UsageBreakdown{})
 	case pageAuditFindings:

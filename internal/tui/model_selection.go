@@ -2,6 +2,19 @@ package tui
 
 func (s *state) itemCount() int {
 	switch s.page {
+	case pageAttention:
+		return len(s.attention.Items)
+	case pageOverview:
+		switch s.analyzeTab {
+		case analyzeTabTime:
+			return len(timeLines(s.overview, s.width, s.timeTab))
+		case analyzeTabModels:
+			return len(modelSignalLines(s.signals, s.width, s.modelSignalsTab))
+		case analyzeTabTools:
+			return len(s.tools)
+		default:
+			return len(s.overviewLines()) + 2 + len(tokenLines(s.tokens, s.breakdown, s.width, tokensTabSummary, tokenBreakdownGlobal))
+		}
 	case pageSessions:
 		return len(s.sessions)
 	case pageTools:
@@ -12,6 +25,12 @@ func (s *state) itemCount() int {
 	case pageToolCalls:
 		return len(s.toolCalls)
 	case pageAudit:
+		if s.safetyTab == safetyTabPrivacy {
+			if status := s.selectedPrivacyStatus(); status != nil {
+				return len(privacyDetailLines(*status, s.width))
+			}
+			return 0
+		}
 		return len(s.audit.RecentFindings)
 	case pageAuditFindings:
 		return len(s.findings)
@@ -60,7 +79,7 @@ func (s *state) pageStep() int {
 
 func (s *state) isListPage() bool {
 	switch s.page {
-	case pageSessions, pageTools, pageToolCalls, pageAudit, pageAuditFindings:
+	case pageAttention, pageSessions, pageTools, pageToolCalls, pageAudit, pageAuditFindings:
 		return true
 	default:
 		return false
@@ -77,6 +96,13 @@ func (s *state) visibleListRows() int {
 
 func (s *state) listHeaderLines() int {
 	switch s.page {
+	case pageAttention:
+		return 11
+	case pageOverview:
+		if s.analyzeTab == analyzeTabTools {
+			return 3
+		}
+		return 0
 	case pageTools, pageToolCalls:
 		if s.page == pageTools && s.toolsTab == toolsTabOverview {
 			return 5
@@ -95,7 +121,7 @@ func (s *state) move(delta int) {
 	if delta == 0 {
 		return
 	}
-	if s.page == pageSessionDetail || s.page == pageToolCallDetail || s.page == pageModelSignals || s.page == pageTime || s.page == pageTokens || s.page == pageModelRisk || s.page == pageAuditDetail || s.page == pageSettings || s.page == pagePrivacy {
+	if (s.page == pageOverview && s.analyzeTab != analyzeTabTools) || (s.page == pageAudit && s.safetyTab == safetyTabPrivacy) || s.page == pageSessionDetail || s.page == pageToolCallDetail || s.page == pageModelSignals || s.page == pageTime || s.page == pageTokens || s.page == pageModelRisk || s.page == pageAuditDetail || s.page == pageSettings || s.page == pagePrivacy {
 		maxScroll := s.maxScroll()
 		s.scroll += delta
 		if s.scroll < 0 {
@@ -142,7 +168,7 @@ func (s *state) clampSelection(count int) {
 }
 
 func (s *state) ensureVisible() {
-	if s.page == pageSessionDetail || s.page == pageToolCallDetail || s.page == pageModelSignals || s.page == pageTime || s.page == pageTokens || s.page == pageModelRisk || s.page == pageAuditDetail || s.page == pageSettings || s.page == pagePrivacy {
+	if (s.page == pageOverview && s.analyzeTab != analyzeTabTools) || (s.page == pageAudit && s.safetyTab == safetyTabPrivacy) || s.page == pageSessionDetail || s.page == pageToolCallDetail || s.page == pageModelSignals || s.page == pageTime || s.page == pageTokens || s.page == pageModelRisk || s.page == pageAuditDetail || s.page == pageSettings || s.page == pagePrivacy {
 		maxScroll := s.maxScroll()
 		if s.scroll > maxScroll {
 			s.scroll = maxScroll

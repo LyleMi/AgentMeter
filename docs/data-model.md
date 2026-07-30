@@ -431,20 +431,26 @@ Read-model shape notes:
   `modelThroughputTokensPerSecond`,
   `modelThroughputOutputTokensPerSecond`, `trend`, `modelBreakdown`, and
   `anomalySessions`.
+- `/api/attention` returns the task-oriented attention read model. Its `window`
+  contains the selected UTC period and the immediately preceding equal-length
+  baseline; `snapshot` contains current and baseline status metrics; `counts`
+  reports every qualifying critical and warning item; and `items` contains the
+  highest-priority 20 semantic drill-down targets. The response never embeds a
+  Web route.
 - `/api/model-signals` keeps the raw signal fields and Model Health layer:
   `healthSummary`, `cohorts`, `matrix`, and `projectHotspots`. The core
-  grouping is provider/model + agent/source + project. The current health
-  window is the latest observed 24 hours in the filtered scope; the baseline is
-  the preceding 30 days when enough matching history is available. Missing
-  baseline and low sample data should be surfaced as low confidence or
-  unavailable history, not as regression.
+  grouping is provider/model + agent/source + project. The current health window
+  is the selected 1-, 7-, 30-day, or custom period; the baseline is the
+  immediately preceding period of equal length. Missing baseline and low sample
+  data should be surfaced as low confidence or unavailable history, not as
+  regression.
 - `/api/model-signals` also includes `dailyMetrics` for day-level operational
   efficiency. Rows should expose enough date, sample, cost, cost-per-session,
   cost-per-active-hour, cost-per-1k-tokens, cache-savings, latency percentile,
   throughput percentile, failure-pressure, model-quality-risk score,
-  retry-pressure/model-calls-per-session, low-sample, and rolling
-  7-calendar-day drift metadata for Web and TUI clients to explain the metric
-  without recomputing it. Latency and throughput percentiles should use
+  retry-pressure/model-calls-per-session, low-sample, and previous-day drift
+  metadata for Web and TUI clients to explain the metric without recomputing it.
+  Latency and throughput percentiles should use
   model-call token/duration samples when available and fall back to
   session-level samples when per-call token counts are missing.
 - `/api/model-signals` also includes `projectMetrics` for project-level

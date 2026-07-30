@@ -15,9 +15,7 @@ func (s *Service) AuditSummary(ctx context.Context) (model.AuditSummary, error) 
 
 func (s *Service) AuditSummaryWithFilters(ctx context.Context, filters model.AuditFindingFilters) (model.AuditSummary, error) {
 	var summary model.AuditSummary
-	where := []string{"1 = 1"}
-	args := []any{}
-	where, args = appendSourceFilter(where, args, filters.Agent)
+	where, args := auditScopeFilters(filters)
 	query := fmt.Sprintf(`SELECT
 		COUNT(*),
 		COALESCE(SUM(CASE WHEN af.severity = 'critical' THEN 1 ELSE 0 END), 0),
@@ -48,14 +46,16 @@ func (s *Service) AuditSummaryWithFilters(ctx context.Context, filters model.Aud
 	if err != nil {
 		return summary, err
 	}
-	summary.RecentFindings, err = s.AuditFindings(ctx, model.AuditFindingFilters{Agent: filters.Agent, Limit: 8})
+	recentFilters := filters
+	recentFilters.Limit = 8
+	recentFilters.Offset = 0
+	summary.RecentFindings, err = s.AuditFindings(ctx, recentFilters)
 	summary.RecentFindings = nonNilSlice(summary.RecentFindings)
 	return summary, err
 }
 
 func (s *Service) AuditFindings(ctx context.Context, filters model.AuditFindingFilters) ([]model.AuditFinding, error) {
-	where := []string{"1 = 1"}
-	args := []any{}
+	where, args := auditScopeFilters(filters)
 	if strings.TrimSpace(filters.Category) != "" {
 		where = append(where, "af.category = ?")
 		args = append(args, strings.TrimSpace(filters.Category))
@@ -68,7 +68,6 @@ func (s *Service) AuditFindings(ctx context.Context, filters model.AuditFindingF
 		where = append(where, "af.shell_family = ?")
 		args = append(args, strings.TrimSpace(filters.ShellFamily))
 	}
-	where, args = appendSourceFilter(where, args, filters.Agent)
 	if strings.TrimSpace(filters.Search) != "" {
 		search := "%" + strings.TrimSpace(filters.Search) + "%"
 		where = append(where, `(af.title LIKE ? OR af.description LIKE ? OR af.evidence LIKE ? OR af.command LIKE ? OR af.rule_id LIKE ? OR sess.session_key LIKE ? OR sess.project_path LIKE ? OR sf.path LIKE ? OR src.root_path LIKE ? OR src.sessions_path LIKE ?)`)
@@ -81,6 +80,23 @@ func (s *Service) AuditFindings(ctx context.Context, filters model.AuditFindingF
 		ORDER BY af.timestamp DESC, af.id DESC
 		LIMIT ? OFFSET ?`, auditFindingSelect, whereClause(where))
 	return s.scanAuditFindings(ctx, query, args...)
+}
+
+func auditScopeFilters(filters model.AuditFindingFilters) ([]string, []any) {
+	where := []string{"1 = 1"}
+	args := []any{}
+	return appendAnalyticsFilters(where, args, model.AnalyticsFilters{
+		Agent:       filters.Agent,
+		Model:       filters.Model,
+		Project:     filters.Project,
+		StartedFrom: filters.StartedFrom,
+		StartedTo:   filters.StartedTo,
+	}, analyticsFilterSQLScope{
+		sourceAlias: "src",
+		modelExpr:   "sess.model",
+		projectExpr: "sess.project_path",
+		startedExpr: "af.timestamp",
+	})
 }
 
 func (s *Service) AuditFinding(ctx context.Context, id int64) (model.AuditFinding, error) {

@@ -3,81 +3,66 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
-    { path: '/', redirect: '/overview' },
+    { path: '/', redirect: '/attention' },
+    { path: '/attention', component: () => import('./views/Attention.vue') },
     {
-      path: '/overview',
-      component: () => import('./views/Overview.vue'),
-      redirect: '/overview/summary',
+      path: '/analysis/usage',
+      component: () => import('./views/Tokens.vue'),
       children: [
-        { path: 'summary', component: () => import('./views/OverviewSummary.vue') },
-        { path: 'trends', component: () => import('./views/OverviewTrends.vue') },
-        { path: 'time', redirect: '/time' },
-        { path: 'breakdown', component: () => import('./views/OverviewBreakdown.vue') },
-        { path: 'recent', component: () => import('./views/OverviewRecent.vue') }
+        { path: '', component: () => import('./views/analysis/UsageSummary.vue') },
+        { path: 'projects', component: () => import('./views/tokens/TokensProjects.vue') },
+        { path: 'breakdown', component: () => import('./views/tokens/TokensBreakdown.vue') },
+        { path: 'sessions', component: () => import('./views/tokens/TokensSessions.vue') }
       ]
     },
     {
-      path: '/time',
+      path: '/analysis/time',
       component: () => import('./views/OverviewTime.vue'),
       children: [
         { path: '', component: () => import('./views/time/TimeSummary.vue') },
-        { path: 'summary', redirect: (to) => ({ path: '/time', query: to.query }) },
         { path: 'sources', component: () => import('./views/time/TimeSources.vue') },
         { path: 'tools', component: () => import('./views/time/ToolDurationLeaders.vue') },
         { path: 'sessions', component: () => import('./views/time/SlowSessionsTable.vue') }
       ]
     },
+    { path: '/analysis/models', component: () => import('./views/ModelSignals.vue') },
+    { path: '/analysis/models/trends', component: () => import('./views/ModelSignals.vue') },
+    { path: '/analysis/models/compare', component: () => import('./views/ModelSignals.vue') },
     {
-      path: '/tokens',
-      component: () => import('./views/Tokens.vue'),
-      children: [
-        { path: '', component: () => import('./views/tokens/TokensSummary.vue') },
-        { path: 'summary', component: () => import('./views/tokens/TokensSummary.vue') },
-        { path: 'projects', component: () => import('./views/tokens/TokensProjects.vue') },
-        { path: 'trends', component: () => import('./views/tokens/TokensTrends.vue') },
-        { path: 'breakdown', component: () => import('./views/tokens/TokensBreakdown.vue') },
-        { path: 'sessions', component: () => import('./views/tokens/TokensSessions.vue') }
-      ]
-    },
-    { path: '/model-signals', component: () => import('./views/ModelSignals.vue') },
-    { path: '/model-signals/risk', component: () => import('./views/ModelRisk.vue') },
-    { path: '/sessions', component: () => import('./views/Sessions.vue') },
-    { path: '/sessions/:id', component: () => import('./views/SessionDetail.vue'), props: true },
-    { path: '/prompts', component: () => import('./views/Prompts.vue') },
-    { path: '/agent-resources', component: () => import('./views/AgentResources.vue') },
-    {
-      path: '/audit',
-      component: () => import('./views/Audit.vue'),
-      redirect: (to) => ({ path: '/audit/summary', query: to.query }),
-      children: [
-        { path: 'summary', component: () => import('./views/AuditSummary.vue') },
-        { path: 'findings', component: () => import('./views/AuditFindings.vue') },
-        { path: 'findings/:id', component: () => import('./views/AuditDetail.vue') }
-      ]
-    },
-    { path: '/agent-privacy', component: () => import('./views/AgentPrivacy.vue') },
-    {
-      path: '/tools',
+      path: '/analysis/tools',
       component: () => import('./views/Tools.vue'),
-      redirect: '/tools/overview',
       children: [
-        { path: 'overview', component: () => import('./views/ToolsOverview.vue') },
-        { path: 'summary', component: () => import('./views/ToolsSummary.vue') },
+        { path: '', component: () => import('./views/analysis/ToolsSummary.vue') },
         { path: 'shell', component: () => import('./views/ToolsShell.vue') },
         { path: 'calls', component: () => import('./views/ToolsCalls.vue') }
       ]
     },
+    { path: '/sessions', component: () => import('./views/Sessions.vue') },
+    { path: '/sessions/:id', component: () => import('./views/SessionDetail.vue'), props: true },
+    {
+      path: '/safety/audit',
+      component: () => import('./views/Audit.vue'),
+      children: [
+        { path: '', component: () => import('./views/AuditSummary.vue') },
+        { path: 'findings', component: () => import('./views/AuditFindings.vue') },
+        { path: 'findings/:id', component: () => import('./views/AuditDetail.vue') }
+      ]
+    },
+    { path: '/safety/privacy', component: () => import('./views/AgentPrivacy.vue') },
+    { path: '/resources/prompts', component: () => import('./views/Prompts.vue') },
+    { path: '/resources/agents', component: () => import('./views/AgentResources.vue') },
     {
       path: '/settings',
       component: () => import('./views/Settings.vue'),
-      redirect: '/settings/source',
+      redirect: '/settings/sources',
       children: [
-        { path: 'source', component: () => import('./views/SettingsSource.vue') },
-        { path: 'database', component: () => import('./views/SettingsDatabase.vue') },
-        { path: 'price', component: () => import('./views/SettingsPrice.vue') },
+        { path: 'sources', component: () => import('./views/SettingsSource.vue') },
+        { path: 'data', component: () => import('./views/SettingsDatabase.vue') },
+        { path: 'pricing', component: () => import('./views/SettingsPrice.vue') },
         { path: 'display', component: () => import('./views/SettingsDisplay.vue') }
       ]
-    }
+    },
+    { path: '/:pathMatch(.*)*', component: () => import('./views/NotFound.vue') }
   ]
 })
 

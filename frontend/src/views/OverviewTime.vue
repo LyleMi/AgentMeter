@@ -34,9 +34,9 @@ import {
 import { timeContextKey, type TimeContext, type TimeKpiCard, type TimeSegment } from './time/timeContext'
 
 const timeTabMatches = [
-  { key: 'sources', pathPrefix: '/time/sources' },
-  { key: 'tools', pathPrefix: '/time/tools' },
-  { key: 'sessions', pathPrefix: '/time/sessions' }
+  { key: 'sources', pathPrefix: '/analysis/time/sources' },
+  { key: 'tools', pathPrefix: '/analysis/time/tools' },
+  { key: 'sessions', pathPrefix: '/analysis/time/sessions' }
 ] as const
 
 const route = useRoute()
@@ -110,10 +110,10 @@ const { t } = useMessages({
 })
 
 const tabs = computed(() => [
-  { key: 'summary', label: t('tab.summary'), path: timePath('/time'), icon: FieldTimeOutlined },
-  { key: 'sources', label: t('tab.sources'), path: timePath('/time/sources'), icon: BarChartOutlined },
-  { key: 'tools', label: t('tab.tools'), path: timePath('/time/tools'), icon: ToolOutlined },
-  { key: 'sessions', label: t('tab.sessions'), path: timePath('/time/sessions'), icon: ProfileOutlined }
+  { key: 'summary', label: t('tab.summary'), path: timePath('/analysis/time'), icon: FieldTimeOutlined },
+  { key: 'sources', label: t('tab.sources'), path: timePath('/analysis/time/sources'), icon: BarChartOutlined },
+  { key: 'tools', label: t('tab.tools'), path: timePath('/analysis/time/tools'), icon: ToolOutlined },
+  { key: 'sessions', label: t('tab.sessions'), path: timePath('/analysis/time/sessions'), icon: ProfileOutlined }
 ])
 
 const activeKey = computed(() => routeTabKey(route.path, timeTabMatches, 'summary'))
@@ -363,4 +363,3 @@ onMounted(load)
   margin-bottom: var(--am-section-gap);
 }
 </style>
-

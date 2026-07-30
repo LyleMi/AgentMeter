@@ -17,12 +17,32 @@ func (s *state) isAuditPage() bool {
 }
 
 func (s *state) auditSummaryFilters() agentmodel.AuditFindingFilters {
-	return agentmodel.AuditFindingFilters{Agent: strings.TrimSpace(s.auditAgent)}
+	scope := s.analyticsFilters()
+	agent := scope.Agent
+	if strings.TrimSpace(s.auditAgent) != "" {
+		agent = strings.TrimSpace(s.auditAgent)
+	}
+	return agentmodel.AuditFindingFilters{
+		Agent:       agent,
+		Model:       scope.Model,
+		Project:     scope.Project,
+		StartedFrom: scope.StartedFrom,
+		StartedTo:   scope.StartedTo,
+	}
 }
 
 func (s *state) auditFilters() agentmodel.AuditFindingFilters {
+	scope := s.analyticsFilters()
+	agent := scope.Agent
+	if strings.TrimSpace(s.auditAgent) != "" {
+		agent = strings.TrimSpace(s.auditAgent)
+	}
 	return agentmodel.AuditFindingFilters{
-		Agent:       strings.TrimSpace(s.auditAgent),
+		Agent:       agent,
+		Model:       scope.Model,
+		Project:     scope.Project,
+		StartedFrom: scope.StartedFrom,
+		StartedTo:   scope.StartedTo,
 		Category:    strings.TrimSpace(s.auditCategory),
 		Severity:    strings.TrimSpace(s.auditSeverity),
 		ShellFamily: strings.TrimSpace(s.auditShell),
@@ -68,7 +88,8 @@ func (s *state) cycleAuditShell() command {
 }
 
 func (s *state) clearAuditFilters() command {
-	if s.auditAgent == "" && s.auditCategory == "" && s.auditSeverity == "" && s.auditShell == "" {
+	if s.auditAgent == "" && s.auditCategory == "" && s.auditSeverity == "" && s.auditShell == "" &&
+		s.usageAgent == "" && s.usageModel == "" && s.usageProject == "" && s.usageRange == usageRangeWeek {
 		s.status = "audit filters already clear"
 		return nil
 	}
@@ -76,9 +97,13 @@ func (s *state) clearAuditFilters() command {
 	s.auditCategory = ""
 	s.auditSeverity = ""
 	s.auditShell = ""
+	s.usageAgent = ""
+	s.usageModel = ""
+	s.usageProject = ""
+	s.usageRange = usageRangeWeek
 	s.selected = 0
 	s.scroll = 0
-	s.status = "audit filters cleared"
+	s.status = "safety scope reset to 7 days"
 	return s.reloadAuditPage()
 }
 

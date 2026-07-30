@@ -63,6 +63,10 @@ type AuditFindingFilters struct {
 	Severity    string `json:"severity"`
 	ShellFamily string `json:"shellFamily"`
 	Agent       string `json:"agent"`
+	Model       string `json:"model"`
+	Project     string `json:"project"`
+	StartedFrom string `json:"startedFrom"`
+	StartedTo   string `json:"startedTo"`
 	Search      string `json:"search"`
 	Limit       int    `json:"limit"`
 	Offset      int    `json:"offset"`

@@ -204,12 +204,12 @@ function projectName(value?: string) {
 }
 
 function backToList() {
-  router.push(auditPath('/audit/findings', { agent: selectedAgent.value }))
+  router.push(auditPath('/safety/audit/findings', route.query))
 }
 
 function openSession() {
   const id = finding.value?.sessionId
-  if (id) router.push(`/sessions/${id}`)
+  if (id) router.push({ path: `/sessions/${id}`, query: { returnTo: route.fullPath } })
 }
 
 watch(() => [route.params.id, route.query.agent], load)

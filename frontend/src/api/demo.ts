@@ -1,6 +1,7 @@
 import type { ToolCall, ToolCallFilters } from './types'
 import type { DemoApi } from './demo/contracts'
 import { agentResources } from './demo/agentResources'
+import { attention } from './demo/attention'
 import { auditFinding, auditSummary, filteredFindings, filteredToolCallRisks } from './demo/audit'
 import { modelSignals } from './demo/modelSignals'
 import { pricingModels, saveDemoPricingModel } from './demo/pricing'
@@ -131,6 +132,7 @@ export const demoApi: DemoApi = {
   }),
   indexNow: async (rebuild = false) => clone(indexResult(rebuild)),
   getOverview: async (filters = {}) => clone(overview(filters)),
+  getAttention: async (filters = {}) => clone(attention(filters)),
   getTokenAnalytics: async (filters = {}) => clone(tokenAnalytics(filters)),
   getModelSignals: async (filters = {}) => clone(modelSignals(filters)),
   getUsageBreakdown: async (filters) => clone(breakdown(filters)),

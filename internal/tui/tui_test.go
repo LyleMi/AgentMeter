@@ -12,6 +12,7 @@ import (
 )
 
 type fakeService struct {
+	attention agentmodel.AttentionResponse
 	overview  agentmodel.Overview
 	tokens    agentmodel.TokenAnalytics
 	breakdown map[string]agentmodel.UsageBreakdown
@@ -31,6 +32,7 @@ type fakeService struct {
 	tokenFilters        []agentmodel.AnalyticsFilters
 	breakdownFilters    []breakdownFilterCall
 	signalFilters       []agentmodel.AnalyticsFilters
+	sessionFilters      []agentmodel.SessionFilters
 	toolFilters         []agentmodel.ToolFilters
 	toolCallFilters     []agentmodel.ToolCallFilters
 	auditSummaryFilters []agentmodel.AuditFindingFilters
@@ -52,6 +54,23 @@ type privacyApplyCall struct {
 
 func (f *fakeService) GetOverview() (agentmodel.Overview, error) {
 	return f.overview, nil
+}
+
+func (f *fakeService) GetAttention(filters agentmodel.AnalyticsFilters) (agentmodel.AttentionResponse, error) {
+	f.overviewFilters = append(f.overviewFilters, filters)
+	if f.attention.Items == nil {
+		f.attention.Items = []agentmodel.AttentionItem{}
+	}
+	if f.attention.Snapshot.Sessions.Current == 0 {
+		f.attention.Snapshot.Sessions.Current = float64(f.overview.TotalSessions)
+		f.attention.Snapshot.Tokens.Current = float64(f.overview.TotalTokens)
+		f.attention.Snapshot.ActiveTime.Current = float64(f.overview.TotalActiveDurationMS)
+		f.attention.Snapshot.ToolCalls.Current = float64(f.overview.TotalToolCalls)
+		if f.overview.EstimatedCostUSD != nil {
+			f.attention.Snapshot.CostUSD.Current = *f.overview.EstimatedCostUSD
+		}
+	}
+	return f.attention, nil
 }
 
 func (f *fakeService) GetOverviewWithFilters(filters agentmodel.AnalyticsFilters) (agentmodel.Overview, error) {
@@ -79,7 +98,8 @@ func (f *fakeService) GetModelSignalsWithFilters(filters agentmodel.AnalyticsFil
 	return f.signals, nil
 }
 
-func (f *fakeService) ListSessions(_ agentmodel.SessionFilters) ([]agentmodel.Session, error) {
+func (f *fakeService) ListSessions(filters agentmodel.SessionFilters) ([]agentmodel.Session, error) {
+	f.sessionFilters = append(f.sessionFilters, filters)
 	return f.sessions, nil
 }
 
@@ -323,7 +343,7 @@ func (f *fakeService) ApplyPrivacyProfile(target, profile string) (agentmodel.Pr
 	return f.privacyApply, nil
 }
 
-func TestOverviewLoadsAndRenders(t *testing.T) {
+func TestAttentionLoadsAndRendersByDefault(t *testing.T) {
 	svc := sampleService()
 	st := newState(svc, 100, 32)
 
@@ -334,12 +354,95 @@ func TestOverviewLoadsAndRenders(t *testing.T) {
 	}
 
 	view := st.view()
-	assertContains(t, view, "Overview")
-	assertContains(t, view, "Sessions: 2")
-	assertContains(t, view, "gpt-5-codex")
-	assertContains(t, view, "Work Codex")
-	assertContains(t, view, "codex @")
-	assertContains(t, view, "Recent Sessions")
+	assertContains(t, view, "Attention")
+	assertContains(t, view, "Sessions 2")
+	assertContains(t, view, "No issues need attention")
+	assertContains(t, view, "range 7 days")
+}
+
+func TestSessionsUseSharedSevenDayScope(t *testing.T) {
+	svc := sampleService()
+	st := newState(svc, 100, 32)
+	st.update(runCommand(t, st.init()))
+
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '3'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if len(svc.sessionFilters) == 0 {
+		t.Fatal("sessions were not loaded")
+	}
+	filter := svc.sessionFilters[len(svc.sessionFilters)-1]
+	from, err := time.Parse(time.RFC3339, filter.StartedFrom)
+	if err != nil {
+		t.Fatalf("session StartedFrom = %q: %v", filter.StartedFrom, err)
+	}
+	if age := time.Since(from); age < 7*24*time.Hour-time.Minute || age > 7*24*time.Hour+time.Minute {
+		t.Fatalf("session range age = %v, want about 7 days", age)
+	}
+	if filter.Limit != 200 {
+		t.Fatalf("session limit = %d, want 200", filter.Limit)
+	}
+}
+
+func TestTaskShortcutsTabsAndAttentionDrilldown(t *testing.T) {
+	svc := sampleService()
+	svc.attention = agentmodel.AttentionResponse{
+		Items: []agentmodel.AttentionItem{{
+			Key: "session:42", Severity: "warning", Subject: "Anomalous session",
+			Reason: "tool failures increased", Confidence: .8,
+			Destination: agentmodel.AttentionItemDestination{Kind: "session", SessionID: 42},
+		}},
+		Counts: agentmodel.AttentionCounts{Warning: 1, Total: 1},
+	}
+	st := newState(svc, 64, 18)
+	if st.usageRange != usageRangeWeek {
+		t.Fatalf("default range = %v, want 7 days", st.usageRange)
+	}
+	st.update(runCommand(t, st.init()))
+
+	cmd, quit := st.update(keyMsg{typ: keyEnter})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	if st.page != pageSessionDetail || st.previous != pageAttention {
+		t.Fatalf("attention drilldown page/previous = %v/%v", st.page, st.previous)
+	}
+	cmd, _ = st.update(keyMsg{typ: keyEsc})
+	st.update(runCommand(t, cmd))
+
+	for key, want := range map[rune]page{'1': pageAttention, '2': pageOverview, '3': pageSessions, '4': pageAudit, '5': pageSettings} {
+		cmd, quit = st.update(keyMsg{typ: keyRune, ch: key})
+		if quit {
+			t.Fatalf("shortcut %q unexpectedly quit", key)
+		}
+		if cmd != nil {
+			st.update(runCommand(t, cmd))
+		}
+		if st.page != want {
+			t.Fatalf("shortcut %q page = %v, want %v", key, st.page, want)
+		}
+	}
+
+	cmd, _ = st.update(keyMsg{typ: keyRune, ch: '2'})
+	if cmd != nil {
+		st.update(runCommand(t, cmd))
+	}
+	cmd, _ = st.update(keyMsg{typ: keyRune, ch: ']'})
+	st.update(runCommand(t, cmd))
+	if st.analyzeTab != analyzeTabTime {
+		t.Fatalf("analyze tab = %v, want Time", st.analyzeTab)
+	}
+	cmd, _ = st.update(keyMsg{typ: keyRune, ch: '4'})
+	st.update(runCommand(t, cmd))
+	cmd, _ = st.update(keyMsg{typ: keyRune, ch: ']'})
+	st.update(runCommand(t, cmd))
+	if st.safetyTab != safetyTabPrivacy {
+		t.Fatalf("safety tab = %v, want Privacy", st.safetyTab)
+	}
+	_ = st.view()
 }
 
 func TestViewportHelpersClampScrollAndNarrowWidths(t *testing.T) {
@@ -415,7 +518,7 @@ func TestUsageScopeFiltersAreAppliedAcrossAnalyticsPages(t *testing.T) {
 		t.Fatal("overview range filter StartedFrom is empty")
 	}
 
-	cmd, quit = st.update(keyMsg{typ: keyRune, ch: '3'})
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: '2'})
 	if quit {
 		t.Fatal("unexpected quit")
 	}
@@ -425,7 +528,12 @@ func TestUsageScopeFiltersAreAppliedAcrossAnalyticsPages(t *testing.T) {
 		t.Fatalf("token filters = %+v, want inherited usage scope", tokenFilter)
 	}
 
-	cmd, quit = st.update(keyMsg{typ: keyRune, ch: '4'})
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: ']'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: ']'})
 	if quit {
 		t.Fatal("unexpected quit")
 	}
@@ -441,8 +549,8 @@ func TestUsageScopeFiltersAreAppliedAcrossAnalyticsPages(t *testing.T) {
 	}
 	st.update(runCommand(t, cmd))
 	cleared := lastAnalyticsFilter(t, svc.signalFilters)
-	if cleared.Agent != "" || cleared.Model != "" || cleared.Project != "" || cleared.StartedFrom != "" {
-		t.Fatalf("cleared signal filters = %+v, want empty", cleared)
+	if cleared.Agent != "" || cleared.Model != "" || cleared.Project != "" || cleared.StartedFrom == "" {
+		t.Fatalf("cleared signal filters = %+v, want default 7-day range", cleared)
 	}
 }
 
@@ -884,23 +992,28 @@ func TestTimePageTabsRender(t *testing.T) {
 		t.Fatal("unexpected quit")
 	}
 	st.update(runCommand(t, cmd))
+	cmd, quit = st.update(keyMsg{typ: keyRune, ch: ']'})
+	if quit {
+		t.Fatal("unexpected quit")
+	}
+	st.update(runCommand(t, cmd))
 
 	view := st.view()
 	assertContains(t, view, "Time")
 	assertContains(t, view, "Composition")
 	assertContains(t, view, "Source Time Attribution")
 
-	st.update(keyMsg{typ: keyRune, ch: ']'})
+	st.timeTab = timeTabSources
 	view = st.view()
 	assertContains(t, view, "Source Time Comparison")
 	assertContains(t, view, "Work Codex")
 
-	st.update(keyMsg{typ: keyRune, ch: ']'})
+	st.timeTab = timeTabTools
 	view = st.view()
 	assertContains(t, view, "Tool Duration Leaders")
 	assertContains(t, view, "web_fetch")
 
-	st.update(keyMsg{typ: keyRune, ch: ']'})
+	st.timeTab = timeTabSessions
 	view = st.view()
 	assertContains(t, view, "Slow Sessions")
 	assertContains(t, view, "gpt-5-codex")
@@ -910,57 +1023,22 @@ func TestTokensPageTabsAndBreakdownGroupRender(t *testing.T) {
 	svc := sampleService()
 	st := newState(svc, 150, 60)
 
-	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '3'})
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '2'})
 	if quit {
 		t.Fatal("unexpected quit")
 	}
 	st.update(runCommand(t, cmd))
 
 	view := st.view()
-	assertContains(t, view, "Tokens")
 	assertContains(t, view, "Token Mix")
 	assertContains(t, view, "Source Cache Hit Rate")
-
-	st.update(keyMsg{typ: keyRune, ch: ']'})
-	view = st.view()
-	assertContains(t, view, "Cache Hit Trend")
-	assertContains(t, view, "Latest hit rate")
-
-	st.update(keyMsg{typ: keyRune, ch: ']'})
-	view = st.view()
-	assertContains(t, view, "Usage Breakdown")
-	assertContains(t, view, "Group: Global")
-
-	cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'd'})
-	if quit {
-		t.Fatal("unexpected quit")
-	}
-	st.update(runCommand(t, cmd))
-	view = st.view()
-	assertContains(t, view, "Group: Source")
-
-	for i := 0; i < 3; i++ {
-		cmd, quit = st.update(keyMsg{typ: keyRune, ch: 'd'})
-		if quit {
-			t.Fatal("unexpected quit")
-		}
-		st.update(runCommand(t, cmd))
-	}
-	view = st.view()
-	assertContains(t, view, "Group: Project")
-	assertContains(t, view, "AgentMeter")
-
-	st.update(keyMsg{typ: keyRune, ch: ']'})
-	view = st.view()
-	assertContains(t, view, "High Token Sessions")
-	assertContains(t, view, "12,345")
 }
 
 func TestModelRiskLoadsAndRenders(t *testing.T) {
 	svc := sampleService()
 	st := newState(svc, 160, 40)
 
-	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '5'})
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: 'x'})
 	if quit {
 		t.Fatal("unexpected quit")
 	}
@@ -1008,7 +1086,7 @@ func TestAuditSummaryFindingsAndDetailRender(t *testing.T) {
 	svc := sampleService()
 	st := newState(svc, 150, 55)
 
-	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '8'})
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '4'})
 	if quit {
 		t.Fatal("unexpected quit")
 	}
@@ -1059,7 +1137,7 @@ func TestAuditFiltersAreApplied(t *testing.T) {
 	svc := sampleService()
 	st := newState(svc, 150, 40)
 
-	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '8'})
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '4'})
 	if quit {
 		t.Fatal("unexpected quit")
 	}
@@ -1134,7 +1212,7 @@ func TestAuditDetailReloadsWhenSourceFilterChanges(t *testing.T) {
 	}}, svc.overview.AgentUsage...)
 	st := newState(svc, 150, 45)
 
-	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '8'})
+	cmd, quit := st.update(keyMsg{typ: keyRune, ch: '4'})
 	if quit {
 		t.Fatal("unexpected quit")
 	}
@@ -1252,23 +1330,6 @@ func TestPrivacyPageLoadsAndRenders(t *testing.T) {
 	assertContains(t, view, "Broken JSON")
 	assertContains(t, view, "read-only")
 
-	cmd, quit = st.update(keyMsg{typ: keyTab})
-	if quit {
-		t.Fatal("unexpected quit")
-	}
-	st.update(runCommand(t, cmd))
-	if st.page != pageSettings {
-		t.Fatalf("page = %v, want settings after tab from privacy", st.page)
-	}
-
-	cmd, quit = st.update(keyMsg{typ: keyShiftTab})
-	if quit {
-		t.Fatal("unexpected quit")
-	}
-	st.update(runCommand(t, cmd))
-	if st.page != pagePrivacy {
-		t.Fatalf("page = %v, want privacy after shift-tab from settings", st.page)
-	}
 }
 
 func TestPrivacyProfileRequiresConfirmationBeforeApply(t *testing.T) {

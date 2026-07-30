@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/LyleMi/AgentMeter/internal/db"
 	"github.com/LyleMi/AgentMeter/internal/model"
@@ -196,6 +197,48 @@ func TestSaveSourceSettingsKeepsDisabledEntriesOutOfActivePaths(t *testing.T) {
 	}
 	if strings.Contains(settings.SourcePath, disabled) {
 		t.Fatalf("disabled source leaked into sourcePath: %q", settings.SourcePath)
+	}
+}
+
+func TestAttentionHTTPContractUsesSevenDayWindowAndNonNilItems(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	t.Setenv("HOME", filepath.Join(dir, "home"))
+	t.Setenv("USERPROFILE", filepath.Join(dir, "home"))
+	app := &App{dbPath: filepath.Join(dir, "agentmeter.sqlite")}
+	if err := app.Startup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer app.Shutdown(ctx)
+
+	mux := http.NewServeMux()
+	RegisterHTTPHandlers(mux, app, fstest.MapFS{})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/attention?agent=codex&model=gpt-5&project=%2Fworkspace%2Fapi", nil)
+	mux.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var response model.AttentionResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	currentFrom, err := time.Parse(time.RFC3339Nano, response.Window.Current.From)
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentTo, err := time.Parse(time.RFC3339Nano, response.Window.Current.To)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := currentTo.Sub(currentFrom); got != 7*24*time.Hour {
+		t.Fatalf("current duration = %s, want 7 days", got)
+	}
+	if response.Items == nil {
+		t.Fatal("attention items must be a non-nil array")
+	}
+	if response.Window.Baseline.To != response.Window.Current.From {
+		t.Fatalf("windows are not adjacent: %+v", response.Window)
 	}
 }
 

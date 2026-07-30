@@ -140,6 +140,10 @@ func registerPrivacyHandlers(mux *http.ServeMux, service *App) {
 }
 
 func registerAnalyticsHandlers(mux *http.ServeMux, service *App) {
+	mux.HandleFunc("GET /api/attention", func(w http.ResponseWriter, r *http.Request) {
+		value, err := service.GetAttention(analyticsFilters(r))
+		writeJSON(w, value, err)
+	})
 	mux.HandleFunc("GET /api/overview", func(w http.ResponseWriter, r *http.Request) {
 		value, err := service.GetOverviewWithFilters(analyticsFilters(r))
 		writeJSON(w, value, err)
@@ -166,11 +170,14 @@ func registerSessionHandlers(mux *http.ServeMux, service *App) {
 	mux.HandleFunc("GET /api/sessions", func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
 		value, err := service.ListSessions(model.SessionFilters{
-			Search: query.Get("search"),
-			Model:  query.Get("model"),
-			Agent:  query.Get("agent"),
-			Limit:  queryInt(r, "limit"),
-			Offset: queryInt(r, "offset"),
+			Search:      query.Get("search"),
+			Model:       query.Get("model"),
+			Agent:       query.Get("agent"),
+			Project:     query.Get("project"),
+			StartedFrom: query.Get("from"),
+			StartedTo:   query.Get("to"),
+			Limit:       queryInt(r, "limit"),
+			Offset:      queryInt(r, "offset"),
 		})
 		writeJSON(w, value, err)
 	})
@@ -189,7 +196,11 @@ func registerToolHandlers(mux *http.ServeMux, service *App) {
 	mux.HandleFunc("GET /api/tools", func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
 		value, err := service.ListTools(model.ToolFilters{
-			Agent: query.Get("agent"),
+			Agent:       query.Get("agent"),
+			Model:       query.Get("model"),
+			Project:     query.Get("project"),
+			StartedFrom: query.Get("from"),
+			StartedTo:   query.Get("to"),
 		})
 		writeJSON(w, value, err)
 	})
@@ -198,6 +209,8 @@ func registerToolHandlers(mux *http.ServeMux, service *App) {
 		value, err := service.ListToolCalls(model.ToolCallFilters{
 			ToolName:    query.Get("tool"),
 			Agent:       query.Get("agent"),
+			Model:       query.Get("model"),
+			Project:     query.Get("project"),
 			StartedFrom: query.Get("from"),
 			StartedTo:   query.Get("to"),
 			Sort:        query.Get("sort"),
@@ -213,6 +226,8 @@ func registerToolHandlers(mux *http.ServeMux, service *App) {
 		query := r.URL.Query()
 		value, err := service.ListToolCallRisks(model.ToolCallRiskFilters{
 			Agent:       query.Get("agent"),
+			Model:       query.Get("model"),
+			Project:     query.Get("project"),
 			StartedFrom: query.Get("from"),
 			StartedTo:   query.Get("to"),
 			Limit:       queryInt(r, "limit"),
@@ -299,7 +314,11 @@ func registerAuditHandlers(mux *http.ServeMux, service *App) {
 	mux.HandleFunc("GET /api/audit/summary", func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
 		value, err := service.GetAuditSummaryWithFilters(model.AuditFindingFilters{
-			Agent: query.Get("agent"),
+			Agent:       query.Get("agent"),
+			Model:       query.Get("model"),
+			Project:     query.Get("project"),
+			StartedFrom: query.Get("from"),
+			StartedTo:   query.Get("to"),
 		})
 		writeJSON(w, value, err)
 	})
@@ -310,6 +329,10 @@ func registerAuditHandlers(mux *http.ServeMux, service *App) {
 			Severity:    query.Get("severity"),
 			ShellFamily: query.Get("shell"),
 			Agent:       query.Get("agent"),
+			Model:       query.Get("model"),
+			Project:     query.Get("project"),
+			StartedFrom: query.Get("from"),
+			StartedTo:   query.Get("to"),
 			Search:      query.Get("search"),
 			Limit:       queryInt(r, "limit"),
 			Offset:      queryInt(r, "offset"),

@@ -8,6 +8,7 @@ import type {
   AuditFinding,
   AuditFindingFilters,
   AuditSummary,
+  AttentionResponse,
   IndexResult,
   ModelSignals,
   Overview,
@@ -173,6 +174,11 @@ const fetchApi = {
     request<IndexResult>('/api/index', { method: 'POST', body: JSON.stringify({ rebuild }) }),
   getOverview: (filters: UsageScopeFilters = {}) =>
     request<Overview>(queryPath('/api/overview', usageScopeParamValues(filters))),
+  getAttention: (filters: UsageScopeFilters = {}) =>
+    request<AttentionResponse>(queryPath('/api/attention', usageScopeParamValues(filters))).then((value) => ({
+      ...value,
+      items: arrayOrEmpty(value.items)
+    })),
   getTokenAnalytics: (filters: UsageScopeFilters = {}) =>
     request<TokenAnalytics>(queryPath('/api/tokens', usageScopeParamValues(filters))),
   getModelSignals: (filters: UsageScopeFilters = {}) =>
@@ -208,16 +214,21 @@ const fetchApi = {
       search: filters.search,
       model: filters.model,
       agent: filters.agent,
+      project: filters.project,
+      from: filters.from,
+      to: filters.to,
       limit: filters.limit,
       offset: filters.offset
     })),
   getSessionDetail: (id: number) => request<SessionDetail>(`/api/sessions/${id}`),
   getTools: (filters: ToolFilters = {}) =>
-    request<ToolStat[]>(queryPath('/api/tools', { agent: filters.agent })),
+    request<ToolStat[]>(queryPath('/api/tools', usageScopeParamValues(filters))),
   listToolCalls: (filters: ToolCallFilters = {}) =>
     request<ToolCall[]>(queryPath('/api/tool-calls', {
       tool: filters.tool,
       agent: filters.agent,
+      model: filters.model,
+      project: filters.project,
       from: filters.from,
       to: filters.to,
       sort: filters.sort,
@@ -230,15 +241,21 @@ const fetchApi = {
   listToolCallRisks: (filters: ToolCallRiskFilters = {}) =>
     request<ToolCallRiskSummary[]>(queryPath('/api/tool-call-risks', {
       agent: filters.agent,
+      model: filters.model,
+      project: filters.project,
       from: filters.from,
       to: filters.to,
       limit: filters.limit
     })),
-  getAuditSummary: (filters: Pick<AuditFindingFilters, 'agent'> = {}) =>
-    request<AuditSummary>(queryPath('/api/audit/summary', { agent: filters.agent })),
+  getAuditSummary: (filters: Pick<AuditFindingFilters, 'agent' | 'model' | 'project' | 'from' | 'to'> = {}) =>
+    request<AuditSummary>(queryPath('/api/audit/summary', usageScopeParamValues(filters))),
   listAuditFindings: (filters: AuditFindingFilters = {}) =>
     request<AuditFinding[]>(queryPath('/api/audit/findings', {
       agent: filters.agent,
+      model: filters.model,
+      project: filters.project,
+      from: filters.from,
+      to: filters.to,
       category: filters.category,
       severity: filters.severity,
       shell: filters.shell,

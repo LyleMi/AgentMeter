@@ -503,6 +503,27 @@ function Assert-TokenAnalytics {
     }
 }
 
+function Assert-Attention {
+    param([Parameter(Mandatory = $true)][object]$Payload)
+
+    Assert-JsonObject -Value $Payload -Label "response"
+    Assert-ObjectProperty -Object $Payload -Name "window"
+    Assert-ObjectProperty -Object $Payload -Name "snapshot"
+    Assert-ObjectProperty -Object $Payload -Name "counts"
+    Assert-ArrayProperty -Object $Payload -Name "items"
+    $window = (Get-JsonProperty -Object $Payload -Name "window").Value
+    Assert-ObjectProperty -Object $window -Name "current"
+    Assert-ObjectProperty -Object $window -Name "baseline"
+    $snapshot = (Get-JsonProperty -Object $Payload -Name "snapshot").Value
+    foreach ($name in @("sessions", "tokens", "costUsd", "activeTime", "toolCalls")) {
+        Assert-ObjectProperty -Object $snapshot -Name $name
+    }
+    $counts = (Get-JsonProperty -Object $Payload -Name "counts").Value
+    Assert-NumberProperty -Object $counts -Name "critical"
+    Assert-NumberProperty -Object $counts -Name "warning"
+    Assert-NumberProperty -Object $counts -Name "total"
+}
+
 function Assert-ModelSignalMetricRow {
     param(
         [Parameter(Mandatory = $true)][object]$Row,
@@ -746,6 +767,7 @@ $checks = @(
     [pscustomobject]@{ Path = "/api/privacy/claude"; Validate = { param($payload, $raw) Assert-PrivacyStatus -Payload $payload -ExpectedTarget "claude" } }
     [pscustomobject]@{ Path = "/api/privacy/codebuddy"; Validate = { param($payload, $raw) Assert-PrivacyStatus -Payload $payload -ExpectedTarget "codebuddy" } }
     [pscustomobject]@{ Path = "/api/overview"; Validate = { param($payload, $raw) Assert-Overview -Payload $payload } }
+    [pscustomobject]@{ Path = "/api/attention"; Validate = { param($payload, $raw) Assert-Attention -Payload $payload } }
     [pscustomobject]@{ Path = "/api/tokens"; Validate = { param($payload, $raw) Assert-TokenAnalytics -Payload $payload } }
     [pscustomobject]@{ Path = "/api/model-signals"; Validate = { param($payload, $raw) Assert-ModelSignals -Payload $payload } }
     [pscustomobject]@{ Path = "/api/usage/breakdown?groupBy=day"; Validate = { param($payload, $raw) Assert-UsageBreakdown -Payload $payload -ExpectedGroupBy "day" } }

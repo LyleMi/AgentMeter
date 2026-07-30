@@ -28,15 +28,20 @@ func buildModelSignalProjectHotspots(aggregates map[string]*modelSignalProjectAg
 }
 
 func buildModelSignalDailyMetrics(metrics []modelSignalSessionMetric) []model.ModelSignalsDailyMetric {
-	metricsByDay := groupModelSignalMetricsByDay(metrics)
-	if len(metricsByDay) == 0 {
+	return buildModelSignalDailyMetricsForPeriod(metrics, metrics)
+}
+
+func buildModelSignalDailyMetricsForPeriod(currentMetrics, allMetrics []modelSignalSessionMetric) []model.ModelSignalsDailyMetric {
+	currentByDay := groupModelSignalMetricsByDay(currentMetrics)
+	metricsByDay := groupModelSignalMetricsByDay(allMetrics)
+	if len(currentByDay) == 0 {
 		return []model.ModelSignalsDailyMetric{}
 	}
 
-	dates := sortedModelSignalMetricDates(metricsByDay)
+	dates := sortedModelSignalMetricDates(currentByDay)
 	result := make([]model.ModelSignalsDailyMetric, 0, len(dates))
 	for _, date := range dates {
-		currentSet := accumulatedModelSignalMetrics(metricsByDay[date]).metricSet()
+		currentSet := accumulatedModelSignalMetrics(currentByDay[date]).metricSet()
 		baseline, observedDays := modelSignalDailyBaseline(metricsByDay, date)
 		baselineSet := baseline.metricSet()
 		drift := compareModelSignalDrift(currentSet, baselineSet)
@@ -88,21 +93,18 @@ func modelSignalDailyBaseline(metricsByDay map[string][]modelSignalSessionMetric
 	}
 
 	observedDays := 0
-	for offset := 1; offset <= 7; offset++ {
-		previous := metricsByDay[day.AddDate(0, 0, -offset).Format(analyticsDateOnlyLayout)]
-		if len(previous) == 0 {
-			continue
-		}
-		for _, metric := range previous {
-			baseline.add(metric)
-		}
-		observedDays++
+	previous := metricsByDay[day.AddDate(0, 0, -1).Format(analyticsDateOnlyLayout)]
+	for _, metric := range previous {
+		baseline.add(metric)
+	}
+	if len(previous) > 0 {
+		observedDays = 1
 	}
 	return baseline, observedDays
 }
 
 func markDailyDriftLowConfidence(drift *model.ModelSignalsDrift, observedDays int) {
-	if observedDays >= 7 || drift.Confidence == modelSignalConfidenceLow {
+	if observedDays >= 1 || drift.Confidence == modelSignalConfidenceLow {
 		return
 	}
 	drift.Confidence = modelSignalConfidenceLow

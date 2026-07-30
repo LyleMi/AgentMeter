@@ -53,7 +53,6 @@ const { t } = useMessages({
     'filter.to': 'To',
     'filter.fromAria': 'Started from',
     'filter.toAria': 'Started to',
-    'range.all': 'All',
     'range.day': '1 day',
     'range.week': '7 days',
     'range.month': '30 days',
@@ -70,7 +69,6 @@ const { t } = useMessages({
     'filter.to': '到',
     'filter.fromAria': '开始日期从',
     'filter.toAria': '开始日期到',
-    'range.all': '全部',
     'range.day': '1天内',
     'range.week': '7天内',
     'range.month': '30天内',
@@ -93,7 +91,6 @@ const hasActiveFilters = computed(() =>
 )
 
 const rangeOptions = computed(() => [
-  { value: 'all', label: t('range.all') },
   { value: 'day', label: t('range.day') },
   { value: 'week', label: t('range.week') },
   { value: 'month', label: t('range.month') },
@@ -102,7 +99,7 @@ const rangeOptions = computed(() => [
 
 const activeRange = computed(() => {
   if (props.filters.range && props.filters.range in quickRangeDays) return props.filters.range
-  if (!props.filters.from && !props.filters.to) return 'all'
+  if (!props.filters.from && !props.filters.to) return 'week'
   return 'custom'
 })
 
@@ -127,10 +124,6 @@ function updateDateFilter(key: 'from' | 'to', event: Event) {
 }
 
 function updateQuickRange(value: unknown) {
-  if (value === 'all') {
-    updateFilter({ range: undefined, from: '', to: '' })
-    return
-  }
   if (typeof value !== 'string' || !(value in quickRangeDays)) return
   updateFilter({ range: value, from: '', to: '' })
 }

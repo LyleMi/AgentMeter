@@ -52,12 +52,20 @@ func (s *state) headerLine() string {
 
 func (s *state) pageHeaderParts() []string {
 	switch s.page {
-	case pageOverview:
+	case pageAttention:
 		return []string{
-			fmt.Sprintf("%s sessions", formatInt(int64(s.overview.TotalSessions))),
-			fmt.Sprintf("%s tokens", formatInt(s.overview.TotalTokens)),
-			formatCost(s.overview.EstimatedCostUSD),
+			fmt.Sprintf("%s critical", formatInt(int64(s.attention.Counts.Critical))),
+			fmt.Sprintf("%s warning", formatInt(int64(s.attention.Counts.Warning))),
+			"range " + s.usageRange.title(),
 		}
+	case pageOverview:
+		parts := []string{"tab " + s.analyzeTab.title()}
+		if s.analyzeTab == analyzeTabUsage || s.analyzeTab == analyzeTabTime {
+			parts = append(parts,
+				fmt.Sprintf("%s sessions", formatInt(int64(s.overview.TotalSessions))),
+				fmt.Sprintf("%s tokens", formatInt(s.overview.TotalTokens)))
+		}
+		return parts
 	case pageTime:
 		return []string{
 			"tab " + s.timeTab.title(),
@@ -85,7 +93,11 @@ func (s *state) pageHeaderParts() []string {
 	case pageToolCallDetail:
 		return s.toolCallDetailHeaderParts()
 	case pageAudit:
+		if s.safetyTab == safetyTabPrivacy {
+			return append([]string{"tab " + s.safetyTab.title()}, s.privacyHeaderParts()...)
+		}
 		return []string{
+			"tab " + s.safetyTab.title(),
 			fmt.Sprintf("%s findings", formatInt(int64(s.audit.TotalFindings))),
 			fmt.Sprintf("%s critical", formatInt(int64(s.audit.CriticalFindings))),
 			fmt.Sprintf("%s high", formatInt(int64(s.audit.HighFindings))),
@@ -183,6 +195,11 @@ func (s *state) headerFilterParts() []string {
 		}
 	}
 	if s.isAuditPage() {
+		if s.page != pageAudit || s.safetyTab == safetyTabAudit {
+			if scope := s.usageScopeLabel(); scope != "" {
+				parts = append(parts, scope)
+			}
+		}
 		if filters := s.auditFilterLabel(); filters != "" {
 			parts = append(parts, filters)
 		}
@@ -196,21 +213,17 @@ func (s *state) navLine() string {
 		page  page
 		label string
 	}{
-		{"1", pageOverview, "Overview"},
-		{"2", pageTime, "Time"},
-		{"3", pageTokens, "Tokens"},
-		{"4", pageModelSignals, "Model Signals"},
-		{"5", pageModelRisk, "Model Risk"},
-		{"6", pageSessions, "Sessions"},
-		{"7", pageTools, "Tools"},
-		{"8", pageAudit, "Audit"},
-		{"9", pagePrivacy, "Agent Privacy"},
-		{"0", pageSettings, "Settings"},
+		{"1", pageAttention, "Attention"},
+		{"2", pageOverview, "Analyze"},
+		{"3", pageSessions, "Sessions"},
+		{"4", pageAudit, "Safety"},
+		{"5", pageSettings, "Settings"},
 	}
 	parts := make([]string, 0, len(items))
 	for _, item := range items {
 		label := item.key + " " + item.label
 		if s.page == item.page ||
+			((s.page == pageTime || s.page == pageTokens || s.page == pageModelSignals || s.page == pageModelRisk || s.page == pageTools || s.page == pageToolCalls || s.page == pageToolCallDetail) && item.page == pageOverview) ||
 			(s.page == pageSessionDetail && item.page == pageSessions) ||
 			((s.page == pageToolCalls || s.page == pageToolCallDetail) && item.page == pageTools) ||
 			((s.page == pageAuditFindings || s.page == pageAuditDetail) && item.page == pageAudit) {
@@ -357,8 +370,21 @@ func (s *state) contentHeight() int {
 
 func (s *state) content() []string {
 	switch s.page {
+	case pageAttention:
+		return s.attentionLines()
 	case pageOverview:
-		return s.overviewLines()
+		switch s.analyzeTab {
+		case analyzeTabTime:
+			return s.timeViewportLines()
+		case analyzeTabModels:
+			return s.modelSignalViewportLines()
+		case analyzeTabTools:
+			return s.toolLines()
+		default:
+			lines := s.overviewLines()
+			lines = append(lines, "", bold("Usage details"))
+			return append(lines, tokenLines(s.tokens, s.breakdown, s.width, tokensTabSummary, tokenBreakdownGlobal)...)
+		}
 	case pageTime:
 		return s.timeViewportLines()
 	case pageTokens:
@@ -378,6 +404,9 @@ func (s *state) content() []string {
 	case pageToolCallDetail:
 		return s.toolCallDetailViewportLines()
 	case pageAudit:
+		if s.safetyTab == safetyTabPrivacy {
+			return s.privacyViewportLines()
+		}
 		return s.auditLines()
 	case pageAuditFindings:
 		return s.auditFindingLines()

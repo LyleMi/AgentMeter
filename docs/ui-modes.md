@@ -57,19 +57,17 @@ calculator, or set of usage formulas.
 
 Implemented MVP TUI screens:
 
-- Overview
-- Sessions
-- Session Detail
-- Tools
-- Tool Calls
-- Agent Privacy
+- Attention
+- Analyze (Usage, Time, Models, Tools)
+- Sessions and nested Session Detail
+- Safety (Audit, Privacy)
 - Settings
 
 Implemented TUI actions:
 
 - refresh the current screen;
 - trigger incremental indexing;
-- trigger rebuild indexing;
+- trigger rebuild indexing from Settings only;
 - open a selected session detail from the session list;
 - navigate back from detail to the session list;
 - open recent calls for a selected tool from the tools list;
@@ -131,11 +129,12 @@ Flag behavior:
 ## TUI Keyboard
 
 ```text
-1 / o      Overview
-2 / s      Sessions
-3 / t      Tools
-4 / g      Settings
-5 / p      Agent Privacy
+1          Attention
+2          Analyze
+3          Sessions
+4          Safety
+5          Settings
+[/]        previous/next Analyze or Safety tab
 tab/right  next screen
 shift-tab/left previous screen
 up/down    select, scroll, or select privacy target
@@ -146,10 +145,9 @@ enter      open selected session detail, open tool calls/detail, queue recommend
 b / esc    return from detail/tool-call screens, or cancel pending privacy profile
 r          refresh current screen
 i          update index
-I          rebuild index
+I          rebuild index (Settings only)
 c          show all recent tool calls from the Tools screen
 d          cycle tool-call sort between recent first, duration high-to-low, and duration low-to-high
-[/]        previous/next privacy target shortcut
 a          queue recommended privacy profile for selected target shortcut
 A          queue strict privacy profile for selected target
 u          queue default privacy profile for selected target

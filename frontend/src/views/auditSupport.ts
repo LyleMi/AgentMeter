@@ -5,6 +5,10 @@ import { cleanFirstRouteQuery, firstTrimmedRouteQueryValue, routePathWithQuery }
 
 export interface AuditFindingQuery {
   agent?: string
+  model?: string
+  project?: string
+  from?: string
+  to?: string
   category?: string
   severity?: string
   shell?: string
@@ -15,6 +19,10 @@ export interface AuditFindingQuery {
 
 export interface AuditSummaryQuery {
   agent?: string
+  model?: string
+  project?: string
+  from?: string
+  to?: string
 }
 
 export interface AuditFindingDetail {
@@ -31,12 +39,16 @@ export function auditPath(path: string, query: Record<string, unknown>): string 
 }
 
 export function getAuditSummary(filters: AuditSummaryQuery = {}) {
-  return api.getAuditSummary({ agent: filters.agent })
+  return api.getAuditSummary(filters)
 }
 
 export function listAuditFindings(filters: AuditFindingQuery = {}) {
   return api.listAuditFindings({
     agent: filters.agent,
+    model: filters.model,
+    project: filters.project,
+    from: filters.from,
+    to: filters.to,
     category: filters.category,
     severity: filters.severity,
     shell: filters.shell,

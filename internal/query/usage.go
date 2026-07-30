@@ -25,6 +25,7 @@ func usageAnalyticsFilterSQLScope() analyticsFilterSQLScope {
 	return analyticsFilterSQLScope{
 		sourceAlias: "src",
 		modelExpr:   usageSessionModelExpr,
+		projectExpr: "s.project_path",
 		startedExpr: "s.started_at",
 	}
 }

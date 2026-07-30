@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import AButton from 'ant-design-vue/es/button'
 import ASpin from 'ant-design-vue/es/spin'
 import ATag from 'ant-design-vue/es/tag'
@@ -8,7 +9,9 @@ import { api, formatDuration, formatNumber, type ToolStat } from '../api'
 import { chartPalette, toolChartColors } from '../chartPalette'
 import { useEChart } from '../composables/useEChart'
 import { useMessages } from '../i18n'
+import { readUsageScopeQuery, usageScopeToApiFilters } from './useUsageScope'
 
+const route = useRoute()
 const loading = ref(true)
 const tools = ref<ToolStat[]>([])
 const { chartEl, getChart, disposeChart } = useEChart()
@@ -60,7 +63,7 @@ const averageDurationMs = computed(() => (totalCalls.value > 0 ? totalDurationMs
 async function load() {
   loading.value = true
   try {
-    tools.value = (await api.getTools()) || []
+    tools.value = (await api.getTools(usageScopeToApiFilters(readUsageScopeQuery(route.query)))) || []
     renderAfterUpdate()
   } finally {
     loading.value = false
@@ -141,6 +144,7 @@ function durationSignal() {
 }
 
 watch(locale, renderAfterUpdate)
+watch(() => route.query, load)
 
 onMounted(() => {
   load()

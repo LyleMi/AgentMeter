@@ -180,6 +180,64 @@ export interface UsageScopeFilters {
   to?: string
 }
 
+export interface AttentionPeriod {
+  from: string
+  to: string
+}
+
+export interface AttentionMetric {
+  current: number
+  baseline: number
+  changePct?: number
+}
+
+export interface AttentionItemDestination {
+  kind: 'session' | 'audit_finding' | 'model_analysis' | 'privacy' | 'settings' | string
+  sessionId?: number
+  auditFindingId?: number
+  agent?: string
+  model?: string
+  project?: string
+  privacyTarget?: string
+  settingsPanel?: string
+}
+
+export interface AttentionItem {
+  key: string
+  kind: string
+  severity: 'critical' | 'warning'
+  confidence: number
+  subject: string
+  reason: string
+  metric?: {
+    label: string
+    value: number
+    unit?: string
+  }
+  occurredAt?: string
+  destination: AttentionItemDestination
+}
+
+export interface AttentionResponse {
+  window: {
+    current: AttentionPeriod
+    baseline: AttentionPeriod
+  }
+  snapshot: {
+    sessions: AttentionMetric
+    tokens: AttentionMetric
+    costUsd: AttentionMetric
+    activeTime: AttentionMetric
+    toolCalls: AttentionMetric
+  }
+  counts: {
+    critical: number
+    warning: number
+    total: number
+  }
+  items: AttentionItem[]
+}
+
 export interface PromptSuggestionFilters {
   agent?: string
   project?: string
@@ -891,6 +949,9 @@ export interface SessionFilters {
   search?: string
   model?: string
   agent?: string
+  project?: string
+  from?: string
+  to?: string
   limit?: number
   offset?: number
 }
@@ -898,6 +959,8 @@ export interface SessionFilters {
 export interface ToolCallFilters {
   tool?: string
   agent?: string
+  model?: string
+  project?: string
   from?: string
   to?: string
   sort?: string
@@ -910,6 +973,8 @@ export interface ToolCallFilters {
 
 export interface ToolCallRiskFilters {
   agent?: string
+  model?: string
+  project?: string
   from?: string
   to?: string
   limit?: number
@@ -917,10 +982,18 @@ export interface ToolCallRiskFilters {
 
 export interface ToolFilters {
   agent?: string
+  model?: string
+  project?: string
+  from?: string
+  to?: string
 }
 
 export interface AuditFindingFilters {
   agent?: string
+  model?: string
+  project?: string
+  from?: string
+  to?: string
   category?: string
   severity?: string
   shell?: string

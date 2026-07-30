@@ -12,7 +12,18 @@ import (
 func (s *Service) Tools(ctx context.Context, filters model.ToolFilters) ([]model.ToolStat, error) {
 	where := []string{"1 = 1"}
 	args := []any{}
-	where, args = appendSourceFilter(where, args, filters.Agent)
+	where, args = appendAnalyticsFilters(where, args, model.AnalyticsFilters{
+		Agent:       filters.Agent,
+		Model:       filters.Model,
+		Project:     filters.Project,
+		StartedFrom: filters.StartedFrom,
+		StartedTo:   filters.StartedTo,
+	}, analyticsFilterSQLScope{
+		sourceAlias: "src",
+		modelExpr:   "sess.model",
+		projectExpr: "sess.project_path",
+		startedExpr: "tc.started_at",
+	})
 	query := fmt.Sprintf(`SELECT
 		tc.tool_name,
 		COUNT(*),
@@ -66,13 +77,23 @@ func toolCallFilters(filters model.ToolCallFilters) ([]string, []any) {
 		where = append(where, shellToolSQLPredicate("tc.tool_name"))
 	}
 	where, args = appendSourceFilter(where, args, filters.Agent)
+	if strings.TrimSpace(filters.Model) != "" {
+		where = append(where, "sess.model = ?")
+		args = append(args, strings.TrimSpace(filters.Model))
+	}
+	where, args = appendProjectFilter(where, args, filters.Project, "sess.project_path")
 	if strings.TrimSpace(filters.StartedFrom) != "" {
 		where = append(where, "tc.started_at >= ?")
-		args = append(args, strings.TrimSpace(filters.StartedFrom))
+		args = append(args, normalizeAnalyticsDateBoundary(filters.StartedFrom, "start"))
 	}
 	if strings.TrimSpace(filters.StartedTo) != "" {
-		where = append(where, "tc.started_at <= ?")
-		args = append(args, strings.TrimSpace(filters.StartedTo))
+		toValue, exclusive := normalizeAnalyticsToBoundary(filters.StartedTo)
+		operator := "<="
+		if exclusive {
+			operator = "<"
+		}
+		where = append(where, "tc.started_at "+operator+" ?")
+		args = append(args, toValue)
 	}
 	if filters.RiskOnly {
 		where = append(where, "COALESCE(risk.risk_count, 0) > 0")
@@ -110,13 +131,23 @@ func (s *Service) ToolCallRisks(ctx context.Context, filters model.ToolCallRiskF
 	where := []string{"af.tool_call_id > 0"}
 	args := []any{}
 	where, args = appendSourceFilter(where, args, filters.Agent)
+	if strings.TrimSpace(filters.Model) != "" {
+		where = append(where, "sess.model = ?")
+		args = append(args, strings.TrimSpace(filters.Model))
+	}
+	where, args = appendProjectFilter(where, args, filters.Project, "sess.project_path")
 	if strings.TrimSpace(filters.StartedFrom) != "" {
 		where = append(where, "tc.started_at >= ?")
-		args = append(args, strings.TrimSpace(filters.StartedFrom))
+		args = append(args, normalizeAnalyticsDateBoundary(filters.StartedFrom, "start"))
 	}
 	if strings.TrimSpace(filters.StartedTo) != "" {
-		where = append(where, "tc.started_at <= ?")
-		args = append(args, strings.TrimSpace(filters.StartedTo))
+		toValue, exclusive := normalizeAnalyticsToBoundary(filters.StartedTo)
+		operator := "<="
+		if exclusive {
+			operator = "<"
+		}
+		where = append(where, "tc.started_at "+operator+" ?")
+		args = append(args, toValue)
 	}
 	limit, _ := clampLimitOffset(filters.Limit, 0, 500, 1000)
 	args = append(args, limit)

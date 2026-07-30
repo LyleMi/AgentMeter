@@ -4,7 +4,7 @@ func (s *state) handleKey(k keyMsg) (command, bool) {
 	if k.typ == keyCtrlC {
 		return nil, true
 	}
-	if s.page == pagePrivacy {
+	if s.page == pagePrivacy || (s.page == pageAudit && s.safetyTab == safetyTabPrivacy) {
 		if cmd, quit, handled := s.handlePrivacyKey(k); handled {
 			return cmd, quit
 		}
@@ -64,26 +64,24 @@ func (s *state) handleRuneKey(ch rune) (command, bool, bool) {
 
 func pageShortcut(ch rune) (page, bool) {
 	switch ch {
-	case '1', 'o', 'O':
+	case '1':
+		return pageAttention, true
+	case '2', 'o', 'O':
 		return pageOverview, true
-	case '2':
-		return pageTime, true
-	case '3', 'n', 'N':
-		return pageTokens, true
-	case '4', 'm', 'M':
-		return pageModelSignals, true
-	case '5', 'x', 'X':
-		return pageModelRisk, true
-	case '6', 's', 'S':
+	case '3', 's', 'S':
 		return pageSessions, true
-	case '7', 't', 'T':
-		return pageTools, true
-	case '8', 'a':
+	case '4', 'a':
 		return pageAudit, true
-	case '9', 'p', 'P':
-		return pagePrivacy, true
-	case '0', 'g', 'G':
+	case '5', 'g', 'G':
 		return pageSettings, true
+	case 't', 'T':
+		return pageTools, true
+	case 'm', 'M':
+		return pageModelSignals, true
+	case 'x', 'X':
+		return pageModelRisk, true
+	case 'p', 'P':
+		return pagePrivacy, true
 	default:
 		return pageOverview, false
 	}
@@ -96,7 +94,11 @@ func (s *state) handleGlobalRuneKey(ch rune) (command, bool) {
 	case 'i':
 		return s.index(false), true
 	case 'I':
-		return s.index(true), true
+		if s.page == pageSettings {
+			return s.index(true), true
+		}
+		s.status = "rebuild index is available in Settings"
+		return nil, true
 	case 'j', 'J':
 		s.move(1)
 		return nil, true
@@ -156,6 +158,9 @@ func (s *state) cycleModelOrCommandFilter() (command, bool) {
 
 func (s *state) cycleRangeFilter() (command, bool) {
 	if s.isUsageScopePage() {
+		return s.cycleUsageRange(), true
+	}
+	if s.isAuditPage() {
 		return s.cycleUsageRange(), true
 	}
 	if s.page == pageToolCalls || (s.page == pageTools && (s.toolsTab == toolsTabShell || s.toolsTab == toolsTabCalls)) {
@@ -235,6 +240,18 @@ func (s *state) handleTabKey(ch rune) (command, bool) {
 
 func (s *state) cycleActiveTab(delta int) (command, bool) {
 	switch s.page {
+	case pageOverview:
+		s.analyzeTab = cycleTab(s.analyzeTab, analyzeTabs, delta)
+		s.selected = 0
+		s.scroll = 0
+		s.status = "analyze tab: " + s.analyzeTab.title()
+		return s.load(pageOverview), true
+	case pageAudit:
+		s.safetyTab = cycleTab(s.safetyTab, safetyTabs, delta)
+		s.selected = 0
+		s.scroll = 0
+		s.status = "safety tab: " + s.safetyTab.title()
+		return s.load(pageAudit), true
 	case pageModelSignals:
 		s.cycleModelSignalsTab(delta)
 	case pageTime:
@@ -251,6 +268,11 @@ func (s *state) cycleActiveTab(delta int) (command, bool) {
 
 func (s *state) openSelection() command {
 	switch {
+	case s.page == pageAttention && len(s.attention.Items) > 0:
+		return s.openAttentionItem()
+	case s.page == pageOverview && s.analyzeTab == analyzeTabTools && len(s.tools) > 0:
+		s.page = pageTools
+		return s.openToolCalls(s.tools[s.selected].ToolName)
 	case s.page == pageSessions && len(s.sessions) > 0:
 		return s.openSessionDetail()
 	case s.page == pageTools && (s.toolsTab == toolsTabOverview || s.toolsTab == toolsTabSummary) && len(s.tools) > 0:
@@ -265,6 +287,40 @@ func (s *state) openSelection() command {
 		return s.openAuditFinding()
 	}
 	return nil
+}
+
+func (s *state) openAttentionItem() command {
+	item := s.attention.Items[s.selected]
+	switch item.Destination.Kind {
+	case "session":
+		s.previous = pageAttention
+		s.page = pageSessionDetail
+		s.selected = 0
+		s.scroll = 0
+		s.detail = nil
+		return s.loadDetail(item.Destination.SessionID)
+	case "audit_finding":
+		return s.openAuditDetail(pageAttention, item.Destination.AuditFindingID)
+	case "model_analysis":
+		s.analyzeTab = analyzeTabModels
+		if item.Destination.Agent != "" {
+			s.usageAgent = item.Destination.Agent
+		}
+		if item.Destination.Model != "" {
+			s.usageModel = item.Destination.Model
+		}
+		if item.Destination.Project != "" {
+			s.usageProject = item.Destination.Project
+		}
+		return s.switchPage(pageOverview)
+	case "privacy":
+		s.safetyTab = safetyTabPrivacy
+		return s.switchPage(pageAudit)
+	case "settings":
+		return s.switchPage(pageSettings)
+	default:
+		return nil
+	}
 }
 
 func (s *state) openSessionDetail() command {
@@ -408,26 +464,16 @@ func (s *state) switchPage(target page) command {
 
 func (s *state) nextPage() page {
 	switch s.page {
+	case pageAttention:
+		return pageOverview
 	case pageOverview:
-		return pageTime
-	case pageTime:
-		return pageTokens
-	case pageTokens:
-		return pageModelSignals
-	case pageModelSignals:
-		return pageModelRisk
-	case pageModelRisk:
 		return pageSessions
 	case pageSessions, pageSessionDetail:
-		return pageTools
-	case pageTools, pageToolCalls, pageToolCallDetail:
 		return pageAudit
 	case pageAudit, pageAuditFindings, pageAuditDetail:
-		return pagePrivacy
-	case pagePrivacy:
 		return pageSettings
 	case pageSettings:
-		return pageOverview
+		return pageAttention
 	default:
 		return pageOverview
 	}
@@ -435,30 +481,18 @@ func (s *state) nextPage() page {
 
 func (s *state) previousPage() page {
 	switch s.page {
-	case pageOverview:
+	case pageAttention:
 		return pageSettings
-	case pageTime:
-		return pageOverview
-	case pageTokens:
-		return pageTime
-	case pageModelSignals:
-		return pageTokens
-	case pageModelRisk:
-		return pageModelSignals
+	case pageOverview:
+		return pageAttention
 	case pageSessions, pageSessionDetail:
-		return pageModelRisk
-	case pageToolCalls, pageToolCallDetail:
-		return pageTools
-	case pageTools:
-		return pageSessions
+		return pageOverview
 	case pageAuditFindings, pageAuditDetail:
 		return pageAudit
 	case pageAudit:
-		return pageTools
-	case pagePrivacy:
-		return pageAudit
+		return pageSessions
 	case pageSettings:
-		return pagePrivacy
+		return pageAudit
 	default:
 		return pageSettings
 	}

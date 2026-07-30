@@ -46,11 +46,11 @@ The core health cohort is:
 provider/model + agent/source + project
 ```
 
-When filters are applied, the current window is the latest observed 24 hours in
-the filtered scope. The baseline window is the preceding 30 days when enough
-matching data is available. If the filtered scope only has recent data, the API
-should mark the baseline as missing or low confidence instead of reporting a
-regression.
+The current window is the selected period and the baseline is the immediately
+preceding period of equal length. The standard 1-, 7-, and 30-day ranges compare
+with the previous 1, 7, and 30 days respectively; custom ranges use the same
+rule. If the filtered scope only has recent data, the API marks the baseline as
+missing or low confidence instead of reporting a regression.
 
 Health interpretation should:
 
@@ -61,11 +61,10 @@ Health interpretation should:
 - Preserve raw signal values so users can inspect the numerator, denominator,
   and source scope behind a health label.
 
-Daily metrics use day-level rows and compare each day against the preceding
-7 calendar days when enough history exists. Project metrics compare the current
-project behavior against available baseline behavior for the same filtered
-scope. In both cases, drift is a local operational change indicator, not a
-general model capability score.
+Daily metrics use day-level rows and compare each day with the previous day.
+Project metrics compare the selected period with its immediately preceding
+equal-length period for the same filtered scope. In both cases, drift is a local
+operational change indicator, not a general model capability score.
 
 ## Presentation Standard
 
@@ -227,7 +226,7 @@ returns day-level and project-level efficiency views:
   session, cost per active hour, cost per 1k tokens, cache savings, p50/p90
   latency, p50/p10 throughput, failure pressure, model quality risk, retry
   pressure or model calls per session, low sample flags, baseline metric values
-  from the preceding 7 calendar days, and drift against that baseline.
+  from the preceding day, and drift against that baseline.
 - `projectMetrics`: project rows for operational efficiency, including project
   cost burn, cache savings, cost per session, cost per active hour, cost per 1k
   tokens, dominant model, model mix, retry pressure, failure pressure,

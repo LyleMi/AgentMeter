@@ -7,6 +7,7 @@ import type {
   AuditFinding,
   AuditFindingFilters,
   AuditSummary,
+  AttentionResponse,
   IndexResult,
   ModelSignals,
   Overview,
@@ -71,6 +72,7 @@ export type DemoApi = {
   ) => Promise<PrivacyConfigApplyResult>
   indexNow: (rebuild?: boolean) => Promise<IndexResult>
   getOverview: (filters?: UsageScopeFilters) => Promise<Overview>
+  getAttention: (filters?: UsageScopeFilters) => Promise<AttentionResponse>
   getTokenAnalytics: (filters?: UsageScopeFilters) => Promise<TokenAnalytics>
   getModelSignals: (filters?: UsageScopeFilters) => Promise<ModelSignals>
   getUsageBreakdown: (filters: UsageBreakdownFilters) => Promise<UsageBreakdown>
@@ -87,7 +89,7 @@ export type DemoApi = {
   getTools: (filters?: ToolFilters) => Promise<ToolStat[]>
   listToolCalls: (filters?: ToolCallFilters) => Promise<ToolCall[]>
   listToolCallRisks: (filters?: ToolCallRiskFilters) => Promise<ToolCallRiskSummary[]>
-  getAuditSummary: (filters?: Pick<AuditFindingFilters, 'agent'>) => Promise<AuditSummary>
+  getAuditSummary: (filters?: Pick<AuditFindingFilters, 'agent' | 'model' | 'project' | 'from' | 'to'>) => Promise<AuditSummary>
   listAuditFindings: (filters?: AuditFindingFilters) => Promise<AuditFinding[]>
   getAuditFinding: (id: number) => Promise<AuditFinding>
   getPricingModels: () => Promise<PricingModel[]>
