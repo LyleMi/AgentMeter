@@ -126,9 +126,20 @@ Flag behavior:
 - `-static` applies to Web mode.
 - TUI mode should not start a public HTTP listener by default.
 
+The terminal layout keeps task navigation and active scope at the top, with
+operation status and a short contextual hint at the bottom. Attention uses a
+compact snapshot followed by selectable issues. On narrow terminals, inactive
+tasks collapse to their number shortcuts; Unicode and styled text are measured
+in terminal columns. Very short terminals show a resize hint.
+
+Press `?` for scrollable keyboard help for the current view. Help preserves the
+underlying selection and scroll position; page actions are inactive until help
+closes. Usage supports scrolling through the full analysis, including Home/End.
+
 ## TUI Keyboard
 
 ```text
+?          open/close contextual keyboard help (esc closes)
 1          Attention
 2          Analyze
 3          Sessions

@@ -79,7 +79,11 @@ func (s *state) pageStep() int {
 
 func (s *state) isListPage() bool {
 	switch s.page {
-	case pageAttention, pageSessions, pageTools, pageToolCalls, pageAudit, pageAuditFindings:
+	case pageOverview:
+		return s.analyzeTab == analyzeTabTools
+	case pageAudit:
+		return s.safetyTab != safetyTabPrivacy
+	case pageAttention, pageSessions, pageTools, pageToolCalls, pageAuditFindings:
 		return true
 	default:
 		return false
@@ -88,6 +92,9 @@ func (s *state) isListPage() bool {
 
 func (s *state) visibleListRows() int {
 	visible := s.contentHeight() - s.listHeaderLines()
+	if s.page == pageAttention {
+		visible /= 2
+	}
 	if visible < 1 {
 		return 1
 	}
@@ -97,7 +104,10 @@ func (s *state) visibleListRows() int {
 func (s *state) listHeaderLines() int {
 	switch s.page {
 	case pageAttention:
-		return 11
+		if s.contentHeight() < 8 {
+			return 1
+		}
+		return 5
 	case pageOverview:
 		if s.analyzeTab == analyzeTabTools {
 			return 3
@@ -136,6 +146,10 @@ func (s *state) move(delta int) {
 }
 
 func (s *state) moveTo(index int) {
+	if !s.isListPage() && s.page != pagePrivacy {
+		s.scroll = max(0, min(index, s.maxScroll()))
+		return
+	}
 	count := s.itemCount()
 	if count <= 0 {
 		s.selected = 0

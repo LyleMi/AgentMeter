@@ -1,7 +1,9 @@
 package tui
 
+import "strings"
+
 var pageFooterText = map[page]string{
-	pageAttention:      "Keys: enter review  u/v/w/e filters  U reset to 7 days  up/down select  [/]/h/l task tabs  r refresh  i update index  q quit",
+	pageAttention:      "Keys: enter review  u/v/w/e filters  U reset to 7 days  up/down select  tab switch tasks  r refresh  i update index  q quit",
 	pageOverview:       "Keys: [/]/h/l Usage/Time/Models/Tools  u/v/w/e scope  U reset to 7 days  up/down  r refresh  i update index  q quit",
 	pageTime:           "Keys: [/]/h/l time tabs  u/v/w/e scope  U clear  up/down scroll  tab cycle pages  r refresh  i update index  q quit",
 	pageSessionDetail:  "Keys: b/esc back  up/down scroll  r refresh  i update index  q quit",
@@ -28,14 +30,39 @@ const (
 )
 
 func (s *state) footerLine() string {
-	text := s.footerText()
-	if position := s.positionLabel(); position != "" {
-		text += "  " + position
+	if s.helpOpen {
+		return dim("? / esc close  ↑↓ scroll  q quit")
 	}
-	return dim(text)
+	if s.privacyPending != nil {
+		return accent("enter write profile  esc cancel  ? help")
+	}
+	parts := []string{"? help", "q quit"}
+	if s.width >= 50 || s.width <= 0 {
+		action := "↑↓ scroll"
+		if s.isListPage() {
+			action = "↑↓ select  enter open"
+		}
+		if s.page == pagePrivacy || (s.page == pageAudit && s.safetyTab == safetyTabPrivacy) {
+			action = "↑↓ target  enter profile"
+		}
+		parts = append(parts, action)
+	}
+	if s.width >= 80 || s.width <= 0 {
+		parts = append(parts, "tab task", "r refresh")
+	}
+	if position := s.positionLabel(); position != "" {
+		parts = append(parts, position)
+	}
+	return dim(strings.Join(parts, "  ·  "))
 }
 
 func (s *state) footerText() string {
+	if s.page == pageAudit && s.safetyTab == safetyTabPrivacy {
+		if s.privacyPending != nil {
+			return privacyPendingFooterText
+		}
+		return privacyFooterText
+	}
 	switch s.page {
 	case pageTokens:
 		if s.tokensTab == tokensTabBreakdown {

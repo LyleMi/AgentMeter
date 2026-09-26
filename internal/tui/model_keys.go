@@ -4,6 +4,18 @@ func (s *state) handleKey(k keyMsg) (command, bool) {
 	if k.typ == keyCtrlC {
 		return nil, true
 	}
+	if k.typ == keyRune && k.ch == '?' {
+		s.helpOpen = !s.helpOpen
+		s.helpScroll = 0
+		return nil, false
+	}
+	if s.helpOpen {
+		return s.handleHelpKey(k)
+	}
+	if s.page == pageAudit && s.safetyTab == safetyTabPrivacy && k.typ == keyRune && (k.ch == '[' || k.ch == ']') && s.privacyPending == nil {
+		cmd, _ := s.handleTabKey(k.ch)
+		return cmd, false
+	}
 	if s.page == pagePrivacy || (s.page == pageAudit && s.safetyTab == safetyTabPrivacy) {
 		if cmd, quit, handled := s.handlePrivacyKey(k); handled {
 			return cmd, quit

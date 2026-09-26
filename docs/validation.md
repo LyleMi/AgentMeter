@@ -137,6 +137,8 @@ Manually cover:
 - session detail open/back flow;
 - refresh key behavior;
 - narrow and wide terminal resize behavior;
+- `?` help open/scroll/close, preserving selection and blocking page actions;
+- Analyze/Usage scrolling and Home/End reaching the full content;
 - visible parse/index/pricing status labels;
 - source-aware Analyze/Usage top agents, including source label and family/path
   context when multiple source instances exist;

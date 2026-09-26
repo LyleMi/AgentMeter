@@ -411,8 +411,10 @@ type state struct {
 	err     error
 	status  string
 
-	selected int
-	scroll   int
+	selected   int
+	scroll     int
+	helpOpen   bool
+	helpScroll int
 
 	overview      agentmodel.Overview
 	scopeOverview agentmodel.Overview

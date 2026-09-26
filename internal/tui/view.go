@@ -7,6 +7,7 @@ import (
 
 	agentmodel "github.com/LyleMi/AgentMeter/internal/model"
 	"github.com/LyleMi/AgentMeter/internal/viewmodel"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const (
@@ -20,14 +21,21 @@ func (s *state) view() string {
 		width = defaultWidth
 	}
 
-	lines := []string{
-		fit(s.headerLine(), width),
-		fit(s.navLine(), width),
-		separator(width),
-		fit(s.statusLine(), width),
+	height := s.height
+	if height <= 0 {
+		height = defaultHeight
 	}
-
-	content := s.content()
+	if height < 8 {
+		lines := []string{fit(bold("AgentMeter")+"  "+s.page.title(), width), fit("Resize terminal · ? help · q quit", width)}
+		return strings.Join(lines[:min(height, len(lines))], "\n")
+	}
+	lines := []string{fit(s.headerLine(), width), fit(s.navLine(), width), fit(s.contextLine(), width), ""}
+	var content []string
+	if s.helpOpen {
+		content = s.helpLines()
+	} else {
+		content = s.content()
+	}
 	contentHeight := s.contentHeight()
 	if len(content) > contentHeight {
 		content = content[:contentHeight]
@@ -38,14 +46,39 @@ func (s *state) view() string {
 	for _, line := range content {
 		lines = append(lines, fit(line, width))
 	}
-
-	lines = append(lines, separator(width), fit(s.footerLine(), width))
+	lines = append(lines, fit(s.statusLine(), width), fit(s.footerLine(), width))
 	return strings.Join(lines, "\n")
 }
 
 func (s *state) headerLine() string {
-	parts := []string{bold("AgentMeter"), dim(s.page.title())}
-	parts = append(parts, s.pageHeaderParts()...)
+	return bold("AgentMeter") + dim("  /  ") + s.page.title()
+}
+
+func (s *state) contextLine() string {
+	parts := []string{}
+	if s.page == pageOverview {
+		for _, tab := range analyzeTabs {
+			label := tab.title()
+			if tab == s.analyzeTab {
+				label = accent(bold(label))
+			} else {
+				label = dim(label)
+			}
+			parts = append(parts, label)
+		}
+	} else if s.page == pageAudit {
+		for _, tab := range safetyTabs {
+			label := tab.title()
+			if tab == s.safetyTab {
+				label = accent(bold(label))
+			} else {
+				label = dim(label)
+			}
+			parts = append(parts, label)
+		}
+	} else if s.page != pageAttention {
+		parts = append(parts, s.pageHeaderParts()...)
+	}
 	parts = append(parts, s.headerFilterParts()...)
 	return strings.Join(parts, "  ")
 }
@@ -222,12 +255,19 @@ func (s *state) navLine() string {
 	parts := make([]string, 0, len(items))
 	for _, item := range items {
 		label := item.key + " " + item.label
-		if s.page == item.page ||
+		active := s.page == item.page ||
 			((s.page == pageTime || s.page == pageTokens || s.page == pageModelSignals || s.page == pageModelRisk || s.page == pageTools || s.page == pageToolCalls || s.page == pageToolCallDetail) && item.page == pageOverview) ||
 			(s.page == pageSessionDetail && item.page == pageSessions) ||
 			((s.page == pageToolCalls || s.page == pageToolCallDetail) && item.page == pageTools) ||
-			((s.page == pageAuditFindings || s.page == pageAuditDetail) && item.page == pageAudit) {
-			label = inverse(" " + label + " ")
+			((s.page == pageAuditFindings || s.page == pageAuditDetail || s.page == pagePrivacy) && item.page == pageAudit)
+		if active {
+			label = accent(bold(label))
+		}
+		if s.width > 0 && (s.width < 28 || (s.width < 64 && !active)) {
+			label = item.key
+			if active {
+				label = accent(bold(label))
+			}
 		}
 		parts = append(parts, label)
 	}
@@ -253,7 +293,7 @@ func (s *state) statusLine() string {
 	if s.status != "" {
 		return s.status
 	}
-	return dim("Ready")
+	return ""
 }
 
 func (s *state) positionLabel() string {
@@ -274,7 +314,7 @@ func (s *state) positionLabel() string {
 		return fmt.Sprintf("Rows %s-%s/%s", formatInt(int64(start)), formatInt(int64(end)), formatInt(int64(count)))
 	}
 	switch s.page {
-	case pageSessionDetail, pageToolCallDetail, pageModelSignals, pageTime, pageTokens, pageModelRisk, pageAuditDetail, pageSettings:
+	case pageOverview, pageSessionDetail, pageToolCallDetail, pageModelSignals, pageTime, pageTokens, pageModelRisk, pageAuditDetail, pageSettings:
 		visible := s.contentHeight()
 		if count <= visible {
 			return ""
@@ -362,8 +402,8 @@ func (s *state) contentHeight() int {
 		height = defaultHeight
 	}
 	contentHeight := height - 6
-	if contentHeight < 4 {
-		return 4
+	if contentHeight < 1 {
+		return 1
 	}
 	return contentHeight
 }
@@ -383,7 +423,7 @@ func (s *state) content() []string {
 		default:
 			lines := s.overviewLines()
 			lines = append(lines, "", bold("Usage details"))
-			return append(lines, tokenLines(s.tokens, s.breakdown, s.width, tokensTabSummary, tokenBreakdownGlobal)...)
+			return s.viewportLines(append(lines, tokenLines(s.tokens, s.breakdown, s.width, tokensTabSummary, tokenBreakdownGlobal)...))
 		}
 	case pageTime:
 		return s.timeViewportLines()
@@ -432,14 +472,10 @@ func fit(value string, width int) string {
 	if width <= 0 {
 		width = defaultWidth
 	}
-	runes := []rune(value)
-	if len(runes) <= width {
-		return value
-	}
 	if width <= 3 {
-		return string(runes[:width])
+		return ansi.Truncate(value, width, "")
 	}
-	return string(runes[:width-3]) + "..."
+	return ansi.Truncate(value, width, "...")
 }
 
 func truncate(value string, width int) string {
