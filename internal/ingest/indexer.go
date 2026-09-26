@@ -20,7 +20,7 @@ import (
 	"github.com/LyleMi/AgentMeter/internal/sourcepath"
 )
 
-const sourceFileParserVersion = 5
+const sourceFileParserVersion = 6
 
 type Indexer struct {
 	conn   *sql.DB
@@ -327,6 +327,11 @@ func (i *Indexer) replaceParsedSession(ctx context.Context, source model.Source,
 }
 
 func (w *parsedSessionWriter) replaceSessionData() error {
+	if w.parsed.Session.Originator == "dsh" {
+		if err := clearOlderDSHGenerations(w.ctx, w.tx, w.source.ID, w.sourceFileID, w.parsed.Session.SessionKey); err != nil {
+			return err
+		}
+	}
 	if err := clearParsedSessionRows(w.ctx, w.tx, w.sourceFileID); err != nil {
 		return err
 	}
@@ -370,6 +375,7 @@ func calculateModelCallCosts(calls []model.ModelCall, calculator pricing.Calcula
 	costs := make([]*float64, len(calls))
 	for index, call := range calls {
 		usage := model.Usage{
+			PricingTime:              pricing.CallTime(call.StartedAt, call.EndedAt),
 			Model:                    call.Model,
 			InputTokens:              call.InputTokens,
 			CachedInputTokens:        call.CachedInputTokens,
@@ -552,7 +558,15 @@ func findJSONLFiles(root string) ([]string, error) {
 }
 
 func findJSONLFilesForSource(spec agent.SourceSpec) ([]string, error) {
-	return findJSONLFilesFromSources(agent.UsageSources(spec))
+	files, err := findJSONLFilesFromSources(agent.UsageSources(spec))
+	if err != nil {
+		return nil, err
+	}
+	if spec.Kind == "dsh" {
+		files = currentDSHFiles(files)
+		sort.Strings(files)
+	}
+	return files, nil
 }
 
 func findJSONLFilesFromSources(sources []agent.UsageSource) ([]string, error) {
@@ -566,7 +580,7 @@ func findJSONLFilesFromSources(sources []agent.UsageSource) ([]string, error) {
 			if entry.IsDir() {
 				return nil
 			}
-			if filepath.Ext(entry.Name()) != ".jsonl" {
+			if filepath.Ext(entry.Name()) != ".jsonl" && !strings.HasSuffix(entry.Name(), ".jsonl.zstd") {
 				return nil
 			}
 			key := usageFileKey(source, path)

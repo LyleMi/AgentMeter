@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/LyleMi/AgentMeter/internal/db"
 	"github.com/LyleMi/AgentMeter/internal/model"
 	"github.com/LyleMi/AgentMeter/internal/pricing"
 )
@@ -182,6 +183,8 @@ func enrichModelSignalSessionMetric(item *modelSignalSessionMetric, latencySampl
 		item.AgentName = item.AgentKind
 	}
 	usage := model.Usage{
+		PricingSessionID:      item.SessionID,
+		PricingTime:           db.ParseTime(item.StartedAt),
 		Model:                 item.Model,
 		InputTokens:           item.InputTokens,
 		CachedInputTokens:     item.CachedInputTokens,

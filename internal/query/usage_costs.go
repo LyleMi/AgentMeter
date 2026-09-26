@@ -4,15 +4,14 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/LyleMi/AgentMeter/internal/db"
 	"github.com/LyleMi/AgentMeter/internal/model"
 	"github.com/LyleMi/AgentMeter/internal/pricing"
 )
 
 func (s *Service) pricingCalculator(ctx context.Context) pricing.Calculator {
-	calculator, err := pricing.LoadCalculator(ctx, s.conn)
-	if err != nil {
-		return pricing.Calculator{}
-	}
+	// A call-history read failure retains the registry and session-time fallback.
+	calculator, _ := pricing.LoadSessionCalculator(ctx, s.conn)
 	return calculator
 }
 
@@ -61,7 +60,9 @@ func (s *Service) dailyCostsWithFilters(ctx context.Context, calculator pricing.
 	accumulator, err := scanUsageCosts(rows, calculator, func(rows *sql.Rows) (string, model.Usage, error) {
 		var day string
 		var usage model.Usage
-		err := rows.Scan(&day, &usage.Model, &usage.InputTokens, &usage.CachedInputTokens, &usage.OutputTokens, &usage.ReasoningOutputTokens, &usage.TotalTokens, &usage.Source)
+		var started string
+		err := rows.Scan(&day, &usage.Model, &usage.InputTokens, &usage.CachedInputTokens, &usage.OutputTokens, &usage.ReasoningOutputTokens, &usage.TotalTokens, &usage.Source, &usage.PricingSessionID, &started)
+		usage.PricingTime = db.ParseTime(started)
 		return day, usage, err
 	})
 	if err != nil {
@@ -111,7 +112,9 @@ func (s *Service) agentCostsWithFilters(ctx context.Context, calculator pricing.
 	accumulator, err := scanUsageCosts(rows, calculator, func(rows *sql.Rows) (int64, model.Usage, error) {
 		var sourceID int64
 		var usage model.Usage
-		err := rows.Scan(&sourceID, &usage.Model, &usage.InputTokens, &usage.CachedInputTokens, &usage.OutputTokens, &usage.ReasoningOutputTokens, &usage.TotalTokens, &usage.Source)
+		var started string
+		err := rows.Scan(&sourceID, &usage.Model, &usage.InputTokens, &usage.CachedInputTokens, &usage.OutputTokens, &usage.ReasoningOutputTokens, &usage.TotalTokens, &usage.Source, &usage.PricingSessionID, &started)
+		usage.PricingTime = db.ParseTime(started)
 		return sourceID, usage, err
 	})
 	if err != nil {
@@ -180,7 +183,8 @@ func scanUsageCosts[K comparable](
 }
 
 func scanUsageCostColumns(rows *sql.Rows, usage *model.Usage) error {
-	return rows.Scan(
+	var started string
+	err := rows.Scan(
 		&usage.Model,
 		&usage.InputTokens,
 		&usage.CachedInputTokens,
@@ -188,5 +192,9 @@ func scanUsageCostColumns(rows *sql.Rows, usage *model.Usage) error {
 		&usage.ReasoningOutputTokens,
 		&usage.TotalTokens,
 		&usage.Source,
+		&usage.PricingSessionID,
+		&started,
 	)
+	usage.PricingTime = db.ParseTime(started)
+	return err
 }

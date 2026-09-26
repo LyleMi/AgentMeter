@@ -80,6 +80,7 @@ func scanPricedModelCall(rows *sql.Rows, calculator pricing.Calculator) (model.M
 
 func applyModelCallCost(item *model.ModelCall, storedCost sql.NullFloat64, calculator pricing.Calculator) {
 	currentCost, unpriced := calculator.Compute(model.Usage{
+		PricingTime:              pricing.CallTime(item.StartedAt, item.EndedAt),
 		Model:                    item.Model,
 		InputTokens:              item.InputTokens,
 		CachedInputTokens:        item.CachedInputTokens,
@@ -326,6 +327,8 @@ func (s *Service) scanSessions(ctx context.Context, query string, args ...any) (
 			item.AgentName = item.AgentKind
 		}
 		fillSessionSourceIdentity(&item)
+		item.TokenUsage.PricingSessionID = item.ID
+		item.TokenUsage.PricingTime = item.StartedAt
 		cost, unpriced := calculator.Compute(item.TokenUsage)
 		item.TokenUsage.CostUSD = cost
 		item.TokenUsage.Unpriced = unpriced

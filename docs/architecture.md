@@ -79,7 +79,7 @@ Current Go package responsibilities:
 - `app`: application lifecycle, settings, indexing coordination, privacy
   actions, audit queries, and HTTP route registration.
 - `agent`: source-root classification for Codex, Claude Code, CodeBuddy,
-  WorkBuddy, and generic JSONL directories.
+  WorkBuddy, DeepSeek Harness (dsh), and generic JSONL directories.
 - `audit`: offline command-risk, privacy, egress, file, and secret findings
   derived from parsed local events.
 - `db`: SQLite connection, migrations, repositories, app config, and pricing
@@ -91,7 +91,8 @@ Current Go package responsibilities:
   calculation.
 - `privacy`: user-level external-agent privacy config adapters.
 - `query`: read models for UI screens and API responses.
-- `sessionjsonl`: supported JSONL event-shape parsing and normalization.
+- `sessionjsonl`: supported JSONL event-shape parsing and normalization,
+  including [dsh compressed logs and inherited-history accounting](dsh.md).
 - `startup`: frontend dependency/build checks and browser startup helpers.
 - `tui`: terminal UI mode over `app.App`.
 - `viewmodel`: shared display formatting and presenter helpers for UI parity.

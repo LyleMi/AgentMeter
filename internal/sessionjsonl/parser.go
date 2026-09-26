@@ -14,6 +14,14 @@ import (
 )
 
 type rawRecord struct {
+	SurfaceOp          any            `json:"surfaceOp"`
+	Time               any            `json:"time"`
+	Version            *int           `json:"version"`
+	Seq                int64          `json:"seq"`
+	SeedLength         int64          `json:"seedLength"`
+	Origin             string         `json:"origin"`
+	ParentSession      string         `json:"parentSession"`
+	IsSeeded           bool           `json:"isSeeded"`
 	ID                 any            `json:"id"`
 	ParentID           any            `json:"parentId"`
 	Timestamp          any            `json:"timestamp"`
@@ -89,7 +97,7 @@ func ParseFile(path string, sourceID, sourceFileID int64) (model.ParsedSession, 
 	}
 	defer file.Close()
 
-	return parseFromReader(path, file, sourceID, sourceFileID)
+	return parseEncodedReader(path, file, sourceID, sourceFileID)
 }
 
 func ParseFileWithHash(path string, sourceID, sourceFileID int64) (model.ParsedSession, string, error) {
@@ -100,7 +108,7 @@ func ParseFileWithHash(path string, sourceID, sourceFileID int64) (model.ParsedS
 	defer file.Close()
 
 	hash := sha256.New()
-	parsed, err := parseFromReader(path, io.TeeReader(file, hash), sourceID, sourceFileID)
+	parsed, err := parseEncodedReader(path, io.TeeReader(file, hash), sourceID, sourceFileID)
 	if err != nil {
 		return parsed, "", err
 	}
@@ -111,10 +119,16 @@ func parseFromReader(path string, reader io.Reader, sourceID, sourceFileID int64
 	accumulator := newParseAccumulator(path, sourceID, sourceFileID)
 	records := newRawRecordReader(path, reader)
 	for records.Next() {
+		if err := validateDSHHeader(records.Record().raw); err != nil {
+			return accumulator.parsed, err
+		}
 		accumulator.handleRecord(records.Record())
 	}
 	if err := records.Err(); err != nil {
 		return accumulator.parsed, err
+	}
+	if accumulator.dshSeeded {
+		return accumulator.parsed, fmt.Errorf("dsh seeded session is missing its inherited boundary")
 	}
 	accumulator.addWarnings(records.Warnings())
 	return accumulator.finalize(), nil

@@ -37,7 +37,7 @@ No proxy, no cloud service, no telemetry.
 
 ## At A Glance
 
-- **Supported agents:** Codex, Claude Code, CodeBuddy, WorkBuddy, and generic
+- **Supported agents:** Codex, Claude Code, CodeBuddy, WorkBuddy, DeepSeek Harness (dsh), and generic
   JSONL directories.
 - **Privacy model:** session data stays on your machine in a local SQLite
   database; AgentMeter does not proxy traffic or upload telemetry.
@@ -82,7 +82,7 @@ inspect directly. AgentMeter turns that data into answers you can use:
   indexed local session data.
 - Terminal UI mode over the same database, indexing pipeline, pricing rules, and
   query behavior.
-- Codex, Claude Code, CodeBuddy, WorkBuddy, and generic JSONL source detection.
+- Codex, Claude Code, CodeBuddy, WorkBuddy, DeepSeek Harness (dsh), and generic JSONL source detection.
 - Multiple labeled source instances for developers running several local coding
   agents or several roots from the same agent family.
 - Incremental SQLite indexing with source path traceability and parse status.
@@ -122,6 +122,10 @@ source instance is one local root, while the agent family (`codex`, `claude`,
 and so on) controls parser behavior and family-level filters. **Update Index**
 scans only new or changed JSONL files; **Rebuild Index** clears indexed files
 for enabled sources and parses them all again.
+
+DeepSeek Harness logs are discovered under `~/.dsh` or `DSH_HOME`, including
+compressed session logs. See [dsh support](docs/dsh.md) for supported formats
+and accounting details.
 
 For alternate install methods, CLI modes, data locations, and developer
 workflows, see [Install](docs/install.md) and

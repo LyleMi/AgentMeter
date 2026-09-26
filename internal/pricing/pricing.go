@@ -23,7 +23,8 @@ type Rate struct {
 }
 
 type Calculator struct {
-	rates map[string]Rate
+	rates        map[string]Rate
+	sessionCalls map[int64][]model.Usage
 }
 
 var ErrInvalidRate = errors.New("invalid pricing model")
@@ -125,6 +126,9 @@ func normalizedModelCandidates(value string) []string {
 }
 
 var modelAliases = map[string]string{
+	"claude-fable-5-1":    "claude-fable-5.1",
+	"claude-mythos-5-1":   "claude-mythos-5.1",
+	"claude-opus-5-5":     "claude-opus-5.5",
 	"claude-4.5-haiku":    "claude-haiku-4.5",
 	"claude-haiku-4-5":    "claude-haiku-4.5",
 	"claude-4.6-opus":     "claude-opus-4.6",
@@ -133,8 +137,6 @@ var modelAliases = map[string]string{
 	"claude-opus-4-8":     "claude-opus-4.8",
 	"claude-opus-4.6-1m":  "claude-opus-4.6",
 	"claude-sonnet-4-6":   "claude-sonnet-4.6",
-	"glm-5":               "glm-5.2",
-	"glm-5.1":             "glm-5.2",
 	"gpt-5.1-codex-mini":  "gpt-5-mini",
 	"gpt-5.6":             "gpt-5.6-sol",
 	"hy3":                 "hy3-preview",
@@ -144,11 +146,11 @@ var modelAliases = map[string]string{
 
 func Compute(conn *sql.DB, usage model.Usage) (*float64, bool) {
 	rate, ok := rateForUsage(conn, usage)
-	return computeWithRate(usage, rate, ok)
+	return computeWithRate(usage, rateAt(rate, usage.PricingTime), ok)
 }
 
 func LoadCalculator(ctx context.Context, conn *sql.DB) (Calculator, error) {
-	rows, err := conn.QueryContext(ctx, `SELECT model, normalized_model, input_per_1m, cached_input_per_1m, output_per_1m, source, effective_from FROM pricing_models`)
+	rows, err := conn.QueryContext(ctx, `SELECT model, normalized_model, input_per_1m, cached_input_per_1m, output_per_1m, source, effective_from, is_custom FROM pricing_models`)
 	if err != nil {
 		return Calculator{}, err
 	}
@@ -158,7 +160,7 @@ func LoadCalculator(ctx context.Context, conn *sql.DB) (Calculator, error) {
 	for rows.Next() {
 		var rate Rate
 		var effective string
-		if err := rows.Scan(&rate.Model, &rate.NormalizedModel, &rate.InputPer1M, &rate.CachedInputPer1M, &rate.OutputPer1M, &rate.Source, &effective); err != nil {
+		if err := rows.Scan(&rate.Model, &rate.NormalizedModel, &rate.InputPer1M, &rate.CachedInputPer1M, &rate.OutputPer1M, &rate.Source, &effective, &rate.IsCustom); err != nil {
 			return Calculator{}, err
 		}
 		rate.EffectiveFrom, _ = time.Parse(time.RFC3339Nano, effective)
@@ -227,6 +229,22 @@ func customRate(input model.PricingModelInput) (Rate, error) {
 }
 
 func (c Calculator) Compute(usage model.Usage) (*float64, bool) {
+	if calls, ok := c.coveredSessionCalls(usage); ok {
+		var total float64
+		var found, unpriced bool
+		for _, call := range calls {
+			cost, missing := c.Compute(call)
+			unpriced = unpriced || missing
+			if cost != nil {
+				total += *cost
+				found = true
+			}
+		}
+		if !found || unpriced {
+			return nil, unpriced
+		}
+		return &total, unpriced
+	}
 	if !hasBillableUsage(usage) {
 		return nil, false
 	}
@@ -235,10 +253,22 @@ func (c Calculator) Compute(usage model.Usage) (*float64, bool) {
 		return nil, true
 	}
 	rate, ok := c.rateForModel(usage.Model)
-	return computeWithRate(usage, rate, ok)
+	return computeWithRate(usage, rateAt(rate, usage.PricingTime), ok)
 }
 
 func (c Calculator) CacheSavings(usage model.Usage) *float64 {
+	if calls, ok := c.coveredSessionCalls(usage); ok {
+		var total float64
+		for _, call := range calls {
+			if savings := c.CacheSavings(call); savings != nil {
+				total += *savings
+			}
+		}
+		if total == 0 {
+			return nil
+		}
+		return &total
+	}
 	if !hasBillableUsage(usage) || usage.CachedInputTokens <= 0 {
 		return nil
 	}
@@ -247,6 +277,7 @@ func (c Calculator) CacheSavings(usage model.Usage) *float64 {
 		return nil
 	}
 	rate, ok := c.rateForModel(usage.Model)
+	rate = rateAt(rate, usage.PricingTime)
 	if !ok || rate.InputPer1M <= rate.CachedInputPer1M {
 		return nil
 	}
@@ -276,8 +307,8 @@ func rateForUsage(conn *sql.DB, usage model.Usage) (Rate, bool) {
 	}
 	for _, candidate := range normalizedModelCandidates(usage.Model) {
 		var rate Rate
-		err := conn.QueryRow(`SELECT input_per_1m, cached_input_per_1m, output_per_1m FROM pricing_models WHERE normalized_model = ?`, candidate).
-			Scan(&rate.InputPer1M, &rate.CachedInputPer1M, &rate.OutputPer1M)
+		err := conn.QueryRow(`SELECT normalized_model, input_per_1m, cached_input_per_1m, output_per_1m, is_custom FROM pricing_models WHERE normalized_model = ?`, candidate).
+			Scan(&rate.NormalizedModel, &rate.InputPer1M, &rate.CachedInputPer1M, &rate.OutputPer1M, &rate.IsCustom)
 		if err == nil {
 			return rate, true
 		}

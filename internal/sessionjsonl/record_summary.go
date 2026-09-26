@@ -35,6 +35,14 @@ var payloadTypeKinds = map[string]string{
 }
 
 var recordTypeKinds = map[string]string{
+	"session":               "session",
+	"user/message":          "user",
+	"assistant/message":     "model",
+	"assistant/attempt":     "model",
+	"assistant/chunk":       "model",
+	"request/header":        "session",
+	"tool/call":             "tool",
+	"tool/result":           "tool",
 	"reasoning":             "model",
 	"function_call":         "tool",
 	"function_call_result":  "tool",
@@ -101,6 +109,14 @@ func kindForRole(role string) string {
 }
 
 func summarizeRecord(raw rawRecord) string {
+	switch raw.Type {
+	case "user/message":
+		return preview(contentText(raw.Data["content"]), 500)
+	case "assistant/message", "tool/result":
+		return preview(contentText(mapFromAny(raw.Data["message"])["content"]), 500)
+	case "tool/call":
+		return stringValue(raw.Data, "name")
+	}
 	if stringValue(raw.Payload, "type") != "" {
 		return summarize(raw.Type, raw.Payload)
 	}

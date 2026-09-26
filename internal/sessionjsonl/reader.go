@@ -46,6 +46,16 @@ func (r *rawRecordReader) Next() bool {
 			continue
 		}
 		ts := recordTimestamp(raw)
+		if raw.Type == "session" && raw.Version != nil {
+			if ms, ok := raw.CreatedAtCamel.(float64); ok {
+				ts = time.UnixMilli(int64(ms)).UTC()
+			}
+		}
+		if raw.Time != nil && strings.Contains(raw.Type, "/") {
+			if ms, ok := raw.Time.(float64); ok {
+				ts = time.UnixMilli(int64(ms)).UTC()
+			}
+		}
 		if ts.IsZero() {
 			ts = timestampFromPayload(raw.Payload, "started_at")
 		}

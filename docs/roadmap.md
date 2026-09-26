@@ -14,7 +14,7 @@ Implemented today:
 - Terminal UI MVP over the same application core.
 - SQLite database creation, migrations, and normalized query storage.
 - App configuration storage for source entries and last index status.
-- Codex, Claude Code, CodeBuddy, WorkBuddy, and generic JSONL source detection
+- Codex, Claude Code, CodeBuddy, WorkBuddy, DeepSeek Harness (dsh), and generic JSONL source detection
   and parsing.
 - Multiple source roots with enabled/disabled entries.
 - Incremental indexing and rebuild indexing.
@@ -74,7 +74,7 @@ Delivered:
 
 Delivered:
 
-- Source discovery for Codex, Claude Code, CodeBuddy, WorkBuddy, and generic
+- Source discovery for Codex, Claude Code, CodeBuddy, WorkBuddy, DeepSeek Harness (dsh), and generic
   JSONL directories.
 - Recursive JSONL scanner.
 - Normalization for sessions, events, token usage, model calls, and tool calls.

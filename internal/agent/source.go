@@ -29,6 +29,7 @@ type familyRule struct {
 }
 
 var familyRules = []familyRule{
+	{Kind: "dsh", Name: "DeepSeek Harness", ExactRoot: ".dsh", Token: "dsh", Children: []string{"sessions"}},
 	{Kind: "codebuddy", Name: "CodeBuddy", ExactRoot: ".codebuddy", Token: "codebuddy", Children: []string{"projects", "sessions"}},
 	{Kind: "workbuddy", Name: "WorkBuddy", ExactRoot: ".workbuddy", Token: "workbuddy", Children: []string{"projects", "sessions"}},
 	{Kind: "claude", Name: "Claude Code", ExactRoot: ".claude", Token: "claude", Children: []string{"projects"}},
@@ -40,6 +41,9 @@ func ResolveSource(path string) SourceSpec {
 	cleaned := sourcepath.Normalize(path)
 	if cleaned == "" {
 		cleaned = filepath.Clean(path)
+	}
+	if spec, ok := matchingDSHPath(cleaned); ok {
+		return spec
 	}
 	if spec, ok := matchingCursorNestedPath(cleaned); ok {
 		return spec
@@ -60,6 +64,8 @@ func UsageSources(spec SourceSpec) []UsageSource {
 		if sources, ok := codexUsageSources(spec); ok {
 			return sources
 		}
+	case "dsh":
+		return rootChildUsageSources(spec, "sessions")
 	case "claude":
 		return rootChildUsageSources(spec, "projects")
 	case "codebuddy":
@@ -277,4 +283,26 @@ func containsString(values []string, value string) bool {
 func isDir(path string) bool {
 	stat, err := os.Stat(path)
 	return err == nil && stat.IsDir()
+}
+
+func matchingDSHPath(path string) (SourceSpec, bool) {
+	envRoot := strings.TrimSpace(os.Getenv("DSH_HOME"))
+	if strings.HasPrefix(envRoot, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			envRoot = filepath.Join(home, envRoot[2:])
+		}
+	}
+	for current := path; ; current = filepath.Dir(current) {
+		isRoot := strings.EqualFold(filepath.Base(current), ".dsh") || (envRoot != "" && sourcepath.Equal(current, envRoot))
+		if isRoot {
+			relative, err := filepath.Rel(current, path)
+			if err == nil && (relative == "." || relative == "sessions" || strings.HasPrefix(relative, "sessions"+string(filepath.Separator))) {
+				return SourceSpec{Kind: "dsh", Name: "DeepSeek Harness", RootPath: current, SessionsPath: path}, true
+			}
+		}
+		if filepath.Dir(current) == current {
+			break
+		}
+	}
+	return SourceSpec{}, false
 }

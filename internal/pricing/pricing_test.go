@@ -28,7 +28,7 @@ func TestComputeKnownRegistryRows(t *testing.T) {
 				CachedInputTokens: 200_000,
 				OutputTokens:      500_000,
 			},
-			want: 19.1,
+			want: 13.28,
 		},
 		{
 			name: "gpt5 alias",
@@ -74,7 +74,7 @@ func TestComputeKnownRegistryRows(t *testing.T) {
 				InputTokens:  1_000_000,
 				OutputTokens: 1_000_000,
 			},
-			want: 35,
+			want: 24,
 		},
 		{
 			name: "gpt 5.6 terra",
@@ -84,7 +84,7 @@ func TestComputeKnownRegistryRows(t *testing.T) {
 				CachedInputTokens: 200_000,
 				OutputTokens:      500_000,
 			},
-			want: 9.55,
+			want: 7.64,
 		},
 		{
 			name: "gpt 5.6 luna",
@@ -93,7 +93,7 @@ func TestComputeKnownRegistryRows(t *testing.T) {
 				InputTokens:  1_000_000,
 				OutputTokens: 1_000_000,
 			},
-			want: 7,
+			want: 1.4,
 		},
 		{
 			name: "claude fable 5",
@@ -141,7 +141,7 @@ func TestComputeKnownRegistryRows(t *testing.T) {
 				InputTokens:  1_000_000,
 				OutputTokens: 1_000_000,
 			},
-			want: 0.42,
+			want: 1.5,
 		},
 		{
 			name: "deepseek compound suffix fallback",
@@ -150,7 +150,7 @@ func TestComputeKnownRegistryRows(t *testing.T) {
 				InputTokens:  1_000_000,
 				OutputTokens: 1_000_000,
 			},
-			want: 0.42,
+			want: 1.5,
 		},
 		{
 			name: "hy3 custom suffix fallback",

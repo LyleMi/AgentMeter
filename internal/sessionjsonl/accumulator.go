@@ -10,6 +10,9 @@ import (
 )
 
 type parseAccumulator struct {
+	dsh                bool
+	dshSeedLength      int64
+	dshSeeded          bool
 	path               string
 	sourceFileID       int64
 	parsed             model.ParsedSession
@@ -57,6 +60,9 @@ func (a *parseAccumulator) addWarnings(warnings []string) {
 }
 
 func (a *parseAccumulator) handleRecord(record parsedRawRecord) {
+	if a.handleDSHRecord(record) {
+		return
+	}
 	a.addEvent(record)
 	a.handleSessionRecord(record.raw)
 	a.handleRecordIdentity(record.raw)

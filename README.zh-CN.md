@@ -37,7 +37,7 @@ AgentMeter 是一个开源 Go + Vue 仪表盘，用于理解本地 coding-agent 
 
 ## 一眼看懂
 
-- **支持的 agent：** Codex、Claude Code、CodeBuddy、WorkBuddy 和通用
+- **支持的 agent：** Codex、Claude Code、CodeBuddy、WorkBuddy、DeepSeek Harness（dsh）和通用
   JSONL 目录。
 - **隐私模型：** 会话数据保留在你的机器上，存入本地 SQLite 数据库；
   AgentMeter 不代理流量，也不上传遥测。
@@ -75,7 +75,7 @@ AgentMeter 将这些数据整理成可以直接回答的问题：
   低置信度 cohort 和异常会话。这些是本地运营代理指标，不是通用模型能力排行。
 - 离线审计视图，可从已索引的本地会话数据中查看命令风险和隐私/密钥发现。
 - 终端 UI 模式复用同一套数据库、索引流水线、计价规则和查询行为。
-- 支持检测 Codex、Claude Code、CodeBuddy、WorkBuddy 以及通用 JSONL
+- 支持检测 Codex、Claude Code、CodeBuddy、WorkBuddy、DeepSeek Harness（dsh）以及通用 JSONL
   数据源。
 - 支持多个带标签的数据源实例，适合同时运行多个本地 coding agent，或同一
   agent family 的多个根目录。
@@ -119,6 +119,10 @@ instance 表示一个本地根目录；agent family（例如 `codex`、`claude`�
 
 **Update Index** 只扫描新增或变更过的 JSONL 文件；**Rebuild Index**
 会清空已启用数据源的已索引文件记录，并重新解析全部文件。
+
+DeepSeek Harness 支持自动发现 `~/.dsh` 或 `DSH_HOME`，读取普通及压缩会话
+日志，并排除继承历史的重复用量。已有配置可在 Settings 中添加该目录后
+执行 Update Index；详情参阅 [dsh 支持说明](docs/dsh.md)。
 
 如需其他安装方式、CLI 模式、数据位置和开发工作流，请参阅
 [安装](docs/install.md) 和 [Getting Started](docs/getting-started.md)。

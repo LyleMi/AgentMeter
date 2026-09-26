@@ -52,16 +52,19 @@ type Session struct {
 }
 
 type Usage struct {
-	Model                    string   `json:"model"`
-	InputTokens              int64    `json:"inputTokens"`
-	CachedInputTokens        int64    `json:"cachedInputTokens"`
-	OutputTokens             int64    `json:"outputTokens"`
-	ReasoningOutputTokens    int64    `json:"reasoningOutputTokens"`
-	ContextCompressionTokens int64    `json:"contextCompressionTokens"`
-	TotalTokens              int64    `json:"totalTokens"`
-	Source                   string   `json:"source"`
-	CostUSD                  *float64 `json:"costUsd,omitempty"`
-	Unpriced                 bool     `json:"unpriced"`
+	// Pricing context is internal; timestamps and session IDs are already exposed on their owners.
+	PricingTime              time.Time `json:"-"`
+	PricingSessionID         int64     `json:"-"`
+	Model                    string    `json:"model"`
+	InputTokens              int64     `json:"inputTokens"`
+	CachedInputTokens        int64     `json:"cachedInputTokens"`
+	OutputTokens             int64     `json:"outputTokens"`
+	ReasoningOutputTokens    int64     `json:"reasoningOutputTokens"`
+	ContextCompressionTokens int64     `json:"contextCompressionTokens"`
+	TotalTokens              int64     `json:"totalTokens"`
+	Source                   string    `json:"source"`
+	CostUSD                  *float64  `json:"costUsd,omitempty"`
+	Unpriced                 bool      `json:"unpriced"`
 }
 
 type Event struct {

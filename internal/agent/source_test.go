@@ -148,3 +148,26 @@ func TestResolveSourceKeepsGenericSessionsAsJSONL(t *testing.T) {
 		t.Fatalf("generic sessions spec = %+v", spec)
 	}
 }
+
+func TestResolveDSHSourcePaths(t *testing.T) {
+	for _, rootName := range []string{".dsh", "custom-home"} {
+		root := filepath.Join(t.TempDir(), rootName)
+		if rootName == "custom-home" {
+			t.Setenv("DSH_HOME", root)
+		}
+		sessions := filepath.Join(root, "sessions")
+		if err := os.MkdirAll(sessions, 0700); err != nil {
+			t.Fatal(err)
+		}
+		for _, path := range []string{root, sessions, filepath.Join(sessions, "project")} {
+			spec := ResolveSource(path)
+			if spec.Kind != "dsh" || spec.RootPath != root || spec.Name != "DeepSeek Harness" {
+				t.Fatalf("source: %+v", spec)
+			}
+			sources := UsageSources(spec)
+			if path == root && (len(sources) != 1 || sources[0].Dir != sessions) {
+				t.Fatalf("sources: %+v", sources)
+			}
+		}
+	}
+}

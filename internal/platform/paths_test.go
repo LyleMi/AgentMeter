@@ -128,3 +128,21 @@ func hasPath(paths []string, path string) bool {
 	}
 	return false
 }
+
+func TestDiscoverDSHDefaultAndEnvironment(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "custom-harness")
+	t.Setenv("DSH_HOME", root)
+	candidates := DiscoverAgentSourceCandidates()
+	found := false
+	for _, candidate := range candidates {
+		if candidate.Path == root {
+			found = candidate.Kind == "dsh" && candidate.AutoReason == "env:DSH_HOME"
+		}
+	}
+	if !found {
+		t.Fatalf("missing dsh environment source: %+v", candidates)
+	}
+	if !hasPath(DefaultAgentSourceCandidates(), DefaultDSHRoot()) {
+		t.Fatal("missing default dsh source")
+	}
+}

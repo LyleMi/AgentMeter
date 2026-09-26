@@ -7,7 +7,7 @@ import (
 )
 
 const usageSessionModelExpr = "COALESCE(NULLIF(tu.model, ''), s.model)"
-const usageCostColumns = usageSessionModelExpr + `, tu.input_tokens, tu.cached_input_tokens, tu.output_tokens, tu.reasoning_output_tokens, tu.total_tokens, tu.source`
+const usageCostColumns = usageSessionModelExpr + `, tu.input_tokens, tu.cached_input_tokens, tu.output_tokens, tu.reasoning_output_tokens, tu.total_tokens, tu.source, s.id, s.started_at`
 
 func analyticsSessionWhere(filters model.AnalyticsFilters) ([]string, []any) {
 	where := []string{"1 = 1"}

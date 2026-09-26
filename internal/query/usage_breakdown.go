@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/LyleMi/AgentMeter/internal/db"
 	"github.com/LyleMi/AgentMeter/internal/model"
 	"github.com/LyleMi/AgentMeter/internal/pricing"
 	"github.com/LyleMi/AgentMeter/internal/sourcepath"
@@ -20,6 +21,8 @@ type usageBreakdownShape struct {
 }
 
 type usageBreakdownRow struct {
+	sessionID    int64
+	started      string
 	bucket       model.UsageBreakdownBucket
 	pricingModel string
 	usageSource  string
@@ -66,7 +69,7 @@ func usageBreakdownQuery(shape usageBreakdownShape, where []string) string {
 		COALESCE(SUM(COALESCE(tu.output_tokens, 0)), 0),
 		COALESCE(SUM(COALESCE(tu.reasoning_output_tokens, 0)), 0),
 		COALESCE(SUM(COALESCE(tu.context_compression_tokens, 0)), 0),
-		COALESCE(MAX(tu.source), 'unknown')
+		COALESCE(MAX(tu.source), 'unknown'), s.id, s.started_at
 		FROM sessions s
 		JOIN sources src ON src.id = s.source_id
 		LEFT JOIN token_usage tu ON tu.owner_kind = 'session' AND tu.owner_id = s.id
@@ -99,6 +102,8 @@ func scanUsageBreakdownRow(scanner usageBreakdownScanner) (usageBreakdownRow, er
 		&row.bucket.ReasoningOutputTokens,
 		&row.bucket.ContextCompressionTokens,
 		&row.usageSource,
+		&row.sessionID,
+		&row.started,
 	)
 	return row, err
 }
@@ -150,6 +155,8 @@ func addUsageBreakdownTokens(target *model.UsageBreakdownBucket, bucket model.Us
 
 func (b *usageBreakdownBuilder) addCost(key string, row usageBreakdownRow) {
 	usage := model.Usage{
+		PricingSessionID:         row.sessionID,
+		PricingTime:              db.ParseTime(row.started),
 		Model:                    row.pricingModel,
 		InputTokens:              row.bucket.InputTokens,
 		CachedInputTokens:        row.bucket.CachedInputTokens,
